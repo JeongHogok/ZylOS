@@ -1,0 +1,14 @@
+[Unit]
+Description=Zyl OS Power Management Service
+After=dbus.service
+Wants=zyl-compositor.service
+
+[Service]
+Type=dbus
+BusName=org.zylos.PowerManager
+ExecStart=/usr/bin/zyl-power
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

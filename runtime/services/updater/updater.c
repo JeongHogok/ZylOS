@@ -86,6 +86,134 @@ static void report_progress(ZylUpdater *u, int pct, const char *msg) {
         u->progress_cb(u->state, pct, msg, u->progress_data);
 }
 
+/* ─── 유틸리티: 파일 내용 전체 읽기 ─── */
+static char *read_file_contents(const char *path, size_t *out_len) {
+    FILE *f = fopen(path, "r");
+    if (!f) return NULL;
+
+    fseek(f, 0, SEEK_END);
+    long len = ftell(f);
+    if (len <= 0) { fclose(f); return NULL; }
+    fseek(f, 0, SEEK_SET);
+
+    char *buf = malloc((size_t)len + 1);
+    if (!buf) { fclose(f); return NULL; }
+
+    size_t rd = fread(buf, 1, (size_t)len, f);
+    buf[rd] = '\0';
+    fclose(f);
+    if (out_len) *out_len = rd;
+    return buf;
+}
+
+/* ─── 유틸리티: 간이 JSON 문자열 값 추출 ─── */
+static char *json_get_string(const char *json, const char *key) {
+    char pattern[256];
+    snprintf(pattern, sizeof(pattern), "\"%s\"", key);
+
+    const char *pos = strstr(json, pattern);
+    if (!pos) return NULL;
+    pos += strlen(pattern);
+    while (*pos == ' ' || *pos == '\t' || *pos == ':') pos++;
+
+    if (*pos != '"') return NULL;
+    pos++;
+
+    const char *end = pos;
+    while (*end && *end != '"') {
+        if (*end == '\\') end++;
+        if (*end) end++;
+    }
+
+    size_t len = (size_t)(end - pos);
+    char *val = malloc(len + 1);
+    if (!val) return NULL;
+    memcpy(val, pos, len);
+    val[len] = '\0';
+    return val;
+}
+
+/* ─── 유틸리티: JSON boolean 값 추출 ─── */
+static bool json_get_bool(const char *json, const char *key) {
+    char pattern[256];
+    snprintf(pattern, sizeof(pattern), "\"%s\"", key);
+    const char *pos = strstr(json, pattern);
+    if (!pos) return false;
+    pos += strlen(pattern);
+    while (*pos == ' ' || *pos == '\t' || *pos == ':') pos++;
+    return strncmp(pos, "true", 4) == 0;
+}
+
+/* ─── 유틸리티: JSON 정수 값 추출 ─── */
+static long json_get_long(const char *json, const char *key) {
+    char pattern[256];
+    snprintf(pattern, sizeof(pattern), "\"%s\"", key);
+    const char *pos = strstr(json, pattern);
+    if (!pos) return -1;
+    pos += strlen(pattern);
+    while (*pos == ' ' || *pos == '\t' || *pos == ':') pos++;
+    return strtol(pos, NULL, 10);
+}
+
+/* ─── 유틸리티: popen으로 명령어 실행 후 출력 읽기 ─── */
+static char *run_command(const char *cmd, size_t *out_len) {
+    FILE *fp = popen(cmd, "r");
+    if (!fp) return NULL;
+
+    size_t capacity = 4096;
+    size_t total = 0;
+    char *buf = malloc(capacity);
+    if (!buf) { pclose(fp); return NULL; }
+
+    size_t n;
+    while ((n = fread(buf + total, 1, capacity - total - 1, fp)) > 0) {
+        total += n;
+        if (total + 1 >= capacity) {
+            capacity *= 2;
+            char *tmp = realloc(buf, capacity);
+            if (!tmp) { free(buf); pclose(fp); return NULL; }
+            buf = tmp;
+        }
+    }
+    buf[total] = '\0';
+    pclose(fp);
+    if (out_len) *out_len = total;
+    return buf;
+}
+
+/* ─── 유틸리티: SHA-256 해시 계산 (sha256sum 명령어 사용) ─── */
+static bool compute_sha256_file(const char *path, char *out_hex, size_t hex_size) {
+    char cmd[1024];
+    /* Linux: sha256sum, macOS: shasum -a 256 */
+    snprintf(cmd, sizeof(cmd),
+             "sha256sum '%s' 2>/dev/null || shasum -a 256 '%s' 2>/dev/null",
+             path, path);
+
+    char *output = run_command(cmd, NULL);
+    if (!output) return false;
+
+    /* 출력 형식: "hash  filename\n" — 처음 64자가 해시 */
+    if (strlen(output) < 64) {
+        free(output);
+        return false;
+    }
+
+    size_t copy_len = hex_size - 1 < 64 ? hex_size - 1 : 64;
+    memcpy(out_hex, output, copy_len);
+    out_hex[copy_len] = '\0';
+    free(output);
+    return true;
+}
+
+/* ─── 유틸리티: 업데이트 타입 문자열 → 열거형 변환 ─── */
+static ZylUpdateType parse_update_type(const char *type_str) {
+    if (!type_str) return ZYL_UPDATE_TYPE_FULL;
+    if (strcmp(type_str, "delta") == 0) return ZYL_UPDATE_TYPE_DELTA;
+    if (strcmp(type_str, "apps_only") == 0) return ZYL_UPDATE_TYPE_APPS_ONLY;
+    if (strcmp(type_str, "kernel") == 0) return ZYL_UPDATE_TYPE_KERNEL;
+    return ZYL_UPDATE_TYPE_FULL;
+}
+
 /* ─── 활성 슬롯 감지 ─── */
 static char *detect_active_slot(void) {
     /*
@@ -140,35 +268,109 @@ ZylUpdateState zyl_updater_check(ZylUpdater *u,
     u->state = ZYL_UPDATE_CHECKING;
     report_progress(u, 0, "Checking for updates...");
 
-    /*
-     * 실제 구현:
-     *   1. HTTP GET ${server_url}/check?version=${current}&slot=${slot}&arch=riscv64
-     *   2. JSON 응답 파싱
-     *   3. 서명 검증
-     *
-     * 예시 요청:
-     *   curl -s "https://update.zyl-os.dev/v1/check?version=0.1.0&arch=riscv64"
-     *
-     * 예시 응답:
-     *   {
-     *     "available": true,
-     *     "version": "0.2.0",
-     *     "type": "delta",
-     *     "size": 52428800,
-     *     "url": "https://cdn.zyl-os.dev/updates/0.1.0-to-0.2.0-riscv64.bpiupd",
-     *     "sha256": "...",
-     *     "signature": "...",
-     *     "changelog": { "ko": "버그 수정 및 성능 개선", "en": "Bug fixes..." },
-     *     "mandatory": false,
-     *     "min_battery": 30
-     *   }
-     */
-
-    /* 프로토타입: 항상 "최신"으로 반환 */
-    u->state = ZYL_UPDATE_UP_TO_DATE;
-    report_progress(u, 100, "System is up to date");
-
     if (out_manifest) *out_manifest = NULL;
+
+    /* 1. 업데이트 확인 URL 구성 */
+    char url[1024];
+    snprintf(url, sizeof(url),
+             "%s/check?version=%s&arch=riscv64&slot=%s",
+             u->server_url,
+             u->current_version ? u->current_version : "0.0.0",
+             u->active_slot ? u->active_slot : "a");
+
+    /* 2. curl 명령어로 HTTP GET 수행 */
+    char cmd[1280];
+    snprintf(cmd, sizeof(cmd),
+             "curl -s --connect-timeout 10 --max-time 30 '%s' 2>/dev/null",
+             url);
+
+    fprintf(stderr, "[UPDATER] Checking: %s\n", url);
+
+    char *response = run_command(cmd, NULL);
+    if (!response || strlen(response) == 0) {
+        fprintf(stderr, "[UPDATER] No response from server\n");
+        free(response);
+        u->state = ZYL_UPDATE_FAILED;
+        report_progress(u, 100, "Failed to contact update server");
+        return u->state;
+    }
+
+    /* 3. JSON 응답 파싱 */
+    bool available = json_get_bool(response, "available");
+    if (!available) {
+        free(response);
+        u->state = ZYL_UPDATE_UP_TO_DATE;
+        report_progress(u, 100, "System is up to date");
+        return u->state;
+    }
+
+    /* 4. 업데이트 매니페스트 구성 */
+    ZylUpdateManifest *manifest = calloc(1, sizeof(ZylUpdateManifest));
+    if (!manifest) {
+        free(response);
+        u->state = ZYL_UPDATE_FAILED;
+        return u->state;
+    }
+
+    manifest->version       = json_get_string(response, "version");
+    manifest->current_version = u->current_version ? strdup(u->current_version)
+                                                    : strdup("0.0.0");
+    manifest->download_url  = json_get_string(response, "url");
+    manifest->sha256_hash   = json_get_string(response, "sha256");
+    manifest->signature     = json_get_string(response, "signature");
+    manifest->changelog     = json_get_string(response, "changelog");
+    manifest->is_mandatory  = json_get_bool(response, "mandatory");
+
+    char *type_str = json_get_string(response, "type");
+    manifest->type = parse_update_type(type_str);
+    free(type_str);
+
+    long size = json_get_long(response, "size");
+    manifest->download_size = size > 0 ? (size_t)size : 0;
+
+    char *min_bat = json_get_string(response, "min_battery");
+    manifest->min_battery_pct = min_bat ? min_bat : strdup("20");
+
+    free(response);
+
+    /* 필수 필드 검증 */
+    if (!manifest->version || !manifest->download_url) {
+        fprintf(stderr, "[UPDATER] Incomplete update manifest\n");
+        zyl_update_manifest_free(manifest);
+        u->state = ZYL_UPDATE_FAILED;
+        return u->state;
+    }
+
+    fprintf(stderr, "[UPDATER] Update available: %s -> %s (%zu bytes)\n",
+            manifest->current_version, manifest->version,
+            manifest->download_size);
+
+    /* 이전 pending 해제 후 새 매니페스트 저장 */
+    if (u->pending) zyl_update_manifest_free(u->pending);
+    u->pending = manifest;
+
+    u->state = ZYL_UPDATE_AVAILABLE;
+    report_progress(u, 100, "Update available");
+
+    if (out_manifest) {
+        /* 호출자에게 복사본 전달 */
+        ZylUpdateManifest *copy = calloc(1, sizeof(ZylUpdateManifest));
+        if (copy) {
+            copy->version       = manifest->version ? strdup(manifest->version) : NULL;
+            copy->current_version = manifest->current_version ? strdup(manifest->current_version) : NULL;
+            copy->changelog     = manifest->changelog ? strdup(manifest->changelog) : NULL;
+            copy->download_url  = manifest->download_url ? strdup(manifest->download_url) : NULL;
+            copy->download_size = manifest->download_size;
+            copy->installed_size = manifest->installed_size;
+            copy->sha256_hash   = manifest->sha256_hash ? strdup(manifest->sha256_hash) : NULL;
+            copy->signature     = manifest->signature ? strdup(manifest->signature) : NULL;
+            copy->type          = manifest->type;
+            copy->is_mandatory  = manifest->is_mandatory;
+            copy->min_battery_pct = manifest->min_battery_pct ? strdup(manifest->min_battery_pct) : NULL;
+        }
+        *out_manifest = copy;
+    }
+
     return u->state;
 }
 

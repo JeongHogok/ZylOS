@@ -61,9 +61,15 @@
 - A/B 파티션 로직이 주석만 존재
 - **필요**: HTTP 다운로드, 서명 검증, 파티션 기록, 롤백
 
-### C9. 전력 관리 없음
-- 화면 끄기/절전/서스펜드/리쥼 미구현
-- **필요**: systemd-logind, cpuidle/cpufreq, 웨이크업 이벤트
+### ~~C9. 전력 관리~~ ✅ 완료 (2026-03-28)
+- ~~화면 끄기/절전 미구현~~ → power.h/c 구현:
+  - 6단계 전력 상태 (Active/Dim/ScreenOff/Doze/Suspend/Shutdown)
+  - sysfs backlight 자동 감지 + 밝기 제어
+  - cpufreq 거버너 설정 (schedutil 기본)
+  - 타이머 기반 자동 절전 (dim → screen_off → suspend)
+  - 웨이크락 시스템 (앱이 절전 방지 가능)
+  - D-Bus 인터페이스 (StateChanged 시그널)
+  - systemd 서비스 파일 (zyl-power.service)
 
 ### C10. 셀룰러/전화 스택 없음
 - 모뎀 드라이버/AT 명령/통화/SMS 미구현

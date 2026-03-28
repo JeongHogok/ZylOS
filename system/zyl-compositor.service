@@ -1,6 +1,6 @@
 [Unit]
 Description=Zyl OS Wayland Compositor
-After=systemd-logind.service
+After=systemd-logind.service plymouth-quit.service
 Wants=systemd-logind.service
 ConditionPathExists=/dev/dri/card0
 

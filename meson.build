@@ -6,6 +6,8 @@ project('zyl-os', 'c',
 # Subprojects
 subdir('compositor')
 subdir('runtime/wam')
+subdir('runtime/services/notification')
+subdir('runtime/services/power')
 
 # Install app files
 install_subdir('apps/home',       install_dir: get_option('datadir') / 'zyl-os' / 'apps')
@@ -24,3 +26,6 @@ install_headers('runtime/hal/hal.h', subdir: 'zyl-os')
 # Install systemd service files
 install_data('system/zyl-compositor.service', install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
 install_data('system/zyl-wam.service',        install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
+install_data('system/zyl-notification.service', install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
+install_data('system/zyl-power.service',     install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
+install_data('system/zyl-os.target',         install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')

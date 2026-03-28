@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Zyl OS
+Description=Boot splash for Zyl OS mobile
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/zyl-os
+ScriptFile=/usr/share/plymouth/themes/zyl-os/zyl-os.script

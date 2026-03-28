@@ -673,3 +673,30 @@ void zyl_notification_channel_free(ZylNotificationChannel *channel)
     channel->id   = NULL;
     channel->name = NULL;
 }
+
+/* ══════════════════════════════════════════════════════════════
+ * Entry Point
+ * ══════════════════════════════════════════════════════════════ */
+
+int main(int argc, char *argv[])
+{
+    (void)argc;
+    (void)argv;
+
+    g_info("zyl-notification: starting service");
+
+    ZylNotificationService *service = zyl_notification_service_create();
+    if (!service) {
+        g_critical("zyl-notification: failed to create service");
+        return 1;
+    }
+
+    GMainLoop *loop = g_main_loop_new(NULL, FALSE);
+    g_main_loop_run(loop);
+
+    /* Cleanup (reached on shutdown) */
+    g_main_loop_unref(loop);
+    zyl_notification_service_destroy(service);
+
+    return 0;
+}

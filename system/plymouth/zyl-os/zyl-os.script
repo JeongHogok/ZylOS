@@ -1,0 +1,112 @@
+# ──────────────────────────────────────────────────────────
+# Zyl OS Boot Splash — Plymouth Script
+#
+# Dark background (#0a0a1a) with centered "Zyl OS" text,
+# pulsing opacity animation, and boot progress bar.
+# ──────────────────────────────────────────────────────────
+
+# ── Background ───────────────────────────────────────────
+# #0a0a1a = (10/255, 10/255, 26/255) = (0.039, 0.039, 0.102)
+Window.SetBackgroundTopColor(0.039, 0.039, 0.102);
+Window.SetBackgroundBottomColor(0.039, 0.039, 0.102);
+
+screen_width  = Window.GetWidth();
+screen_height = Window.GetHeight();
+
+# ── Logo / Brand Text ───────────────────────────────────
+# Uses logo.png if present; Plymouth renders the sprite
+logo.image  = Image("logo.png");
+logo.sprite = Sprite(logo.image);
+logo.x = screen_width  / 2 - logo.image.GetWidth()  / 2;
+logo.y = screen_height / 2 - logo.image.GetHeight() / 2 - 60;
+logo.sprite.SetPosition(logo.x, logo.y, 1);
+
+# ── Pulsing Animation State ─────────────────────────────
+# Opacity oscillates 0.4 -> 1.0 -> 0.4 using a sine-like
+# approximation over time. Plymouth lacks math.sin(), so
+# we use a simple triangle wave.
+pulse_direction = 0.02;
+pulse_opacity   = 0.4;
+
+fun refresh_callback() {
+    pulse_opacity += pulse_direction;
+
+    if (pulse_opacity >= 1.0) {
+        pulse_opacity   = 1.0;
+        pulse_direction = -0.02;
+    }
+    if (pulse_opacity <= 0.4) {
+        pulse_opacity   = 0.4;
+        pulse_direction =  0.02;
+    }
+
+    logo.sprite.SetOpacity(pulse_opacity);
+}
+
+Plymouth.SetRefreshFunction(refresh_callback);
+
+# ── Progress Bar ─────────────────────────────────────────
+# Thin bar at the bottom of the screen showing boot progress.
+
+progress_bar_height = 4;
+progress_bar_y      = screen_height - 40;
+
+# Background track (dim)
+progress_bg.image  = Image("progress-bg.png");
+progress_bg.sprite = Sprite(progress_bg.image);
+progress_bg.sprite.SetPosition(0, progress_bar_y, 2);
+progress_bg.sprite.SetOpacity(0.2);
+
+# Foreground fill (accent colour)
+progress_fill.image  = Image("progress-fill.png");
+progress_fill.sprite = Sprite(progress_fill.image);
+progress_fill.sprite.SetPosition(0, progress_bar_y, 3);
+
+fun boot_progress_callback(time, progress) {
+    # Scale progress fill width: progress is 0.0 .. 1.0
+    fill_width = screen_width * progress;
+    if (fill_width < 1)
+        fill_width = 1;
+
+    # Create a cropped version to simulate width scaling
+    progress_fill.sprite.SetImage(progress_fill.image.Scale(fill_width, progress_bar_height));
+    progress_fill.sprite.SetPosition(0, progress_bar_y, 3);
+    progress_fill.sprite.SetOpacity(0.9);
+}
+
+Plymouth.SetBootProgressFunction(boot_progress_callback);
+
+# ── Password Prompt (disk encryption) ───────────────────
+fun password_callback(prompt, bullets) {
+    # Minimal password prompt for encrypted boot
+    password_label.image  = Image.Text(prompt, 0.8, 0.8, 0.85);
+    password_label.sprite = Sprite(password_label.image);
+    password_label.sprite.SetPosition(
+        screen_width  / 2 - password_label.image.GetWidth()  / 2,
+        screen_height / 2 + 80,
+        10
+    );
+
+    bullet_string = "";
+    for (i = 0; i < bullets; i++)
+        bullet_string += "*";
+
+    bullet_field.image  = Image.Text(bullet_string, 1.0, 1.0, 1.0);
+    bullet_field.sprite = Sprite(bullet_field.image);
+    bullet_field.sprite.SetPosition(
+        screen_width  / 2 - bullet_field.image.GetWidth()  / 2,
+        screen_height / 2 + 120,
+        10
+    );
+}
+
+Plymouth.SetDisplayPasswordFunction(password_callback);
+
+# ── Quit callback ────────────────────────────────────────
+fun quit_callback() {
+    logo.sprite.SetOpacity(0);
+    progress_fill.sprite.SetOpacity(0);
+    progress_bg.sprite.SetOpacity(0);
+}
+
+Plymouth.SetQuitFunction(quit_callback);
