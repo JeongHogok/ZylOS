@@ -1,110 +1,222 @@
 // ──────────────────────────────────────────────────────────
 // [Clean Architecture] Presentation Layer - Page
 //
-// 역할: 잠금화면 UI — 시계, PIN 입력, 스와이프 잠금해제
-// 수행범위: PIN 인증, 스와이프 제스처 잠금해제, 시간/날짜 표시
-// 의존방향: zylI18n (i18n.js), ZylClock (clock.js), ZylGesture (gesture.js), ZylBridge (bridge.js)
+// 역할: 잠금화면 UI — 시계, PIN 입력, 스와이프 잠금해제, 알림 상호작용
+// 수행범위: 실시간 스와이프 피드백, PIN 인증, 알림 터치→앱 이동, 에뮬레이터 연동
+// 의존방향: ZylClock (clock.js), ZylGesture (gesture.js), ZylBridge (bridge.js)
 // SOLID: SRP — 잠금화면 UI와 인증 로직만 담당
 // ──────────────────────────────────────────────────────────
 
 (function () {
   'use strict';
 
-  var lockMain = document.getElementById('lock-main');
-  var pinScreen = document.getElementById('pin-screen');
-  var pinDots = document.querySelectorAll('.pin-dot');
-  var pinError = document.getElementById('pin-error');
-  var enteredPin = '';
-  var correctPin = '0000'; /* 기본 PIN */
+  /* ─── DOM ─── */
+  var lockMain    = document.getElementById('lock-main');
+  var pinScreen   = document.getElementById('pin-screen');
+  var pinDots     = document.querySelectorAll('.pin-dot');
+  var pinError    = document.getElementById('pin-error');
+  var unlockFlash = document.getElementById('unlock-flash');
 
-  /* ─── 시계 (shared ZylClock 사용) ─── */
+  /* ─── State ─── */
+  var enteredPin   = '';
+  var correctPin   = '0000';
+  var pendingAppId = null;   /* 알림에서 앱 이동 시 사용 */
+
+  /* ─── 파티클 생성 ─── */
+  (function createParticles() {
+    var container = document.getElementById('particles');
+    for (var i = 0; i < 25; i++) {
+      var p = document.createElement('div');
+      p.className = 'particle';
+      var size = Math.random() * 3 + 1;
+      p.style.width = size + 'px';
+      p.style.height = size + 'px';
+      p.style.left = Math.random() * 100 + '%';
+      p.style.top = (Math.random() * 100 + 100) + '%';
+      p.style.animationDuration = (Math.random() * 12 + 8) + 's';
+      p.style.animationDelay = (Math.random() * 10) + 's';
+      container.appendChild(p);
+    }
+  })();
+
+  /* ─── 시계 ─── */
   var lockTime = document.getElementById('lock-time');
   var lockDate = document.getElementById('lock-date');
-  var clock = ZylClock.create(lockTime, lockDate, { showDate: true, dateFormat: 'long' });
-
-  /* ─── 스와이프로 PIN 화면 열기 (shared ZylGesture 사용) ─── */
-  var swipeGesture = ZylGesture.onSwipe(lockMain, function (e) {
-    if (e.direction === 'up') {
-      showPinScreen();
+  if (typeof ZylClock !== 'undefined') {
+    ZylClock.create(lockTime, lockDate, { showDate: true, dateFormat: 'long' });
+  } else {
+    /* 폴백: ZylClock 미로드 시 직접 업데이트 */
+    function updateClock() {
+      var now = new Date();
+      lockTime.textContent = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+      lockDate.textContent = now.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
     }
-  }, { direction: 'up', threshold: 80, axis: 'y' });
+    updateClock();
+    setInterval(updateClock, 1000);
+  }
 
-  /* 마우스 드래그(위로)로 PIN 화면 열기 — 클릭만으로는 열리지 않음 */
-  var dragStartY = 0;
-  lockMain.addEventListener('mousedown', function (e) {
-    dragStartY = e.clientY;
-  });
-  lockMain.addEventListener('mouseup', function (e) {
-    var dy = dragStartY - e.clientY;
-    if (dy > 60) {
-      showPinScreen();
+  /* ════════════════════════════════════════════
+   *  스와이프: 실시간 드래그 피드백
+   * ════════════════════════════════════════════ */
+  var dragState = { active: false, startY: 0, currentY: 0 };
+  var SWIPE_THRESHOLD = 120;
+
+  lockMain.addEventListener('mousedown', onDragStart);
+  lockMain.addEventListener('touchstart', function (e) {
+    onDragStart({ clientY: e.touches[0].clientY });
+  }, { passive: true });
+
+  document.addEventListener('mousemove', onDragMove);
+  document.addEventListener('touchmove', function (e) {
+    onDragMove({ clientY: e.touches[0].clientY });
+  }, { passive: true });
+
+  document.addEventListener('mouseup', onDragEnd);
+  document.addEventListener('touchend', onDragEnd);
+
+  function onDragStart(e) {
+    if (pinScreen.classList.contains('visible')) return;
+    dragState.active = true;
+    dragState.startY = e.clientY;
+    dragState.currentY = e.clientY;
+    lockMain.classList.add('dragging');
+    lockMain.classList.remove('snapping');
+  }
+
+  function onDragMove(e) {
+    if (!dragState.active) return;
+    dragState.currentY = e.clientY;
+
+    var dy = dragState.startY - dragState.currentY;
+    if (dy < 0) dy = 0; /* 아래로는 안 움직임 */
+
+    /* 실시간 피드백: 위로 따라 올라감 + 투명해짐 */
+    var progress = Math.min(dy / SWIPE_THRESHOLD, 1);
+    var translateY = -dy * 0.6;
+    var scale = 1 - progress * 0.05;
+    var opacity = 1 - progress * 0.4;
+
+    lockMain.style.transform = 'translateY(' + translateY + 'px) scale(' + scale + ')';
+    lockMain.style.opacity = opacity;
+  }
+
+  function onDragEnd() {
+    if (!dragState.active) return;
+    dragState.active = false;
+    lockMain.classList.remove('dragging');
+
+    var dy = dragState.startY - dragState.currentY;
+
+    if (dy > SWIPE_THRESHOLD) {
+      /* 임계값 초과 → 슬라이드 아웃 → PIN 표시 */
+      lockMain.classList.add('sliding-out');
+      setTimeout(function () {
+        showPinScreen();
+      }, 350);
+    } else {
+      /* 임계값 미달 → 스냅백 (스프링 효과) */
+      lockMain.classList.add('snapping');
+      lockMain.style.transform = '';
+      lockMain.style.opacity = '';
+      setTimeout(function () {
+        lockMain.classList.remove('snapping');
+      }, 400);
     }
-  });
+  }
 
+  /* ════════════════════════════════════════════
+   *  PIN 화면 전환 (슬라이드 업/다운)
+   * ════════════════════════════════════════════ */
   function showPinScreen() {
-    lockMain.classList.add('hidden');
-    pinScreen.classList.remove('hidden');
+    lockMain.style.display = 'none';
+    pinScreen.classList.add('visible');
     enteredPin = '';
     updateDots();
-    pinError.classList.add('hidden');
+    pinError.classList.remove('show');
   }
 
   function hidePinScreen() {
-    pinScreen.classList.add('hidden');
-    lockMain.classList.remove('hidden');
+    pinScreen.classList.remove('visible');
+    pinScreen.classList.add('sliding-down');
+
+    setTimeout(function () {
+      pinScreen.classList.remove('sliding-down');
+      lockMain.style.display = '';
+      lockMain.classList.remove('sliding-out');
+      lockMain.style.transform = '';
+      lockMain.style.opacity = '';
+    }, 400);
+
+    pendingAppId = null;
   }
 
-  /* ─── PIN 입력 ─── */
+  /* ════════════════════════════════════════════
+   *  PIN 입력
+   * ════════════════════════════════════════════ */
   document.querySelectorAll('.num-btn[data-num]').forEach(function (btn) {
     btn.addEventListener('click', function () {
       if (enteredPin.length >= 4) return;
-
       enteredPin += btn.dataset.num;
       updateDots();
 
-      /* 4자리 입력 완료 시 검증 */
       if (enteredPin.length === 4) {
-        setTimeout(verifyPin, 200);
+        setTimeout(verifyPin, 250);
       }
     });
   });
 
-  /* 삭제 버튼 */
   document.getElementById('btn-delete').addEventListener('click', function () {
     if (enteredPin.length > 0) {
       enteredPin = enteredPin.slice(0, -1);
       updateDots();
-      pinError.classList.add('hidden');
+      pinError.classList.remove('show');
     }
   });
 
-  /* 취소 버튼 */
   document.getElementById('btn-cancel').addEventListener('click', function () {
     hidePinScreen();
   });
 
-  /* ─── 도트 업데이트 ─── */
   function updateDots() {
     pinDots.forEach(function (dot, i) {
       dot.classList.toggle('filled', i < enteredPin.length);
     });
   }
 
-  /* ─── PIN 검증 (shared ZylBridge 사용) ─── */
+  /* ════════════════════════════════════════════
+   *  PIN 검증 + 잠금해제
+   * ════════════════════════════════════════════ */
   function verifyPin() {
     if (enteredPin === correctPin) {
-      /* 잠금 해제 성공 */
-      document.body.style.transition = 'opacity 0.3s';
-      document.body.style.opacity = '0';
+      /* 성공: 줌아웃 + 플래시 효과 */
+      document.body.classList.add('unlocking');
+      unlockFlash.classList.add('flash');
+
       setTimeout(function () {
-        /* WAM에게 잠금 해제 알림 */
-        ZylBridge.closeApp();
-      }, 300);
+        /* 에뮬레이터에 잠금해제 알림 */
+        if (window.parent && window.parent !== window) {
+          if (pendingAppId) {
+            window.parent.postMessage(JSON.stringify({
+              type: 'app.launch', appId: pendingAppId
+            }), '*');
+          } else {
+            window.parent.postMessage(JSON.stringify({
+              type: 'unlock'
+            }), '*');
+          }
+        }
+
+        /* 자체 Bridge 호출 (WAM 환경) */
+        if (typeof ZylBridge !== 'undefined') {
+          ZylBridge.closeApp();
+        }
+      }, 500);
     } else {
-      /* 실패 - 흔들기 애니메이션 */
-      pinError.classList.remove('hidden');
+      /* 실패: 흔들기 + 에러 표시 */
+      pinError.classList.add('show');
       var dots = document.getElementById('pin-dots');
       dots.classList.add('shake');
+
       setTimeout(function () {
         dots.classList.remove('shake');
         enteredPin = '';
@@ -113,23 +225,85 @@
     }
   }
 
-  /* ─── 데모 알림 ─── */
+  /* ════════════════════════════════════════════
+   *  알림: 터치→PIN→앱 이동 / 스와이프 삭제
+   * ════════════════════════════════════════════ */
   var notifList = document.getElementById('lock-notifications');
+
   var demoNotifs = [
-    { icon: '\uD83D\uDCAC', title: '\uBA54\uC2DC\uC9C0', body: '\uC548\uB155\uD558\uC138\uC694! Zyl OS\uC5D0 \uC624\uC2E0 \uAC83\uC744 \uD658\uC601\uD569\uB2C8\uB2E4.', time: '2\uBD84 \uC804' },
-    { icon: '\uD83D\uDCE7', title: '\uC774\uBA54\uC77C', body: '\uC2DC\uC2A4\uD15C \uC5C5\uB370\uC774\uD2B8\uAC00 \uC900\uBE44\uB418\uC5C8\uC2B5\uB2C8\uB2E4.', time: '15\uBD84 \uC804' },
+    { icon: '💬', app: '메시지', appId: 'com.zylos.browser', title: '메시지', body: '안녕하세요! Zyl OS에 오신 것을 환영합니다.', time: '2분 전' },
+    { icon: '📧', app: '이메일', appId: 'com.zylos.settings', title: '이메일', body: '시스템 업데이트가 준비되었습니다.', time: '15분 전' },
+    { icon: '📷', app: '카메라', appId: 'com.zylos.camera', title: '카메라', body: '새로운 필터가 추가되었습니다.', time: '1시간 전' },
   ];
 
   demoNotifs.forEach(function (n) {
     var el = document.createElement('div');
     el.className = 'lock-notif';
+    el.dataset.appId = n.appId;
     el.innerHTML =
       '<div class="lock-notif-icon">' + n.icon + '</div>' +
       '<div class="lock-notif-text">' +
+        '<div class="lock-notif-app">' + n.app + '</div>' +
         '<div class="lock-notif-title">' + n.title + '</div>' +
         '<div class="lock-notif-body">' + n.body + '</div>' +
       '</div>' +
       '<div class="lock-notif-time">' + n.time + '</div>';
+
+    /* 알림 터치 → PIN 화면 (성공 시 해당 앱으로) */
+    el.addEventListener('click', function (e) {
+      if (el.classList.contains('swiping')) return;
+      pendingAppId = n.appId;
+      lockMain.classList.add('sliding-out');
+      setTimeout(function () {
+        showPinScreen();
+      }, 350);
+    });
+
+    /* 알림 스와이프 삭제 */
+    var swipeStartX = 0;
+    var swiping = false;
+
+    el.addEventListener('mousedown', function (e) { swipeStartX = e.clientX; });
+    el.addEventListener('touchstart', function (e) { swipeStartX = e.touches[0].clientX; }, { passive: true });
+
+    el.addEventListener('mousemove', function (e) {
+      var dx = e.clientX - swipeStartX;
+      if (Math.abs(dx) > 15) {
+        swiping = true;
+        el.classList.add('swiping');
+        el.style.transform = 'translateX(' + dx + 'px)';
+        el.style.opacity = 1 - Math.abs(dx) / 300;
+      }
+    });
+    el.addEventListener('touchmove', function (e) {
+      var dx = e.touches[0].clientX - swipeStartX;
+      if (Math.abs(dx) > 15) {
+        swiping = true;
+        el.classList.add('swiping');
+        el.style.transform = 'translateX(' + dx + 'px)';
+        el.style.opacity = 1 - Math.abs(dx) / 300;
+      }
+    }, { passive: true });
+
+    function endSwipe(dx) {
+      if (Math.abs(dx) > 100) {
+        el.classList.add('dismissed');
+        setTimeout(function () { el.remove(); }, 350);
+      } else {
+        el.classList.remove('swiping');
+        el.style.transform = '';
+        el.style.opacity = '';
+      }
+      setTimeout(function () { swiping = false; }, 50);
+    }
+
+    el.addEventListener('mouseup', function (e) {
+      endSwipe(e.clientX - swipeStartX);
+    });
+    el.addEventListener('touchend', function (e) {
+      endSwipe(e.changedTouches[0].clientX - swipeStartX);
+    });
+
     notifList.appendChild(el);
   });
 

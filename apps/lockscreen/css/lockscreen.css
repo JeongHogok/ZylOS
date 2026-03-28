@@ -1,8 +1,8 @@
 /* ──────────────────────────────────────────────────────────
  * [Clean Architecture] Presentation Layer - Style
  *
- * 역할: 잠금화면 스타일 — 시계, PIN 입력, 스와이프 영역
- * 수행범위: 잠금화면 배경, 시계 레이아웃, PIN 패드, 애니메이션 스타일링
+ * 역할: 잠금화면 스타일 — 시계, PIN 입력, 스와이프 영역, 애니메이션
+ * 수행범위: 잠금화면 배경, 시계 레이아웃, PIN 패드, 전환/배경 애니메이션
  * 의존방향: lockscreen.js
  * SOLID: SRP — 잠금화면 시각적 표현만 담당
  * ────────────────────────────────────────────────────────── */
@@ -24,14 +24,50 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* ─── 배경: 느린 그라데이션 이동 ─── */
 #wallpaper {
   position: fixed;
-  inset: 0;
+  inset: -20%;
+  width: 140%;
+  height: 140%;
   background:
-    radial-gradient(ellipse at 30% 40%, rgba(60, 40, 120, 0.5) 0%, transparent 60%),
-    radial-gradient(ellipse at 70% 70%, rgba(20, 60, 100, 0.4) 0%, transparent 50%),
-    linear-gradient(170deg, #0a0a1a 0%, #0d1b2a 50%, #1a1a2e 100%);
+    radial-gradient(ellipse at 30% 40%, rgba(80, 50, 160, 0.5) 0%, transparent 55%),
+    radial-gradient(ellipse at 75% 65%, rgba(20, 70, 120, 0.5) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 90%, rgba(40, 20, 80, 0.3) 0%, transparent 40%),
+    linear-gradient(170deg, #08081a 0%, #0d1b2a 50%, #1a1a2e 100%);
+  z-index: -2;
+  animation: wallpaper-drift 20s ease-in-out infinite alternate;
+}
+
+@keyframes wallpaper-drift {
+  0%   { transform: translate(0, 0) scale(1); }
+  33%  { transform: translate(-3%, 2%) scale(1.02); }
+  66%  { transform: translate(2%, -1%) scale(1.01); }
+  100% { transform: translate(-1%, -2%) scale(1.03); }
+}
+
+/* ─── 별/파티클 효과 (순수 CSS) ─── */
+#particles {
+  position: fixed;
+  inset: 0;
   z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.particle {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.6);
+  animation: particle-float linear infinite;
+  opacity: 0;
+}
+
+@keyframes particle-float {
+  0%   { opacity: 0; transform: translateY(0) scale(0.5); }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-100vh) scale(1); }
 }
 
 .hidden { display: none !important; }
@@ -42,114 +78,227 @@ body {
   flex-direction: column;
   align-items: center;
   height: 100vh;
-  padding-top: 120px;
+  padding-top: 100px;
+  transition: none;
+  will-change: transform, opacity;
+  position: relative;
+  z-index: 1;
 }
 
+/* 스와이프 중 실시간 변환을 위한 상태 */
+#lock-main.dragging {
+  transition: none !important;
+}
+
+#lock-main.snapping {
+  transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1),
+              opacity 0.4s ease;
+}
+
+#lock-main.sliding-out {
+  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 0.35s ease;
+  transform: translateY(-100%) scale(0.9) !important;
+  opacity: 0 !important;
+}
+
+/* ─── 시계 ─── */
 #lock-time {
-  font-size: 88px;
+  font-size: 82px;
   font-weight: 100;
   letter-spacing: 4px;
   line-height: 1;
-  text-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  text-shadow: 0 2px 12px rgba(0,0,0,0.5);
+  animation: time-fadein 1s ease-out;
 }
 
 #lock-date {
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 300;
-  opacity: 0.7;
+  opacity: 0.65;
   margin-top: 6px;
   letter-spacing: 0.5px;
+  animation: time-fadein 1s ease-out 0.2s both;
+}
+
+@keyframes time-fadein {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 /* ─── 잠금 화면 알림 ─── */
 #lock-notifications {
   flex: 1;
   width: 100%;
-  padding: 40px 24px;
+  padding: 32px 20px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   overflow-y: auto;
 }
+
+#lock-notifications::-webkit-scrollbar { display: none; }
 
 .lock-notif {
   display: flex;
   gap: 12px;
   padding: 14px 16px;
   background: rgba(255,255,255,0.08);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
   border-radius: 16px;
-  border: 1px solid rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.06);
   align-items: center;
+  cursor: pointer;
+  transition: transform 0.15s, background 0.15s, opacity 0.3s;
+  animation: notif-slidein 0.4s ease-out both;
+  position: relative;
+  overflow: hidden;
 }
 
+.lock-notif:nth-child(1) { animation-delay: 0.5s; }
+.lock-notif:nth-child(2) { animation-delay: 0.7s; }
+.lock-notif:nth-child(3) { animation-delay: 0.9s; }
+
+@keyframes notif-slidein {
+  from { opacity: 0; transform: translateY(20px) scale(0.95); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.lock-notif:active {
+  transform: scale(0.97);
+  background: rgba(255,255,255,0.14);
+}
+
+/* 알림 스와이프 삭제 피드백 */
+.lock-notif.swiping {
+  transition: transform 0.05s linear;
+}
+
+.lock-notif.dismissed {
+  transition: transform 0.3s ease, opacity 0.3s ease, height 0.3s ease, margin 0.3s ease, padding 0.3s ease;
+  opacity: 0;
+  height: 0 !important;
+  margin: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  overflow: hidden;
+}
+
+/* 알림 앱 아이콘 배지 */
 .lock-notif-icon {
-  font-size: 20px;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
   flex-shrink: 0;
 }
 
 .lock-notif-text {
   flex: 1;
+  min-width: 0;
 }
 
 .lock-notif-title {
   font-size: 13px;
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .lock-notif-body {
   font-size: 12px;
   opacity: 0.6;
   margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .lock-notif-time {
   font-size: 11px;
+  opacity: 0.3;
+  flex-shrink: 0;
+}
+
+/* 알림 앱 이름 표시 */
+.lock-notif-app {
+  font-size: 10px;
   opacity: 0.35;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 1px;
 }
 
 /* ─── 스와이프 힌트 ─── */
 #swipe-hint {
   position: fixed;
-  bottom: 40px;
+  bottom: 36px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  animation: hint-pulse 2s infinite;
+  z-index: 2;
 }
 
 #swipe-hint span {
   font-size: 12px;
-  opacity: 0.4;
+  opacity: 0;
   font-weight: 300;
+  animation: hint-text-pulse 3s ease-in-out infinite;
+}
+
+@keyframes hint-text-pulse {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 0.5; }
 }
 
 .swipe-line {
   width: 40px;
   height: 4px;
   border-radius: 2px;
-  background: rgba(255,255,255,0.4);
+  background: rgba(255,255,255,0.35);
+  animation: hint-bar-bounce 2.5s ease-in-out infinite;
 }
 
-@keyframes hint-pulse {
-  0%, 100% { opacity: 0.6; transform: translateX(-50%) translateY(0); }
-  50% { opacity: 1; transform: translateX(-50%) translateY(-6px); }
+@keyframes hint-bar-bounce {
+  0%, 100% { transform: translateY(0); opacity: 0.4; }
+  50% { transform: translateY(-8px); opacity: 0.8; }
 }
 
 /* ─── PIN 화면 ─── */
 #pin-screen {
+  position: fixed;
+  inset: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  height: 100vh;
   padding-top: 80px;
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(40px);
-  -webkit-backdrop-filter: blur(40px);
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(50px);
+  -webkit-backdrop-filter: blur(50px);
+  z-index: 10;
+  transform: translateY(100%);
+  opacity: 0;
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 0.3s ease;
+}
+
+#pin-screen.visible {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+#pin-screen.sliding-down {
+  transform: translateY(100%);
+  opacity: 0;
 }
 
 #pin-title {
@@ -170,14 +319,21 @@ body {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  border: 2px solid rgba(255,255,255,0.4);
-  transition: all 0.15s;
+  border: 2px solid rgba(255,255,255,0.3);
+  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .pin-dot.filled {
   background: white;
   border-color: white;
-  transform: scale(1.1);
+  transform: scale(1.3);
+  animation: dot-pop 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes dot-pop {
+  0%   { transform: scale(0.5); }
+  60%  { transform: scale(1.5); }
+  100% { transform: scale(1.3); }
 }
 
 #pin-error {
@@ -185,6 +341,12 @@ body {
   color: #ef4444;
   margin-bottom: 8px;
   height: 20px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+#pin-error.show {
+  opacity: 1;
 }
 
 /* ─── 숫자 패드 ─── */
@@ -201,8 +363,8 @@ body {
   width: 72px;
   height: 72px;
   border-radius: 50%;
-  border: 1px solid rgba(255,255,255,0.15);
-  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.05);
   color: white;
   font-size: 28px;
   font-weight: 300;
@@ -212,59 +374,77 @@ body {
   align-items: center;
   justify-content: center;
   margin: 0 auto;
-  transition: background 0.15s, transform 0.1s;
+  transition: background 0.1s, transform 0.1s;
   line-height: 1;
 }
 
 .num-btn:active {
-  background: rgba(255,255,255,0.2);
-  transform: scale(0.92);
+  background: rgba(255,255,255,0.22);
+  transform: scale(0.9);
 }
 
 .num-sub {
   font-size: 9px;
   letter-spacing: 2px;
-  opacity: 0.45;
+  opacity: 0.4;
   margin-top: 2px;
   font-weight: 400;
 }
 
-.num-empty {
-  border: none;
-  background: none;
-  pointer-events: none;
-}
-
-.num-delete {
-  border: none;
-  background: none;
-}
-
-.num-delete:active {
-  background: rgba(255,255,255,0.1);
-}
+.num-empty { border: none; background: none; pointer-events: none; }
+.num-delete { border: none; background: none; }
+.num-delete:active { background: rgba(255,255,255,0.1); }
 
 #btn-cancel {
   margin-top: 16px;
   padding: 10px 32px;
   border: none;
   background: none;
-  color: rgba(255,255,255,0.5);
+  color: rgba(255,255,255,0.45);
   font-size: 15px;
   cursor: pointer;
   font-weight: 300;
 }
 
-#btn-cancel:active {
-  color: white;
-}
+#btn-cancel:active { color: white; }
 
+/* ─── Shake 애니메이션 ─── */
 @keyframes shake {
   0%, 100% { transform: translateX(0); }
-  10%, 50%, 90% { transform: translateX(-8px); }
-  30%, 70% { transform: translateX(8px); }
+  10%, 50%, 90% { transform: translateX(-10px); }
+  30%, 70% { transform: translateX(10px); }
 }
 
 .shake {
   animation: shake 0.4s ease-in-out;
+}
+
+/* ─── 잠금 해제 성공 효과 ─── */
+@keyframes unlock-zoom {
+  0%   { transform: scale(1); opacity: 1; filter: brightness(1); }
+  40%  { transform: scale(1.05); filter: brightness(1.3); }
+  100% { transform: scale(0.85); opacity: 0; filter: brightness(2); }
+}
+
+body.unlocking {
+  animation: unlock-zoom 0.5s ease-in-out forwards;
+}
+
+/* ─── 잠금 해제 성공 플래시 ─── */
+#unlock-flash {
+  position: fixed;
+  inset: 0;
+  background: white;
+  z-index: 1000;
+  pointer-events: none;
+  opacity: 0;
+}
+
+#unlock-flash.flash {
+  animation: flash-out 0.6s ease-out forwards;
+}
+
+@keyframes flash-out {
+  0%   { opacity: 0.5; }
+  100% { opacity: 0; }
 }

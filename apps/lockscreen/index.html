@@ -9,15 +9,19 @@
 <body>
   <div id="wallpaper"></div>
 
+  <!-- 파티클/별 효과 -->
+  <div id="particles"></div>
+
+  <!-- 잠금 해제 플래시 -->
+  <div id="unlock-flash"></div>
+
   <!-- 잠금 화면 메인 -->
   <div id="lock-main">
     <div id="lock-time">00:00</div>
     <div id="lock-date"></div>
 
     <!-- 알림 미리보기 -->
-    <div id="lock-notifications">
-      <!-- JS로 동적 생성 -->
-    </div>
+    <div id="lock-notifications"></div>
 
     <!-- 하단 스와이프 인디케이터 -->
     <div id="swipe-hint">
@@ -26,11 +30,10 @@
     </div>
   </div>
 
-  <!-- PIN 입력 화면 -->
-  <div id="pin-screen" class="hidden">
+  <!-- PIN 입력 화면 (초기 숨김 — translateY로 제어) -->
+  <div id="pin-screen">
     <div id="pin-title" data-i18n="lock.enter_pin">PIN을 입력하세요</div>
 
-    <!-- PIN 도트 -->
     <div id="pin-dots">
       <span class="pin-dot"></span>
       <span class="pin-dot"></span>
@@ -38,9 +41,8 @@
       <span class="pin-dot"></span>
     </div>
 
-    <div id="pin-error" class="hidden" data-i18n="lock.wrong_pin">잘못된 PIN입니다</div>
+    <div id="pin-error" data-i18n="lock.wrong_pin">잘못된 PIN입니다</div>
 
-    <!-- 숫자 패드 -->
     <div id="numpad">
       <button class="num-btn" data-num="1">1</button>
       <button class="num-btn" data-num="2">2<span class="num-sub">ABC</span></button>
@@ -63,12 +65,10 @@
     <button id="btn-cancel" data-i18n="lock.cancel">취소</button>
   </div>
 
-  <!-- Shared modules -->
   <script src="../shared/i18n.js"></script>
   <script src="../shared/clock.js"></script>
   <script src="../shared/gesture.js"></script>
   <script src="../shared/bridge.js"></script>
-  <!-- App script -->
   <script src="js/lockscreen.js"></script>
 </body>
 </html>
