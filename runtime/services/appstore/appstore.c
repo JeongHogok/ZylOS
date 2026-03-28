@@ -657,9 +657,15 @@ bool zyl_appstore_register_cert(ZylAppStore *store,
 
     /* 용량 확인 */
     if (store->n_certs >= store->certs_capacity) {
-        store->certs_capacity *= 2;
-        store->certs = realloc(store->certs,
-            store->certs_capacity * sizeof(ZylDeveloperCert));
+        int new_capacity = store->certs_capacity * 2;
+        ZylDeveloperCert *tmp = realloc(store->certs,
+            (size_t)new_capacity * sizeof(ZylDeveloperCert));
+        if (!tmp) {
+            fprintf(stderr, "[APPSTORE] realloc failed for certs\n");
+            return false;
+        }
+        store->certs = tmp;
+        store->certs_capacity = new_capacity;
     }
 
     /* 인증서 복사 */

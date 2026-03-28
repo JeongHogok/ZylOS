@@ -472,6 +472,10 @@ static void on_sensor_bus_acquired(GDBusConnection *conn, const gchar *name,
     svc->dbus = conn;
 
     GDBusNodeInfo *info = g_dbus_node_info_new_for_xml(sensor_introspection_xml, NULL);
+    if (!info || !info->interfaces || !info->interfaces[0]) {
+        g_warning("[Sensors] Failed to parse introspection XML");
+        return;
+    }
     g_dbus_connection_register_object(conn, ZYL_SENSOR_DBUS_PATH,
         info->interfaces[0], &sensor_vtable, svc, NULL, NULL);
     g_dbus_node_info_unref(info);

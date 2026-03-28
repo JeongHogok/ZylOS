@@ -524,7 +524,7 @@ int zyl_telephony_dial(ZylTelephonyService *svc, const char *number) {
     g_variant_builder_add(&builder, "{sv}", "number",
                            g_variant_new_string(number));
 
-    result = g_dbus_connection_call_sync(svc->system_bus,
+    GVariant *result = g_dbus_connection_call_sync(svc->system_bus,
         MM_DBUS_NAME, svc->modem_path,
         MM_VOICE_IFACE, "CreateCall",
         g_variant_new("(a{sv})", &builder),

@@ -370,6 +370,12 @@ static void on_bus_acquired(GDBusConnection *connection,
     ZylNotificationService *service = user_data;
     service->connection = g_object_ref(connection);
 
+    if (!service->introspection_data || !service->introspection_data->interfaces ||
+        !service->introspection_data->interfaces[0]) {
+        g_warning("zyl-notification: introspection data is NULL, cannot register object");
+        return;
+    }
+
     GError *err = NULL;
     service->registration_id = g_dbus_connection_register_object(
         connection,

@@ -30,20 +30,33 @@
   var defaultApps = [];
 
   /* Request app list from central service */
+  var appListReceived = false;
+  var appListTimeoutId = null;
+
   function requestAppList() {
     window.parent.postMessage(JSON.stringify({
       type: 'service.request',
       service: 'apps',
       method: 'getInstalled'
     }), '*');
+
+    /* 5-second timeout: show empty grid if no response */
+    appListTimeoutId = setTimeout(function () {
+      if (!appListReceived) {
+        appGrid.innerHTML = '<div style="text-align:center;opacity:0.5;padding:32px;grid-column:1/-1">No apps</div>';
+      }
+    }, 5000);
   }
 
   /* Listen for service responses */
   window.addEventListener('message', function (e) {
+    if (e.source !== window.parent && e.source !== window) return;
     try {
       var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
       if (!msg || msg.type !== 'service.response') return;
       if (msg.service === 'apps' && msg.method === 'getInstalled' && msg.data) {
+        appListReceived = true;
+        if (appListTimeoutId) { clearTimeout(appListTimeoutId); appListTimeoutId = null; }
         defaultApps = msg.data;
         renderAppGrid(defaultApps);
       }
@@ -70,16 +83,27 @@
       var iconSvg = ICONS[app.icon] || ICONS.browser;
       var name = zylI18n.t(app.nameKey);
 
-      el.innerHTML =
-        '<div class="app-icon-wrap ' + app.color + '">' + iconSvg + '</div>' +
-        '<div class="app-name">' + name + '</div>';
+      var iconWrap = document.createElement('div');
+      iconWrap.className = 'app-icon-wrap ' + app.color;
+      iconWrap.innerHTML = iconSvg;
 
-      el.addEventListener('click', function () {
-        launchApp(app.id, el);
-      });
+      var nameEl = document.createElement('div');
+      nameEl.className = 'app-name';
+      nameEl.textContent = name;
+
+      el.appendChild(iconWrap);
+      el.appendChild(nameEl);
       appGrid.appendChild(el);
     });
   }
+
+  /* Event delegation: single click handler on the grid container */
+  appGrid.addEventListener('click', function (e) {
+    var appItem = e.target.closest('.app-item');
+    if (!appItem) return;
+    var appId = appItem.dataset.appId;
+    if (appId) launchApp(appId, appItem);
+  });
 
   /* ─── 앱 실행 (shared ZylBridge 사용) ─── */
   function launchApp(appId, el) {

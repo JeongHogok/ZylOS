@@ -588,15 +588,24 @@ bool zyl_updater_apply(ZylUpdater *u,
 
     snprintf(cmd, sizeof(cmd),
              "fw_setenv zyl_next_slot %s 2>/dev/null", inactive);
-    system(cmd);
+    ret = system(cmd);
+    if (ret != 0) {
+        fprintf(stderr, "[UPDATER] fw_setenv zyl_next_slot failed (exit %d), using file fallback\n", ret);
+    }
 
     snprintf(cmd, sizeof(cmd),
              "fw_setenv zyl_slot_verified 0 2>/dev/null");
-    system(cmd);
+    ret = system(cmd);
+    if (ret != 0) {
+        fprintf(stderr, "[UPDATER] fw_setenv zyl_slot_verified failed (exit %d)\n", ret);
+    }
 
     snprintf(cmd, sizeof(cmd),
              "fw_setenv zyl_boot_count 0 2>/dev/null");
-    system(cmd);
+    ret = system(cmd);
+    if (ret != 0) {
+        fprintf(stderr, "[UPDATER] fw_setenv zyl_boot_count failed (exit %d)\n", ret);
+    }
 
     /* 파일 기반 폴백 (fw_setenv가 없는 환경용) */
     char flag_path[256];
@@ -647,7 +656,7 @@ bool zyl_updater_mark_verified(ZylUpdater *u) {
     int ret = system("systemctl is-active --quiet zyl-compositor 2>/dev/null");
     if (ret != 0) {
         fprintf(stderr, "[UPDATER] Health check FAILED: "
-                "zyl-compositor not running\n");
+                "zyl-compositor not running (exit %d)\n", ret);
         return false;
     }
     fprintf(stderr, "[UPDATER] Health: zyl-compositor OK\n");
@@ -656,7 +665,7 @@ bool zyl_updater_mark_verified(ZylUpdater *u) {
     ret = system("systemctl is-active --quiet zyl-wam 2>/dev/null");
     if (ret != 0) {
         fprintf(stderr, "[UPDATER] Health check FAILED: "
-                "zyl-wam not running\n");
+                "zyl-wam not running (exit %d)\n", ret);
         return false;
     }
     fprintf(stderr, "[UPDATER] Health: zyl-wam OK\n");
@@ -665,11 +674,17 @@ bool zyl_updater_mark_verified(ZylUpdater *u) {
     char cmd[256];
     snprintf(cmd, sizeof(cmd),
              "fw_setenv zyl_slot_verified 1 2>/dev/null");
-    system(cmd);
+    ret = system(cmd);
+    if (ret != 0) {
+        fprintf(stderr, "[UPDATER] fw_setenv zyl_slot_verified failed (exit %d)\n", ret);
+    }
 
     snprintf(cmd, sizeof(cmd),
              "fw_setenv zyl_active_slot %s 2>/dev/null", u->active_slot);
-    system(cmd);
+    ret = system(cmd);
+    if (ret != 0) {
+        fprintf(stderr, "[UPDATER] fw_setenv zyl_active_slot failed (exit %d)\n", ret);
+    }
 
     /* 파일 기반 폴백 */
     mkdir_p("/var/lib/zyl-os");
@@ -692,7 +707,10 @@ bool zyl_updater_rollback(ZylUpdater *u) {
     char cmd[256];
     snprintf(cmd, sizeof(cmd),
              "fw_setenv zyl_next_slot %s 2>/dev/null", previous);
-    system(cmd);
+    int ret = system(cmd);
+    if (ret != 0) {
+        fprintf(stderr, "[UPDATER] fw_setenv zyl_next_slot failed (exit %d), using file fallback\n", ret);
+    }
 
     /* 파일 기반 폴백 */
     mkdir_p("/var/lib/zyl-os");

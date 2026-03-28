@@ -41,6 +41,7 @@
 
   /* Listen for service responses */
   window.addEventListener('message', function (e) {
+    if (e.source !== window.parent && e.source !== window) return;
     try {
       var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
       if (!msg || msg.type !== 'service.response') return;

@@ -232,6 +232,7 @@
 
   /* 에뮬레이터/시스템에서 알림 수신 (postMessage) */
   window.addEventListener('message', function (e) {
+    if (e.source !== window.parent && e.source !== window) return;
     try {
       var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
       if (!msg || msg.type !== 'notification.push') return;
