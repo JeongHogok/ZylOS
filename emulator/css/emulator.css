@@ -123,6 +123,62 @@ body {
 #app-viewport.launching #app-frame { animation: app-enter 0.25s ease-out; }
 
 /* ══════════════════════════════════════════
+   Quick Settings Panel (상태바 풀다운)
+   ══════════════════════════════════════════ */
+#qs-panel {
+  position: absolute; top: 0; left: 0; right: 0;
+  z-index: 150; overflow: hidden;
+  background: rgba(10,10,30,0.97);
+  backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px);
+  border-radius: 0 0 24px 24px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+  padding: 40px 20px 20px;
+  transform: translateY(0);
+  transition: transform 0.35s cubic-bezier(0.4,0,0.2,1), opacity 0.35s;
+  max-height: 80vh;
+}
+#qs-panel.qs-hidden {
+  transform: translateY(-100%);
+  pointer-events: none; opacity: 0;
+}
+.qs-handle {
+  width: 36px; height: 4px; border-radius: 2px;
+  background: rgba(255,255,255,0.25);
+  margin: 0 auto 16px;
+}
+.qs-time { font-size: 32px; font-weight: 200; text-align: center; letter-spacing: 2px; }
+.qs-date { font-size: 13px; text-align: center; opacity: 0.5; margin: 2px 0 18px; }
+
+.qs-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px;
+}
+.qs-tile {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 12px 4px; border: none; border-radius: 14px;
+  background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.7);
+  cursor: pointer; transition: all 0.15s; font-size: 10px;
+}
+.qs-tile svg { width: 22px; height: 22px; fill: rgba(255,255,255,0.6); }
+.qs-tile:active { transform: scale(0.93); }
+.qs-tile.active { background: rgba(74,158,255,0.25); color: white; }
+.qs-tile.active svg { fill: #4a9eff; }
+
+.qs-brightness {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; background: rgba(255,255,255,0.04); border-radius: 12px;
+}
+.qs-bright-ico { width: 18px; height: 18px; fill: rgba(255,255,255,0.4); flex-shrink: 0; }
+#qs-brightness {
+  flex: 1; -webkit-appearance: none; appearance: none;
+  height: 4px; border-radius: 2px; background: rgba(255,255,255,0.15); outline: none;
+}
+#qs-brightness::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 20px; height: 20px;
+  border-radius: 50%; background: white; cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+}
+
+/* ══════════════════════════════════════════
    최근 앱 오버레이
    ══════════════════════════════════════════ */
 #recents-overlay {

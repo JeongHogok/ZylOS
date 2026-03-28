@@ -318,13 +318,80 @@
     var elapsed = Date.now() - gesture.startTime;
     var velocity = dy / Math.max(elapsed, 1) * 1000;
 
-    if (Math.abs(dy) > 30 && Math.abs(dy) > Math.abs(dx)) {
-      if (dy > 120 || velocity > 800) goHome();
-      else if (dy > 40) showRecents();
-    } else if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) {
+    /* scale(0.85) 보정 — 실제 픽셀 이동이 작으므로 임계값 낮춤 */
+    if (Math.abs(dy) > 15 && Math.abs(dy) > Math.abs(dx)) {
+      if (dy > 60 || velocity > 400) goHome();
+      else if (dy > 20) showRecents();
+    } else if (Math.abs(dx) > 30 && Math.abs(dx) > Math.abs(dy)) {
       switchApp(dx < 0 ? 1 : -1);
     }
   }
+
+  /* ═══════════════════════════════════════════════════════
+     상태바 풀다운 → 퀵설정 패널
+     ═══════════════════════════════════════════════════════ */
+  var qsPanel   = document.getElementById('qs-panel');
+  var statusbar = document.getElementById('emu-statusbar');
+  var qsTime    = document.getElementById('qs-time');
+  var qsDate    = document.getElementById('qs-date');
+  var qsOpen    = false;
+  var sbDrag    = { active: false, startY: 0 };
+
+  function updateQsClock() {
+    var now = new Date();
+    qsTime.textContent = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    var days = ['일요일','월요일','화요일','수요일','목요일','금요일','토요일'];
+    qsDate.textContent = (now.getMonth()+1) + '월 ' + now.getDate() + '일 ' + days[now.getDay()];
+  }
+
+  function toggleQsPanel() {
+    qsOpen = !qsOpen;
+    if (qsOpen) {
+      updateQsClock();
+      qsPanel.classList.remove('qs-hidden');
+    } else {
+      qsPanel.classList.add('qs-hidden');
+    }
+  }
+
+  /* 상태바 드래그로 퀵설정 열기 */
+  statusbar.addEventListener('mousedown', function (e) {
+    sbDrag.active = true; sbDrag.startY = e.clientY;
+  });
+  statusbar.addEventListener('touchstart', function (e) {
+    sbDrag.active = true; sbDrag.startY = e.touches[0].clientY;
+  }, { passive: true });
+
+  document.addEventListener('mouseup', function (e) {
+    if (!sbDrag.active) return;
+    sbDrag.active = false;
+    var dy = (e.clientY || 0) - sbDrag.startY;
+    if (dy > 30) toggleQsPanel();
+  });
+  document.addEventListener('touchend', function (e) {
+    if (!sbDrag.active) return;
+    sbDrag.active = false;
+    var dy = (e.changedTouches ? e.changedTouches[0].clientY : 0) - sbDrag.startY;
+    if (dy > 30) toggleQsPanel();
+  });
+
+  /* 퀵설정 타일 토글 */
+  document.querySelectorAll('.qs-tile').forEach(function (tile) {
+    tile.addEventListener('click', function () {
+      tile.classList.toggle('active');
+      syslog('QS: ' + tile.dataset.qs + ' ' + (tile.classList.contains('active') ? 'ON' : 'OFF'), 'sys');
+    });
+  });
+
+  /* 패널 핸들 클릭으로 닫기 */
+  qsPanel.querySelector('.qs-handle').addEventListener('click', function () {
+    if (qsOpen) toggleQsPanel();
+  });
+
+  /* 앱 영역 클릭 시 패널 닫기 */
+  viewport.addEventListener('click', function () {
+    if (qsOpen) toggleQsPanel();
+  });
 
   /* ═══ 제어 패널 ═══ */
   document.getElementById('btn-power').addEventListener('click', function () {

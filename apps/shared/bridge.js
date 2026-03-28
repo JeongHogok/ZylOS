@@ -51,6 +51,11 @@ var ZylBridge = (function () {
         return Promise.reject(e);
       }
     }
+    /* 에뮬레이터 환경: 부모 프레임에 postMessage */
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage(JSON.stringify({ type: 'app.launch', appId: appId }), '*');
+      return Promise.resolve(true);
+    }
     log('launch (no bridge):', appId);
     return Promise.resolve(false);
   }
@@ -68,6 +73,10 @@ var ZylBridge = (function () {
       } catch (e) {
         return Promise.reject(e);
       }
+    }
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage(JSON.stringify({ type: 'app.close' }), '*');
+      return Promise.resolve(true);
     }
     log('closeApp (no bridge)');
     return Promise.resolve(false);
