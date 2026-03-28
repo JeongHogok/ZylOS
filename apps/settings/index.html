@@ -25,7 +25,7 @@
         </div>
         <div class="setting-text">
           <span class="setting-label" data-i18n="settings.wifi">Wi-Fi</span>
-          <span class="setting-value" data-i18n="settings.connected">연결됨</span>
+          <span class="setting-value" id="wifi-status" data-i18n="settings.connected">연결됨</span>
         </div>
         <svg class="chevron" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
       </div>
@@ -37,7 +37,7 @@
         </div>
         <div class="setting-text">
           <span class="setting-label" data-i18n="settings.bluetooth">블루투스</span>
-          <span class="setting-value" data-i18n="settings.on">켜짐</span>
+          <span class="setting-value" id="bt-status" data-i18n="settings.on">켜짐</span>
         </div>
         <svg class="chevron" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
       </div>
@@ -154,27 +154,27 @@
   <!-- 디스플레이 설정 서브 페이지 -->
   <div id="page-display" class="sub-page hidden">
     <div class="settings-group">
-      <div class="setting-item">
+      <div class="setting-item no-tap">
         <span class="setting-label" data-i18n="settings.brightness">밝기</span>
-        <input type="range" class="slider" min="10" max="100" value="80">
+        <input type="range" class="slider" id="brightness-slider" min="10" max="100" value="80">
       </div>
-      <div class="setting-item">
+      <div class="setting-item no-tap">
         <span class="setting-label" data-i18n="settings.dark_mode">다크 모드</span>
         <label class="toggle">
-          <input type="checkbox" checked>
+          <input type="checkbox" id="darkmode-toggle" checked>
           <span class="toggle-slider"></span>
         </label>
       </div>
-      <div class="setting-item">
+      <div class="setting-item no-tap">
         <span class="setting-label" data-i18n="settings.auto_brightness">자동 밝기</span>
         <label class="toggle">
-          <input type="checkbox" checked>
+          <input type="checkbox" id="autobrightness-toggle" checked>
           <span class="toggle-slider"></span>
         </label>
       </div>
-      <div class="setting-item">
+      <div class="setting-item" id="fontsize-item">
         <span class="setting-label" data-i18n="settings.font_size">글꼴 크기</span>
-        <span class="setting-value">보통</span>
+        <span class="setting-value" id="fontsize-value">보통</span>
       </div>
     </div>
   </div>
@@ -194,9 +194,14 @@
       <div class="setting-item no-tap">
         <span class="setting-label">Wi-Fi</span>
         <label class="toggle">
-          <input type="checkbox" checked>
+          <input type="checkbox" id="wifi-toggle" checked>
           <span class="toggle-slider"></span>
         </label>
+      </div>
+    </div>
+    <div id="wifi-off-msg" class="settings-group hidden">
+      <div class="setting-item no-tap">
+        <span class="setting-label" style="opacity:0.5">Wi-Fi가 꺼져 있습니다</span>
       </div>
     </div>
     <div class="settings-group" id="wifi-networks-list">
@@ -212,9 +217,14 @@
       <div class="setting-item no-tap">
         <span class="setting-label" data-i18n="settings.bluetooth">블루투스</span>
         <label class="toggle">
-          <input type="checkbox" checked>
+          <input type="checkbox" id="bt-toggle" checked>
           <span class="toggle-slider"></span>
         </label>
+      </div>
+    </div>
+    <div id="bt-off-msg" class="settings-group hidden">
+      <div class="setting-item no-tap">
+        <span class="setting-label" style="opacity:0.5">블루투스가 꺼져 있습니다</span>
       </div>
     </div>
     <div class="settings-group" id="bt-devices-list">
@@ -228,23 +238,23 @@
   <div id="page-sound" class="sub-page hidden">
     <div class="settings-group">
       <div class="setting-item no-tap">
-        <span class="setting-label" data-i18n="settings.sound">미디어 볼륨</span>
-        <input type="range" class="slider" min="0" max="100" value="70">
+        <span class="setting-label">미디어 볼륨</span>
+        <input type="range" class="slider" id="media-volume" min="0" max="100" value="70">
       </div>
       <div class="setting-item no-tap">
         <span class="setting-label">알림 볼륨</span>
-        <input type="range" class="slider" min="0" max="100" value="80">
+        <input type="range" class="slider" id="notif-volume" min="0" max="100" value="80">
       </div>
       <div class="setting-item no-tap">
         <span class="setting-label">알람 볼륨</span>
-        <input type="range" class="slider" min="0" max="100" value="90">
+        <input type="range" class="slider" id="alarm-volume" min="0" max="100" value="90">
       </div>
     </div>
     <div class="settings-group">
       <div class="setting-item no-tap">
         <span class="setting-label">진동</span>
         <label class="toggle">
-          <input type="checkbox" checked>
+          <input type="checkbox" id="vibration-toggle" checked>
           <span class="toggle-slider"></span>
         </label>
       </div>
@@ -255,8 +265,10 @@
   <div id="page-wallpaper" class="sub-page hidden">
     <div class="settings-group">
       <div class="setting-item no-tap">
-        <span class="setting-label" data-i18n="settings.wallpaper">배경화면</span>
-        <span class="setting-value">Default</span>
+        <span class="setting-label">배경화면 선택</span>
+      </div>
+      <div id="wallpaper-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:12px 16px;">
+        <!-- dynamically populated -->
       </div>
     </div>
   </div>
@@ -264,16 +276,30 @@
   <!-- 보안 서브 페이지 -->
   <div id="page-security" class="sub-page hidden">
     <div class="settings-group">
-      <div class="setting-item no-tap">
+      <div class="setting-item" id="lock-type-item">
         <span class="setting-label">화면 잠금</span>
-        <span class="setting-value">PIN</span>
+        <span class="setting-value" id="lock-type-value">PIN</span>
       </div>
       <div class="setting-item no-tap">
         <span class="setting-label">지문 인식</span>
         <label class="toggle">
-          <input type="checkbox">
+          <input type="checkbox" id="fingerprint-toggle">
           <span class="toggle-slider"></span>
         </label>
+      </div>
+    </div>
+    <div id="pin-change-dialog" class="settings-group hidden">
+      <div class="setting-item no-tap">
+        <span class="setting-label">현재 PIN</span>
+        <input type="password" id="current-pin-input" maxlength="4" inputmode="numeric" style="width:80px;padding:6px 10px;border:1px solid rgba(255,255,255,0.2);border-radius:8px;background:rgba(255,255,255,0.08);color:#fff;font-size:16px;text-align:center;outline:none;">
+      </div>
+      <div class="setting-item no-tap">
+        <span class="setting-label">새 PIN</span>
+        <input type="password" id="new-pin-input" maxlength="4" inputmode="numeric" style="width:80px;padding:6px 10px;border:1px solid rgba(255,255,255,0.2);border-radius:8px;background:rgba(255,255,255,0.08);color:#fff;font-size:16px;text-align:center;outline:none;">
+      </div>
+      <div style="padding:8px 16px 12px;">
+        <button id="pin-change-btn" style="width:100%;padding:10px;border:none;border-radius:8px;background:#4a9eff;color:#fff;font-size:14px;font-weight:600;cursor:pointer;">변경</button>
+        <div id="pin-change-msg" style="margin-top:8px;font-size:12px;text-align:center;min-height:16px;"></div>
       </div>
     </div>
   </div>

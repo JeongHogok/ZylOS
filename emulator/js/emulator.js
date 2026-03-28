@@ -695,10 +695,18 @@
   function handleServiceRequest(msg, source) {
     if (!msg.service || !msg.method) return;
     var data = ZylServices.handleRequest(msg.service, msg.method, msg.params || {});
+
+    /* ── settings.update side effects ── */
+    if (msg.service === 'settings' && msg.method === 'update') {
+      var p = msg.params || {};
+      applySettingSideEffect(p.category, p.key, p.value);
+    }
+
     var response = JSON.stringify({
       type: 'service.response',
       service: msg.service,
       method: msg.method,
+      params: msg.params || {},
       data: data
     });
     try {
@@ -708,6 +716,40 @@
         appFrame.contentWindow.postMessage(response, '*');
       }
     } catch (err) { /* iframe not ready */ }
+  }
+
+  /* ── Apply real side effects when a setting changes ── */
+  function applySettingSideEffect(category, key, value) {
+    var wifiIcon = document.getElementById('sb-wifi');
+    var btIcon   = document.getElementById('sb-bt');
+
+    if (category === 'wifi' && key === 'enabled') {
+      if (wifiIcon) wifiIcon.style.display = value ? '' : 'none';
+      syslog('WiFi ' + (value ? 'ON' : 'OFF'), 'sys');
+    }
+    if (category === 'bluetooth' && key === 'enabled') {
+      if (btIcon) btIcon.style.display = value ? '' : 'none';
+      syslog('Bluetooth ' + (value ? 'ON' : 'OFF'), 'sys');
+    }
+    if (category === 'display' && key === 'brightness') {
+      syslog('Brightness: ' + value + '%', 'sys');
+    }
+    if (category === 'display' && key === 'darkMode') {
+      syslog('Dark mode ' + (value ? 'ON' : 'OFF'), 'sys');
+    }
+    if (category === 'sound') {
+      syslog('Sound: ' + key + ' → ' + value, 'sys');
+    }
+    if (category === 'security' && key === 'pin') {
+      syslog('PIN changed', 'sys');
+      /* Broadcast new PIN to lockscreen */
+      broadcastToCurrentApp('settings.pinChanged', { pin: value });
+    }
+    if (category === 'wallpaper' && key === 'current') {
+      syslog('Wallpaper → ' + value, 'sys');
+      /* Broadcast wallpaper change to home screen */
+      broadcastToCurrentApp('settings.wallpaperChanged', { wallpaper: value });
+    }
   }
 
   /* ═══ iframe 메시지 ═══ */
@@ -741,6 +783,16 @@
           break;
         case 'service.request':
           handleServiceRequest(msg, e.source);
+          break;
+        case 'settings.pinChanged':
+          /* Forward PIN change to lockscreen if it's running */
+          syslog('PIN changed via Settings', 'sys');
+          if (state.currentApp !== 'com.zylos.lockscreen') {
+            /* Store for when lockscreen loads */
+          }
+          break;
+        case 'settings.wallpaperChanged':
+          syslog('Wallpaper → ' + (msg.wallpaper || ''), 'sys');
           break;
       }
     } catch (err) { /* ignore */ }
@@ -833,6 +885,18 @@
       state.booted = true;
       state.locked = true;
       launchApp('com.zylos.lockscreen');
+
+      /* HAL에서 실제 배터리 정보 가져오기 */
+      if (typeof ZylHalBrowser !== 'undefined') {
+        var batEl = document.getElementById('emu-battery');
+        function updateBattery() {
+          var s = ZylHalBrowser.battery.getState();
+          if (s.level >= 0 && batEl) batEl.textContent = s.level + '%';
+        }
+        updateBattery();
+        ZylHalBrowser.battery.onChange(updateBattery);
+        syslog('Battery: ' + ZylHalBrowser.battery.getState().level + '%', 'sys');
+      }
 
       // System welcome notifications
       setTimeout(function() {

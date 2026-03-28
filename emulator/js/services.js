@@ -95,19 +95,17 @@ var ZylServices = (function () {
      2. WiFiService — 네트워크 목록
      ═══════════════════════════════════════════════════════ */
   var wifi = {
-    networks: [
-      { ssid: 'ZylNet-5G',      security: 'WPA3', signal: 4, connected: true },
-      { ssid: 'Home_WiFi',      security: 'WPA2', signal: 3, connected: false },
-      { ssid: 'Guest_Network',  security: 'WPA2', signal: 2, connected: false },
-      { ssid: 'CoffeeShop_Free', security: 'Open', signal: 1, connected: false },
-      { ssid: 'Office_5G',      security: 'WPA3', signal: 3, connected: false }
-    ],
-
+    /* HAL에서 호스트 네트워크 정보를 가져와 목록 구성 */
     getNetworks: function () {
-      return wifi.networks;
+      if (typeof ZylHalBrowser !== 'undefined') {
+        var info = ZylHalBrowser.network.getWifiInfo();
+        return info.networks;
+      }
+      return [];
     },
     getConnected: function () {
-      return wifi.networks.find(function (n) { return n.connected; }) || null;
+      var nets = wifi.getNetworks();
+      return nets.find(function (n) { return n.connected; }) || null;
     }
   };
 
@@ -116,22 +114,22 @@ var ZylServices = (function () {
      3. BluetoothService — 페어링/사용 가능 디바이스
      ═══════════════════════════════════════════════════════ */
   var bluetooth = {
-    devices: [
-      { name: 'Zyl Buds Pro',   type: 'audio',    connected: true,  paired: true },
-      { name: 'BT Speaker',     type: 'audio',    connected: false, paired: true },
-      { name: 'Keyboard K380',  type: 'input',    connected: false, paired: true },
-      { name: 'Smart Watch',    type: 'wearable', connected: false, paired: false },
-      { name: 'Car Audio',      type: 'audio',    connected: false, paired: false }
-    ],
-
+    /* HAL에서 BT 상태를 가져옴. Web Bluetooth API는 제한적이므로 지원 여부만 조회 */
     getDevices: function () {
-      return bluetooth.devices;
+      if (typeof ZylHalBrowser !== 'undefined') {
+        var state = ZylHalBrowser.bluetooth.getState();
+        return state.devices || [];
+      }
+      return [];
     },
     getPaired: function () {
-      return bluetooth.devices.filter(function (d) { return d.paired; });
+      return bluetooth.getDevices().filter(function (d) { return d.paired; });
     },
     getConnected: function () {
-      return bluetooth.devices.filter(function (d) { return d.connected; });
+      return bluetooth.getDevices().filter(function (d) { return d.connected; });
+    },
+    isSupported: function () {
+      return typeof ZylHalBrowser !== 'undefined' && ZylHalBrowser.bluetooth.isSupported();
     }
   };
 
@@ -154,7 +152,8 @@ var ZylServices = (function () {
     username: 'user',
 
     getInfo: function () {
-      return {
+      /* HAL에서 호스트 정보 보강 */
+      var info = {
         deviceName: deviceInfo.deviceName,
         osVersion: deviceInfo.osVersion,
         soc: deviceInfo.soc,
@@ -165,8 +164,14 @@ var ZylServices = (function () {
         gpu: deviceInfo.gpu,
         shell: deviceInfo.shell,
         hostname: deviceInfo.hostname,
-        username: deviceInfo.username
+        username: deviceInfo.username,
       };
+      if (typeof ZylHalBrowser !== 'undefined') {
+        var halInfo = ZylHalBrowser.deviceInfo.getInfo();
+        info.hostPlatform = halInfo.hostPlatform;
+        info.hostLanguage = halInfo.hostLanguage;
+      }
+      return info;
     },
 
     /* 부팅 시 디바이스 프로필로 갱신 */
@@ -180,6 +185,12 @@ var ZylServices = (function () {
       if (profile.id) {
         deviceInfo.hostname = profile.id.replace(/^zyl-/, '').replace(/-/g, '_');
       }
+      /* HAL에도 프로필 전달 */
+      if (typeof ZylHalBrowser !== 'undefined') {
+        ZylHalBrowser.deviceInfo.applyProfile(profile);
+      }
+      /* 스토리지 캐시 초기화 (부팅 시 새로 조회) */
+      if (typeof storage !== 'undefined') storage._fetchFromHal();
     }
   };
 
@@ -188,33 +199,39 @@ var ZylServices = (function () {
      5. StorageService — 디스크 사용량
      ═══════════════════════════════════════════════════════ */
   var storage = {
-    total: 16 * 1024 * 1024 * 1024,          // 16 GB
-    used: 12.3 * 1024 * 1024 * 1024,          // 12.3 GB
-    available: 3.7 * 1024 * 1024 * 1024,      // 3.7 GB
+    /* HAL에서 호스트의 실제 스토리지 정보를 가져옴 */
+    _cache: null,
+    _cacheTime: 0,
 
-    breakdown: [
-      { category: 'System',  bytes: 4.2 * 1024 * 1024 * 1024 },
-      { category: 'Apps',    bytes: 3.1 * 1024 * 1024 * 1024 },
-      { category: 'Photos',  bytes: 2.5 * 1024 * 1024 * 1024 },
-      { category: 'Videos',  bytes: 1.5 * 1024 * 1024 * 1024 },
-      { category: 'Other',   bytes: 1.0 * 1024 * 1024 * 1024 }
-    ],
+    _fetchFromHal: function () {
+      if (typeof ZylHalBrowser !== 'undefined') {
+        return ZylHalBrowser.storage.getState().then(function (s) {
+          storage._cache = s;
+          storage._cacheTime = Date.now();
+          return s;
+        });
+      }
+      return Promise.resolve({ total: 0, used: 0, available: 0 });
+    },
 
     getUsage: function () {
+      if (storage._cache && Date.now() - storage._cacheTime < 30000) {
+        return storage._cache;
+      }
+      /* 동기적 접근 시 캐시 반환 */
+      storage._fetchFromHal();
+      return storage._cache || { total: 0, used: 0, available: 0 };
+    },
+
+    getFormatted: function () {
+      var fmt = (typeof ZylHalBrowser !== 'undefined') ? ZylHalBrowser.storage.formatBytes : function (b) { return b + ' B'; };
+      var s = storage.getUsage();
       return {
-        total: storage.total,
-        used: storage.used,
-        available: storage.available,
-        breakdown: storage.breakdown
+        total: fmt(s.total),
+        used: fmt(s.used),
+        available: fmt(s.available),
       };
     },
-    getFormatted: function () {
-      return {
-        total: '16 GB',
-        used: '12.3 GB',
-        available: '3.7 GB'
-      };
-    }
   };
 
 
@@ -296,6 +313,32 @@ var ZylServices = (function () {
 
 
   /* ═══════════════════════════════════════════════════════
+     8. SettingsService — 설정 상태 저장소
+     ═══════════════════════════════════════════════════════ */
+  var settings = {
+    state: {
+      wifi:      { enabled: true },
+      bluetooth: { enabled: true },
+      display:   { brightness: 80, darkMode: true, autoBrightness: true, fontSize: 'medium' },
+      sound:     { mediaVolume: 70, notifVolume: 80, alarmVolume: 90, vibration: true },
+      security:  { lockType: 'PIN', pin: '0000', fingerprint: false },
+      wallpaper: { current: 'default', options: ['default', 'gradient-blue', 'gradient-purple', 'gradient-dark', 'gradient-sunset'] }
+    },
+
+    getSetting: function (category) {
+      return settings.state[category] || null;
+    },
+
+    updateSetting: function (category, key, value) {
+      if (settings.state[category]) {
+        settings.state[category][key] = value;
+      }
+      return settings.state[category] || null;
+    }
+  };
+
+
+  /* ═══════════════════════════════════════════════════════
      Service Router — method 이름으로 서비스 호출
      ═══════════════════════════════════════════════════════ */
   var serviceMap = {
@@ -330,6 +373,10 @@ var ZylServices = (function () {
       getQuickLinks:     function () { return browser.getQuickLinks(); },
       getSimulatedPages: function () { return browser.getSimulatedPages(); },
       getSimulatedPage:  function (p) { return browser.getSimulatedPage(p.domain); }
+    },
+    settings: {
+      get:    function (p) { return settings.getSetting(p.category); },
+      update: function (p) { return settings.updateSetting(p.category, p.key, p.value); }
     }
   };
 
@@ -357,6 +404,7 @@ var ZylServices = (function () {
     storage: storage,
     apps: apps,
     browser: browser,
+    settings: settings,
     handleRequest: handleRequest
   };
 
