@@ -1,0 +1,77 @@
+/*
+ * BPI-OS WAM: JS Bridge Script
+ *
+ * Injected into every web app at document start.  Provides the
+ * navigator.system API that apps use to communicate with the
+ * native WAM daemon.
+ *
+ * Tokens replaced at injection time:
+ *   {{APP_ID}}      - unique app identifier
+ *   {{APP_NAME}}    - display name
+ *   {{APP_VERSION}} - version string
+ *
+ * Copyright (c) 2026 BPI-OS Project
+ * SPDX-License-Identifier: MIT
+ */
+
+(function () {
+  "use strict";
+
+  var _cbId = 0;
+
+  function postBridge(msg) {
+    window.webkit.messageHandlers.bridge.postMessage(JSON.stringify(msg));
+  }
+
+  function asyncBridge(msg) {
+    return new Promise(function (resolve) {
+      _cbId += 1;
+      msg._cbId = _cbId;
+      window["_bpiCb_" + _cbId] = resolve;
+      postBridge(msg);
+    });
+  }
+
+  window.navigator.system = {
+    app: {
+      id:      "{{APP_ID}}",
+      name:    "{{APP_NAME}}",
+      version: "{{APP_VERSION}}",
+
+      close: function () {
+        postBridge({ type: "app.close", appId: "{{APP_ID}}" });
+      },
+
+      minimize: function () {
+        postBridge({ type: "app.minimize", appId: "{{APP_ID}}" });
+      }
+    },
+
+    launch: function (appId) {
+      postBridge({ type: "app.launch", appId: appId });
+    },
+
+    notification: {
+      create: function (title, body, opts) {
+        postBridge({
+          type:    "notification.create",
+          title:   title,
+          body:    body,
+          options: opts || {}
+        });
+      }
+    },
+
+    battery: {
+      getLevel: function () {
+        return asyncBridge({ type: "battery.getLevel" });
+      }
+    },
+
+    wifi: {
+      scan: function () {
+        return asyncBridge({ type: "wifi.scan" });
+      }
+    }
+  };
+})();

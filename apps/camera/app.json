@@ -1,0 +1,9 @@
+{
+  "id": "com.bpios.camera",
+  "name": "Camera",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "icon": "assets/camera-icon.png",
+  "permissions": ["camera", "microphone", "storage", "gallery"],
+  "type": "system"
+}

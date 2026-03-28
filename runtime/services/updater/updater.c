@@ -1,13 +1,11 @@
-/*
- * BPI-OS Updater: Over-The-Air (OTA) Update Service
+/* ──────────────────────────────────────────────────────────
+ * [Clean Architecture] Application Layer - Service
  *
- * A/B 파티션 기반 원자적 업데이트 구현.
- * 비활성 파티션에 업데이트를 적용하고 부트로더 플래그를
- * 변경하여 다음 부팅 시 새 파티션으로 전환합니다.
- *
- * Copyright (c) 2026 BPI-OS Project
- * SPDX-License-Identifier: MIT
- */
+ * 역할: OTA 업데이트 서비스 — A/B 파티션 기반 원자적 시스템 업데이트
+ * 수행범위: 업데이트 확인, 다운로드, 비활성 파티션 적용, 부트로더 플래그 변경
+ * 의존방향: updater.h
+ * SOLID: SRP — OTA 업데이트 프로세스만 담당
+ * ────────────────────────────────────────────────────────── */
 
 #include "updater.h"
 

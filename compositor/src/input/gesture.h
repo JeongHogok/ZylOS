@@ -1,0 +1,37 @@
+/* ──────────────────────────────────────────────────────────
+ * [Clean Architecture] Domain Layer - Interface
+ *
+ * 역할: 제스처 감지, 디스패치, Wayland 리스너 연결 인터페이스 정의
+ * 수행범위: gesture_direction 열거형, gesture_detect/dispatch/register 함수 선언
+ * 의존방향: bpi_compositor.h
+ * SOLID: DIP — 구현이 아닌 인터페이스(함수 선언)에 의존
+ * ────────────────────────────────────────────────────────── */
+
+#ifndef BPI_INPUT_GESTURE_H
+#define BPI_INPUT_GESTURE_H
+
+#include "bpi_compositor.h"
+
+/*
+ * Detect which gesture (if any) a completed touch sequence represents.
+ * Returns GESTURE_NONE when the movement is below the swipe threshold.
+ */
+enum gesture_direction gesture_detect(const struct touch_state *t,
+                                      int screen_h,
+                                      const struct bpi_config *cfg);
+
+/*
+ * Install default gesture handlers into server->gesture_handlers[].
+ * Callers may override individual slots after this call.
+ */
+void gesture_init_handlers(struct bpi_server *server);
+
+/*
+ * Wire touch_down / touch_up / touch_motion listeners, cursor
+ * listeners, seat listeners, and the new-input listener onto
+ * the server.  Must be called after cursor, seat, and backend
+ * are initialised.
+ */
+void gesture_register_listeners(struct bpi_server *server);
+
+#endif /* BPI_INPUT_GESTURE_H */

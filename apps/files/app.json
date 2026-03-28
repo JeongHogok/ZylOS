@@ -1,0 +1,9 @@
+{
+  "id": "com.bpios.files",
+  "name": "Files",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "icon": "assets/files-icon.png",
+  "permissions": ["storage", "files.read", "files.write", "files.delete"],
+  "type": "system"
+}

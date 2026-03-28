@@ -16,8 +16,21 @@ gio = dependency('gio-2.0')
 
 deps = [gtk4, webkitgtk, json_glib, gio]
 
-executable('bpi-wam',
+wam_sources = files(
   'src/wam.c',
+  'src/manifest/manifest.c',
+  'src/lifecycle/lifecycle.c',
+  'src/bridge/bridge.c',
+  'src/dbus/dbus_service.c',
+)
+
+executable('bpi-wam',
+  wam_sources,
   dependencies: deps,
   install: true,
+)
+
+# Install the JS bridge script to the runtime data directory
+install_data('src/bridge/bridge.js',
+  install_dir: get_option('datadir') / 'bpi-os' / 'wam',
 )

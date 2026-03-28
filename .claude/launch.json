@@ -1,0 +1,29 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "home-app",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8080", "--directory", "apps/home"],
+      "port": 8080
+    },
+    {
+      "name": "lockscreen",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8081", "--directory", "apps/lockscreen"],
+      "port": 8081
+    },
+    {
+      "name": "statusbar",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8082", "--directory", "apps/statusbar"],
+      "port": 8082
+    },
+    {
+      "name": "settings",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8083", "--directory", "apps/settings"],
+      "port": 8083
+    }
+  ]
+}

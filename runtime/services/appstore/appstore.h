@@ -1,13 +1,11 @@
-/*
- * BPI-OS AppStore: Package Verification & Installation Service
+/* ──────────────────────────────────────────────────────────
+ * [Clean Architecture] Domain Layer - Interface
  *
- * Manages app installation, verification, and the app store catalog.
- * Only apps signed with a valid developer certificate can be installed.
- * System apps are pre-installed and cannot be removed.
- *
- * Copyright (c) 2026 BPI-OS Project
- * SPDX-License-Identifier: MIT
- */
+ * 역할: 앱스토어 인터페이스 정의 — 패키지 서명 상태, 설치/검증 함수
+ * 수행범위: BpiSignatureStatus 열거형, 패키지 검증/설치/카탈로그 함수 선언
+ * 의존방향: stdbool.h, stdint.h
+ * SOLID: ISP — 앱스토어 관련 인터페이스만 노출
+ * ────────────────────────────────────────────────────────── */
 
 #ifndef BPI_APPSTORE_H
 #define BPI_APPSTORE_H

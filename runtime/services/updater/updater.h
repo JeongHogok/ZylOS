@@ -1,21 +1,11 @@
-/*
- * BPI-OS Updater: Over-The-Air (OTA) Update Service
+/* ──────────────────────────────────────────────────────────
+ * [Clean Architecture] Domain Layer - Interface
  *
- * A/B 파티션 기반 원자적 시스템 업데이트를 관리합니다.
- * 업데이트 실패 시 자동 롤백되며, 부분 업데이트로 인한
- * 시스템 손상을 방지합니다.
- *
- * 업데이트 흐름:
- *   1. 서버에서 업데이트 매니페스트 확인
- *   2. 델타 패키지 다운로드 (또는 전체 이미지)
- *   3. 비활성 파티션(B)에 적용
- *   4. 부트로더 플래그 설정 (다음 부팅 시 B 파티션 사용)
- *   5. 재부팅 후 검증 성공 시 A/B 스왑 확정
- *   6. 검증 실패 시 자동으로 이전 파티션으로 롤백
- *
- * Copyright (c) 2026 BPI-OS Project
- * SPDX-License-Identifier: MIT
- */
+ * 역할: OTA 업데이터 인터페이스 정의 — 업데이트 상태, 파티션, 검증 함수
+ * 수행범위: BpiUpdateState/BpiPartition 타입, 업데이트 확인/적용/롤백 함수 선언
+ * 의존방향: stdbool.h, stdint.h
+ * SOLID: DIP — 업데이트 구현이 아닌 추상 인터페이스에 의존
+ * ────────────────────────────────────────────────────────── */
 
 #ifndef BPI_UPDATER_H
 #define BPI_UPDATER_H

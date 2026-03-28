@@ -1,0 +1,9 @@
+{
+  "id": "com.bpios.terminal",
+  "name": "Terminal",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "icon": "assets/terminal-icon.png",
+  "permissions": ["shell", "files.read", "files.write", "system"],
+  "type": "system"
+}

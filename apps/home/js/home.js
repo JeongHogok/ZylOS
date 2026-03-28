@@ -1,6 +1,11 @@
-/*
- * BPI-OS 홈스크린
- */
+// ──────────────────────────────────────────────────────────
+// [Clean Architecture] Presentation Layer - Page
+//
+// 역할: 홈스크린 UI — 앱 그리드, 독, 검색, 시계 표시
+// 수행범위: 앱 아이콘 렌더링, 검색 필터링, 페이지 인디케이터, 앱 실행
+// 의존방향: bpiI18n (i18n.js), BpiClock (clock.js), BpiBridge (bridge.js)
+// SOLID: SRP — 홈스크린 UI 렌더링과 인터랙션만 담당
+// ──────────────────────────────────────────────────────────
 
 (function () {
   'use strict';
@@ -33,20 +38,10 @@
     { id: 'com.bpios.store',    nameKey: 'app.store',    icon: 'store',    color: 'icon-emerald' },
   ];
 
-  /* ─── 시계 업데이트 ─── */
+  /* ─── 시계 (shared BpiClock 사용) ─── */
   var clockTime = document.getElementById('clock-time');
   var clockDate = document.getElementById('clock-date');
-
-  function updateClock() {
-    var now = new Date();
-    var h = String(now.getHours()).padStart(2, '0');
-    var m = String(now.getMinutes()).padStart(2, '0');
-    clockTime.textContent = h + ':' + m;
-    clockDate.textContent = i18n.formatDate(now);
-  }
-
-  updateClock();
-  setInterval(updateClock, 1000);
+  var clock = BpiClock.create(clockTime, clockDate, { showDate: true, dateFormat: 'long' });
 
   /* ─── 앱 그리드 렌더링 ─── */
   var appGrid = document.getElementById('app-grid');
@@ -59,7 +54,7 @@
       el.dataset.appId = app.id;
 
       var iconSvg = ICONS[app.icon] || ICONS.browser;
-      var name = i18n.t(app.nameKey);
+      var name = bpiI18n.t(app.nameKey);
 
       el.innerHTML =
         '<div class="app-icon-wrap ' + app.color + '">' + iconSvg + '</div>' +
@@ -72,18 +67,13 @@
     });
   }
 
-  /* ─── 앱 실행 ─── */
+  /* ─── 앱 실행 (shared BpiBridge 사용) ─── */
   function launchApp(appId, el) {
     if (el) {
       el.classList.add('launching');
       setTimeout(function () { el.classList.remove('launching'); }, 500);
     }
-
-    if (window.navigator && window.navigator.system) {
-      window.navigator.system.launch(appId);
-    } else {
-      console.log('Launch app (no bridge):', appId);
-    }
+    BpiBridge.launch(appId);
   }
 
   /* ─── 독 클릭 ─── */
@@ -103,10 +93,15 @@
       return;
     }
     var filtered = defaultApps.filter(function (app) {
-      var name = i18n.t(app.nameKey).toLowerCase();
+      var name = bpiI18n.t(app.nameKey).toLowerCase();
       return name.includes(query) || app.id.toLowerCase().includes(query);
     });
     renderAppGrid(filtered);
+  });
+
+  /* ─── Re-render on locale change ─── */
+  bpiI18n.onLocaleChange(function () {
+    renderAppGrid(defaultApps);
   });
 
   /* ─── 초기 렌더링 ─── */

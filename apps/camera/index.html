@@ -1,0 +1,118 @@
+<!--
+  BPI-OS: Camera
+  Copyright (c) 2026 BPI-OS Project
+  SPDX-License-Identifier: MIT
+-->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>BPI-OS Camera</title>
+  <link rel="stylesheet" href="css/camera.css">
+</head>
+<body>
+  <!-- Viewfinder -->
+  <div id="viewfinder">
+    <div id="viewfinder-gradient"></div>
+
+    <!-- Focus Ring (animated) -->
+    <div id="focus-ring" class="hidden">
+      <div class="focus-corner tl"></div>
+      <div class="focus-corner tr"></div>
+      <div class="focus-corner bl"></div>
+      <div class="focus-corner br"></div>
+    </div>
+
+    <!-- Grid Overlay -->
+    <div id="grid-overlay">
+      <div class="grid-line h1"></div>
+      <div class="grid-line h2"></div>
+      <div class="grid-line v1"></div>
+      <div class="grid-line v2"></div>
+    </div>
+
+    <!-- Level Indicator -->
+    <div id="level-indicator">
+      <div class="level-line"></div>
+    </div>
+  </div>
+
+  <!-- Top Controls -->
+  <div id="top-bar">
+    <button id="btn-flash" class="top-btn" aria-label="Flash">
+      <svg viewBox="0 0 24 24"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>
+      <span class="btn-label" data-i18n="camera.flash_off">Off</span>
+    </button>
+    <button id="btn-timer" class="top-btn" aria-label="Timer">
+      <svg viewBox="0 0 24 24"><path d="M15 1H9v2h6V1zm-4 13h2V8h-2v6zm8.03-6.61l1.42-1.42c-.43-.51-.9-.99-1.41-1.41l-1.42 1.42C16.07 4.74 14.12 4 12 4c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-2.12-.74-4.07-1.97-5.61zM12 20c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg>
+      <span class="btn-label" data-i18n="camera.timer_off">Off</span>
+    </button>
+    <button id="btn-hdr" class="top-btn" aria-label="HDR">
+      <span class="hdr-text">HDR</span>
+    </button>
+    <button id="btn-ratio" class="top-btn" aria-label="Aspect Ratio">
+      <span class="ratio-text">4:3</span>
+    </button>
+  </div>
+
+  <!-- Zoom Controls -->
+  <div id="zoom-bar">
+    <button class="zoom-btn" data-zoom="0.5">0.5x</button>
+    <button class="zoom-btn active" data-zoom="1">1x</button>
+    <button class="zoom-btn" data-zoom="2">2x</button>
+  </div>
+
+  <!-- Bottom Controls -->
+  <div id="bottom-bar">
+    <!-- Mode Selector -->
+    <div id="mode-selector">
+      <button class="mode-btn" data-mode="portrait" data-i18n="camera.portrait">Portrait</button>
+      <button class="mode-btn active" data-mode="photo" data-i18n="camera.photo">Photo</button>
+      <button class="mode-btn" data-mode="video" data-i18n="camera.video">Video</button>
+      <button class="mode-btn" data-mode="pano" data-i18n="camera.pano">Pano</button>
+    </div>
+
+    <!-- Capture Row -->
+    <div id="capture-row">
+      <!-- Gallery Thumbnail -->
+      <button id="btn-gallery" aria-label="Gallery">
+        <div id="gallery-thumb"></div>
+      </button>
+
+      <!-- Capture Button -->
+      <button id="btn-capture" aria-label="Capture">
+        <div id="capture-outer">
+          <div id="capture-inner"></div>
+        </div>
+      </button>
+
+      <!-- Camera Switch -->
+      <button id="btn-switch" aria-label="Switch Camera">
+        <svg viewBox="0 0 24 24"><path d="M20 5h-3.17L15 3H9L7.17 5H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-5 11c-2.76 0-5-2.24-5-5h2c0 1.65 1.35 3 3 3v-2.5l3.5 3.5-3.5 3.5V14zm-5-1V9.5L6.5 13 10 16.5V14c2.76 0 5-2.24 5-5h-2c0 1.65-1.35 3-3 3z"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Timer Countdown Overlay -->
+  <div id="timer-overlay" class="hidden">
+    <span id="timer-count">3</span>
+  </div>
+
+  <!-- Capture Flash -->
+  <div id="capture-flash" class="hidden"></div>
+
+  <!-- Photo Preview -->
+  <div id="photo-preview" class="hidden">
+    <div id="preview-image"></div>
+    <div id="preview-actions">
+      <button id="btn-retake" data-i18n="camera.retake">Retake</button>
+      <button id="btn-save" data-i18n="camera.save">Save</button>
+    </div>
+  </div>
+
+  <script src="../../shared/bridge.js"></script>
+  <script src="../../shared/i18n.js"></script>
+  <script src="js/camera.js"></script>
+</body>
+</html>

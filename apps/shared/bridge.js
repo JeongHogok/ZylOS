@@ -1,0 +1,152 @@
+// ──────────────────────────────────────────────────────────
+// [Clean Architecture] Shared Layer - Adapter
+//
+// 역할: 클라이언트 측 브릿지 API — navigator.system 래퍼
+// 수행범위: Promise 기반 네이티브 API 호출, 브릿지 미사용 시 폴백 제공
+// 의존방향: 없음 (네이티브 셸 API를 추상화)
+// SOLID: DIP — 네이티브 API 구현이 아닌 추상 인터페이스에 의존
+// ──────────────────────────────────────────────────────────
+
+var BpiBridge = (function () {
+  'use strict';
+
+  var DEBUG = false;
+
+  function log() {
+    if (DEBUG) {
+      console.log.apply(console, ['[BpiBridge]'].concat(Array.prototype.slice.call(arguments)));
+    }
+  }
+
+  /**
+   * Check whether the native bridge is available.
+   * @returns {boolean}
+   */
+  function isAvailable() {
+    return !!(window.navigator && window.navigator.system);
+  }
+
+  /**
+   * Check whether the WebKit message handler bridge is available.
+   * @returns {boolean}
+   */
+  function isWebKitAvailable() {
+    return !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.bridge);
+  }
+
+  /* ─── App Lifecycle ─── */
+
+  /**
+   * Launch an app by its bundle identifier.
+   * @param {string} appId - e.g. 'com.bpios.browser'
+   * @returns {Promise<boolean>}
+   */
+  function launch(appId) {
+    log('launch', appId);
+    if (isAvailable() && typeof navigator.system.launch === 'function') {
+      try {
+        var result = navigator.system.launch(appId);
+        return Promise.resolve(result !== false);
+      } catch (e) {
+        return Promise.reject(e);
+      }
+    }
+    log('launch (no bridge):', appId);
+    return Promise.resolve(false);
+  }
+
+  /**
+   * Close the current app.
+   * @returns {Promise<boolean>}
+   */
+  function closeApp() {
+    log('closeApp');
+    if (isAvailable() && navigator.system.app && typeof navigator.system.app.close === 'function') {
+      try {
+        navigator.system.app.close();
+        return Promise.resolve(true);
+      } catch (e) {
+        return Promise.reject(e);
+      }
+    }
+    log('closeApp (no bridge)');
+    return Promise.resolve(false);
+  }
+
+  /* ─── System Settings ─── */
+
+  /**
+   * Set the system locale.
+   * @param {string} locale - e.g. 'ko', 'en'
+   * @returns {Promise<boolean>}
+   */
+  function setLocale(locale) {
+    log('setLocale', locale);
+    if (isWebKitAvailable()) {
+      try {
+        window.webkit.messageHandlers.bridge.postMessage(
+          JSON.stringify({ type: 'system.setLocale', locale: locale })
+        );
+        return Promise.resolve(true);
+      } catch (e) {
+        return Promise.reject(e);
+      }
+    }
+    log('setLocale (no bridge):', locale);
+    return Promise.resolve(false);
+  }
+
+  /**
+   * Send a generic message through the WebKit bridge.
+   * @param {string} type - Message type identifier
+   * @param {Object} [payload] - Additional data
+   * @returns {Promise<boolean>}
+   */
+  function sendMessage(type, payload) {
+    log('sendMessage', type, payload);
+    if (isWebKitAvailable()) {
+      try {
+        var msg = { type: type };
+        if (payload) {
+          Object.keys(payload).forEach(function (k) {
+            msg[k] = payload[k];
+          });
+        }
+        window.webkit.messageHandlers.bridge.postMessage(JSON.stringify(msg));
+        return Promise.resolve(true);
+      } catch (e) {
+        return Promise.reject(e);
+      }
+    }
+    log('sendMessage (no bridge):', type, payload);
+    return Promise.resolve(false);
+  }
+
+  /* ─── Hardware ─── */
+
+  /**
+   * Get battery information if available.
+   * @returns {Promise<{ level: number, charging: boolean }>}
+   */
+  function getBattery() {
+    if (navigator.getBattery) {
+      return navigator.getBattery().then(function (battery) {
+        return {
+          level: Math.round(battery.level * 100),
+          charging: battery.charging,
+        };
+      });
+    }
+    return Promise.resolve({ level: -1, charging: false });
+  }
+
+  /* ─── Public API ─── */
+  return {
+    isAvailable: isAvailable,
+    launch: launch,
+    closeApp: closeApp,
+    setLocale: setLocale,
+    sendMessage: sendMessage,
+    getBattery: getBattery,
+  };
+})();

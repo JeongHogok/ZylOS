@@ -1,0 +1,9 @@
+{
+  "id": "com.bpios.browser",
+  "name": "Browser",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "icon": "assets/browser-icon.png",
+  "permissions": ["network", "webview", "downloads", "bookmarks"],
+  "type": "system"
+}

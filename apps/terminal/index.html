@@ -1,0 +1,55 @@
+<!--
+  BPI-OS: Terminal
+  Copyright (c) 2026 BPI-OS Project
+  SPDX-License-Identifier: MIT
+-->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>BPI-OS Terminal</title>
+  <link rel="stylesheet" href="css/terminal.css">
+</head>
+<body>
+  <!-- Header -->
+  <header id="header">
+    <h1 data-i18n="terminal.title">Terminal</h1>
+    <div id="header-actions">
+      <button id="btn-clear" class="header-btn" aria-label="Clear" title="Clear">
+        <svg viewBox="0 0 24 24"><path d="M5 13h14v-2H5v2zm-2 4h14v-2H3v2zM7 7v2h14V7H7z"/></svg>
+      </button>
+      <button id="btn-info" class="header-btn" aria-label="Info">
+        <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Terminal Output -->
+  <div id="terminal-output">
+    <div id="output-content"></div>
+  </div>
+
+  <!-- Input Area -->
+  <div id="input-area">
+    <span id="prompt">$ user@bpi-f3:~</span>
+    <input type="text" id="command-input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+  </div>
+
+  <!-- Quick Keys -->
+  <div id="quick-keys">
+    <button class="qkey" data-key="tab">Tab</button>
+    <button class="qkey" data-key="ctrl">Ctrl</button>
+    <button class="qkey" data-insert="|">|</button>
+    <button class="qkey" data-insert="/">/</button>
+    <button class="qkey" data-insert="-">-</button>
+    <button class="qkey" data-insert="~">~</button>
+    <button class="qkey" data-key="up">&uarr;</button>
+    <button class="qkey" data-key="down">&darr;</button>
+  </div>
+
+  <script src="../../shared/bridge.js"></script>
+  <script src="../../shared/i18n.js"></script>
+  <script src="js/terminal.js"></script>
+</body>
+</html>

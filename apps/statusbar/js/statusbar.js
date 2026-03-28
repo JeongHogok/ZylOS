@@ -1,22 +1,18 @@
-/*
- * BPI-OS 상태바
- */
+// ──────────────────────────────────────────────────────────
+// [Clean Architecture] Presentation Layer - Widget
+//
+// 역할: 상태바 위젯 — 시간, 배터리, 네트워크 상태 표시
+// 수행범위: 시간 업데이트, 배터리 레벨 표시, 퀵 설정 패널
+// 의존방향: BpiClock (clock.js)
+// SOLID: SRP — 상태바 UI 렌더링만 담당
+// ──────────────────────────────────────────────────────────
 
 (function () {
   'use strict';
 
-  /* ─── 시간 업데이트 ─── */
+  /* ─── 시간 업데이트 (shared BpiClock 사용) ─── */
   var sbTime = document.getElementById('sb-time');
-
-  function updateTime() {
-    var now = new Date();
-    var h = String(now.getHours()).padStart(2, '0');
-    var m = String(now.getMinutes()).padStart(2, '0');
-    sbTime.textContent = h + ':' + m;
-  }
-
-  updateTime();
-  setInterval(updateTime, 1000);
+  var clock = BpiClock.create(sbTime, null, { showDate: false });
 
   /* ─── 배터리 시뮬레이션 ─── */
   var batteryPct = document.getElementById('sb-battery-pct');
@@ -84,12 +80,12 @@
     var item = document.createElement('div');
     item.className = 'notif-item';
     item.innerHTML =
-      '<div class="notif-icon">' + (icon || '📬') + '</div>' +
+      '<div class="notif-icon">' + (icon || '\uD83D\uDCEC') + '</div>' +
       '<div class="notif-content">' +
         '<div class="notif-title">' + title + '</div>' +
         '<div class="notif-body">' + body + '</div>' +
       '</div>' +
-      '<div class="notif-time">' + (time || '지금') + '</div>';
+      '<div class="notif-time">' + (time || '\uC9C0\uAE08') + '</div>';
 
     /* 스와이프로 삭제 */
     var startX = 0;

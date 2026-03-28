@@ -1,0 +1,70 @@
+/* ──────────────────────────────────────────────────────────
+   [Clean Architecture] Presentation Layer - Style
+
+   역할: 카메라 앱 전체 스타일시트
+   수행범위: 뷰파인더, 촬영 버튼, 모드 선택, 타이머 오버레이 스타일
+   의존방향: camera.html 구조
+   SOLID: SRP — 카메라 앱 시각적 표현만 담당
+   ────────────────────────────────────────────────────────── */
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none; }
+body { font-family:-apple-system,BlinkMacSystemFont,'Noto Sans KR',sans-serif; background:#000; color:#fff; width:100vw; height:100vh; overflow:hidden; }
+.hidden { display:none !important; }
+#viewfinder { position:fixed; top:0; left:0; right:0; bottom:180px; overflow:hidden; }
+#viewfinder-gradient { position:absolute; inset:0; background:radial-gradient(ellipse at 50% 40%,#1a3a5c 0%,#0a1520 50%,#050a10 100%); }
+#grid-overlay { position:absolute; inset:0; pointer-events:none; }
+.grid-line { position:absolute; background:rgba(255,255,255,0.15); }
+.grid-line.h1 { top:33.33%; left:0; right:0; height:1px; }
+.grid-line.h2 { top:66.66%; left:0; right:0; height:1px; }
+.grid-line.v1 { left:33.33%; top:0; bottom:0; width:1px; }
+.grid-line.v2 { left:66.66%; top:0; bottom:0; width:1px; }
+#focus-ring { position:absolute; width:70px; height:70px; pointer-events:none; }
+.focus-corner { position:absolute; width:16px; height:16px; border-color:#ffd700; border-style:solid; border-width:0; }
+.focus-corner.tl { top:0; left:0; border-top-width:2px; border-left-width:2px; }
+.focus-corner.tr { top:0; right:0; border-top-width:2px; border-right-width:2px; }
+.focus-corner.bl { bottom:0; left:0; border-bottom-width:2px; border-left-width:2px; }
+.focus-corner.br { bottom:0; right:0; border-bottom-width:2px; border-right-width:2px; }
+@keyframes focus-pulse { 0%{transform:scale(1.2);opacity:.5} 50%{transform:scale(1);opacity:1} 100%{transform:scale(1);opacity:1} }
+#focus-ring.focusing { animation:focus-pulse .5s ease-out forwards; }
+#level-indicator { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:120px; height:2px; pointer-events:none; opacity:.4; }
+.level-line { width:100%; height:100%; background:#fff; border-radius:1px; }
+#top-bar { position:fixed; top:0; left:0; right:0; height:80px; padding:36px 12px 0; display:flex; align-items:center; justify-content:space-around; background:linear-gradient(180deg,rgba(0,0,0,.6) 0%,transparent 100%); z-index:10; }
+.top-btn { background:none; border:none; color:#fff; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:2px; padding:6px 10px; border-radius:8px; transition:background .15s; }
+.top-btn:active { background:rgba(255,255,255,.15); }
+.top-btn svg { width:22px; height:22px; fill:#fff; }
+.top-btn.active svg { fill:#ffd700; }
+.btn-label { font-size:9px; opacity:.7; }
+.hdr-text,.ratio-text { font-size:13px; font-weight:600; opacity:.8; }
+.top-btn.active .hdr-text { color:#ffd700; opacity:1; }
+#zoom-bar { position:fixed; bottom:210px; left:50%; transform:translateX(-50%); display:flex; gap:4px; padding:4px; background:rgba(0,0,0,.5); border-radius:24px; z-index:10; }
+.zoom-btn { width:40px; height:40px; border-radius:50%; border:none; background:transparent; color:#fff; font-size:11px; font-weight:600; cursor:pointer; transition:all .2s; }
+.zoom-btn.active { background:rgba(255,255,255,.2); color:#ffd700; }
+.zoom-btn:active { transform:scale(.9); }
+#bottom-bar { position:fixed; bottom:0; left:0; right:0; height:180px; background:#000; display:flex; flex-direction:column; align-items:center; padding:12px 0 30px; z-index:10; }
+#mode-selector { display:flex; gap:4px; margin-bottom:20px; }
+.mode-btn { background:none; border:none; color:rgba(255,255,255,.5); font-size:13px; font-weight:500; padding:6px 14px; cursor:pointer; transition:color .2s; border-radius:20px; }
+.mode-btn.active { color:#ffd700; font-weight:600; }
+#capture-row { display:flex; align-items:center; justify-content:center; gap:40px; width:100%; padding:0 40px; }
+#btn-gallery { width:44px; height:44px; border-radius:10px; border:2px solid rgba(255,255,255,.3); background:none; cursor:pointer; overflow:hidden; padding:0; }
+#gallery-thumb { width:100%; height:100%; background:linear-gradient(135deg,#2a4a6a,#1a2a3a); border-radius:8px; }
+#btn-capture { background:none; border:none; cursor:pointer; padding:0; transition:transform .1s; }
+#btn-capture:active { transform:scale(.92); }
+#capture-outer { width:72px; height:72px; border-radius:50%; border:3px solid #fff; display:flex; align-items:center; justify-content:center; padding:4px; }
+#capture-inner { width:100%; height:100%; border-radius:50%; background:#fff; transition:all .15s; }
+.video-mode #capture-inner { background:#ef4444; border-radius:8px; width:28px; height:28px; }
+.recording #capture-inner { animation:rec-pulse 1s infinite; }
+@keyframes rec-pulse { 0%,100%{opacity:1} 50%{opacity:.6} }
+#btn-switch { width:44px; height:44px; border-radius:50%; border:none; background:rgba(255,255,255,.1); cursor:pointer; display:flex; align-items:center; justify-content:center; transition:transform .3s; }
+#btn-switch:active { transform:rotate(180deg); }
+#btn-switch svg { width:24px; height:24px; fill:#fff; }
+#timer-overlay { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.5); z-index:100; }
+#timer-count { font-size:120px; font-weight:100; text-shadow:0 4px 20px rgba(0,0,0,.5); animation:timer-pop 1s ease-out; }
+@keyframes timer-pop { 0%{transform:scale(2);opacity:0} 30%{transform:scale(1);opacity:1} 100%{transform:scale(.8);opacity:0} }
+#capture-flash { position:fixed; inset:0; background:#fff; z-index:200; pointer-events:none; animation:flash .3s ease-out forwards; }
+@keyframes flash { 0%{opacity:.8} 100%{opacity:0} }
+#photo-preview { position:fixed; inset:0; background:#000; z-index:50; display:flex; flex-direction:column; }
+#preview-image { flex:1; background:linear-gradient(135deg,#1a3a5c,#0a1520); }
+#preview-actions { display:flex; gap:16px; padding:20px 40px 50px; justify-content:center; }
+#preview-actions button { flex:1; max-width:160px; padding:14px; border:none; border-radius:12px; font-size:15px; font-weight:500; cursor:pointer; }
+#preview-actions button:active { transform:scale(.95); }
+#btn-retake { background:rgba(255,255,255,.1); color:#fff; }
+#btn-save { background:#4a9eff; color:#fff; }

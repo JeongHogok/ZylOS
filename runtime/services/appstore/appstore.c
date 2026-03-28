@@ -1,21 +1,11 @@
-/*
- * BPI-OS AppStore: Package Verification & Installation Service
+/* ──────────────────────────────────────────────────────────
+ * [Clean Architecture] Application Layer - Service
  *
- * Implements package signing verification using RSA-2048 + SHA-256.
- * Only packages signed with a registered developer certificate
- * can be installed on the device.
- *
- * Package format (.ospkg):
- *   ZIP archive containing:
- *   - app.json      (manifest)
- *   - SIGNATURE     (RSA signature of manifest hash)
- *   - CERT          (developer certificate fingerprint)
- *   - index.html    (entry point)
- *   - css/, js/, assets/
- *
- * Copyright (c) 2026 BPI-OS Project
- * SPDX-License-Identifier: MIT
- */
+ * 역할: 앱스토어 패키지 서명 검증 및 설치 서비스
+ * 수행범위: RSA-2048+SHA-256 서명 검증, .ospkg 패키지 설치, 카탈로그 관리
+ * 의존방향: appstore.h
+ * SOLID: SRP — 패키지 검증과 설치 로직만 담당
+ * ────────────────────────────────────────────────────────── */
 
 #include "appstore.h"
 

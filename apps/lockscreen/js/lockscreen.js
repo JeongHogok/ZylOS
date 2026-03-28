@@ -1,6 +1,11 @@
-/*
- * BPI-OS 잠금화면
- */
+// ──────────────────────────────────────────────────────────
+// [Clean Architecture] Presentation Layer - Page
+//
+// 역할: 잠금화면 UI — 시계, PIN 입력, 스와이프 잠금해제
+// 수행범위: PIN 인증, 스와이프 제스처 잠금해제, 시간/날짜 표시
+// 의존방향: bpiI18n (i18n.js), BpiClock (clock.js), BpiGesture (gesture.js), BpiBridge (bridge.js)
+// SOLID: SRP — 잠금화면 UI와 인증 로직만 담당
+// ──────────────────────────────────────────────────────────
 
 (function () {
   'use strict';
@@ -12,39 +17,17 @@
   var enteredPin = '';
   var correctPin = '0000'; /* 기본 PIN */
 
-  /* ─── 시계 ─── */
+  /* ─── 시계 (shared BpiClock 사용) ─── */
   var lockTime = document.getElementById('lock-time');
   var lockDate = document.getElementById('lock-date');
+  var clock = BpiClock.create(lockTime, lockDate, { showDate: true, dateFormat: 'long' });
 
-  var DAYS_KO = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'];
-
-  function updateClock() {
-    var now = new Date();
-    lockTime.textContent =
-      String(now.getHours()).padStart(2, '0') + ':' +
-      String(now.getMinutes()).padStart(2, '0');
-
-    var y = now.getFullYear();
-    var m = now.getMonth() + 1;
-    var d = now.getDate();
-    lockDate.textContent = y + '년 ' + m + '월 ' + d + '일 ' + DAYS_KO[now.getDay()];
-  }
-  updateClock();
-  setInterval(updateClock, 1000);
-
-  /* ─── 스와이프로 PIN 화면 열기 ─── */
-  var touchStartY = 0;
-
-  lockMain.addEventListener('touchstart', function (e) {
-    touchStartY = e.touches[0].clientY;
-  });
-
-  lockMain.addEventListener('touchend', function (e) {
-    var dy = touchStartY - e.changedTouches[0].clientY;
-    if (dy > 80) {
+  /* ─── 스와이프로 PIN 화면 열기 (shared BpiGesture 사용) ─── */
+  var swipeGesture = BpiGesture.onSwipe(lockMain, function (e) {
+    if (e.direction === 'up') {
       showPinScreen();
     }
-  });
+  }, { direction: 'up', threshold: 80, axis: 'y' });
 
   /* 클릭으로도 PIN 화면 열기 (마우스 테스트용) */
   lockMain.addEventListener('click', function () {
@@ -100,7 +83,7 @@
     });
   }
 
-  /* ─── PIN 검증 ─── */
+  /* ─── PIN 검증 (shared BpiBridge 사용) ─── */
   function verifyPin() {
     if (enteredPin === correctPin) {
       /* 잠금 해제 성공 */
@@ -108,9 +91,7 @@
       document.body.style.opacity = '0';
       setTimeout(function () {
         /* WAM에게 잠금 해제 알림 */
-        if (window.navigator && window.navigator.system) {
-          window.navigator.system.app.close();
-        }
+        BpiBridge.closeApp();
       }, 300);
     } else {
       /* 실패 - 흔들기 애니메이션 */
@@ -128,8 +109,8 @@
   /* ─── 데모 알림 ─── */
   var notifList = document.getElementById('lock-notifications');
   var demoNotifs = [
-    { icon: '💬', title: '메시지', body: '안녕하세요! BPI-OS에 오신 것을 환영합니다.', time: '2분 전' },
-    { icon: '📧', title: '이메일', body: '시스템 업데이트가 준비되었습니다.', time: '15분 전' },
+    { icon: '\uD83D\uDCAC', title: '\uBA54\uC2DC\uC9C0', body: '\uC548\uB155\uD558\uC138\uC694! BPI-OS\uC5D0 \uC624\uC2E0 \uAC83\uC744 \uD658\uC601\uD569\uB2C8\uB2E4.', time: '2\uBD84 \uC804' },
+    { icon: '\uD83D\uDCE7', title: '\uC774\uBA54\uC77C', body: '\uC2DC\uC2A4\uD15C \uC5C5\uB370\uC774\uD2B8\uAC00 \uC900\uBE44\uB418\uC5C8\uC2B5\uB2C8\uB2E4.', time: '15\uBD84 \uC804' },
   ];
 
   demoNotifs.forEach(function (n) {
