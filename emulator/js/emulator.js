@@ -391,16 +391,19 @@
     if (!qsDrag.active) return;
     qsDrag.active = false;
     var dy = y - qsDrag.startY;
+    var source = qsDrag.source;
 
-    if (qsDrag.source === 'statusbar' && dy > 25) {
-      /* 상태바에서 아래로 드래그 → 열기 */
+    /* source 초기화 — click 핸들러 이전에 처리됨 */
+    /* 주의: click은 mouseup 직후 동기적으로 발생하므로 source를 click에서 참조 후 초기화 */
+
+    if (source === 'statusbar' && dy > 25) {
       openQsPanel();
-    } else if (qsDrag.source === 'panel' && dy < -25) {
-      /* 패널에서 위로 드래그 → 닫기 */
+      qsDrag.source = null; /* click 토글 방지 */
+    } else if (source === 'panel' && dy < -25) {
       closeQsPanel();
-    } else if (qsDrag.source === 'statusbar' && dy < -25 && qsOpen) {
-      /* 상태바에서 위로 드래그 (패널 열려 있을 때) → 닫기 */
+    } else if (source === 'statusbar' && dy < -25 && qsOpen) {
       closeQsPanel();
+      qsDrag.source = null;
     }
   }
 
@@ -408,8 +411,8 @@
   statusbar.addEventListener('mousedown', function (e) { qsDragStart(e.clientY, 'statusbar'); });
   statusbar.addEventListener('touchstart', function (e) { qsDragStart(e.touches[0].clientY, 'statusbar'); }, { passive: true });
   statusbar.addEventListener('click', function (e) {
-    /* 드래그 없이 클릭만 했을 때도 토글 */
-    if (!qsDrag.moved) {
+    /* 상태바에서 시작된 드래그/클릭만 처리 */
+    if (qsDrag.source === 'statusbar' && !qsDrag.moved) {
       if (qsOpen) closeQsPanel(); else openQsPanel();
     }
   });
