@@ -29,9 +29,16 @@
     }
   }, { direction: 'up', threshold: 80, axis: 'y' });
 
-  /* 클릭으로도 PIN 화면 열기 (마우스 테스트용) */
-  lockMain.addEventListener('click', function () {
-    showPinScreen();
+  /* 마우스 드래그(위로)로 PIN 화면 열기 — 클릭만으로는 열리지 않음 */
+  var dragStartY = 0;
+  lockMain.addEventListener('mousedown', function (e) {
+    dragStartY = e.clientY;
+  });
+  lockMain.addEventListener('mouseup', function (e) {
+    var dy = dragStartY - e.clientY;
+    if (dy > 60) {
+      showPinScreen();
+    }
   });
 
   function showPinScreen() {
