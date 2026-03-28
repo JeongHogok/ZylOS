@@ -16,17 +16,14 @@
       <button class="oobe-btn" onclick="nextStep()">시작하기</button>
     </div>
 
-    <!-- Step 2: Language -->
+    <!-- Step 2: Language (v0.1.0: ko/en only) -->
     <div class="oobe-step" id="step-language">
-      <h2>언어 선택</h2>
+      <h2 data-i18n="oobe.language_title">언어 선택 / Select Language</h2>
       <div class="oobe-list">
         <div class="oobe-option selected" data-lang="ko">한국어</div>
         <div class="oobe-option" data-lang="en">English</div>
-        <div class="oobe-option" data-lang="ja">日本語</div>
-        <div class="oobe-option" data-lang="zh">中文</div>
-        <div class="oobe-option" data-lang="es">Español</div>
       </div>
-      <button class="oobe-btn" onclick="nextStep()">다음</button>
+      <button class="oobe-btn" onclick="nextStep()" data-i18n="oobe.next">다음 / Next</button>
     </div>
 
     <!-- Step 3: WiFi -->
