@@ -34,9 +34,12 @@
 - 부트로더 → 검은 화면 → 컴포지터 시작까지 아무 표시 없음
 - **필요**: Plymouth 통합 또는 커스텀 스플래시
 
-### C4. 컴포지터 제스처 액션 미구현
-- 상단 스와이프(알림 드로어), 좌 스와이프(뒤로가기), 우 스와이프(앱 전환) 모두 로그만 출력
-- **필요**: wlroots scene graph 오버레이 또는 별도 앱으로 구현
+### ~~C4. 컴포지터 제스처 액션~~ ✅ 완료 (2026-03-28)
+- ~~로그만 출력~~ → 4개 액션 모두 구현:
+  - GoHome: home_screen_visible 플래그 + D-Bus 시그널
+  - NotificationPanel: wlr_scene_rect 오버레이 토글 + D-Bus 시그널
+  - GoBack: 포커스된 앱에 D-Bus 시그널 전달
+  - AppSwitcher: wl_list 순회로 view_focus() 호출
 
 ### C5. 앱 라이프사이클 미완성
 - suspend/resume가 no-op — 백그라운드 앱이 무한히 메모리 점유
