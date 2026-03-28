@@ -1,0 +1,13 @@
+[Unit]
+Description=Zyl OS Display Management Service
+After=dbus.service
+
+[Service]
+Type=dbus
+BusName=org.zylos.DisplayManager
+ExecStart=/usr/bin/zyl-display
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

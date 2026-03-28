@@ -707,6 +707,7 @@
       service: msg.service,
       method: msg.method,
       params: msg.params || {},
+      requestId: msg.requestId || null,  /* H17: 요청-응답 상관 ID */
       data: data
     });
     try {

@@ -1,17 +1,22 @@
-/* ──────────────────────────────────────────────────────────
+/* ----------------------------------------------------------
  * [Clean Architecture] Application Layer - UseCase
  *
- * 역할: 앱 라이프사이클 관리 — 실행, 일시정지, 재개, 종료
- * 수행범위: 앱 launch/suspend/resume/close 오퍼레이션 구현
- * 의존방향: lifecycle.h → manifest.h
- * SOLID: OCP — 추상 엔진/앱 인터페이스로 WebKitGTK 교체 가능
- * ────────────────────────────────────────────────────────── */
+ * 역할: 앱 라이프사이클 관리 -- 실행, 일시정지, 재개, 종료
+ * 수행범위: 앱 launch/suspend/resume/close 오퍼레이션,
+ *           H20 GTK 윈도우 관리 (풀스크린 강제, 크기 제약)
+ * 의존방향: lifecycle.h → manifest.h, gdk/gdk.h
+ * SOLID: OCP -- 추상 엔진/앱 인터페이스로 WebKitGTK 교체 가능
+ * ---------------------------------------------------------- */
 
 #include "lifecycle.h"
 
 #include <stdio.h>
 #include <string.h>
 #include <webkit/webkit.h>
+#include <gdk/gdk.h>
+
+/* --- H20: Statusbar height in pixels (reserved at top of screen) --- */
+#define ZYL_STATUSBAR_HEIGHT 36
 
 /* ─── Helper: inject JS into an app's webview ─── */
 static void inject_js(ZylAppInstance *instance, const char *script) {
@@ -50,7 +55,42 @@ ZylAppInstance *zyl_lifecycle_launch(ZylAppInterface *iface,
     instance->window = gtk_window_new();
     gtk_window_set_title(GTK_WINDOW(instance->window), manifest->name);
     gtk_window_set_decorated(GTK_WINDOW(instance->window), FALSE);
+
+    /* H20: Force fullscreen and apply size constraints.
+     * Query the monitor geometry to get screen dimensions, then
+     * reserve ZYL_STATUSBAR_HEIGHT at the top for the status bar.
+     * Set min=max size to prevent user resizing. */
     gtk_window_fullscreen(GTK_WINDOW(instance->window));
+
+    GdkDisplay *display = gdk_display_get_default();
+    if (display) {
+        GListModel *monitors = gdk_display_get_monitors(display);
+        if (monitors && g_list_model_get_n_items(monitors) > 0) {
+            GdkMonitor *monitor = g_list_model_get_item(monitors, 0);
+            if (monitor) {
+                GdkRectangle geom;
+                gdk_monitor_get_geometry(monitor, &geom);
+                int app_width  = geom.width;
+                int app_height = geom.height - ZYL_STATUSBAR_HEIGHT;
+
+                /* Prevent resize: set both default and min size */
+                gtk_window_set_default_size(GTK_WINDOW(instance->window),
+                                            app_width, app_height);
+                gtk_widget_set_size_request(instance->window,
+                                            app_width, app_height);
+
+                g_message("H20: Window sized %dx%d (screen %dx%d minus "
+                          "statusbar %d)",
+                          app_width, app_height,
+                          geom.width, geom.height,
+                          ZYL_STATUSBAR_HEIGHT);
+                g_object_unref(monitor);
+            }
+        }
+    }
+
+    /* Prevent resizability */
+    gtk_window_set_resizable(GTK_WINDOW(instance->window), FALSE);
 
     /* Create webview via the abstract engine */
     instance->webview_widget = engine->create_webview(engine, manifest,

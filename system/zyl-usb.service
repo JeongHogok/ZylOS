@@ -1,0 +1,14 @@
+[Unit]
+Description=Zyl OS USB/MTP Manager Service
+After=dbus.service
+Wants=dbus.service
+
+[Service]
+Type=dbus
+BusName=org.zylos.UsbManager
+ExecStart=/usr/bin/zyl-usb
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

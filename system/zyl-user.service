@@ -1,0 +1,14 @@
+[Unit]
+Description=Zyl OS User Manager
+After=dbus.service zyl-compositor.service
+Wants=zyl-compositor.service
+
+[Service]
+Type=dbus
+BusName=org.zylos.UserManager
+ExecStart=/usr/bin/zyl-user
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

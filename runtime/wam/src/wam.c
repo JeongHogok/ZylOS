@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <json-glib/json-glib.h>
 #include <webkit/webkit.h>
 
 static ZylWam *g_wam = NULL;
@@ -46,28 +47,32 @@ static void iface_remove_instance(ZylAppInterface *self,
 }
 
 /* ════════════════════════════════════════════════════════════════
- *  Bridge message handler
+ *  Bridge handler registry is managed by bridge.c (H5).
+ *  WAM-specific handlers for app lifecycle are registered below.
  * ════════════════════════════════════════════════════════════════ */
 
-static void on_bridge_message_cb(const char     *type,
+static void wam_handle_app_close(const char     *type,
                                  gpointer        msg_obj,
                                  ZylAppManifest *manifest,
                                  gpointer        user_data) {
-    ZylWam *wam = user_data;
+    (void)type;
     (void)msg_obj;
-
-    if (g_strcmp0(type, "app.close") == 0) {
+    ZylWam *wam = user_data;
+    if (manifest && manifest->id)
         zyl_lifecycle_close(&wam->iface, manifest->id);
-    } else if (g_strcmp0(type, "app.launch") == 0) {
-        /* msg_obj is a JsonObject*; extract appId */
-        JsonObject *obj = msg_obj;
+}
+
+static void wam_handle_app_launch(const char     *type,
+                                  gpointer        msg_obj,
+                                  ZylAppManifest *manifest,
+                                  gpointer        user_data) {
+    (void)type;
+    (void)manifest;
+    ZylWam *wam = user_data;
+    JsonObject *obj = msg_obj;
+    if (json_object_has_member(obj, "appId")) {
         const char *target = json_object_get_string_member(obj, "appId");
         zyl_lifecycle_launch(&wam->iface, &wam->engine, target);
-    } else if (g_strcmp0(type, "notification.create") == 0) {
-        JsonObject *obj = msg_obj;
-        const char *title = json_object_get_string_member(obj, "title");
-        const char *body  = json_object_get_string_member(obj, "body");
-        g_message("Notification: %s - %s", title, body);
     }
 }
 
@@ -84,10 +89,10 @@ static void on_webkit_bridge_message(WebKitUserContentManager *manager,
     JSCValue *value = webkit_javascript_result_get_js_value(result);
     char *msg_str = jsc_value_to_string(value);
 
-    zyl_bridge_dispatch(on_bridge_message_cb,
+    /* H5: Dispatch via handler registry; H13: error handling inside */
+    zyl_bridge_dispatch(WEBKIT_WEB_VIEW(instance->webview_widget),
                         instance->manifest,
-                        msg_str,
-                        g_wam);
+                        msg_str);
 
     g_free(msg_str);
 }
@@ -106,7 +111,11 @@ static GtkWidget *webkit_create_webview(ZylWebEngine   *self,
     webkit_settings_set_enable_developer_extras(settings, FALSE);
     webkit_settings_set_hardware_acceleration_policy(settings,
         WEBKIT_HARDWARE_ACCELERATION_POLICY_ALWAYS);
-    webkit_settings_set_allow_file_access_from_file_urls(settings, TRUE);
+
+    /* H10: Security hardening — restrict file and cross-origin access */
+    webkit_settings_set_allow_file_access_from_file_urls(settings, FALSE);
+    webkit_settings_set_allow_universal_access_from_file_urls(settings, FALSE);
+    webkit_settings_set_enable_write_console_messages_to_stdout(settings, FALSE);
 
     WebKitUserContentManager *ucm = webkit_user_content_manager_new();
     g_signal_connect(ucm, "script-message-received::bridge",
@@ -117,8 +126,29 @@ static GtkWidget *webkit_create_webview(ZylWebEngine   *self,
         webkit_web_view_new_with_user_content_manager(ucm));
     webkit_web_view_set_settings(webview, settings);
 
+    /* H11: TLS certificate verification — reject invalid certificates */
+    WebKitWebContext *web_ctx = webkit_web_context_get_default();
+    webkit_web_context_set_tls_errors_policy(web_ctx,
+        WEBKIT_TLS_ERRORS_POLICY_FAIL);
+
     /* Inject JS bridge from external file */
     zyl_bridge_inject(WAM_BRIDGE_JS, webview, manifest);
+
+    /* H10: Content Security Policy injection via user script */
+    const char *csp_script =
+        "var meta = document.createElement('meta');"
+        "meta.httpEquiv = 'Content-Security-Policy';"
+        "meta.content = \"default-src 'self'; script-src 'self' 'unsafe-inline';"
+        " style-src 'self' 'unsafe-inline'; img-src 'self' data:;\";"
+        "document.head.appendChild(meta);";
+
+    WebKitUserScript *csp_user_script = webkit_user_script_new(
+        csp_script,
+        WEBKIT_USER_CONTENT_INJECT_ALL_FRAMES,
+        WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_END,
+        NULL, NULL);
+    webkit_user_content_manager_add_script(ucm, csp_user_script);
+    webkit_user_script_unref(csp_user_script);
 
     g_object_unref(settings);
     return GTK_WIDGET(webview);
@@ -268,6 +298,11 @@ int main(int argc, char *argv[]) {
     wam.engine.load_uri       = webkit_load_uri;
     wam.engine.impl_data      = NULL;
 
+    /* Initialize bridge handler registry (H5) and override defaults with WAM handlers */
+    zyl_bridge_init();
+    zyl_bridge_register_handler("app.close",  wam_handle_app_close,  &wam);
+    zyl_bridge_register_handler("app.launch", wam_handle_app_launch, &wam);
+
     /* Start D-Bus service */
     wam.dbus_owner_id = zyl_dbus_service_start(dbus_methods, &wam);
 
@@ -279,6 +314,7 @@ int main(int argc, char *argv[]) {
     int status = g_application_run(wam.app, argc, argv);
 
     /* Cleanup */
+    zyl_bridge_cleanup();
     g_bus_unown_name(wam.dbus_owner_id);
     g_hash_table_destroy(wam.manifests);
     g_hash_table_destroy(wam.instances);

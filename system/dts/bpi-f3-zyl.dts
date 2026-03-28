@@ -1,0 +1,119 @@
+/*
+ * Zyl OS Device Tree for Banana Pi BPI-F3
+ * SpacemiT K1 SoC (RISC-V)
+ *
+ * This DTS overlay extends the SpacemiT BSP device tree
+ * with Zyl OS specific configurations.
+ *
+ * Base DT: spacemit/k1-bpi-f3.dts (from BSP kernel)
+ *
+ * Copyright (c) 2026 Zyl OS Project
+ * SPDX-License-Identifier: (GPL-2.0 OR MIT)
+ */
+
+/dts-v1/;
+/plugin/;
+
+/ {
+    compatible = "bananapi,bpi-f3", "spacemit,k1";
+
+    fragment@0 {
+        target-path = "/";
+        __overlay__ {
+            /* Zyl OS 식별 */
+            zyl-os {
+                compatible = "zylos,system";
+                os-version = "0.1.0";
+                device-name = "Zyl Phone F3";
+                nav-mode = "gesture"; /* gesture | softkeys | hardware */
+            };
+        };
+    };
+
+    /* MIPI DSI 패널 설정 */
+    fragment@1 {
+        target-path = "/soc/dsi@d420a800";
+        __overlay__ {
+            status = "okay";
+
+            panel@0 {
+                compatible = "zylos,default-panel";
+                reg = <0>;
+
+                /* 1080x2400 AMOLED @ 60Hz */
+                width-mm = <68>;
+                height-mm = <152>;
+
+                panel-timing {
+                    clock-frequency = <152340000>;
+                    hactive = <1080>;
+                    vactive = <2400>;
+                    hfront-porch = <32>;
+                    hback-porch = <32>;
+                    hsync-len = <4>;
+                    vfront-porch = <12>;
+                    vback-porch = <8>;
+                    vsync-len = <4>;
+                };
+            };
+        };
+    };
+
+    /* 터치스크린 (I2C) */
+    fragment@2 {
+        target-path = "/soc/i2c@d4010800";
+        __overlay__ {
+            status = "okay";
+
+            touchscreen@38 {
+                compatible = "focaltech,ft5x06";
+                reg = <0x38>;
+                interrupt-parent = <&gpio>;
+                /* interrupts = <GPIO_PIN IRQ_TYPE_EDGE_FALLING>; */
+                touchscreen-size-x = <1080>;
+                touchscreen-size-y = <2400>;
+                touchscreen-max-pressure = <255>;
+                touchscreen-fuzz-x = <2>;
+                touchscreen-fuzz-y = <2>;
+            };
+        };
+    };
+
+    /* GPU (IMG BXE-2-32) — 독점 드라이버 사용 */
+    fragment@3 {
+        target-path = "/soc/gpu@c0000000";
+        __overlay__ {
+            status = "okay";
+            /* 독점 PVR 드라이버가 런타임에 설정 */
+        };
+    };
+
+    /* 오디오 코덱 */
+    fragment@4 {
+        target-path = "/soc/i2s@d4026800";
+        __overlay__ {
+            status = "okay";
+        };
+    };
+
+    /* WiFi (SDIO) */
+    fragment@5 {
+        target-path = "/soc/mmc@d4281000";
+        __overlay__ {
+            status = "okay";
+            /* WiFi 모듈 SDIO 인터페이스 */
+            non-removable;
+            bus-width = <4>;
+            cap-sdio-irq;
+        };
+    };
+
+    /* Bluetooth (UART) */
+    fragment@6 {
+        target-path = "/soc/serial@d4017800";
+        __overlay__ {
+            status = "okay";
+            /* BT HCI UART */
+        };
+    };
+};

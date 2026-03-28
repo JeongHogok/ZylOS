@@ -140,6 +140,22 @@
     }
   }
 
+  /* ─── Toast notification ─── */
+  function showToast(message) {
+    var existing = document.getElementById('browser-toast');
+    if (existing) existing.remove();
+    var toast = document.createElement('div');
+    toast.id = 'browser-toast';
+    toast.textContent = message;
+    toast.style.cssText =
+      'position:fixed;bottom:60px;left:50%;transform:translateX(-50%);' +
+      'background:rgba(0,0,0,0.8);color:#fff;padding:10px 20px;' +
+      'border-radius:8px;font-size:13px;z-index:9999;' +
+      'animation:fadeOut 0.5s ease 2s forwards;';
+    document.body.appendChild(toast);
+    setTimeout(function () { toast.remove(); }, 2500);
+  }
+
   /* ─── Show New Tab Page ─── */
   function showNewTabPage() {
     newTabPage.classList.add('active');
@@ -177,12 +193,13 @@
         tab.title = page.title;
         pageContent.innerHTML = page.html;
       } else {
+        /* H9: In emulator (no native WebView), inform user about real loading */
+        showToast('Real URL loading available on device');
         tab.title = domain || url;
         pageContent.innerHTML =
           '<div class="sim-header"><h1>' + escapeHtml(domain || url) + '</h1>' +
-          '<p>Page loaded successfully.</p></div>' +
-          '<div class="sim-block"></div><div class="sim-block"></div>' +
-          '<div class="sim-block"></div><div class="sim-block"></div>' +
+          '<p>Real URL loading available on device only.</p>' +
+          '<p style="opacity:0.5;font-size:13px;">On real hardware, this page loads via WebKitWebView.</p></div>' +
           '<div class="sim-block"></div><div class="sim-block"></div>' +
           '<div class="sim-block"></div><div class="sim-block"></div>';
       }

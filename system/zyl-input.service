@@ -1,0 +1,14 @@
+[Unit]
+Description=Zyl OS Input Service (keyboard, touch, hardware keys)
+After=dbus.service
+Requires=dbus.service
+PartOf=zyl-os.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/zyl-input
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=zyl-os.target
