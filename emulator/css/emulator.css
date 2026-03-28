@@ -104,7 +104,10 @@ body {
   height: 36px; background: rgba(0,0,0,0.4);
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 24px; font-size: 13px; font-weight: 600;
-  z-index: 50; position: relative; flex-shrink: 0;
+  z-index: 150; position: relative; flex-shrink: 0;
+  cursor: ns-resize; /* 드래그 가능 커서 힌트 */
+  /* 하단으로 드래그 영역 확장 */
+  padding-bottom: 6px; margin-bottom: -6px;
 }
 .emu-sb-right { display: flex; align-items: center; gap: 5px; }
 .sb-ico { width: 14px; height: 14px; fill: white; opacity: 0.85; }
@@ -242,17 +245,21 @@ body {
    Navigation Mode B: Gesture Bar (iOS style)
    ══════════════════════════════════════════ */
 #nav-gesture {
-  height: 28px; flex-shrink: 0;
+  height: 34px; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
   background: transparent; position: relative; z-index: 50;
+  cursor: grab;
+  /* 드래그 영역을 위로 확장 — 터치 타겟 확보 */
+  padding-top: 10px; margin-top: -10px;
 }
 #gesture-bar {
   width: 134px; height: 5px; border-radius: 3px;
   background: rgba(255,255,255,0.3); transition: all 0.2s;
-  cursor: grab;
+  pointer-events: none; /* 부모(nav-gesture)에서 이벤트 처리 */
 }
-#gesture-bar:hover { background: rgba(255,255,255,0.5); }
-#gesture-bar.dragging { background: white; cursor: grabbing; }
+#nav-gesture:hover #gesture-bar { background: rgba(255,255,255,0.5); }
+#nav-gesture.dragging #gesture-bar { background: white; }
+#nav-gesture.dragging { cursor: grabbing; }
 
 /* 제스처 바 위에 실시간 힌트 */
 #nav-gesture .gesture-hint {

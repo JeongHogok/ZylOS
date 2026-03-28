@@ -284,10 +284,30 @@
   /* ── 제스처 바 ── */
   var gesture = { active: false, startX: 0, startY: 0, startTime: 0 };
 
-  gestureBar.addEventListener('mousedown', onGStart);
-  gestureBar.addEventListener('touchstart', function (e) {
+  /* 제스처 이벤트를 nav-gesture 컨테이너 전체에서 감지 */
+  var gestureStartPos = null;
+
+  navGesture.addEventListener('mousedown', function (e) {
+    gestureStartPos = { x: e.clientX, y: e.clientY };
+    onGStart(e);
+  });
+  navGesture.addEventListener('touchstart', function (e) {
+    gestureStartPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
     onGStart({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY });
   }, { passive: true });
+
+  /* 클릭 폴백: mousedown 없이 click만 온 경우 또는 5px 이내면 → 홈 */
+  navGesture.addEventListener('click', function (e) {
+    if (!gestureStartPos) {
+      /* mousedown 없이 직접 click (JS .click() 호출 등) */
+      goHome();
+    } else {
+      var dx = Math.abs(e.clientX - gestureStartPos.x);
+      var dy = Math.abs(e.clientY - gestureStartPos.y);
+      if (dx < 5 && dy < 5) goHome();
+    }
+    gestureStartPos = null;
+  });
   document.addEventListener('mousemove', onGMove);
   document.addEventListener('touchmove', function (e) {
     if (gesture.active) onGMove({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY });
@@ -301,15 +321,15 @@
     gesture.startX = e.clientX;
     gesture.startY = e.clientY;
     gesture.startTime = Date.now();
-    gestureBar.classList.add('dragging');
+    navGesture.classList.add('dragging');
   }
 
-  function onGMove() { /* 색상 피드백만 — dragging 클래스로 처리 */ }
+  function onGMove() { /* drag tracking via onGEnd delta */ }
 
   function onGEnd(e) {
     if (!gesture.active) return;
     gesture.active = false;
-    gestureBar.classList.remove('dragging');
+    navGesture.classList.remove('dragging');
 
     var endX = e.clientX || (e.changedTouches && e.changedTouches[0].clientX) || gesture.startX;
     var endY = e.clientY || (e.changedTouches && e.changedTouches[0].clientY) || gesture.startY;
@@ -344,35 +364,78 @@
     qsDate.textContent = (now.getMonth()+1) + '월 ' + now.getDate() + '일 ' + days[now.getDay()];
   }
 
-  function toggleQsPanel() {
-    qsOpen = !qsOpen;
-    if (qsOpen) {
-      updateQsClock();
-      qsPanel.classList.remove('qs-hidden');
-    } else {
-      qsPanel.classList.add('qs-hidden');
+  function openQsPanel() {
+    if (qsOpen) return;
+    qsOpen = true;
+    updateQsClock();
+    qsPanel.classList.remove('qs-hidden');
+  }
+
+  function closeQsPanel() {
+    if (!qsOpen) return;
+    qsOpen = false;
+    qsPanel.classList.add('qs-hidden');
+  }
+
+  /* 상태바/패널 드래그 — 아래로 열기, 위로 닫기 */
+  var qsDrag = { active: false, startY: 0, source: null, moved: false };
+
+  function qsDragStart(y, source) {
+    qsDrag.active = true;
+    qsDrag.startY = y;
+    qsDrag.source = source;
+    qsDrag.moved = false;
+  }
+
+  function qsDragEnd(y) {
+    if (!qsDrag.active) return;
+    qsDrag.active = false;
+    var dy = y - qsDrag.startY;
+
+    if (qsDrag.source === 'statusbar' && dy > 25) {
+      /* 상태바에서 아래로 드래그 → 열기 */
+      openQsPanel();
+    } else if (qsDrag.source === 'panel' && dy < -25) {
+      /* 패널에서 위로 드래그 → 닫기 */
+      closeQsPanel();
+    } else if (qsDrag.source === 'statusbar' && dy < -25 && qsOpen) {
+      /* 상태바에서 위로 드래그 (패널 열려 있을 때) → 닫기 */
+      closeQsPanel();
     }
   }
 
-  /* 상태바 드래그로 퀵설정 열기 */
-  statusbar.addEventListener('mousedown', function (e) {
-    sbDrag.active = true; sbDrag.startY = e.clientY;
+  /* 상태바: 클릭으로 토글 + 드래그도 지원 */
+  statusbar.addEventListener('mousedown', function (e) { qsDragStart(e.clientY, 'statusbar'); });
+  statusbar.addEventListener('touchstart', function (e) { qsDragStart(e.touches[0].clientY, 'statusbar'); }, { passive: true });
+  statusbar.addEventListener('click', function (e) {
+    /* 드래그 없이 클릭만 했을 때도 토글 */
+    if (!qsDrag.moved) {
+      if (qsOpen) closeQsPanel(); else openQsPanel();
+    }
   });
-  statusbar.addEventListener('touchstart', function (e) {
-    sbDrag.active = true; sbDrag.startY = e.touches[0].clientY;
+
+  /* 패널 자체 드래그 (위로 올려서 닫기) */
+  qsPanel.addEventListener('mousedown', function (e) {
+    if (e.target.closest('button, input, .qs-tile')) return;
+    qsDragStart(e.clientY, 'panel');
+  });
+  qsPanel.addEventListener('touchstart', function (e) {
+    if (e.target.closest('button, input, .qs-tile')) return;
+    qsDragStart(e.touches[0].clientY, 'panel');
   }, { passive: true });
 
-  document.addEventListener('mouseup', function (e) {
-    if (!sbDrag.active) return;
-    sbDrag.active = false;
-    var dy = (e.clientY || 0) - sbDrag.startY;
-    if (dy > 30) toggleQsPanel();
+  /* 드래그 이동 감지 */
+  document.addEventListener('mousemove', function (e) {
+    if (qsDrag.active) qsDrag.moved = true;
   });
+  document.addEventListener('touchmove', function () {
+    if (qsDrag.active) qsDrag.moved = true;
+  });
+
+  /* 공통 드래그 종료 */
+  document.addEventListener('mouseup', function (e) { qsDragEnd(e.clientY || 0); });
   document.addEventListener('touchend', function (e) {
-    if (!sbDrag.active) return;
-    sbDrag.active = false;
-    var dy = (e.changedTouches ? e.changedTouches[0].clientY : 0) - sbDrag.startY;
-    if (dy > 30) toggleQsPanel();
+    qsDragEnd(e.changedTouches ? e.changedTouches[0].clientY : 0);
   });
 
   /* 퀵설정 타일 토글 */
@@ -384,14 +447,10 @@
   });
 
   /* 패널 핸들 클릭으로 닫기 */
-  qsPanel.querySelector('.qs-handle').addEventListener('click', function () {
-    if (qsOpen) toggleQsPanel();
-  });
+  qsPanel.querySelector('.qs-handle').addEventListener('click', closeQsPanel);
 
   /* 앱 영역 클릭 시 패널 닫기 */
-  viewport.addEventListener('click', function () {
-    if (qsOpen) toggleQsPanel();
-  });
+  viewport.addEventListener('click', function () { if (qsOpen) closeQsPanel(); });
 
   /* ═══ 제어 패널 ═══ */
   document.getElementById('btn-power').addEventListener('click', function () {
