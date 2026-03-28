@@ -369,17 +369,22 @@
     qsDate.textContent = (now.getMonth()+1) + '월 ' + now.getDate() + '일 ' + days[now.getDay()];
   }
 
+  var qsBackdrop = document.getElementById('qs-backdrop');
+
   function openQsPanel() {
     if (qsOpen) return;
     qsOpen = true;
     updateQsClock();
+    renderQsNotifications();
     qsPanel.classList.remove('qs-hidden');
+    if (qsBackdrop) qsBackdrop.classList.add('qs-backdrop-show');
   }
 
   function closeQsPanel() {
     if (!qsOpen) return;
     qsOpen = false;
     qsPanel.classList.add('qs-hidden');
+    if (qsBackdrop) qsBackdrop.classList.remove('qs-backdrop-show');
   }
 
   /* 상태바/패널 드래그 — 아래로 열기, 위로 닫기 */
@@ -456,11 +461,9 @@
     });
   });
 
-  /* 패널 핸들 클릭으로 닫기 */
+  /* 패널 핸들 / 백드롭 클릭으로 닫기 */
   qsPanel.querySelector('.qs-handle').addEventListener('click', closeQsPanel);
-
-  /* 앱 영역 클릭 시 패널 닫기 */
-  viewport.addEventListener('click', function () { if (qsOpen) closeQsPanel(); });
+  if (qsBackdrop) qsBackdrop.addEventListener('click', closeQsPanel);
 
   /* ═══ 제어 패널 ═══ */
   document.getElementById('btn-power').addEventListener('click', powerToggle);
@@ -472,6 +475,12 @@
     state.screenOn = !state.screenOn;
     frameEl.classList.toggle('screen-off', !state.screenOn);
     syslog('Screen ' + (state.screenOn ? 'ON' : 'OFF'), 'sys');
+    /* 화면 끌 때 열린 패널 모두 닫기 */
+    if (!state.screenOn) {
+      if (qsOpen) closeQsPanel();
+      if (state.recentsOpen) hideRecents();
+      hideToast();
+    }
     if (state.screenOn && isLocked()) launchApp('com.zylos.lockscreen');
   }
   var sidePower = document.getElementById('side-power');
@@ -530,10 +539,27 @@
   }
 
   function clearAllNotifications() {
-    notifications = notifications.filter(function(n) { return n.persistent; });
-    updateNotifBadge();
-    renderQsNotifications();
-    syslog('Notifications cleared', 'sys');
+    /* 카드 제거 애니메이션 후 실제 삭제 */
+    var list = document.getElementById('qs-notif-list');
+    var cards = list ? list.querySelectorAll('.qs-notif-card') : [];
+    if (cards.length === 0) {
+      notifications = notifications.filter(function(n) { return n.persistent; });
+      updateNotifBadge();
+      renderQsNotifications();
+      return;
+    }
+    cards.forEach(function(card, i) {
+      card.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
+      card.style.transitionDelay = (i * 50) + 'ms';
+      card.style.transform = 'translateX(100%)';
+      card.style.opacity = '0';
+    });
+    setTimeout(function() {
+      notifications = notifications.filter(function(n) { return n.persistent; });
+      updateNotifBadge();
+      renderQsNotifications();
+      syslog('Notifications cleared', 'sys');
+    }, cards.length * 50 + 350);
   }
 
   function updateNotifBadge() {

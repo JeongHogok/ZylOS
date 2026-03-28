@@ -128,6 +128,17 @@ body {
 /* ══════════════════════════════════════════
    Quick Settings Panel (상태바 풀다운)
    ══════════════════════════════════════════ */
+/* QS 백드롭 — 패널 뒤를 어둡게 + 터치 차단 */
+#qs-backdrop {
+  position: absolute; inset: 0; z-index: 140;
+  background: rgba(0,0,0,0.4);
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.3s;
+}
+#qs-backdrop.qs-backdrop-show {
+  opacity: 1; pointer-events: auto;
+}
+
 #qs-panel {
   position: absolute; top: 0; left: 0; right: 0;
   z-index: 150; overflow: hidden;
@@ -436,9 +447,21 @@ body {
   display: flex; gap: 10px; padding: 12px 14px;
   background: rgba(255,255,255,0.04); border-radius: 12px;
   margin-bottom: 6px; cursor: pointer;
-  transition: transform 0.2s, opacity 0.3s, background 0.15s;
+  transition: transform 0.25s ease, opacity 0.25s ease, background 0.15s;
   align-items: flex-start;
+  animation: notif-card-in 0.3s ease-out both;
 }
+.qs-notif-card:nth-child(1) { animation-delay: 0s; }
+.qs-notif-card:nth-child(2) { animation-delay: 0.05s; }
+.qs-notif-card:nth-child(3) { animation-delay: 0.1s; }
+.qs-notif-card:nth-child(4) { animation-delay: 0.15s; }
+.qs-notif-card:nth-child(5) { animation-delay: 0.2s; }
+
+@keyframes notif-card-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 .qs-notif-card:active { background: rgba(255,255,255,0.1); }
 .qs-notif-icon { font-size: 20px; flex-shrink: 0; margin-top: 2px; }
 .qs-notif-content { flex: 1; min-width: 0; }
