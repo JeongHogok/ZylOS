@@ -382,7 +382,7 @@
   var qsBackdrop = document.getElementById('qs-backdrop');
 
   function openQsPanel() {
-    if (qsOpen) return;
+    if (qsOpen || isLocked()) return;
     qsOpen = true;
     updateQsClock();
     renderQsNotifications();
