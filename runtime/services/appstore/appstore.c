@@ -39,6 +39,78 @@ struct ZylAppStore {
     bool dev_mode;              /* 개발자 모드 (서명 우회) */
 };
 
+/* ─── 보안: ZIP 매직 바이트 검증 ─── */
+static bool validate_zip_magic(const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return false;
+    unsigned char magic[4];
+    size_t rd = fread(magic, 1, 4, f);
+    fclose(f);
+    if (rd < 4) return false;
+    /* PK\x03\x04 (local file header) or PK\x05\x06 (empty archive) */
+    return magic[0] == 0x50 && magic[1] == 0x4B &&
+           (magic[2] == 0x03 || magic[2] == 0x05);
+}
+
+/* ─── 보안: 경로 순회 공격 탐지 (재귀 디렉토리 스캔) ─── */
+static bool scan_for_path_traversal(const char *dir) {
+    DIR *d = opendir(dir);
+    if (!d) return true; /* safe if can't open */
+    struct dirent *entry;
+    while ((entry = readdir(d)) != NULL) {
+        if (entry->d_name[0] == '.' && entry->d_name[1] == '\0') continue;
+        if (entry->d_name[0] == '.' && entry->d_name[1] == '.' &&
+            entry->d_name[2] == '\0') continue;
+
+        /* Check for path traversal patterns */
+        if (strstr(entry->d_name, "..") != NULL) {
+            fprintf(stderr, "[SECURITY] Path traversal detected: %s\n",
+                    entry->d_name);
+            closedir(d);
+            return false; /* UNSAFE */
+        }
+
+        /* Recurse into subdirectories */
+        char subpath[512];
+        snprintf(subpath, sizeof(subpath), "%s/%s", dir, entry->d_name);
+        struct stat st;
+        if (stat(subpath, &st) == 0 && S_ISDIR(st.st_mode)) {
+            if (!scan_for_path_traversal(subpath)) {
+                closedir(d);
+                return false;
+            }
+        }
+    }
+    closedir(d);
+    return true; /* SAFE */
+}
+
+/* ─── 보안: 패키지 파일 크기 제한 검사 ─── */
+#define MAX_PACKAGE_SIZE (50 * 1024 * 1024) /* 50 MB */
+
+static bool check_package_size(const char *path, size_t max_bytes) {
+    struct stat st;
+    if (stat(path, &st) != 0) return false;
+    return (size_t)st.st_size <= max_bytes;
+}
+
+/* ─── 보안: 쉘 인자에 대한 안전 경로 검증 ─── */
+static bool is_safe_path(const char *path) {
+    if (!path) return false;
+    for (const char *p = path; *p; p++) {
+        if (*p == '\'' || *p == '"' || *p == '`' || *p == '$' ||
+            *p == '|' || *p == ';' || *p == '&' || *p == '\n') {
+            fprintf(stderr, "[SECURITY] Unsafe character in path: 0x%02x\n",
+                    (unsigned char)*p);
+            return false;
+        }
+    }
+    return true;
+}
+
+/* ─── 보안: 추출된 패키지 내용 검증 ─── */
+static bool validate_package_contents(const char *extract_dir);
+
 /* ─── 유틸리티: 파일 존재 확인 ─── */
 static bool file_exists(const char *path) {
     struct stat st;
@@ -204,6 +276,29 @@ static ZylPackageMeta *parse_app_json(const char *json_path) {
     return meta;
 }
 
+/* ─── 보안: 추출된 패키지 내용 검증 (구현) ─── */
+static bool validate_package_contents(const char *extract_dir) {
+    char manifest_path[512];
+    snprintf(manifest_path, sizeof(manifest_path),
+             "%s/%s", extract_dir, MANIFEST_FILE);
+    if (!file_exists(manifest_path)) {
+        fprintf(stderr, "[SECURITY] Missing %s in extracted package\n",
+                MANIFEST_FILE);
+        return false;
+    }
+
+    /* Parse app.json and check required fields exist */
+    ZylPackageMeta *meta = parse_app_json(manifest_path);
+    if (!meta) {
+        fprintf(stderr, "[SECURITY] Failed to parse %s in extracted package\n",
+                MANIFEST_FILE);
+        return false;
+    }
+
+    zyl_package_meta_free(meta);
+    return true;
+}
+
 /* ─── 인증서 검색 ─── */
 static ZylDeveloperCert *find_cert(ZylAppStore *store,
                                     const char *fingerprint) {
@@ -228,6 +323,12 @@ ZylAppStore *zyl_appstore_create(const char *trust_store_path,
     store->app_install_dir = strdup(app_install_dir);
     store->certs_capacity = 64;
     store->certs = calloc(store->certs_capacity, sizeof(ZylDeveloperCert));
+    if (!store->certs) {
+        free(store->trust_store_path);
+        free(store->app_install_dir);
+        free(store);
+        return NULL;
+    }
     store->n_certs = 0;
     store->dev_mode = false;
 
@@ -267,6 +368,26 @@ ZylPkgSignatureStatus zyl_appstore_verify_package(
 
     if (!store || !package_path) return ZYL_PKG_UNSIGNED;
     if (out_meta) *out_meta = NULL;
+
+    /* 보안: 경로에 쉘 인젝션 문자가 없는지 검증 */
+    if (!is_safe_path(package_path)) {
+        fprintf(stderr, "[SECURITY] Unsafe characters in package path\n");
+        return ZYL_PKG_UNSIGNED;
+    }
+
+    /* 보안: ZIP 매직 바이트 검증 */
+    if (!validate_zip_magic(package_path)) {
+        fprintf(stderr, "[SECURITY] Invalid ZIP magic bytes: %s\n",
+                package_path);
+        return ZYL_PKG_UNSIGNED;
+    }
+
+    /* 보안: 패키지 크기 제한 (50MB) */
+    if (!check_package_size(package_path, MAX_PACKAGE_SIZE)) {
+        fprintf(stderr, "[SECURITY] Package exceeds size limit: %s\n",
+                package_path);
+        return ZYL_PKG_UNSIGNED;
+    }
 
     /* 개발자 모드: 서명 검증 우회, 메타데이터만 추출 */
     if (store->dev_mode) {
@@ -310,6 +431,22 @@ ZylPkgSignatureStatus zyl_appstore_verify_package(
     int ret = system(cmd);
     if (ret != 0) {
         fprintf(stderr, "[APPSTORE] Failed to extract package: %s\n",
+                package_path);
+        rm_rf(tmp_dir);
+        return ZYL_PKG_UNSIGNED;
+    }
+
+    /* 보안: 경로 순회 공격 탐지 */
+    if (!scan_for_path_traversal(tmp_dir)) {
+        fprintf(stderr, "[SECURITY] Path traversal detected in package: %s\n",
+                package_path);
+        rm_rf(tmp_dir);
+        return ZYL_PKG_UNSIGNED;
+    }
+
+    /* 보안: 필수 패키지 파일 존재 확인 */
+    if (!validate_package_contents(tmp_dir)) {
+        fprintf(stderr, "[SECURITY] Package content validation failed: %s\n",
                 package_path);
         rm_rf(tmp_dir);
         return ZYL_PKG_UNSIGNED;
@@ -500,6 +637,13 @@ ZylInstallResult zyl_appstore_install(ZylAppStore *store,
     }
 
     /* 4. 패키지 내용을 설치 디렉토리로 추출 */
+    /* 보안: 쉘 인젝션 방지를 위한 경로 검증 */
+    if (!is_safe_path(package_path) || !is_safe_path(install_dir)) {
+        fprintf(stderr, "[SECURITY] Unsafe characters in path\n");
+        zyl_package_meta_free(meta);
+        return ZYL_INSTALL_ERR_IO;
+    }
+
     char cmd[1024];
     snprintf(cmd, sizeof(cmd),
              "unzip -o -q '%s' -d '%s' 2>/dev/null", package_path, install_dir);
@@ -509,6 +653,14 @@ ZylInstallResult zyl_appstore_install(ZylAppStore *store,
         rm_rf(install_dir);
         zyl_package_meta_free(meta);
         return ZYL_INSTALL_ERR_IO;
+    }
+
+    /* 보안: 추출 후 경로 순회 공격 탐지 */
+    if (!scan_for_path_traversal(install_dir)) {
+        fprintf(stderr, "[SECURITY] Path traversal detected in installed package\n");
+        rm_rf(install_dir);
+        zyl_package_meta_free(meta);
+        return ZYL_INSTALL_ERR_CORRUPT_PACKAGE;
     }
 
     /* 5. 추출 후 app.json 필수 필드 재확인 (entry 포인트) */

@@ -218,9 +218,15 @@ var ZylServices = (function () {
       if (storage._cache && Date.now() - storage._cacheTime < 30000) {
         return storage._cache;
       }
-      /* 동기적 접근 시 캐시 반환 */
+      /* 캐시가 없으면 비동기 프리페치 시작하고 현재 캐시(또는 기본값) 반환 */
+      /* 다음 호출 시 캐시에서 실제 값을 받을 수 있음 */
       storage._fetchFromHal();
       return storage._cache || { total: 0, used: 0, available: 0 };
+    },
+
+    /* 서비스 초기화 시 호출 — 부팅 시 캐시를 미리 채움 */
+    prefetch: function () {
+      storage._fetchFromHal();
     },
 
     getFormatted: function () {

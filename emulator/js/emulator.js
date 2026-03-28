@@ -870,6 +870,9 @@
     /* 서비스에 디바이스 프로필 적용 */
     if (typeof ZylServices !== 'undefined') {
       ZylServices.device.applyProfile(profile);
+      if (ZylServices.storage && ZylServices.storage.prefetch) {
+        ZylServices.storage.prefetch();
+      }
     }
 
     syslog('Zyl OS v0.1.0 booting...', 'sys');
