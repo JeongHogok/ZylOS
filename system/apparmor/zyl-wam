@@ -1,0 +1,65 @@
+# ----------------------------------------------------------
+# [Clean Architecture] Infrastructure Layer - Security Policy
+#
+# 역할: WAM (Web Application Manager) AppArmor 프로필
+# 수행범위: WAM 프로세스의 파일/네트워크/D-Bus 접근 제한
+# 의존방향: /usr/bin/zyl-wam 바이너리에 적용
+# SOLID: SRP — WAM 프로세스 격리 정책만 담당
+# ----------------------------------------------------------
+
+#include <tunables/global>
+
+profile zyl-wam /usr/bin/zyl-wam {
+  #include <abstractions/base>
+  #include <abstractions/dbus-session>
+  #include <abstractions/nameservice>
+
+  # WAM binary
+  /usr/bin/zyl-wam                  mr,
+
+  # Zyl OS shared resources (read-only)
+  /usr/share/zyl-os/**              r,
+
+  # Web engine libraries
+  /usr/lib/zyl-os/**                mr,
+  /usr/lib/@{multiarch}/**          mr,
+
+  # GPU / DRI access for hardware-accelerated rendering
+  /dev/dri/**                       rw,
+  /sys/devices/**/drm/**            r,
+
+  # Wayland socket
+  owner /run/user/*/wayland-*       rw,
+
+  # Temporary files (owner-only)
+  owner /tmp/zyl-wam-*              rw,
+  owner /tmp/zyl-wam-*/             rw,
+  owner /tmp/zyl-wam-*/**           rw,
+
+  # Web app data directories (owner-only)
+  owner /data/apps/**               rw,
+  owner /var/lib/zyl-os/wam/**      rw,
+
+  # Cache
+  owner /var/cache/zyl-os/wam/**    rw,
+
+  # D-Bus session bus
+  dbus (send, receive) bus=session
+       peer=(name=org.zylos.*),
+
+  # Network access for web content
+  network inet stream,
+  network inet dgram,
+  network inet6 stream,
+  network inet6 dgram,
+
+  # Deny direct hardware access beyond DRI
+  deny /dev/mem                     rwmlkx,
+  deny /dev/kmem                    rwmlkx,
+  deny /proc/kcore                  rwmlkx,
+
+  # Deny write to system directories
+  deny /usr/**                      w,
+  deny /etc/**                      w,
+  deny /boot/**                     rwmlkx,
+}

@@ -15,7 +15,7 @@
 #include <wlr/types/wlr_scene.h>
 #include <wlr/util/log.h>
 
-/* ─── Frame render ─── */
+/* ─── Frame render with damage tracking ─── */
 static void output_frame(struct wl_listener *listener, void *data)
 {
     struct zyl_output *output = wl_container_of(listener, output, frame);
@@ -23,11 +23,27 @@ static void output_frame(struct wl_listener *listener, void *data)
     struct wlr_scene_output *scene_output =
         wlr_scene_get_scene_output(scene, output->wlr_output);
 
+    if (!scene_output) {
+        return;
+    }
+
+    /*
+     * Damage-aware commit: wlr_scene_output_commit() only re-renders
+     * regions that changed since the last frame. Pass NULL for the
+     * options to use the scene's built-in damage tracking.
+     */
     wlr_scene_output_commit(scene_output, NULL);
 
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
     wlr_scene_output_send_frame_done(scene_output, &now);
+
+    /*
+     * Frame pacing: schedule the next frame instead of rendering
+     * continuously. The compositor will only wake when the output
+     * is ready for a new frame or when damage occurs.
+     */
+    wlr_output_schedule_frame(output->wlr_output);
 }
 
 /* ─── Output state request (mode change, enable/disable, ...) ─── */

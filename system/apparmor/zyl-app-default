@@ -1,0 +1,70 @@
+# ----------------------------------------------------------
+# [Clean Architecture] Infrastructure Layer - Security Policy
+#
+# 역할: 웹 앱 기본 AppArmor 프로필 (sandbox 기본값)
+# 수행범위: WAM에서 실행되는 개별 웹 앱의 접근 제한
+# 의존방향: WAM의 앱 프로세스에 적용
+# SOLID: SRP — 웹 앱 격리 정책만 담당
+# ----------------------------------------------------------
+
+#include <tunables/global>
+
+profile zyl-app-default {
+  #include <abstractions/base>
+
+  # Read-only access to Zyl OS shared resources
+  /usr/share/zyl-os/**              r,
+
+  # App's own data directory (owner-only)
+  owner /data/apps/@{profile_name}/**   rw,
+
+  # Shared app resources (read-only)
+  /usr/share/zyl-os/apps/**         r,
+
+  # Temporary files scoped to the app
+  owner /tmp/zyl-app-@{profile_name}-** rw,
+
+  # Cache scoped to the app
+  owner /var/cache/zyl-os/apps/@{profile_name}/** rw,
+
+  # GPU access for rendering
+  /dev/dri/**                       rw,
+
+  # Wayland socket (read-write for display)
+  owner /run/user/*/wayland-*       rw,
+
+  # D-Bus session: only org.zylos.* allowed
+  dbus (send) bus=session
+       peer=(name=org.zylos.*),
+  dbus (receive) bus=session
+       peer=(name=org.zylos.*),
+
+  # Network access for web apps
+  network inet stream,
+  network inet dgram,
+  network inet6 stream,
+  network inet6 dgram,
+
+  # Deny all device access beyond DRI
+  deny /dev/input/**                rwmlkx,
+  deny /dev/uinput                  rwmlkx,
+  deny /dev/fb*                     rwmlkx,
+  deny /dev/mem                     rwmlkx,
+  deny /dev/kmem                    rwmlkx,
+
+  # Deny write to system directories
+  deny /usr/**                      w,
+  deny /etc/**                      w,
+  deny /boot/**                     rwmlkx,
+  deny /proc/kcore                  rwmlkx,
+
+  # Deny access to other apps' data
+  deny /data/apps/*/**              rw,
+  # (re-allow own data via owner rule above)
+
+  # Deny access to user data outside app scope
+  deny /data/users/**               rwmlkx,
+
+  # Deny ptrace (prevents debugging other processes)
+  deny ptrace,
+}

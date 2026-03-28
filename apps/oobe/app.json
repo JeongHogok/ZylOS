@@ -1,0 +1,10 @@
+{
+  "id": "com.zylos.oobe",
+  "name": "Welcome",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "icon": "assets/oobe-icon.png",
+  "permissions": ["wifi", "i18n", "system"],
+  "type": "system",
+  "role": "oobe"
+}

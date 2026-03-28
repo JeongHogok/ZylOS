@@ -1,0 +1,72 @@
+# ----------------------------------------------------------
+# [Clean Architecture] Infrastructure Layer - Security Policy
+#
+# 역할: Zyl OS Compositor AppArmor 프로필
+# 수행범위: 컴포지터 프로세스의 파일/디바이스/소켓 접근 제한
+# 의존방향: /usr/bin/zyl-compositor 바이너리에 적용
+# SOLID: SRP — 컴포지터 프로세스 격리 정책만 담당
+# ----------------------------------------------------------
+
+#include <tunables/global>
+
+profile zyl-compositor /usr/bin/zyl-compositor {
+  #include <abstractions/base>
+  #include <abstractions/dbus-session>
+
+  # Compositor binary
+  /usr/bin/zyl-compositor           mr,
+
+  # Zyl OS shared resources (read-only)
+  /usr/share/zyl-os/**              r,
+
+  # wlroots and compositor libraries
+  /usr/lib/zyl-os/**                mr,
+  /usr/lib/@{multiarch}/**          mr,
+
+  # GPU / DRI / input device access
+  /dev/dri/**                       rw,
+  /dev/input/**                     r,
+  /dev/uinput                       rw,
+  /sys/devices/**/drm/**            r,
+  /sys/class/input/**               r,
+  /sys/class/drm/**                 r,
+
+  # Framebuffer (fallback rendering)
+  /dev/fb*                          rw,
+
+  # Wayland socket creation
+  owner /run/user/*/wayland-*       rw,
+
+  # Cursor themes
+  /usr/share/icons/**               r,
+  owner @{HOME}/.icons/**           r,
+
+  # XKB keyboard layouts
+  /usr/share/X11/xkb/**             r,
+
+  # Temporary files (owner-only)
+  owner /tmp/zyl-compositor-*       rw,
+
+  # Runtime state
+  owner /run/zyl-os/compositor/**   rw,
+
+  # D-Bus session bus (compositor signals)
+  dbus (send, receive) bus=session
+       peer=(name=org.zylos.*),
+
+  # Deny network access — compositor has no need
+  deny network inet stream,
+  deny network inet dgram,
+  deny network inet6 stream,
+  deny network inet6 dgram,
+
+  # Deny write to system directories
+  deny /usr/**                      w,
+  deny /etc/**                      w,
+  deny /boot/**                     rwmlkx,
+
+  # Deny direct memory access
+  deny /dev/mem                     rwmlkx,
+  deny /dev/kmem                    rwmlkx,
+  deny /proc/kcore                  rwmlkx,
+}

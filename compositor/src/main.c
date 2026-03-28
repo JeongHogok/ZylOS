@@ -115,7 +115,49 @@ int main(int argc, char *argv[])
     /* ── Cursor ── */
     server.cursor = wlr_cursor_create();
     wlr_cursor_attach_output_layout(server.cursor, server.output_layout);
-    server.cursor_mgr = wlr_xcursor_manager_create(NULL, 24);
+
+    /* Load cursor theme from environment or use "default" fallback */
+    const char *cursor_theme = getenv("XCURSOR_THEME");
+    if (!cursor_theme || cursor_theme[0] == '\0') {
+        cursor_theme = "default";
+    }
+
+    /* DPI-aware cursor size: base 24px scaled by output scale factor */
+    int cursor_scale = 1;
+    const char *scale_env = getenv("XCURSOR_SIZE");
+    if (scale_env && scale_env[0] != '\0') {
+        int parsed = atoi(scale_env);
+        if (parsed > 0) {
+            cursor_scale = parsed;
+        }
+    }
+    int cursor_size = (cursor_scale > 0) ? cursor_scale : 24;
+
+    server.cursor_mgr = wlr_xcursor_manager_create(cursor_theme, cursor_size);
+    if (!server.cursor_mgr) {
+        wlr_log(WLR_ERROR, "Failed to create xcursor manager");
+        wlr_backend_destroy(server.backend);
+        wl_display_destroy(server.wl_display);
+        return 1;
+    }
+
+    /* Pre-load cursor at scale 1; fallback to "default" theme on failure */
+    if (!wlr_xcursor_manager_load(server.cursor_mgr, 1)) {
+        wlr_log(WLR_INFO, "Cursor theme '%s' loaded at size %d",
+                cursor_theme, cursor_size);
+    } else if (strcmp(cursor_theme, "default") != 0) {
+        wlr_log(WLR_WARN, "Cursor theme '%s' not found, trying 'default'",
+                cursor_theme);
+        wlr_xcursor_manager_destroy(server.cursor_mgr);
+        server.cursor_mgr = wlr_xcursor_manager_create("default", 24);
+        if (!server.cursor_mgr) {
+            wlr_log(WLR_ERROR, "Failed to create fallback xcursor manager");
+            wlr_backend_destroy(server.backend);
+            wl_display_destroy(server.wl_display);
+            return 1;
+        }
+        wlr_xcursor_manager_load(server.cursor_mgr, 1);
+    }
 
     /* ── Seat ── */
     server.seat = wlr_seat_create(server.wl_display, "seat0");

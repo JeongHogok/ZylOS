@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Welcome to Zyl OS</title>
+  <link rel="stylesheet" href="css/oobe.css">
+</head>
+<body>
+  <div id="oobe-container">
+    <!-- Step 1: Welcome -->
+    <div class="oobe-step active" id="step-welcome">
+      <div class="oobe-logo">Zyl OS</div>
+      <h1>환영합니다</h1>
+      <p>새로운 모바일 경험을 시작합니다</p>
+      <button class="oobe-btn" onclick="nextStep()">시작하기</button>
+    </div>
+
+    <!-- Step 2: Language -->
+    <div class="oobe-step" id="step-language">
+      <h2>언어 선택</h2>
+      <div class="oobe-list">
+        <div class="oobe-option selected" data-lang="ko">한국어</div>
+        <div class="oobe-option" data-lang="en">English</div>
+        <div class="oobe-option" data-lang="ja">日本語</div>
+        <div class="oobe-option" data-lang="zh">中文</div>
+        <div class="oobe-option" data-lang="es">Español</div>
+      </div>
+      <button class="oobe-btn" onclick="nextStep()">다음</button>
+    </div>
+
+    <!-- Step 3: WiFi -->
+    <div class="oobe-step" id="step-wifi">
+      <h2>Wi-Fi 연결</h2>
+      <div id="wifi-list" class="oobe-list">
+        <div class="oobe-option">네트워크 검색 중...</div>
+      </div>
+      <button class="oobe-btn" onclick="nextStep()">건너뛰기</button>
+    </div>
+
+    <!-- Step 4: PIN Setup -->
+    <div class="oobe-step" id="step-pin">
+      <h2>화면 잠금 설정</h2>
+      <p>4자리 PIN을 설정하세요</p>
+      <input type="password" id="pin-input" maxlength="4" placeholder="PIN">
+      <input type="password" id="pin-confirm" maxlength="4" placeholder="PIN 확인">
+      <div id="pin-msg"></div>
+      <button class="oobe-btn" onclick="setupPin()">설정</button>
+      <button class="oobe-btn-skip" onclick="nextStep()">나중에</button>
+    </div>
+
+    <!-- Step 5: Terms -->
+    <div class="oobe-step" id="step-terms">
+      <h2>이용 약관</h2>
+      <div class="oobe-terms-box">
+        Zyl OS는 MIT 라이선스 하에 배포되는 오픈소스 모바일 운영체제입니다.
+        이 소프트웨어는 "있는 그대로" 제공되며, 어떠한 종류의 보증도 하지 않습니다.
+      </div>
+      <label class="oobe-checkbox">
+        <input type="checkbox" id="terms-agree">
+        <span>이용 약관에 동의합니다</span>
+      </label>
+      <button class="oobe-btn" onclick="acceptTerms()">동의</button>
+    </div>
+
+    <!-- Step 6: Complete -->
+    <div class="oobe-step" id="step-complete">
+      <div class="oobe-logo">✓</div>
+      <h1>설정 완료</h1>
+      <p>Zyl OS를 즐기세요!</p>
+      <button class="oobe-btn" onclick="finishSetup()">시작</button>
+    </div>
+
+    <!-- Progress dots -->
+    <div id="progress-dots">
+      <span class="dot active"></span>
+      <span class="dot"></span>
+      <span class="dot"></span>
+      <span class="dot"></span>
+      <span class="dot"></span>
+      <span class="dot"></span>
+    </div>
+  </div>
+  <script src="../shared/bridge.js"></script>
+  <script src="js/oobe.js"></script>
+</body>
+</html>

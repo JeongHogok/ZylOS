@@ -1,0 +1,34 @@
+/* ──────────────────────────────────────────────────────────
+ * [Clean Architecture] Presentation Layer - Style
+ *
+ * 역할: OOBE (첫 실행 설정 마법사) 스타일
+ * 수행범위: 환영 화면, 언어/WiFi/PIN 설정, 약관 동의 UI
+ * 의존방향: oobe.html
+ * SOLID: SRP — OOBE 시각적 표현만 담당
+ * ────────────────────────────────────────────────────────── */
+* { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+body { font-family: -apple-system, 'Noto Sans KR', sans-serif; background: #0a0a1a; color: white; width: 100vw; height: 100vh; overflow: hidden; }
+#oobe-container { width: 100%; height: 100%; position: relative; }
+.oobe-step { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 40px 24px 80px; opacity: 0; pointer-events: none; transition: opacity 0.4s, transform 0.4s; transform: translateX(40px); }
+.oobe-step.active { opacity: 1; pointer-events: auto; transform: translateX(0); }
+.oobe-logo { font-size: 48px; font-weight: 100; letter-spacing: 4px; margin-bottom: 8px; }
+h1 { font-size: 28px; font-weight: 300; }
+h2 { font-size: 22px; font-weight: 400; }
+p { font-size: 15px; opacity: 0.6; text-align: center; max-width: 300px; }
+.oobe-btn { width: 280px; padding: 14px; border: none; border-radius: 14px; background: #4a9eff; color: white; font-size: 16px; font-weight: 500; cursor: pointer; transition: transform 0.1s; }
+.oobe-btn:active { transform: scale(0.97); }
+.oobe-btn-skip { background: none; border: none; color: rgba(255,255,255,0.4); font-size: 14px; cursor: pointer; padding: 8px; }
+.oobe-list { width: 100%; max-width: 320px; display: flex; flex-direction: column; gap: 6px; max-height: 250px; overflow-y: auto; }
+.oobe-option { padding: 14px 16px; background: rgba(255,255,255,0.06); border-radius: 12px; cursor: pointer; transition: background 0.15s; border: 2px solid transparent; }
+.oobe-option:active { background: rgba(255,255,255,0.12); }
+.oobe-option.selected { border-color: #4a9eff; background: rgba(74,158,255,0.1); }
+input[type="password"] { width: 200px; padding: 12px 16px; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; background: rgba(255,255,255,0.06); color: white; font-size: 24px; text-align: center; letter-spacing: 8px; outline: none; }
+input[type="password"]:focus { border-color: #4a9eff; }
+#pin-msg { font-size: 13px; color: #ef4444; min-height: 20px; }
+.oobe-terms-box { width: 100%; max-width: 320px; padding: 16px; background: rgba(255,255,255,0.04); border-radius: 12px; font-size: 13px; opacity: 0.6; max-height: 120px; overflow-y: auto; line-height: 1.6; }
+.oobe-checkbox { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; margin: 8px 0; }
+.oobe-checkbox input { width: 18px; height: 18px; }
+#progress-dots { position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.2); transition: all 0.3s; }
+.dot.active { background: #4a9eff; width: 20px; border-radius: 4px; }
+.oobe-list::-webkit-scrollbar { display: none; }

@@ -1,0 +1,13 @@
+---
+Language: C
+BasedOnStyle: LLVM
+IndentWidth: 4
+UseTab: Never
+BreakBeforeBraces: Linux
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: false
+ColumnLimit: 100
+PointerAlignment: Right
+SortIncludes: true
+IncludeBlocks: Regroup
+---
