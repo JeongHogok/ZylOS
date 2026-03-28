@@ -154,18 +154,31 @@
     setTimeout(function () { viewport.classList.remove('launching'); }, 300);
 
     state.previousApp = state.currentApp;
-    appFrame.src = app.path;
+    appFrame.src = app.path + '?v=' + Date.now();
     state.currentApp = appId;
 
-    /* 잠금화면 로드 시 기존 알림 전부 전달 */
-    if (appId === 'com.zylos.lockscreen') {
-      appFrame.onload = function () {
-        notifications.forEach(function (n) {
-          broadcastToCurrentApp('notification.push', n);
-        });
-        appFrame.onload = null;
-      };
-    }
+    /* 앱 로드 후 상태 전달 — JS 실행 완료 대기 위해 200ms 지연 */
+    var loadAppId = appId;
+    appFrame.onload = function () {
+      setTimeout(function () {
+        /* 잠금화면: 알림 + PIN */
+        if (loadAppId === 'com.zylos.lockscreen') {
+          notifications.forEach(function (n) {
+            broadcastToCurrentApp('notification.push', n);
+          });
+          if (_currentPin !== '0000') {
+            broadcastToCurrentApp('settings.pinChanged', { pin: _currentPin });
+          }
+        }
+        /* 홈: 배경화면 */
+        if (loadAppId === 'com.zylos.home') {
+          if (_currentWallpaper !== 'default') {
+            broadcastToCurrentApp('settings.wallpaperChanged', { wallpaper: _currentWallpaper });
+          }
+        }
+      }, 200);
+      appFrame.onload = null;
+    };
 
     if (!state.runningApps.find(function (a) { return a.id === appId; })) {
       state.runningApps.push({ id: appId, name: app.name });
@@ -720,36 +733,69 @@
   }
 
   /* ── Apply real side effects when a setting changes ── */
-  function applySettingSideEffect(category, key, value) {
-    var wifiIcon = document.getElementById('sb-wifi');
-    var btIcon   = document.getElementById('sb-bt');
+  /* ─── 설정 변경 → 에뮬레이터에 실제 반영 ─── */
+  var _currentPin = '0000';
+  var _currentWallpaper = 'default';
+  var _wallpaperGradients = {
+    'default':         'linear-gradient(160deg, #0a0a1a 0%, #0d1b2a 40%, #1b2838 100%)',
+    'gradient-blue':   'linear-gradient(135deg, #0c3547 0%, #1a6b8a 50%, #0a2a3a 100%)',
+    'gradient-purple': 'linear-gradient(135deg, #1a0a2e 0%, #4a2080 50%, #1a0a2e 100%)',
+    'gradient-dark':   'linear-gradient(160deg, #050505 0%, #1a1a1a 50%, #0a0a0a 100%)',
+    'gradient-sunset':  'linear-gradient(135deg, #2d1b3d 0%, #b44a2a 50%, #1a0a2e 100%)',
+  };
 
+  function applySettingSideEffect(category, key, value) {
+    /* ── WiFi: 상태바 아이콘 투명도 ── */
     if (category === 'wifi' && key === 'enabled') {
-      if (wifiIcon) wifiIcon.style.display = value ? '' : 'none';
+      var sbIcos = document.querySelectorAll('#emu-statusbar .sb-ico');
+      if (sbIcos[0]) sbIcos[0].style.opacity = value ? '0.85' : '0.15';
       syslog('WiFi ' + (value ? 'ON' : 'OFF'), 'sys');
     }
+
+    /* ── Bluetooth ── */
     if (category === 'bluetooth' && key === 'enabled') {
-      if (btIcon) btIcon.style.display = value ? '' : 'none';
       syslog('Bluetooth ' + (value ? 'ON' : 'OFF'), 'sys');
     }
+
+    /* ── 밝기: CSS filter로 화면 밝기 시뮬레이션 ── */
     if (category === 'display' && key === 'brightness') {
+      var pct = parseInt(value, 10);
+      if (!isNaN(pct)) {
+        var b = Math.max(0.1, pct / 100);
+        var screen = document.getElementById('device-screen');
+        if (screen) screen.style.filter = 'brightness(' + b + ')';
+      }
       syslog('Brightness: ' + value + '%', 'sys');
     }
+
+    /* ── 다크모드 ── */
     if (category === 'display' && key === 'darkMode') {
       syslog('Dark mode ' + (value ? 'ON' : 'OFF'), 'sys');
     }
+
+    /* ── 글꼴 크기 ── */
+    if (category === 'display' && key === 'fontSize') {
+      syslog('Font size: ' + value, 'sys');
+    }
+
+    /* ── 사운드 ── */
     if (category === 'sound') {
       syslog('Sound: ' + key + ' → ' + value, 'sys');
     }
+
+    /* ── PIN 변경 → 저장 (잠금화면 로드 시 전달) ── */
     if (category === 'security' && key === 'pin') {
+      _currentPin = String(value);
       syslog('PIN changed', 'sys');
-      /* Broadcast new PIN to lockscreen */
-      broadcastToCurrentApp('settings.pinChanged', { pin: value });
+      syslog('PIN changed via Settings', 'sys');
     }
+
+    /* ── 배경화면 변경 → 홈 앱 배경 실제 변경 ── */
     if (category === 'wallpaper' && key === 'current') {
+      _currentWallpaper = value;
       syslog('Wallpaper → ' + value, 'sys');
-      /* Broadcast wallpaper change to home screen */
-      broadcastToCurrentApp('settings.wallpaperChanged', { wallpaper: value });
+      /* 현재 앱(설정)이 아닌 홈 앱에 전달해야 하므로 저장만.
+         홈으로 돌아갈 때 launchApp에서 iframe 로드 후 전파 */
     }
   }
 

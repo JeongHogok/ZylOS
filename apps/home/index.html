@@ -62,6 +62,11 @@
   <script src="../shared/clock.js"></script>
   <script src="../shared/bridge.js"></script>
   <!-- App script -->
-  <script src="js/home.js"></script>
+  <script>
+    // Cache-bust all scripts in development
+    var s = document.createElement('script');
+    s.src = 'js/home.js?v=' + Date.now();
+    document.body.appendChild(s);
+  </script>
 </body>
 </html>

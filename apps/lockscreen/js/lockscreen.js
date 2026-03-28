@@ -230,13 +230,20 @@
    * ════════════════════════════════════════════ */
   var notifList = document.getElementById('lock-notifications');
 
-  /* 에뮬레이터/시스템에서 알림 수신 (postMessage) */
+  /* 에뮬레이터/시스템에서 메시지 수신 (postMessage) */
   window.addEventListener('message', function (e) {
     if (e.source !== window.parent && e.source !== window) return;
     try {
       var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-      if (!msg || msg.type !== 'notification.push') return;
-      addLockNotification(msg.data);
+      if (!msg) return;
+      /* 알림 */
+      if (msg.type === 'notification.push') {
+        addLockNotification(msg.data);
+      }
+      /* PIN 변경 (설정에서 변경된 PIN 수신) */
+      if (msg.type === 'settings.pinChanged' && msg.data && msg.data.pin) {
+        correctPin = msg.data.pin;
+      }
     } catch (err) { /* ignore */ }
   });
 

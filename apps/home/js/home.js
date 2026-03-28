@@ -48,17 +48,37 @@
     }, 5000);
   }
 
-  /* Listen for service responses */
+  /* 배경화면 그라데이션 매핑 */
+  var wallpaperGradients = {
+    'default':         'radial-gradient(ellipse at 20% 50%, rgba(72,52,160,0.4) 0%, transparent 50%), radial-gradient(ellipse at 80% 20%, rgba(29,78,137,0.5) 0%, transparent 50%), linear-gradient(160deg, #0a0a1a 0%, #0d1b2a 40%, #1b2838 100%)',
+    'gradient-blue':   'linear-gradient(135deg, #0c3547 0%, #1a6b8a 50%, #0a2a3a 100%)',
+    'gradient-purple': 'linear-gradient(135deg, #1a0a2e 0%, #4a2080 50%, #1a0a2e 100%)',
+    'gradient-dark':   'linear-gradient(160deg, #050505 0%, #1a1a1a 50%, #0a0a0a 100%)',
+    'gradient-sunset':  'linear-gradient(135deg, #2d1b3d 0%, #b44a2a 50%, #1a0a2e 100%)',
+  };
+
+  /* Listen for service responses + settings changes */
   window.addEventListener('message', function (e) {
     if (e.source !== window.parent && e.source !== window) return;
     try {
       var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-      if (!msg || msg.type !== 'service.response') return;
-      if (msg.service === 'apps' && msg.method === 'getInstalled' && msg.data) {
+      if (!msg) return;
+
+      /* 앱 목록 응답 */
+      if (msg.type === 'service.response' && msg.service === 'apps' && msg.method === 'getInstalled' && msg.data) {
         appListReceived = true;
         if (appListTimeoutId) { clearTimeout(appListTimeoutId); appListTimeoutId = null; }
         defaultApps = msg.data;
         renderAppGrid(defaultApps);
+      }
+
+      /* 배경화면 변경 수신 → 실제 배경 CSS 변경 */
+      if (msg.type === 'settings.wallpaperChanged' && msg.data && msg.data.wallpaper) {
+        var wpEl = document.getElementById('wallpaper');
+        var grad = wallpaperGradients[msg.data.wallpaper];
+        if (wpEl && grad) {
+          wpEl.style.background = grad;
+        }
       }
     } catch (err) { /* ignore */ }
   });
