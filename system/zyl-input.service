@@ -5,7 +5,8 @@ Requires=dbus.service
 PartOf=zyl-os.target
 
 [Service]
-Type=simple
+Type=dbus
+BusName=org.zylos.InputService
 ExecStart=/usr/bin/zyl-input
 Restart=on-failure
 RestartSec=2

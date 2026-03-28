@@ -209,18 +209,23 @@ int zyl_bridge_respond(WebKitWebView *webview,
 {
     if (!webview || !json_data) return -1;
 
-    /* Build JS: window._zylCb_{id}({data}) */
-    char script[2048];
-    int written = snprintf(script, sizeof(script),
+    /* Build JS: window._zylCb_{id}({data}) — dynamic buffer for large responses */
+    size_t needed = strlen(json_data) + 128; /* overhead for JS wrapper */
+    char *script = malloc(needed);
+    if (!script) return -1;
+
+    int written = snprintf(script, needed,
                            "if(window._zylCb_%d){window._zylCb_%d(%s);delete window._zylCb_%d;}",
                            callback_id, callback_id, json_data, callback_id);
 
-    if (written < 0 || (size_t)written >= sizeof(script)) {
+    if (written < 0 || (size_t)written >= needed) {
         g_warning("Bridge: response script too large for callback_id=%d", callback_id);
+        free(script);
         return -1;
     }
 
     webkit_web_view_evaluate_javascript(webview, script, -1, NULL, NULL, NULL, NULL, NULL);
+    free(script);
     return 0;
 }
 

@@ -162,6 +162,10 @@ ZylCredentialStore *zyl_credential_create(const char *store_path) {
         ZYL_CREDENTIAL_DBUS_NAME, G_BUS_NAME_OWNER_FLAGS_NONE,
         on_cred_bus, NULL, NULL, store, NULL);
 
+    g_warning("[Credential] Using XOR cipher prototype. "
+              "Production MUST use OpenSSL EVP_aes_256_gcm. "
+              "See credential.c line 50 for migration path.");
+
     return store;
 }
 
@@ -199,10 +203,15 @@ int zyl_credential_store(ZylCredentialStore *store,
         memset(default_key, 0x5A, MASTER_KEY_LEN);
         xor_cipher(default_key, MASTER_KEY_LEN,
                    (const uint8_t *)secret, encrypted, secret_len);
+        memset(default_key, 0, sizeof(default_key));
     }
 
     FILE *f = fopen(path, "wb");
     if (!f) { free(encrypted); return -1; }
+    if (f) {
+        int fd = fileno(f);
+        if (fd >= 0) fchmod(fd, 0600);
+    }
     fwrite(encrypted, 1, secret_len, f);
     fclose(f);
     free(encrypted);
@@ -241,6 +250,7 @@ int zyl_credential_lookup(ZylCredentialStore *store,
         uint8_t default_key[MASTER_KEY_LEN];
         memset(default_key, 0x5A, MASTER_KEY_LEN);
         xor_cipher(default_key, MASTER_KEY_LEN, encrypted, decrypted, rd);
+        memset(default_key, 0, sizeof(default_key));
     }
 
     free(encrypted);
@@ -294,13 +304,13 @@ int zyl_credential_list(ZylCredentialStore *store,
 
         ZylCredentialInfo *info = &list[n];
         info->service = strdup(service);
+        if (!info->service) continue;
         /* account = filename minus .enc suffix */
         char *acc = strdup(entry->d_name);
-        if (acc) {
-            size_t al = strlen(acc);
-            if (al > 4 && strcmp(acc + al - 4, ".enc") == 0) acc[al - 4] = '\0';
-            info->account = acc;
-        }
+        if (!acc) { free(info->service); info->service = NULL; continue; }
+        size_t al = strlen(acc);
+        if (al > 4 && strcmp(acc + al - 4, ".enc") == 0) acc[al - 4] = '\0';
+        info->account = acc;
         info->label = NULL;
         info->type = ZYL_CRED_PASSWORD;
         n++;
@@ -326,7 +336,18 @@ int zyl_credential_set_master_key(ZylCredentialStore *store,
                                    const void *key, size_t key_len) {
     if (!store || !key || key_len == 0) return -1;
 
-    /* 키를 32바이트로 확장/축소 (SHA-256이 이상적이지만 간이 구현) */
+    /*
+     * TODO: Production key derivation:
+     *   Use PBKDF2-HMAC-SHA256 with:
+     *   - Salt: random 16 bytes stored alongside
+     *   - Iterations: 100,000+
+     *   - Output: 32 bytes (AES-256 key)
+     *
+     *   unsigned char salt[16];
+     *   RAND_bytes(salt, sizeof(salt));
+     *   PKCS5_PBKDF2_HMAC(key, key_len, salt, sizeof(salt),
+     *                       100000, EVP_sha256(), MASTER_KEY_LEN, store->master_key);
+     */
     memset(store->master_key, 0, MASTER_KEY_LEN);
     size_t copy = key_len < MASTER_KEY_LEN ? key_len : MASTER_KEY_LEN;
     memcpy(store->master_key, key, copy);
