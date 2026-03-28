@@ -1,0 +1,12 @@
+[Unit]
+Description=Zyl OS Accessibility Service
+After=dbus.service
+
+[Service]
+Type=dbus
+BusName=org.zylos.Accessibility
+ExecStart=/usr/bin/zyl-accessibility
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

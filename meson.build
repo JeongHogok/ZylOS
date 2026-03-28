@@ -20,6 +20,8 @@ subdir('runtime/services/usb')
 subdir('runtime/services/input')
 subdir('runtime/services/user')
 subdir('runtime/services/credential')
+subdir('runtime/services/accessibility')
+subdir('runtime/services/logger')
 
 # Install app files
 install_subdir('apps/home',       install_dir: get_option('datadir') / 'zyl-os' / 'apps')
@@ -47,5 +49,20 @@ install_data('system/zyl-display.service',  install_dir: get_option('prefix') / 
 install_data('system/zyl-usb.service',      install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
 install_data('system/zyl-input.service',   install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
 install_data('system/zyl-user.service',       install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
-install_data('system/zyl-credential.service', install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
-install_data('system/zyl-os.target',         install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
+install_data('system/zyl-credential.service',    install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
+install_data('system/zyl-accessibility.service', install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
+install_data('system/zyl-logger.service',        install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
+install_data('system/zyl-os.target',             install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
+
+# Install recovery scripts
+install_data('system/recovery/recovery.sh',       install_dir: get_option('datadir') / 'zyl-os' / 'recovery', install_mode: 'rwxr-xr-x')
+install_data('system/recovery/factory-reset.sh',  install_dir: get_option('datadir') / 'zyl-os' / 'recovery', install_mode: 'rwxr-xr-x')
+install_data('system/recovery/recovery.service',  install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
+
+# Install AppArmor profiles
+install_data('system/apparmor/zyl-wam',           install_dir: get_option('sysconfdir') / 'apparmor.d')
+install_data('system/apparmor/zyl-compositor',    install_dir: get_option('sysconfdir') / 'apparmor.d')
+install_data('system/apparmor/zyl-app-default',   install_dir: get_option('sysconfdir') / 'apparmor.d')
+
+# Tests
+subdir('tests')

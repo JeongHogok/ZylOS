@@ -18,6 +18,7 @@
 /* ─── Frame render with damage tracking ─── */
 static void output_frame(struct wl_listener *listener, void *data)
 {
+    (void)data;
     struct zyl_output *output = wl_container_of(listener, output, frame);
     struct wlr_scene *scene   = output->server->scene;
     struct wlr_scene_output *scene_output =

@@ -3,23 +3,18 @@
 #
 # 역할: Zyl OS 단위 테스트 빌드 정의
 # 수행범위: gesture detection, manifest parsing, notification service 테스트
-# 의존방향: gio-2.0, 각 테스트 대상 소스 파일
+# 의존방향: gio-2.0, json-glib-1.0, 각 테스트 대상 소스 파일
 # SOLID: SRP — 테스트 빌드 구성만 담당
 # ──────────────────────────────────────────────────────────
 
-test_deps = [dependency('gio-2.0')]
+gio_dep = dependency('gio-2.0')
+json_glib_dep = dependency('json-glib-1.0')
 
 # Test: gesture detection algorithm
+# Self-contained — replicates gesture_detect() logic to avoid wlroots deps
 test('gesture-detection',
   executable('test-gesture',
     'test_gesture.c',
-    '../compositor/src/input/gesture.c',
-    include_directories: include_directories(
-      '../compositor/include',
-      '../compositor/src',
-      '../compositor/src/input',
-    ),
-    dependencies: test_deps,
   )
 )
 
@@ -27,7 +22,7 @@ test('gesture-detection',
 test('manifest-parsing',
   executable('test-manifest',
     'test_manifest.c',
-    dependencies: test_deps,
+    dependencies: [gio_dep, json_glib_dep],
   )
 )
 
@@ -39,6 +34,6 @@ test('notification',
     include_directories: include_directories(
       '../runtime/services/notification',
     ),
-    dependencies: test_deps,
+    dependencies: [gio_dep],
   )
 )

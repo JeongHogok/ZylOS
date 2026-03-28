@@ -1,0 +1,12 @@
+[Unit]
+Description=Zyl OS Logger Service
+After=dbus.service local-fs.target
+
+[Service]
+Type=dbus
+BusName=org.zylos.Logger
+ExecStart=/usr/bin/zyl-logger
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

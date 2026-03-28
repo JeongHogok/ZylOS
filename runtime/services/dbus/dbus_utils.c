@@ -211,3 +211,119 @@ void zyl_dbus_monitor_connection(GDBusConnection *conn,
     g_signal_connect(conn, "closed",
                      G_CALLBACK(on_connection_closed), ctx);
 }
+
+/* ════════════════════════════════════════════════════════════════
+ *  L3: D-Bus Rate Limiting
+ *
+ *  슬라이딩 윈도우 기반 호출 레이트 리밋.
+ *  각 D-Bus sender별로 윈도우 내 호출 횟수를 추적하여,
+ *  과도한 호출(알림 스팸, 서비스 남용 등)을 차단한다.
+ * ════════════════════════════════════════════════════════════════ */
+
+/* 호출 기록 엔트리 */
+typedef struct {
+    gint64  *timestamps;  /* 호출 타임스탬프 배열 (ring buffer) */
+    int      capacity;
+    int      count;
+    int      head;        /* 다음 쓰기 위치 */
+} RateLimitEntry;
+
+static GHashTable *_rate_table = NULL;  /* sender → RateLimitEntry* */
+
+static void rate_entry_free(gpointer data) {
+    RateLimitEntry *entry = data;
+    if (!entry) return;
+    g_free(entry->timestamps);
+    g_free(entry);
+}
+
+void zyl_dbus_rate_limit_init(void) {
+    if (_rate_table) return;
+    _rate_table = g_hash_table_new_full(g_str_hash, g_str_equal,
+                                         g_free, rate_entry_free);
+}
+
+void zyl_dbus_rate_limit_destroy(void) {
+    if (_rate_table) {
+        g_hash_table_destroy(_rate_table);
+        _rate_table = NULL;
+    }
+}
+
+gboolean zyl_dbus_rate_limit_check(const char *sender,
+                                    int max_calls_per_window,
+                                    int window_ms) {
+    if (!_rate_table || !sender || max_calls_per_window <= 0 || window_ms <= 0)
+        return TRUE;  /* 설정 오류 시 허용 */
+
+    gint64 now = g_get_monotonic_time() / 1000;  /* microsec → ms */
+    gint64 window_start = now - window_ms;
+
+    RateLimitEntry *entry = g_hash_table_lookup(_rate_table, sender);
+
+    if (!entry) {
+        /* 새 sender — 엔트리 생성 */
+        entry = g_new0(RateLimitEntry, 1);
+        if (!entry) return TRUE;
+        entry->capacity = max_calls_per_window + 1;
+        entry->timestamps = g_new0(gint64, entry->capacity);
+        if (!entry->timestamps) { g_free(entry); return TRUE; }
+        entry->count = 0;
+        entry->head = 0;
+        g_hash_table_insert(_rate_table, g_strdup(sender), entry);
+    }
+
+    /* 윈도우 내 유효 호출 수 계산 */
+    int valid_count = 0;
+    for (int i = 0; i < entry->count && i < entry->capacity; i++) {
+        if (entry->timestamps[i] >= window_start) {
+            valid_count++;
+        }
+    }
+
+    if (valid_count >= max_calls_per_window) {
+        g_warning("[RateLimit] %s: %d calls in %dms window (limit: %d) — BLOCKED",
+                  sender, valid_count, window_ms, max_calls_per_window);
+        return FALSE;  /* 차단 */
+    }
+
+    /* 호출 기록 추가 (ring buffer) */
+    entry->timestamps[entry->head] = now;
+    entry->head = (entry->head + 1) % entry->capacity;
+    if (entry->count < entry->capacity) entry->count++;
+
+    return TRUE;  /* 허용 */
+}
+
+void zyl_dbus_rate_limit_cleanup(int max_age_ms) {
+    if (!_rate_table) return;
+
+    gint64 now = g_get_monotonic_time() / 1000;
+    gint64 cutoff = now - max_age_ms;
+
+    GHashTableIter iter;
+    gpointer key, value;
+    GList *to_remove = NULL;
+
+    g_hash_table_iter_init(&iter, _rate_table);
+    while (g_hash_table_iter_next(&iter, &key, &value)) {
+        RateLimitEntry *entry = value;
+        /* 모든 타임스탬프가 cutoff보다 오래되었으면 제거 */
+        gboolean all_stale = TRUE;
+        for (int i = 0; i < entry->count && i < entry->capacity; i++) {
+            if (entry->timestamps[i] >= cutoff) {
+                all_stale = FALSE;
+                break;
+            }
+        }
+        if (all_stale) {
+            to_remove = g_list_prepend(to_remove, key);
+        }
+    }
+
+    /* 안전한 제거 (iteration 외부) */
+    for (GList *l = to_remove; l; l = l->next) {
+        g_hash_table_remove(_rate_table, l->data);
+    }
+    g_list_free(to_remove);
+}

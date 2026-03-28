@@ -1,0 +1,29 @@
+# ----------------------------------------------------------
+# [Clean Architecture] Infrastructure Layer - Service Unit
+#
+# 역할: Zyl OS 복구 모드 systemd 서비스
+# 수행범위: 복구 모드 스크립트 실행 (콘솔 기반)
+# 의존방향: recovery.sh
+# SOLID: SRP — 복구 모드 서비스 유닛 정의만 담당
+# ----------------------------------------------------------
+
+[Unit]
+Description=Zyl OS Recovery Mode
+DefaultDependencies=no
+ConditionPathExists=/var/run/zyl-os-recovery
+After=local-fs.target
+Before=zyl-os.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/share/zyl-os/recovery/recovery.sh
+StandardInput=tty
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+
+[Install]
+WantedBy=multi-user.target

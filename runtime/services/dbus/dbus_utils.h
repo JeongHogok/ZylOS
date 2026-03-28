@@ -56,4 +56,40 @@ GVariant *zyl_dbus_call_sync_safe(GDBusConnection *conn,
                                   GVariant *params,
                                   int timeout_ms);
 
+/* ─── Rate Limiting ─── */
+
+/**
+ * Per-sender rate limiter for D-Bus method calls.
+ * Tracks call counts per unique sender within a sliding time window.
+ * Returns true if the call should be ALLOWED, false if rate-limited.
+ *
+ * max_calls_per_window: maximum allowed calls per sender
+ * window_ms: sliding window duration in milliseconds
+ *
+ * Usage in D-Bus method handler:
+ *   if (!zyl_dbus_rate_limit_check(sender, 60, 10000)) {
+ *       g_dbus_method_invocation_return_error(..., "Rate limited");
+ *       return;
+ *   }
+ */
+gboolean zyl_dbus_rate_limit_check(const char *sender,
+                                    int max_calls_per_window,
+                                    int window_ms);
+
+/**
+ * Clean up stale rate limit entries (call periodically).
+ * Removes entries older than max_age_ms.
+ */
+void zyl_dbus_rate_limit_cleanup(int max_age_ms);
+
+/**
+ * Initialize the rate limiter. Must be called once at startup.
+ */
+void zyl_dbus_rate_limit_init(void);
+
+/**
+ * Destroy the rate limiter. Call at shutdown.
+ */
+void zyl_dbus_rate_limit_destroy(void);
+
 #endif /* ZYL_DBUS_UTILS_H */
