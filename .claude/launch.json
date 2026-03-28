@@ -24,6 +24,30 @@
       "runtimeExecutable": "python3",
       "runtimeArgs": ["-m", "http.server", "8083", "--directory", "apps/settings"],
       "port": 8083
+    },
+    {
+      "name": "browser",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8084", "--directory", "apps/browser"],
+      "port": 8084
+    },
+    {
+      "name": "files",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8085", "--directory", "apps/files"],
+      "port": 8085
+    },
+    {
+      "name": "terminal",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8086", "--directory", "apps/terminal"],
+      "port": 8086
+    },
+    {
+      "name": "camera",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8087", "--directory", "apps/camera"],
+      "port": 8087
     }
   ]
 }
