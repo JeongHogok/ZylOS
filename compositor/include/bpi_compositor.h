@@ -130,6 +130,10 @@ struct zyl_server {
     int   screen_width;
     int   screen_height;
 
+    /* Notification panel overlay */
+    struct wlr_scene_rect *notif_overlay;
+    bool  notif_panel_visible;
+
     /* Gesture dispatch table (indexed by enum gesture_direction) */
     gesture_handler_fn gesture_handlers[GESTURE_DIRECTION_COUNT];
 };

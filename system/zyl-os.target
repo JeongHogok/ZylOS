@@ -1,0 +1,7 @@
+[Unit]
+Description=Zyl OS User Session
+Requires=zyl-compositor.service zyl-wam.service
+After=zyl-compositor.service zyl-wam.service
+
+[Install]
+WantedBy=graphical.target

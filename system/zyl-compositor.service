@@ -1,0 +1,18 @@
+[Unit]
+Description=Zyl OS Wayland Compositor
+After=systemd-logind.service
+Wants=systemd-logind.service
+ConditionPathExists=/dev/dri/card0
+
+[Service]
+Type=simple
+User=root
+Environment=WLR_BACKENDS=drm
+Environment=WLR_DRM_DEVICES=/dev/dri/card0
+Environment=XDG_RUNTIME_DIR=/run/user/0
+ExecStart=/usr/bin/zyl-compositor
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=graphical.target

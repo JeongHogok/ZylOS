@@ -11,15 +11,27 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <webkit/webkit.h>
+
+/* ─── Helper: inject JS into an app's webview ─── */
+static void inject_js(ZylAppInstance *instance, const char *script) {
+    webkit_web_view_evaluate_javascript(
+        WEBKIT_WEB_VIEW(instance->webview_widget),
+        script, -1, NULL, NULL, NULL, NULL, NULL);
+}
 
 /* ─── Launch (or re-activate) an app ─── */
 ZylAppInstance *zyl_lifecycle_launch(ZylAppInterface *iface,
                                     ZylWebEngine    *engine,
                                     const char      *app_id) {
-    /* If already running, just present it */
+    /* If already running but suspended, resume it */
     ZylAppInstance *existing = iface->get_instance(iface, app_id);
     if (existing) {
-        gtk_window_present(GTK_WINDOW(existing->window));
+        if (existing->state == ZYL_APP_STATE_SUSPENDED) {
+            zyl_lifecycle_resume(iface, app_id);
+        } else {
+            gtk_window_present(GTK_WINDOW(existing->window));
+        }
         existing->state = ZYL_APP_STATE_RUNNING;
         return existing;
     }
@@ -66,18 +78,84 @@ void zyl_lifecycle_suspend(ZylAppInterface *iface,
     ZylAppInstance *instance = iface->get_instance(iface, app_id);
     if (!instance || instance->state == ZYL_APP_STATE_SUSPENDED) return;
 
+    /* Notify the web app so it can save state / pause work */
+    inject_js(instance,
+              "document.dispatchEvent(new Event('zyl:pause'))");
+
+    /* Hide the window to free compositor resources */
+    gtk_widget_set_visible(instance->window, FALSE);
+
     instance->state = ZYL_APP_STATE_SUSPENDED;
     g_message("Suspended app: %s", app_id);
 }
 
-/* ─── Close ─── */
+/* ─── Close with graceful cleanup ─── */
+
+/* Timeout callback: actually tears down the window after JS cleanup. */
+static gboolean close_after_cleanup(gpointer data) {
+    gpointer *ctx = data;
+    ZylAppInterface *iface    = ctx[0];
+    ZylAppInstance  *instance = ctx[1];
+    const char      *app_id   = ctx[2];
+
+    gtk_window_close(GTK_WINDOW(instance->window));
+    iface->remove_instance(iface, app_id);
+    g_message("Closed app: %s", app_id);
+    g_free(instance);
+    g_free(ctx[2]); /* strdup'd app_id */
+    g_free(ctx);
+    return G_SOURCE_REMOVE;
+}
+
 void zyl_lifecycle_close(ZylAppInterface *iface,
                          const char      *app_id) {
     ZylAppInstance *instance = iface->get_instance(iface, app_id);
     if (!instance) return;
 
-    gtk_window_close(GTK_WINDOW(instance->window));
-    iface->remove_instance(iface, app_id);
-    g_free(instance);
-    g_message("Closed app: %s", app_id);
+    /* Give the web app a chance to run final cleanup */
+    inject_js(instance,
+              "document.dispatchEvent(new Event('zyl:destroy'))");
+
+    /* Schedule the actual teardown after 100 ms so JS can finish */
+    gpointer *ctx = g_new(gpointer, 3);
+    ctx[0] = iface;
+    ctx[1] = instance;
+    ctx[2] = g_strdup(app_id);
+    g_timeout_add(100, close_after_cleanup, ctx);
+}
+
+/* ─── Resume ─── */
+void zyl_lifecycle_resume(ZylAppInterface *iface,
+                          const char      *app_id) {
+    ZylAppInstance *instance = iface->get_instance(iface, app_id);
+    if (!instance || instance->state != ZYL_APP_STATE_SUSPENDED) return;
+
+    /* Make the window visible again and present it */
+    gtk_widget_set_visible(instance->window, TRUE);
+    gtk_window_present(GTK_WINDOW(instance->window));
+
+    /* Notify the web app */
+    inject_js(instance,
+              "document.dispatchEvent(new Event('zyl:resume'))");
+
+    instance->state = ZYL_APP_STATE_RUNNING;
+    g_message("Resumed app: %s", app_id);
+}
+
+/* ─── Running count ─── */
+int zyl_lifecycle_get_running_count(ZylAppInterface *iface) {
+    /*
+     * Count instances by iterating through the interface.
+     * We walk a simple counter — every store_instance / remove_instance
+     * keeps the hash table in sync, so we can just ask for its size.
+     * The impl_data points to ZylWam whose layout starts with:
+     *   GApplication*, GHashTable *manifests, GHashTable *instances, ...
+     */
+    typedef struct {
+        GApplication *app;
+        GHashTable   *manifests;
+        GHashTable   *instances;
+    } WamLike;
+    WamLike *wam = iface->impl_data;
+    return (int)g_hash_table_size(wam->instances);
 }

@@ -135,6 +135,16 @@ static void webkit_load_uri(ZylWebEngine *self,
  *  D-Bus method implementations (dispatch table entries)
  * ════════════════════════════════════════════════════════════════ */
 
+#define WAM_MAX_APPS_WARN 5
+
+static void check_memory_pressure(ZylWam *wam) {
+    int count = zyl_lifecycle_get_running_count(&wam->iface);
+    if (count > WAM_MAX_APPS_WARN) {
+        g_warning("Memory pressure: %d apps running (threshold %d)",
+                  count, WAM_MAX_APPS_WARN);
+    }
+}
+
 static void dbus_launch(GVariant *params, GDBusMethodInvocation *inv,
                         gpointer user_data) {
     ZylWam *wam = user_data;
@@ -142,6 +152,7 @@ static void dbus_launch(GVariant *params, GDBusMethodInvocation *inv,
     g_variant_get(params, "(&s)", &app_id);
     ZylAppInstance *inst = zyl_lifecycle_launch(&wam->iface,
                                                &wam->engine, app_id);
+    if (inst) check_memory_pressure(wam);
     g_dbus_method_invocation_return_value(inv,
         g_variant_new("(b)", inst != NULL));
 }
@@ -161,6 +172,15 @@ static void dbus_suspend(GVariant *params, GDBusMethodInvocation *inv,
     const gchar *app_id;
     g_variant_get(params, "(&s)", &app_id);
     zyl_lifecycle_suspend(&wam->iface, app_id);
+    g_dbus_method_invocation_return_value(inv, NULL);
+}
+
+static void dbus_resume(GVariant *params, GDBusMethodInvocation *inv,
+                        gpointer user_data) {
+    ZylWam *wam = user_data;
+    const gchar *app_id;
+    g_variant_get(params, "(&s)", &app_id);
+    zyl_lifecycle_resume(&wam->iface, app_id);
     g_dbus_method_invocation_return_value(inv, NULL);
 }
 
@@ -190,14 +210,16 @@ static void dbus_list_running(GVariant *params, GDBusMethodInvocation *inv,
     g_hash_table_iter_init(&iter, wam->instances);
     while (g_hash_table_iter_next(&iter, &key, NULL))
         g_variant_builder_add(&builder, "s", (const char *)key);
+    int count = zyl_lifecycle_get_running_count(&wam->iface);
     g_dbus_method_invocation_return_value(inv,
-        g_variant_new("(as)", &builder));
+        g_variant_new("(asi)", &builder, count));
 }
 
 static const ZylDbusMethodEntry dbus_methods[] = {
     { "Launch",      dbus_launch      },
     { "Close",       dbus_close       },
     { "Suspend",     dbus_suspend     },
+    { "Resume",      dbus_resume      },
     { "ListApps",    dbus_list_apps   },
     { "ListRunning", dbus_list_running },
     { NULL, NULL }

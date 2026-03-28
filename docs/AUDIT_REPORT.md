@@ -21,14 +21,14 @@
 
 ## CRITICAL — 배포 불가 (13개, ~55-70일)
 
-### C1. 빌드 시스템 통합
-- 최상위 meson.build 없음 — 컴포지터/WAM/앱을 한 번에 빌드 불가
-- Yocto/Buildroot 레시피 없음 — 플래시 이미지 생성 불가
-- **필요**: 루트 빌드 스크립트 + Yocto meta-layer + 이미지 생성 파이프라인
+### ~~C1. 빌드 시스템 통합~~ ✅ 완료 (2026-03-28)
+- ~~최상위 meson.build 없음~~ → 루트 meson.build 생성, compositor/WAM을 subdir로 통합
+- Yocto/Buildroot 레시피 아직 없음 (Phase 2에서 구현 예정)
+- zyl-compositor, zyl-wam으로 바이너리 이름 통일
 
-### C2. Init 시스템 / systemd 서비스
-- systemd unit 파일 0개 — 부팅 시 컴포지터/WAM 자동 시작 불가
-- **필요**: zyl-compositor.service, zyl-wam.service, zyl-notification.service 등
+### ~~C2. Init 시스템 / systemd 서비스~~ ✅ 완료 (2026-03-28)
+- ~~systemd unit 파일 0개~~ → 4개 생성: zyl-compositor.service, zyl-wam.service, zyl-notification.service, zyl-os.target
+- 서비스 의존관계: compositor → WAM → notification
 
 ### C3. 부팅 스플래시
 - 부트로더 → 검은 화면 → 컴포지터 시작까지 아무 표시 없음
@@ -80,7 +80,7 @@
 
 | # | 항목 | 설명 |
 |---|------|------|
-| H1 | CI/CD 파이프라인 | 자동 빌드/테스트 없음 |
+| ~~H1~~ | ~~CI/CD 파이프라인~~ | ✅ GitHub Actions: build-native + lint-js |
 | H2 | 디스플레이 관리 | 해상도/밝기/회전/절전 미구현 |
 | H3 | 입력 처리 | IME, 멀티터치, 하드웨어 키 매핑 없음 |
 | H4 | D-Bus 견고성 | 비동기 처리, 타임아웃, 에러 핸들링 부족 |

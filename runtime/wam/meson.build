@@ -1,10 +1,9 @@
-project('bpi-wam', 'c',
-  version: '0.1.0',
-  default_options: [
-    'c_std=c11',
-    'warning_level=2',
-  ],
-)
+# runtime/wam/meson.build — Zyl OS Web Application Manager
+# Layer: Runtime / WAM
+# Role: Build the GTK4+WebKit web-app manager
+# Scope: Compile WAM sources, link GTK4 + WebKitGTK + JSON-GLib
+# Dependency direction: depends on gtk4, webkitgtk, json-glib, gio
+# SOLID: Single-responsibility — only WAM build logic
 
 gtk4 = dependency('gtk4')
 webkitgtk = dependency('webkitgtk-6.0', required: false)
@@ -14,7 +13,7 @@ endif
 json_glib = dependency('json-glib-1.0')
 gio = dependency('gio-2.0')
 
-deps = [gtk4, webkitgtk, json_glib, gio]
+wam_deps = [gtk4, webkitgtk, json_glib, gio]
 
 wam_sources = files(
   'src/wam.c',
@@ -24,13 +23,13 @@ wam_sources = files(
   'src/dbus/dbus_service.c',
 )
 
-executable('bpi-wam',
+executable('zyl-wam',
   wam_sources,
-  dependencies: deps,
+  dependencies: wam_deps,
   install: true,
 )
 
 # Install the JS bridge script to the runtime data directory
 install_data('src/bridge/bridge.js',
-  install_dir: get_option('datadir') / 'bpi-os' / 'wam',
+  install_dir: get_option('datadir') / 'zyl-os' / 'wam',
 )

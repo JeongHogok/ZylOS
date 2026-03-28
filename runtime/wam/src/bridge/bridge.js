@@ -32,6 +32,28 @@
     });
   }
 
+  /* ────────────────────────────────────────────────────────
+   * App lifecycle events (dispatched by WAM runtime)
+   *
+   * zyl:pause   — App is being suspended.  Save state,
+   *               stop animations, release heavy resources.
+   * zyl:resume  — App is being brought back.  Restore state,
+   *               resume animations.
+   * zyl:destroy — App is about to be closed.  Perform final
+   *               cleanup (flush storage, close connections).
+   * ──────────────────────────────────────────────────────── */
+  document.addEventListener("zyl:pause", function () {
+    console.log("[ZylOS] App paused");
+  });
+
+  document.addEventListener("zyl:resume", function () {
+    console.log("[ZylOS] App resumed");
+  });
+
+  document.addEventListener("zyl:destroy", function () {
+    console.log("[ZylOS] App destroying");
+  });
+
   window.navigator.system = {
     app: {
       id:      "{{APP_ID}}",

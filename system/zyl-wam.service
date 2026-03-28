@@ -1,0 +1,18 @@
+[Unit]
+Description=Zyl OS Web Application Manager
+After=zyl-compositor.service
+Requires=zyl-compositor.service
+PartOf=zyl-compositor.service
+
+[Service]
+Type=dbus
+BusName=org.zylos.WebAppManager
+User=root
+Environment=WAYLAND_DISPLAY=wayland-0
+Environment=XDG_RUNTIME_DIR=/run/user/0
+ExecStart=/usr/bin/zyl-wam
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical.target

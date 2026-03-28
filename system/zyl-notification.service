@@ -1,0 +1,12 @@
+[Unit]
+Description=Zyl OS Notification Service
+After=dbus.service
+
+[Service]
+Type=dbus
+BusName=org.zylos.Notification
+ExecStart=/usr/bin/zyl-notification
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

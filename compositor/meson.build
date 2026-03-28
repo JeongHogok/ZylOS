@@ -1,10 +1,9 @@
-project('bpi-compositor', 'c',
-  version: '0.1.0',
-  default_options: [
-    'c_std=c11',
-    'warning_level=2',
-  ],
-)
+# compositor/meson.build — Zyl OS Wayland Compositor
+# Layer: System / Compositor
+# Role: Build the wlroots-based Wayland compositor
+# Scope: Compile compositor sources, link wlroots + Wayland deps
+# Dependency direction: depends on wlroots, wayland-server, xkbcommon, pixman
+# SOLID: Single-responsibility — only compositor build logic
 
 # wlroots dependency (0.18+)
 wlroots = dependency('wlroots-0.18', required: false)
@@ -20,34 +19,29 @@ pixman = dependency('pixman-1')
 # Wayland scanner
 wayland_scanner = find_program('wayland-scanner')
 
-deps = [
+compositor_deps = [
   wlroots,
   wayland_server,
   xkbcommon,
   pixman,
 ]
 
-# wlroots requires this define
-add_project_arguments(
-  '-DWLR_USE_UNSTABLE',
-  language: 'c',
-)
-
-bpi_compositor_sources = files(
+compositor_sources = files(
   'src/main.c',
   'src/input/gesture.c',
   'src/output/output.c',
   'src/view/view.c',
 )
 
-bpi_compositor_inc = include_directories(
+compositor_inc = include_directories(
   'include',
   'src',
 )
 
-executable('bpi-compositor',
-  bpi_compositor_sources,
-  include_directories: bpi_compositor_inc,
-  dependencies: deps,
+executable('zyl-compositor',
+  compositor_sources,
+  include_directories: compositor_inc,
+  dependencies: compositor_deps,
+  c_args: ['-DWLR_USE_UNSTABLE'],
   install: true,
 )

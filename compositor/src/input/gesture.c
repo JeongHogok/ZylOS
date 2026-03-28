@@ -8,6 +8,7 @@
  * ────────────────────────────────────────────────────────── */
 
 #include "gesture.h"
+#include "../view/view.h"
 
 #include <stdlib.h>
 #include <wayland-server-core.h>
@@ -15,6 +16,7 @@
 #include <wlr/types/wlr_input_device.h>
 #include <wlr/types/wlr_keyboard.h>
 #include <wlr/types/wlr_pointer.h>
+#include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/util/log.h>
 #include <xkbcommon/xkbcommon.h>
@@ -58,31 +60,132 @@ enum gesture_direction gesture_detect(const struct touch_state *t,
 }
 
 /* ================================================================
+ * D-Bus signal placeholder
+ * ================================================================ */
+
+static void emit_compositor_signal(struct zyl_server *server,
+                                    const char *signal_name,
+                                    const char *detail)
+{
+    (void)server;
+    wlr_log(WLR_INFO, "D-Bus signal: %s(%s)", signal_name,
+            detail ? detail : "");
+    /* TODO: When D-Bus is integrated:
+     *   g_dbus_connection_emit_signal(conn, NULL,
+     *       "/org/zylos/Compositor",
+     *       "org.zylos.Compositor",
+     *       signal_name, detail_variant, NULL);
+     */
+}
+
+/* ================================================================
  * Default gesture action implementations
  * ================================================================ */
 
+/*
+ * SWIPE UP from bottom — go home.
+ * Sends GoHome to WAM.  If the home screen is already visible, no-op.
+ */
 static void action_go_home(struct zyl_server *server)
 {
+    if (server->home_screen_visible) {
+        wlr_log(WLR_DEBUG, "Gesture: Go Home — already on home screen");
+        return;
+    }
+
     wlr_log(WLR_INFO, "Gesture: Go Home");
     server->home_screen_visible = true;
+    emit_compositor_signal(server, "GoHome", NULL);
 }
 
+/*
+ * SWIPE DOWN from top — toggle notification panel overlay.
+ * Creates a semi-transparent dark rect covering the top half, then
+ * signals the statusbar app to populate actual notification content.
+ */
 static void action_notification_panel(struct zyl_server *server)
 {
-    wlr_log(WLR_INFO, "Gesture: Notification Panel");
-    /* TODO: top notification drawer */
+    /* Lazy-create the overlay rect on first use */
+    if (!server->notif_overlay) {
+        int half_h = server->screen_height / 2;
+        float color[4] = { 0.0f, 0.0f, 0.0f, 0.70f };
+
+        server->notif_overlay = wlr_scene_rect_create(
+            &server->scene->tree, server->screen_width, half_h, color);
+
+        if (!server->notif_overlay) {
+            wlr_log(WLR_ERROR,
+                     "Gesture: failed to create notification overlay");
+            return;
+        }
+        /* Position at top-left of the screen */
+        wlr_scene_node_set_position(&server->notif_overlay->node, 0, 0);
+        /* Start hidden */
+        wlr_scene_node_set_enabled(&server->notif_overlay->node, false);
+        server->notif_panel_visible = false;
+    }
+
+    /* Toggle visibility */
+    server->notif_panel_visible = !server->notif_panel_visible;
+    wlr_scene_node_set_enabled(&server->notif_overlay->node,
+                                server->notif_panel_visible);
+
+    wlr_log(WLR_INFO, "Gesture: Notification Panel %s",
+            server->notif_panel_visible ? "shown" : "hidden");
+
+    emit_compositor_signal(server, "NotificationPanel",
+                           server->notif_panel_visible ? "show" : "hide");
 }
 
+/*
+ * SWIPE LEFT — go back.
+ * Sends GoBack to the focused app.  If nothing is focused, go home.
+ */
 static void action_go_back(struct zyl_server *server)
 {
-    wlr_log(WLR_INFO, "Gesture: Go Back");
-    /* TODO: send back event to active app */
+    if (wl_list_empty(&server->views)) {
+        wlr_log(WLR_INFO, "Gesture: Go Back — no views, going home");
+        server->home_screen_visible = true;
+        emit_compositor_signal(server, "GoHome", NULL);
+        return;
+    }
+
+    struct zyl_view *top =
+        wl_container_of(server->views.next, top, link);
+
+    const char *app_id = top->xdg_toplevel->app_id;
+    wlr_log(WLR_INFO, "Gesture: Go Back → %s", app_id ? app_id : "(unknown)");
+    emit_compositor_signal(server, "GoBack", app_id);
 }
 
+/*
+ * SWIPE RIGHT — cycle to the next app in the view list.
+ */
 static void action_app_switcher(struct zyl_server *server)
 {
-    wlr_log(WLR_INFO, "Gesture: App Switcher");
-    /* TODO: app-switcher overlay */
+    if (wl_list_empty(&server->views))
+        return;
+
+    /* Current top view */
+    struct zyl_view *current =
+        wl_container_of(server->views.next, current, link);
+
+    struct wl_list *next_link = current->link.next;
+
+    /* Wrap around — if we hit the sentinel, we are at the only view */
+    if (next_link == &server->views) {
+        wlr_log(WLR_DEBUG, "Gesture: App Switcher — only one view");
+        return;
+    }
+
+    struct zyl_view *next_view =
+        wl_container_of(next_link, next_view, link);
+
+    view_focus(next_view);
+
+    const char *app_id = next_view->xdg_toplevel->app_id;
+    wlr_log(WLR_INFO, "Gesture: App Switch → %s",
+            app_id ? app_id : "(unknown)");
 }
 
 void gesture_init_handlers(struct zyl_server *server)

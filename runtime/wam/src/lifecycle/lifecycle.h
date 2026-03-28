@@ -97,4 +97,11 @@ void zyl_lifecycle_suspend(ZylAppInterface *iface,
 void zyl_lifecycle_close(ZylAppInterface *iface,
                          const char      *app_id);
 
+/* Resume a suspended app (make visible again). */
+void zyl_lifecycle_resume(ZylAppInterface *iface,
+                          const char      *app_id);
+
+/* Return the number of currently tracked app instances. */
+int zyl_lifecycle_get_running_count(ZylAppInterface *iface);
+
 #endif /* ZYL_WAM_LIFECYCLE_H */
