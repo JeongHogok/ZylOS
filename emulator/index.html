@@ -3,9 +3,9 @@
   [Clean Architecture] Presentation Layer - Page
 
   역할: Zyl OS 디바이스 에뮬레이터
-  수행범위: 폰 프레임, 상태바, 앱 라우팅, 제스처 시뮬레이션
-  의존방향: emulator.css, emulator.js, 각 앱 디렉토리
-  SOLID: SRP — 에뮬레이터 셸만 담당, 앱은 iframe으로 격리
+  수행범위: 폰 프레임, 상태바, 네비게이션 3모드, 앱 라우팅, 제스처
+  의존방향: emulator.css, emulator.js
+  SOLID: OCP — 네비게이션 모드를 전략 패턴으로 교체 가능
   ──────────────────────────────────────────────────────────
 -->
 <!DOCTYPE html>
@@ -19,10 +19,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 </head>
 <body>
-  <!-- 배경 -->
   <div id="backdrop"></div>
 
-  <!-- 디바이스 프레임 (먼저 렌더링) -->
+  <!-- ── 디바이스 프레임 ── -->
   <div id="device-frame">
     <div id="device-notch"></div>
     <div id="device-screen">
@@ -41,23 +40,51 @@
         <iframe id="app-frame" src="" frameborder="0"></iframe>
       </div>
 
-      <!-- 하단 홈 인디케이터 -->
-      <div id="home-indicator">
-        <div class="indicator-bar"></div>
+      <!-- 최근 앱 오버레이 -->
+      <div id="recents-overlay" class="hidden">
+        <div id="recents-header">최근 앱</div>
+        <div id="recents-cards"></div>
+        <div id="recents-empty">실행 중인 앱이 없습니다</div>
       </div>
+
+      <!-- ─── 네비게이션: 모드 A (소프트키 3버튼) ─── -->
+      <div id="nav-softkeys" class="nav-bar hidden">
+        <button class="nav-sk-btn" id="sk-back" aria-label="Back">
+          <svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+        </button>
+        <button class="nav-sk-btn nav-sk-home" id="sk-home" aria-label="Home">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" fill="none" stroke="white" stroke-width="2"/></svg>
+        </button>
+        <button class="nav-sk-btn" id="sk-recents" aria-label="Recents">
+          <svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1" fill="none" stroke="white" stroke-width="2"/></svg>
+        </button>
+      </div>
+
+      <!-- ─── 네비게이션: 모드 B (제스처 바 / iOS스타일) ─── -->
+      <div id="nav-gesture" class="nav-bar hidden">
+        <div id="gesture-bar"></div>
+      </div>
+    </div>
+
+    <!-- ─── 네비게이션: 모드 C (물리 버튼 — 디바이스 프레임 밖) ─── -->
+    <div id="nav-hardware" class="hidden">
+      <button class="hw-btn" id="hw-back" aria-label="Back">◁</button>
+      <button class="hw-btn hw-home" id="hw-home" aria-label="Home">○</button>
+      <button class="hw-btn" id="hw-recents" aria-label="Recents">□</button>
     </div>
   </div>
 
-  <!-- 제어 패널 -->
+  <!-- ── 제어 패널 ── -->
   <div id="control-panel">
     <h1>Zyl OS Emulator</h1>
     <p class="subtitle">SpacemiT K1 RISC-V · 16GB RAM</p>
 
     <div class="control-group">
-      <label>Device</label>
-      <select id="device-select">
-        <option value="phone" selected>Phone (393×852)</option>
-        <option value="tablet">Tablet (768×1024)</option>
+      <label>Navigation Mode</label>
+      <select id="nav-mode-select">
+        <option value="gesture" selected>Gesture Bar (iOS style)</option>
+        <option value="softkeys">Software Keys (Android)</option>
+        <option value="hardware">Hardware Buttons</option>
       </select>
     </div>
 
@@ -67,24 +94,12 @@
         <button id="btn-power" class="ctrl-btn" title="Power">
           <svg viewBox="0 0 24 24"><path d="M13 3h-2v10h2V3zm4.83 2.17l-1.42 1.42C17.99 7.86 19 9.81 19 12c0 3.87-3.13 7-7 7s-7-3.13-7-7c0-2.19 1.01-4.14 2.58-5.42L6.17 5.17C4.23 6.82 3 9.26 3 12c0 4.97 4.03 9 9 9s9-4.03 9-9c0-2.74-1.23-5.18-3.17-6.83z"/></svg>
         </button>
-        <button id="btn-volup" class="ctrl-btn" title="Volume Up">
+        <button id="btn-volup" class="ctrl-btn" title="Vol+">
           <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
         </button>
-        <button id="btn-voldown" class="ctrl-btn" title="Volume Down">
+        <button id="btn-voldown" class="ctrl-btn" title="Vol-">
           <svg viewBox="0 0 24 24"><path d="M18.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM5 9v6h4l5 5V4L9 9H5z"/></svg>
         </button>
-        <button id="btn-screenshot" class="ctrl-btn" title="Screenshot">
-          <svg viewBox="0 0 24 24"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
-        </button>
-      </div>
-    </div>
-
-    <div class="control-group">
-      <label>Navigation</label>
-      <div class="btn-row">
-        <button id="btn-home" class="ctrl-btn ctrl-wide" title="Home">Home</button>
-        <button id="btn-back" class="ctrl-btn ctrl-wide" title="Back">Back</button>
-        <button id="btn-recents" class="ctrl-btn ctrl-wide" title="Recent Apps">Recents</button>
       </div>
     </div>
 

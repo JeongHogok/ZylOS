@@ -2,16 +2,12 @@
    [Clean Architecture] Presentation Layer - Style
 
    역할: Zyl OS 에뮬레이터 전체 스타일
-   수행범위: 디바이스 프레임, 상태바, 제어 패널, 앱 뷰포트 스타일
+   수행범위: 디바이스 프레임, 네비게이션 3모드, 상태바, 제어 패널
    의존방향: emulator.html
-   SOLID: SRP — 에뮬레이터 UI 스타일만 담당
+   SOLID: OCP — 네비게이션 모드별 스타일 독립적 추가 가능
    ────────────────────────────────────────────────────────── */
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
   font-family: 'Inter', -apple-system, sans-serif;
@@ -27,386 +23,261 @@ body {
 }
 
 #backdrop {
-  position: fixed;
-  inset: 0;
+  position: fixed; inset: 0;
   background:
-    radial-gradient(ellipse at 30% 30%, rgba(74, 158, 255, 0.06) 0%, transparent 50%),
-    radial-gradient(ellipse at 70% 70%, rgba(167, 139, 250, 0.04) 0%, transparent 50%),
+    radial-gradient(ellipse at 30% 30%, rgba(74,158,255,0.06) 0%, transparent 50%),
+    radial-gradient(ellipse at 70% 70%, rgba(167,139,250,0.04) 0%, transparent 50%),
     #0f0f1a;
   z-index: -1;
 }
 
-/* ─── Device Frame ─── */
+.hidden { display: none !important; }
+
+/* ══════════════════════════════════════════
+   Device Frame
+   ══════════════════════════════════════════ */
 #device-frame {
-  width: 393px;
-  min-width: 393px;
-  height: 852px;
+  width: 393px; min-width: 393px; height: 852px;
   background: #1a1a2e;
   border-radius: 52px;
   border: 3px solid #2a2a40;
-  box-shadow:
-    0 0 0 1px rgba(255,255,255,0.03),
-    0 20px 60px rgba(0,0,0,0.5),
-    0 0 120px rgba(74, 158, 255, 0.05);
-  position: relative;
-  overflow: hidden;
-  flex-shrink: 0;
-  transform: scale(0.85);
-  transform-origin: center center;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.03), 0 20px 60px rgba(0,0,0,0.5), 0 0 120px rgba(74,158,255,0.05);
+  position: relative; overflow: visible; flex-shrink: 0;
+  transform: scale(0.85); transform-origin: center center;
+  transition: height 0.3s ease;
 }
+
+/* 물리 버튼 모드에서 프레임 높이 확장 */
+#device-frame.nav-hw { height: 912px; }
 
 #device-notch {
-  position: absolute;
-  top: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 120px;
-  height: 32px;
-  background: #1a1a2e;
-  border-radius: 0 0 20px 20px;
-  z-index: 100;
+  position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+  width: 120px; height: 32px;
+  background: #1a1a2e; border-radius: 0 0 20px 20px; z-index: 100;
 }
-
 #device-notch::after {
-  content: '';
-  position: absolute;
-  top: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: #2a2a40;
+  content: ''; position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+  width: 10px; height: 10px; border-radius: 50%; background: #2a2a40;
 }
 
 #device-screen {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  border-radius: 50px;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+  border-radius: 50px; overflow: hidden;
+  display: flex; flex-direction: column;
 }
 
-/* ─── Emulator Statusbar ─── */
+/* 물리 버튼 모드에서 스크린은 원래 크기 유지 */
+#device-frame.nav-hw #device-screen { bottom: 60px; }
+
+/* ── Statusbar ── */
 #emu-statusbar {
-  height: 36px;
-  background: rgba(0, 0, 0, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 24px;
-  font-size: 13px;
-  font-weight: 600;
-  z-index: 50;
-  position: relative;
+  height: 36px; background: rgba(0,0,0,0.4);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 24px; font-size: 13px; font-weight: 600;
+  z-index: 50; position: relative; flex-shrink: 0;
 }
+.emu-sb-right { display: flex; align-items: center; gap: 5px; }
+.sb-ico { width: 14px; height: 14px; fill: white; opacity: 0.85; }
+#emu-battery { font-size: 12px; font-weight: 500; opacity: 0.8; }
 
-.emu-sb-right {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.sb-ico {
-  width: 14px;
-  height: 14px;
-  fill: white;
-  opacity: 0.85;
-}
-
-#emu-battery {
-  font-size: 12px;
-  font-weight: 500;
-  opacity: 0.8;
-}
-
-/* ─── App Viewport ─── */
+/* ── App Viewport ── */
 #app-viewport {
-  flex: 1;
-  position: relative;
-  overflow: hidden;
-  background: #0a0a1a;
+  flex: 1; position: relative; overflow: hidden; background: #0a0a1a;
+}
+#app-frame { width: 100%; height: 100%; border: none; background: #0a0a1a; }
+
+@keyframes app-enter {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+#app-viewport.launching #app-frame { animation: app-enter 0.25s ease-out; }
+
+/* ══════════════════════════════════════════
+   최근 앱 오버레이
+   ══════════════════════════════════════════ */
+#recents-overlay {
+  position: absolute; inset: 0; z-index: 200;
+  background: rgba(10,10,26,0.95);
+  backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px);
+  display: flex; flex-direction: column;
+  padding: 60px 16px 20px;
+  animation: recents-fadein 0.25s ease-out;
+}
+@keyframes recents-fadein { from { opacity:0; } to { opacity:1; } }
+
+#recents-header {
+  font-size: 16px; font-weight: 600; text-align: center;
+  margin-bottom: 20px; opacity: 0.7;
+}
+#recents-cards {
+  flex: 1; display: flex; flex-direction: column; gap: 10px; overflow-y: auto;
+}
+#recents-cards::-webkit-scrollbar { display: none; }
+
+.recents-card {
+  background: rgba(255,255,255,0.06); border-radius: 14px;
+  padding: 14px 16px; display: flex; align-items: center; justify-content: space-between;
+  cursor: pointer; transition: transform 0.1s, background 0.15s;
+}
+.recents-card:active { transform: scale(0.97); background: rgba(255,255,255,0.12); }
+.recents-card-name { font-size: 14px; font-weight: 500; }
+.recents-card-close {
+  background: none; border: none; color: rgba(255,255,255,0.3);
+  font-size: 20px; cursor: pointer; padding: 0 6px; line-height: 1;
+}
+.recents-card-close:hover { color: #ef4444; }
+
+#recents-empty {
+  text-align: center; padding: 60px 0; font-size: 14px;
+  opacity: 0.3; display: none;
 }
 
-#app-frame {
-  width: 100%;
-  height: 100%;
-  border: none;
-  background: #0a0a1a;
+/* ══════════════════════════════════════════
+   Navigation Mode A: Software Keys (Android)
+   ══════════════════════════════════════════ */
+#nav-softkeys {
+  height: 48px; flex-shrink: 0;
+  background: rgba(0,0,0,0.85);
+  display: flex; align-items: center; justify-content: space-around;
+  padding: 0 40px;
+}
+.nav-sk-btn {
+  width: 40px; height: 40px; border: none; background: none;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; transition: background 0.15s;
+}
+.nav-sk-btn:active { background: rgba(255,255,255,0.15); }
+.nav-sk-btn svg { width: 22px; height: 22px; fill: none; stroke: white; stroke-width: 0; }
+.nav-sk-btn svg path { fill: white; }
+.nav-sk-btn svg circle, .nav-sk-btn svg rect { fill: none; stroke: rgba(255,255,255,0.7); }
+.nav-sk-home svg circle { stroke-width: 2.5; }
+
+/* ══════════════════════════════════════════
+   Navigation Mode B: Gesture Bar (iOS style)
+   ══════════════════════════════════════════ */
+#nav-gesture {
+  height: 28px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; position: relative; z-index: 50;
+}
+#gesture-bar {
+  width: 134px; height: 5px; border-radius: 3px;
+  background: rgba(255,255,255,0.3); transition: all 0.2s;
+  cursor: grab;
+}
+#gesture-bar:hover { background: rgba(255,255,255,0.5); }
+#gesture-bar.dragging { background: white; cursor: grabbing; }
+
+/* 제스처 바 위에 실시간 힌트 */
+#nav-gesture .gesture-hint {
+  position: absolute; top: -24px; left: 50%; transform: translateX(-50%);
+  font-size: 10px; color: rgba(255,255,255,0.4);
+  opacity: 0; transition: opacity 0.2s; pointer-events: none;
+  white-space: nowrap;
+}
+#nav-gesture .gesture-hint.show { opacity: 1; }
+
+/* ══════════════════════════════════════════
+   Navigation Mode C: Hardware Buttons
+   ══════════════════════════════════════════ */
+#nav-hardware {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  height: 56px;
+  display: flex; align-items: center; justify-content: center; gap: 28px;
+  background: #1a1a2e;
+  border-radius: 0 0 50px 50px;
+  padding: 0 60px;
+}
+.hw-btn {
+  width: 36px; height: 36px;
+  border: 1.5px solid rgba(255,255,255,0.15);
+  background: none; color: rgba(255,255,255,0.5);
+  cursor: pointer; font-size: 16px;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s; border-radius: 8px;
+}
+.hw-home { border-radius: 50%; width: 40px; height: 40px; }
+.hw-btn:active {
+  background: rgba(255,255,255,0.12);
+  color: white; transform: scale(0.9);
 }
 
-/* ─── Home Indicator ─── */
-#home-indicator {
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  position: relative;
-  z-index: 50;
-  cursor: pointer;
-}
-
-.indicator-bar {
-  width: 140px;
-  height: 5px;
-  border-radius: 3px;
-  background: rgba(255, 255, 255, 0.3);
-  transition: background 0.2s;
-}
-
-#home-indicator:hover .indicator-bar {
-  background: rgba(255, 255, 255, 0.6);
-}
-
-#home-indicator:active .indicator-bar {
-  background: white;
-}
-
-/* ─── Control Panel ─── */
+/* ══════════════════════════════════════════
+   Control Panel (우측)
+   ══════════════════════════════════════════ */
 #control-panel {
-  width: 280px;
-  max-height: 852px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
+  width: 280px; max-height: 852px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 20px;
 }
+#control-panel::-webkit-scrollbar { width: 4px; }
+#control-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+#control-panel h1 { font-size: 24px; font-weight: 600; color: white; letter-spacing: -0.5px; }
+.subtitle { font-size: 13px; color: rgba(255,255,255,0.4); margin-top: 2px; }
 
-#control-panel::-webkit-scrollbar {
-  width: 4px;
-}
-
-#control-panel::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.1);
-  border-radius: 2px;
-}
-
-#control-panel h1 {
-  font-size: 24px;
-  font-weight: 600;
-  color: white;
-  letter-spacing: -0.5px;
-}
-
-.subtitle {
-  font-size: 13px;
-  color: rgba(255,255,255,0.4);
-  margin-top: 2px;
-}
-
-.control-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
+.control-group { display: flex; flex-direction: column; gap: 8px; }
 .control-group label {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: rgba(255,255,255,0.35);
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 1px; color: rgba(255,255,255,0.35);
 }
-
 .control-group select {
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 10px;
-  padding: 10px 14px;
-  color: white;
-  font-size: 13px;
-  outline: none;
-  cursor: pointer;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px; padding: 10px 14px; color: white; font-size: 13px; outline: none; cursor: pointer;
 }
+.control-group select:focus { border-color: #4a9eff; }
 
-.control-group select:focus {
-  border-color: #4a9eff;
-}
-
-.btn-row {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
+.btn-row { display: flex; gap: 6px; flex-wrap: wrap; }
 .ctrl-btn {
-  width: 44px;
-  height: 44px;
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 12px;
-  background: rgba(255,255,255,0.04);
-  color: white;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s;
-  font-size: 11px;
-  font-weight: 500;
+  width: 44px; height: 44px;
+  border: 1px solid rgba(255,255,255,0.08); border-radius: 12px;
+  background: rgba(255,255,255,0.04); color: white; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s; font-size: 11px; font-weight: 500;
 }
+.ctrl-btn:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.15); }
+.ctrl-btn:active { background: rgba(74,158,255,0.2); transform: scale(0.94); }
+.ctrl-btn svg { width: 20px; height: 20px; fill: rgba(255,255,255,0.7); }
 
-.ctrl-btn:hover {
-  background: rgba(255,255,255,0.1);
-  border-color: rgba(255,255,255,0.15);
-}
-
-.ctrl-btn:active {
-  background: rgba(74,158,255,0.2);
-  transform: scale(0.94);
-}
-
-.ctrl-btn svg {
-  width: 20px;
-  height: 20px;
-  fill: rgba(255,255,255,0.7);
-}
-
-.ctrl-wide {
-  width: auto;
-  padding: 0 16px;
-  font-size: 12px;
-}
-
-/* ─── Running Apps List ─── */
-#running-apps-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-height: 160px;
-  overflow-y: auto;
-}
-
+/* ── Running Apps ── */
+#running-apps-list { display: flex; flex-direction: column; gap: 4px; max-height: 160px; overflow-y: auto; }
 .running-app-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  background: rgba(255,255,255,0.04);
-  border-radius: 8px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: background 0.15s;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px; background: rgba(255,255,255,0.04); border-radius: 8px;
+  font-size: 12px; cursor: pointer; transition: background 0.15s;
 }
-
-.running-app-item:hover {
-  background: rgba(255,255,255,0.08);
-}
-
-.running-app-item.active {
-  background: rgba(74,158,255,0.15);
-  border-left: 2px solid #4a9eff;
-}
-
+.running-app-item:hover { background: rgba(255,255,255,0.08); }
+.running-app-item.active { background: rgba(74,158,255,0.15); border-left: 2px solid #4a9eff; }
 .running-app-item .app-close-btn {
-  background: none;
-  border: none;
-  color: rgba(255,255,255,0.3);
-  cursor: pointer;
-  font-size: 16px;
-  padding: 0 4px;
+  background: none; border: none; color: rgba(255,255,255,0.3);
+  cursor: pointer; font-size: 16px; padding: 0 4px;
 }
+.running-app-item .app-close-btn:hover { color: #ef4444; }
+.no-apps { font-size: 12px; color: rgba(255,255,255,0.25); padding: 12px; text-align: center; }
 
-.running-app-item .app-close-btn:hover {
-  color: #ef4444;
-}
-
-.no-apps {
-  font-size: 12px;
-  color: rgba(255,255,255,0.25);
-  padding: 12px;
-  text-align: center;
-}
-
-/* ─── System Log ─── */
+/* ── System Log ── */
 #sys-log {
-  background: rgba(0,0,0,0.3);
-  border-radius: 10px;
-  padding: 10px 12px;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 10px;
-  line-height: 1.6;
-  color: rgba(255,255,255,0.4);
-  max-height: 180px;
-  overflow-y: auto;
-  white-space: pre-wrap;
-  word-break: break-all;
+  background: rgba(0,0,0,0.3); border-radius: 10px; padding: 10px 12px;
+  font-family: 'SF Mono','Fira Code',monospace; font-size: 10px; line-height: 1.6;
+  color: rgba(255,255,255,0.4); max-height: 180px; overflow-y: auto;
+  white-space: pre-wrap; word-break: break-all;
 }
-
-#sys-log::-webkit-scrollbar {
-  width: 3px;
-}
-
-#sys-log::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.1);
-  border-radius: 2px;
-}
-
+#sys-log::-webkit-scrollbar { width: 3px; }
+#sys-log::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
 .log-info { color: #4a9eff; }
 .log-warn { color: #fbbf24; }
 .log-app { color: #a78bfa; }
 .log-sys { color: #22c55e; }
 
-/* ─── Tablet mode ─── */
-#device-frame.tablet {
-  width: 768px;
-  min-width: 768px;
-  height: 1024px;
-  border-radius: 32px;
-}
-
-#device-frame.tablet #device-screen {
-  border-radius: 30px;
-}
-
-#device-frame.tablet #device-notch {
-  width: 80px;
-  height: 24px;
-}
-
-/* ─── Screen off ─── */
-#device-frame.screen-off #device-screen {
-  background: #000 !important;
-}
-
+/* ── Screen off ── */
+#device-frame.screen-off #device-screen { background: #000 !important; }
 #device-frame.screen-off #app-viewport,
 #device-frame.screen-off #emu-statusbar,
-#device-frame.screen-off #home-indicator {
-  opacity: 0;
-  pointer-events: none;
-}
+#device-frame.screen-off .nav-bar,
+#device-frame.screen-off #nav-hardware { opacity: 0; pointer-events: none; }
 
-/* ─── App Launch Animation ─── */
-@keyframes app-enter {
-  from { opacity: 0; transform: scale(0.95); }
-  to { opacity: 1; transform: scale(1); }
-}
-
-#app-viewport.launching #app-frame {
-  animation: app-enter 0.25s ease-out;
-}
-
-/* ─── Responsive ─── */
+/* ── Responsive ── */
 @media (max-width: 800px) {
-  body {
-    flex-direction: column;
-    align-items: center;
-    padding: 20px;
-  }
-
-  #control-panel {
-    width: 100%;
-    max-width: 393px;
-    max-height: none;
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 12px;
-  }
-
+  body { flex-direction: column; align-items: center; }
+  #control-panel { width: 100%; max-width: 393px; max-height: none; flex-direction: row; flex-wrap: wrap; gap: 12px; }
   #control-panel h1 { width: 100%; }
   .subtitle { width: 100%; }
   .control-group { width: calc(50% - 6px); }
