@@ -7,7 +7,10 @@ project('zyl-os', 'c',
 subdir('compositor')
 subdir('runtime/wam')
 subdir('runtime/services/notification')
+subdir('runtime/services/appstore')
+subdir('runtime/services/updater')
 subdir('runtime/services/power')
+subdir('runtime/services/sandbox')
 
 # Install app files
 install_subdir('apps/home',       install_dir: get_option('datadir') / 'zyl-os' / 'apps')

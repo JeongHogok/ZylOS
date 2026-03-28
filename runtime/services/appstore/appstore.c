@@ -163,17 +163,6 @@ static char *json_get_string(const char *json, const char *key) {
     return val;
 }
 
-/* ─── 유틸리티: JSON에서 정수 값 추출 ─── */
-static long json_get_long(const char *json, const char *key) {
-    char pattern[256];
-    snprintf(pattern, sizeof(pattern), "\"%s\"", key);
-    const char *pos = strstr(json, pattern);
-    if (!pos) return -1;
-    pos += strlen(pattern);
-    while (*pos == ' ' || *pos == '\t' || *pos == ':') pos++;
-    return strtol(pos, NULL, 10);
-}
-
 /* ─── 유틸리티: nftw 콜백 for rm_rf ─── */
 static int rm_rf_callback(const char *fpath, const struct stat *sb,
                            int typeflag, struct FTW *ftwbuf) {

@@ -30,9 +30,10 @@
 - ~~systemd unit 파일 0개~~ → 4개 생성: zyl-compositor.service, zyl-wam.service, zyl-notification.service, zyl-os.target
 - 서비스 의존관계: compositor → WAM → notification
 
-### C3. 부팅 스플래시
-- 부트로더 → 검은 화면 → 컴포지터 시작까지 아무 표시 없음
-- **필요**: Plymouth 통합 또는 커스텀 스플래시
+### ~~C3. 부팅 스플래시~~ ✅ 완료 (2026-03-28)
+- ~~검은 화면~~ → Plymouth 테마 구현 (system/plymouth/zyl-os/)
+  - 다크 배경 + "Zyl OS" 텍스트 + 펄스 애니메이션 + 프로그레스 바
+  - install.sh 스크립트 제공
 
 ### ~~C4. 컴포지터 제스처 액션~~ ✅ 완료 (2026-03-28)
 - ~~로그만 출력~~ → 4개 액션 모두 구현:
@@ -83,9 +84,15 @@
 - 가속도계/자이로/근접/조도 센서 미구현
 - **필요**: IIO 드라이버 + D-Bus 센서 서비스
 
-### C13. 앱 샌드박싱 없음
-- 모든 앱이 동일 권한으로 실행 — 보안 위협
-- **필요**: seccomp-bpf, LSM 정책, IPC 권한 모델
+### ~~C13. 앱 샌드박싱~~ ✅ 완료 (2026-03-28)
+- ~~동일 권한 실행~~ → 5계층 보안 모델 구현:
+  - L1: mount namespace + bind mount 파일 격리
+  - L2: seccomp-bpf 시스콜 필터 (3단계 프로필)
+  - L3: network namespace (네트워크 권한 없으면 차단)
+  - L4: cgroup v2 리소스 제한 (메모리/CPU/PID)
+  - L5: D-Bus 정책 XML 생성 (권한별 서비스 접근 제어)
+  - 11개 권한 플래그 비트마스크
+  - 매니페스트 기반 정책 자동 생성
 
 ---
 

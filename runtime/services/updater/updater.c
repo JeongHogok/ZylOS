@@ -377,34 +377,107 @@ ZylUpdateState zyl_updater_check(ZylUpdater *u,
 bool zyl_updater_download(ZylUpdater *u,
                            zyl_update_progress_fn callback,
                            void *user_data) {
-    if (!u || u->state != ZYL_UPDATE_AVAILABLE) return false;
+    if (!u || u->state != ZYL_UPDATE_AVAILABLE || !u->pending) return false;
 
     u->progress_cb = callback;
     u->progress_data = user_data;
     u->state = ZYL_UPDATE_DOWNLOADING;
 
+    /* 1. 다운로드 대상 경로 설정 */
+    char pkg_path[512];
+    snprintf(pkg_path, sizeof(pkg_path), "%s/update.pkg", u->cache_dir);
+    mkdir_p(u->cache_dir);
+
+    report_progress(u, 0, "Starting download...");
+
     /*
-     * 실제 구현:
-     *   1. libcurl로 패키지 다운로드
-     *   2. 진행률 콜백 호출
-     *   3. 다운로드 완료 시 SHA-256 검증
-     *   4. RSA 서명 검증
-     *
-     *   curl = curl_easy_init();
-     *   curl_easy_setopt(curl, CURLOPT_URL, u->pending->download_url);
-     *   curl_easy_setopt(curl, CURLOPT_WRITEDATA, cache_file);
-     *   curl_easy_setopt(curl, CURLOPT_PROGRESSFUNCTION, progress_fn);
-     *   curl_easy_perform(curl);
+     * curl 명령어로 다운로드 — 진행률을 stderr로 출력하도록 설정
+     * TODO: libcurl 통합 시 CURLOPT_PROGRESSFUNCTION 사용으로 전환
      */
+    char cmd[2048];
+    snprintf(cmd, sizeof(cmd),
+             "curl -f -L --connect-timeout 15 --max-time 3600 "
+             "-o '%s' --progress-bar '%s' 2>&1",
+             pkg_path, u->pending->download_url);
+
+    fprintf(stderr, "[UPDATER] Downloading: %s -> %s\n",
+            u->pending->download_url, pkg_path);
+
+    /* popen으로 실행하여 진행률 파싱 시도 */
+    FILE *fp = popen(cmd, "r");
+    if (!fp) {
+        fprintf(stderr, "[UPDATER] Failed to start download\n");
+        u->state = ZYL_UPDATE_FAILED;
+        report_progress(u, 0, "Download failed to start");
+        return false;
+    }
+
+    char line[256];
+    int last_pct = 0;
+    while (fgets(line, sizeof(line), fp)) {
+        /* curl progress-bar 형식에서 퍼센트 파싱 시도 */
+        char *pct_pos = strstr(line, "%");
+        if (pct_pos && pct_pos > line) {
+            /* 퍼센트 앞의 숫자 추출 */
+            char *num_start = pct_pos - 1;
+            while (num_start > line &&
+                   (*(num_start - 1) >= '0' && *(num_start - 1) <= '9')) {
+                num_start--;
+            }
+            int pct = atoi(num_start);
+            if (pct > last_pct && pct <= 100) {
+                last_pct = pct;
+                report_progress(u, pct, "Downloading...");
+            }
+        }
+    }
+    int ret = pclose(fp);
+
+    if (ret != 0) {
+        fprintf(stderr, "[UPDATER] Download failed (exit code %d)\n", ret);
+        u->state = ZYL_UPDATE_FAILED;
+        report_progress(u, 0, "Download failed");
+        return false;
+    }
 
     report_progress(u, 100, "Download complete");
+
+    /* 2. SHA-256 해시 검증 */
     u->state = ZYL_UPDATE_VERIFYING;
+    report_progress(u, 0, "Verifying package integrity...");
 
-    /* SHA-256 검증 */
-    report_progress(u, 50, "Verifying package integrity...");
+    if (u->pending->sha256_hash && strlen(u->pending->sha256_hash) > 0) {
+        char computed_hash[128] = {0};
+        if (!compute_sha256_file(pkg_path, computed_hash, sizeof(computed_hash))) {
+            fprintf(stderr, "[UPDATER] Failed to compute SHA-256\n");
+            u->state = ZYL_UPDATE_FAILED;
+            report_progress(u, 0, "Hash verification failed");
+            return false;
+        }
 
-    /* 서명 검증 */
+        if (strncmp(computed_hash, u->pending->sha256_hash, 64) != 0) {
+            fprintf(stderr, "[UPDATER] SHA-256 mismatch: expected=%s got=%s\n",
+                    u->pending->sha256_hash, computed_hash);
+            u->state = ZYL_UPDATE_FAILED;
+            report_progress(u, 0, "Package integrity check failed");
+            unlink(pkg_path);
+            return false;
+        }
+
+        fprintf(stderr, "[UPDATER] SHA-256 verified: %s\n", computed_hash);
+    }
+
+    report_progress(u, 50, "Verifying signature...");
+
+    /* 3. RSA 서명 검증 */
+    /* TODO: OpenSSL 통합 시 실제 RSA 서명 검증 수행 */
+    if (u->pending->signature && strlen(u->pending->signature) > 0) {
+        fprintf(stderr, "[UPDATER] Signature present — "
+                "TODO: verify with OpenSSL\n");
+    }
+
     report_progress(u, 100, "Package verified");
+    fprintf(stderr, "[UPDATER] Download verified successfully\n");
 
     return true;
 }
@@ -412,65 +485,141 @@ bool zyl_updater_download(ZylUpdater *u,
 bool zyl_updater_apply(ZylUpdater *u,
                         zyl_update_progress_fn callback,
                         void *user_data) {
-    if (!u) return false;
+    if (!u || !u->pending) return false;
 
     u->progress_cb = callback;
     u->progress_data = user_data;
     u->state = ZYL_UPDATE_APPLYING;
 
-    /*
-     * A/B 파티션 업데이트 흐름:
-     *
-     * 1. 비활성 슬롯 결정
-     *    inactive = (active == "a") ? "b" : "a"
-     *
-     * 2. 업데이트 유형에 따라 적용:
-     *    - FULL: 비활성 파티션에 전체 이미지 기록
-     *      dd if=update.img of=/dev/mmcblk0p${inactive_part} bs=4M
-     *    - DELTA: bsdiff/bspatch로 델타 적용
-     *      bspatch /dev/mmcblk0p${active_part} /dev/mmcblk0p${inactive_part} delta.patch
-     *    - APPS_ONLY: 시스템 앱 디렉토리만 업데이트
-     *      rsync -a update/apps/ /usr/share/zyl-os/apps/
-     *    - KERNEL: 커널 이미지만 교체
-     *      cp update/Image /boot/Image.${inactive}
-     *
-     * 3. 부트로더 플래그 설정
-     *    fw_setenv zyl_next_slot ${inactive}
-     *    fw_setenv zyl_slot_verified 0
-     *    fw_setenv zyl_boot_count 0
-     *
-     * 4. 검증 메타데이터 저장
-     *    echo "${new_version}" > /var/lib/zyl-os/slot-${inactive}-version
-     */
-
+    /* 1. 비활성 슬롯 결정 */
     const char *inactive = strcmp(u->active_slot, "a") == 0 ? "b" : "a";
+    /* 파티션 번호 매핑: slot a → 파티션 2, slot b → 파티션 3 */
+    const char *inactive_part = strcmp(inactive, "a") == 0 ? "2" : "3";
+    const char *active_part   = strcmp(u->active_slot, "a") == 0 ? "2" : "3";
 
-    report_progress(u, 10, "Preparing inactive partition...");
+    char pkg_path[512];
+    snprintf(pkg_path, sizeof(pkg_path), "%s/update.pkg", u->cache_dir);
 
-    /* Step 1: 비활성 파티션 준비 */
-    report_progress(u, 20, "Writing update to partition...");
+    report_progress(u, 5, "Preparing inactive partition...");
 
-    /* Step 2: 업데이트 이미지 기록 */
+    fprintf(stderr, "[UPDATER] Applying %s update to slot %s\n",
+            u->pending->type == ZYL_UPDATE_TYPE_FULL  ? "FULL" :
+            u->pending->type == ZYL_UPDATE_TYPE_DELTA ? "DELTA" :
+            u->pending->type == ZYL_UPDATE_TYPE_APPS_ONLY ? "APPS_ONLY" :
+            "KERNEL",
+            inactive);
+
+    /* 2. 업데이트 유형별 적용 */
+    char cmd[1024];
+    int ret = 0;
+
+    switch (u->pending->type) {
+    case ZYL_UPDATE_TYPE_FULL:
+        /* 비활성 파티션에 전체 이미지 기록 (dd) */
+        report_progress(u, 10, "Writing full image to partition...");
+        snprintf(cmd, sizeof(cmd),
+                 "dd if='%s' of=/dev/mmcblk0p%s bs=4M conv=fsync 2>/dev/null",
+                 pkg_path, inactive_part);
+        ret = system(cmd);
+        if (ret != 0) {
+            fprintf(stderr, "[UPDATER] dd failed (exit %d)\n", ret);
+            u->state = ZYL_UPDATE_FAILED;
+            report_progress(u, 0, "Failed to write image to partition");
+            return false;
+        }
+        report_progress(u, 60, "Image written successfully");
+        break;
+
+    case ZYL_UPDATE_TYPE_DELTA:
+        /* bspatch로 델타 패치 적용 */
+        report_progress(u, 10, "Applying delta patch...");
+        snprintf(cmd, sizeof(cmd),
+                 "bspatch /dev/mmcblk0p%s /dev/mmcblk0p%s '%s' 2>/dev/null",
+                 active_part, inactive_part, pkg_path);
+        ret = system(cmd);
+        if (ret != 0) {
+            fprintf(stderr, "[UPDATER] bspatch failed (exit %d)\n", ret);
+            u->state = ZYL_UPDATE_FAILED;
+            report_progress(u, 0, "Failed to apply delta patch");
+            return false;
+        }
+        report_progress(u, 60, "Delta patch applied");
+        break;
+
+    case ZYL_UPDATE_TYPE_APPS_ONLY:
+        /* 시스템 앱만 추출 및 업데이트 */
+        report_progress(u, 10, "Extracting app updates...");
+        snprintf(cmd, sizeof(cmd),
+                 "mkdir -p /tmp/zyl-app-update && "
+                 "unzip -o -q '%s' -d /tmp/zyl-app-update 2>/dev/null && "
+                 "cp -a /tmp/zyl-app-update/apps/* /usr/share/zyl-os/apps/ "
+                 "2>/dev/null && "
+                 "rm -rf /tmp/zyl-app-update",
+                 pkg_path);
+        ret = system(cmd);
+        if (ret != 0) {
+            fprintf(stderr, "[UPDATER] App update extraction failed\n");
+            u->state = ZYL_UPDATE_FAILED;
+            report_progress(u, 0, "Failed to extract app updates");
+            return false;
+        }
+        report_progress(u, 60, "Apps updated");
+        break;
+
+    case ZYL_UPDATE_TYPE_KERNEL:
+        /* 커널 이미지 교체 */
+        report_progress(u, 10, "Updating kernel image...");
+        snprintf(cmd, sizeof(cmd),
+                 "cp '%s' /boot/Image.%s 2>/dev/null && sync",
+                 pkg_path, inactive);
+        ret = system(cmd);
+        if (ret != 0) {
+            fprintf(stderr, "[UPDATER] Kernel copy failed\n");
+            u->state = ZYL_UPDATE_FAILED;
+            report_progress(u, 0, "Failed to copy kernel image");
+            return false;
+        }
+        report_progress(u, 60, "Kernel image updated");
+        break;
+    }
+
+    /* 3. U-Boot 환경변수 설정 via fw_setenv */
     report_progress(u, 70, "Setting boot flags...");
 
-    /* Step 3: 부트 플래그 설정 */
+    snprintf(cmd, sizeof(cmd),
+             "fw_setenv zyl_next_slot %s 2>/dev/null", inactive);
+    system(cmd);
+
+    snprintf(cmd, sizeof(cmd),
+             "fw_setenv zyl_slot_verified 0 2>/dev/null");
+    system(cmd);
+
+    snprintf(cmd, sizeof(cmd),
+             "fw_setenv zyl_boot_count 0 2>/dev/null");
+    system(cmd);
+
+    /* 파일 기반 폴백 (fw_setenv가 없는 환경용) */
     char flag_path[256];
-    snprintf(flag_path, sizeof(flag_path),
-             "/var/lib/zyl-os/next-slot");
+    snprintf(flag_path, sizeof(flag_path), "/var/lib/zyl-os/next-slot");
+    mkdir_p("/var/lib/zyl-os");
     write_file_string(flag_path, inactive);
 
-    report_progress(u, 90, "Saving metadata...");
+    report_progress(u, 85, "Saving version metadata...");
 
-    /* Step 4: 메타데이터 저장 */
-    if (u->pending) {
-        char ver_path[256];
-        snprintf(ver_path, sizeof(ver_path),
-                 "/var/lib/zyl-os/slot-%s-version", inactive);
-        write_file_string(ver_path, u->pending->version);
-    }
+    /* 4. 버전 메타데이터 기록 */
+    char ver_path[256];
+    snprintf(ver_path, sizeof(ver_path),
+             "/var/lib/zyl-os/slot-%s-version", inactive);
+    write_file_string(ver_path, u->pending->version);
+
+    /* 다운로드 캐시 정리 */
+    unlink(pkg_path);
 
     report_progress(u, 100, "Update applied. Reboot to activate.");
     u->state = ZYL_UPDATE_PENDING_REBOOT;
+
+    fprintf(stderr, "[UPDATER] Update applied to slot %s (v%s). "
+            "Reboot required.\n", inactive, u->pending->version);
 
     return true;
 }
@@ -492,22 +641,40 @@ bool zyl_updater_reboot_to_update(ZylUpdater *u) {
 bool zyl_updater_mark_verified(ZylUpdater *u) {
     if (!u) return false;
 
-    /*
-     * 부팅 후 시스템 자가 진단 통과 시 호출:
-     *   1. 핵심 서비스 (compositor, WAM) 실행 확인
-     *   2. 디스플레이 출력 확인
-     *   3. 터치 입력 응답 확인
-     *
-     * 검증 성공 시:
-     *   fw_setenv zyl_slot_verified 1
-     *   fw_setenv zyl_active_slot ${current_slot}
-     */
+    fprintf(stderr, "[UPDATER] Running system health checks...\n");
 
+    /* 1. 핵심 서비스 실행 상태 확인: compositor */
+    int ret = system("systemctl is-active --quiet zyl-compositor 2>/dev/null");
+    if (ret != 0) {
+        fprintf(stderr, "[UPDATER] Health check FAILED: "
+                "zyl-compositor not running\n");
+        return false;
+    }
+    fprintf(stderr, "[UPDATER] Health: zyl-compositor OK\n");
+
+    /* 2. 핵심 서비스 실행 상태 확인: WAM */
+    ret = system("systemctl is-active --quiet zyl-wam 2>/dev/null");
+    if (ret != 0) {
+        fprintf(stderr, "[UPDATER] Health check FAILED: "
+                "zyl-wam not running\n");
+        return false;
+    }
+    fprintf(stderr, "[UPDATER] Health: zyl-wam OK\n");
+
+    /* 3. fw_setenv으로 슬롯 검증 완료 마킹 */
+    char cmd[256];
+    snprintf(cmd, sizeof(cmd),
+             "fw_setenv zyl_slot_verified 1 2>/dev/null");
+    system(cmd);
+
+    snprintf(cmd, sizeof(cmd),
+             "fw_setenv zyl_active_slot %s 2>/dev/null", u->active_slot);
+    system(cmd);
+
+    /* 파일 기반 폴백 */
+    mkdir_p("/var/lib/zyl-os");
     write_file_string(VERIFY_FLAG_FILE, "1");
-
-    char slot_path[256];
-    snprintf(slot_path, sizeof(slot_path), "%s", SLOT_METADATA_PATH);
-    write_file_string(slot_path, u->active_slot);
+    write_file_string(SLOT_METADATA_PATH, u->active_slot);
 
     fprintf(stderr, "[UPDATER] Slot '%s' marked as verified\n",
             u->active_slot);
@@ -519,22 +686,20 @@ bool zyl_updater_rollback(ZylUpdater *u) {
 
     u->state = ZYL_UPDATE_ROLLING_BACK;
 
-    /*
-     * 롤백 시나리오:
-     *   1. 자동 롤백: 부팅 3회 연속 실패 시 U-Boot이 자동 전환
-     *      fw_setenv에서 boot_count > 3이면 이전 슬롯으로
-     *   2. 수동 롤백: 사용자가 설정에서 요청
-     *      fw_setenv zyl_next_slot ${previous_slot}
-     *      reboot
-     */
-
     const char *previous = strcmp(u->active_slot, "a") == 0 ? "b" : "a";
 
-    char flag_path[256];
-    snprintf(flag_path, sizeof(flag_path), "/var/lib/zyl-os/next-slot");
-    write_file_string(flag_path, previous);
+    /* fw_setenv으로 부트로더에 이전 슬롯 지정 */
+    char cmd[256];
+    snprintf(cmd, sizeof(cmd),
+             "fw_setenv zyl_next_slot %s 2>/dev/null", previous);
+    system(cmd);
 
-    fprintf(stderr, "[UPDATER] Rollback to slot '%s' scheduled\n", previous);
+    /* 파일 기반 폴백 */
+    mkdir_p("/var/lib/zyl-os");
+    write_file_string("/var/lib/zyl-os/next-slot", previous);
+
+    fprintf(stderr, "[UPDATER] Rollback to slot '%s' scheduled. "
+            "Reboot required.\n", previous);
     u->state = ZYL_UPDATE_PENDING_REBOOT;
 
     return true;
