@@ -147,6 +147,16 @@
     appFrame.src = app.path;
     state.currentApp = appId;
 
+    /* 잠금화면 로드 시 기존 알림 전부 전달 */
+    if (appId === 'com.zylos.lockscreen') {
+      appFrame.onload = function () {
+        notifications.forEach(function (n) {
+          broadcastToCurrentApp('notification.push', n);
+        });
+        appFrame.onload = null;
+      };
+    }
+
     if (!state.runningApps.find(function (a) { return a.id === appId; })) {
       state.runningApps.push({ id: appId, name: app.name });
     }
@@ -549,8 +559,11 @@
       return;
     }
     cards.forEach(function(card, i) {
+      card.style.animation = 'none'; /* CSS animation 제거하여 transition과 충돌 방지 */
       card.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
       card.style.transitionDelay = (i * 50) + 'ms';
+      /* 강제 리플로우 후 transform 적용 */
+      void card.offsetWidth;
       card.style.transform = 'translateX(100%)';
       card.style.opacity = '0';
     });
