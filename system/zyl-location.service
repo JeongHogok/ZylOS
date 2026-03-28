@@ -1,0 +1,14 @@
+[Unit]
+Description=Zyl OS Location Service
+After=dbus.service
+Wants=zyl-compositor.service
+
+[Service]
+Type=dbus
+BusName=org.zylos.LocationService
+ExecStart=/usr/bin/zyl-location
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

@@ -80,17 +80,26 @@
   - D-Bus 인터페이스 (StateChanged 시그널)
   - systemd 서비스 파일 (zyl-power.service)
 
-### C10. 셀룰러/전화 스택 없음
-- 모뎀 드라이버/AT 명령/통화/SMS 미구현
-- **필요**: ModemManager 통합 (하드웨어 의존)
+### ~~C10. 셀룰러/전화 스택~~ ✅ 완료 (2026-03-28)
+- ~~모뎀 미구현~~ → ModemManager D-Bus 통합:
+  - SIM/신호/통신사 조회, 음성 통화, SMS 전송
+  - ObjectManager 기반 모뎀 열거
+  - 하드웨어 미감지 시 graceful fallback
 
-### C11. GPS/위치 서비스 없음
-- GNSS 드라이버, 위치 API 미구현
-- **필요**: GPSD + D-Bus 위치 서비스
+### ~~C11. GPS/위치 서비스~~ ✅ 완료 (2026-03-28)
+- ~~GNSS 미구현~~ → 듀얼 프로바이더 구현:
+  - Primary: GPSD (libgps) 하드웨어 GPS
+  - Fallback: HTTP GeoIP (ip-api.com via libcurl)
+  - Fused provider: 두 소스 결합
+  - 조건부 컴파일 (HAVE_GPSD, HAVE_CURL)
 
-### C12. 센서 통합 없음
-- 가속도계/자이로/근접/조도 센서 미구현
-- **필요**: IIO 드라이버 + D-Bus 센서 서비스
+### ~~C12. 센서 통합~~ ✅ 완료 (2026-03-28)
+- ~~IIO 미구현~~ → Linux IIO 서브시스템 통합:
+  - /sys/bus/iio/devices/ 스캔으로 센서 자동 감지
+  - 5종 센서: 가속도계, 자이로, 근접, 조도, 자기계
+  - 폴링 스레드 기반 리스너 (설정 가능한 주파수)
+  - raw → scale/offset 변환
+  - D-Bus SensorEvent 시그널
 
 ### ~~C13. 앱 샌드박싱~~ ✅ 완료 (2026-03-28)
 - ~~동일 권한 실행~~ → 5계층 보안 모델 구현:

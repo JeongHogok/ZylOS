@@ -1,0 +1,14 @@
+[Unit]
+Description=Zyl OS Telephony Service
+After=dbus.service ModemManager.service
+Wants=ModemManager.service
+
+[Service]
+Type=dbus
+BusName=org.zylos.Telephony
+ExecStart=/usr/bin/zyl-telephony
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

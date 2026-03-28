@@ -1,0 +1,13 @@
+[Unit]
+Description=Zyl OS Sensor Service
+After=dbus.service
+
+[Service]
+Type=dbus
+BusName=org.zylos.SensorService
+ExecStart=/usr/bin/zyl-sensors
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
