@@ -24,22 +24,39 @@
   var hostname = 'bpi-f3';
   var username = 'user';
 
-  /* ─── Simulated filesystem ─── */
-  var filesystem = {
-    '/home/user': ['Documents', 'Downloads', 'Pictures', 'Music', '.bashrc', '.profile', 'readme.txt'],
-    '/home/user/Documents': ['report.pdf', 'notes.md', 'project/', 'budget.xlsx'],
-    '/home/user/Downloads': ['zylos-v0.1.img.gz', 'linux-6.6.63.tar.xz'],
-    '/home/user/Pictures': ['photo_001.jpg', 'photo_002.jpg', 'screenshots/'],
-    '/home/user/Music': ['playlist.mp3', 'podcast.m4a'],
-    '/': ['bin', 'boot', 'dev', 'etc', 'home', 'lib', 'mnt', 'opt', 'proc', 'root', 'run', 'sbin', 'sys', 'tmp', 'usr', 'var']
-  };
+  /* ─── Filesystem + device info (loaded from service) ─── */
+  var filesystem = {};
+  var fileContents = {};
+  var deviceData = null;
 
-  var fileContents = {
-    '/home/user/readme.txt': 'Welcome to Zyl OS!\n\nThis is a Linux-based mobile operating system\ndesigned for Banana Pi RISC-V boards.\n\nVisit: https://zylos.dev',
-    '/home/user/.bashrc': '# ~/.bashrc\nexport PATH=$HOME/bin:$PATH\nexport EDITOR=nano\nalias ll="ls -la"\nalias ..="cd .."\n\n# Zyl OS environment\nexport BPIOS_VERSION=0.1.0',
-    '/home/user/.profile': '# ~/.profile\n[ -f ~/.bashrc ] && . ~/.bashrc',
-    '/home/user/Documents/notes.md': '# Project Notes\n\n## Zyl OS Development\n- UI framework complete\n- Browser app in progress\n- Terminal emulator done\n\n## TODO\n- [ ] Camera app\n- [ ] File manager polish\n- [x] Settings app'
-  };
+  /* Request data from central service */
+  function requestServiceData() {
+    window.parent.postMessage(JSON.stringify({
+      type: 'service.request', service: 'fs', method: 'getAllData'
+    }), '*');
+    window.parent.postMessage(JSON.stringify({
+      type: 'service.request', service: 'device', method: 'getInfo'
+    }), '*');
+  }
+
+  /* Listen for service responses */
+  window.addEventListener('message', function (e) {
+    try {
+      var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+      if (!msg || msg.type !== 'service.response') return;
+      if (msg.service === 'fs' && msg.method === 'getAllData' && msg.data) {
+        filesystem = msg.data.unixTree || {};
+        fileContents = msg.data.fileContents || {};
+      } else if (msg.service === 'device' && msg.method === 'getInfo' && msg.data) {
+        deviceData = msg.data;
+        hostname = msg.data.hostname || hostname;
+        username = msg.data.username || username;
+        updatePrompt();
+      }
+    } catch (err) { /* ignore */ }
+  });
+
+  requestServiceData();
 
   /* ─── Prompt String ─── */
   function getPrompt() {
@@ -190,7 +207,9 @@
 
     uname: function (args) {
       if (args.indexOf('-a') !== -1) {
-        addLine('Linux bpi-f3 6.6.63 #1 SMP PREEMPT_DYNAMIC Fri Mar 28 00:00:00 UTC 2026 riscv64 GNU/Linux', 'line-output');
+        var d = deviceData || {};
+        var kern = d.kernel ? d.kernel.replace('Linux ', '') : '6.6.63';
+        addLine('Linux ' + hostname + ' ' + kern + ' #1 SMP PREEMPT_DYNAMIC Fri Mar 28 00:00:00 UTC 2026 riscv64 GNU/Linux', 'line-output');
       } else {
         addLine('Linux', 'line-output');
       }
@@ -248,20 +267,21 @@
         '               `"""          '
       ];
 
+      var d = deviceData || {};
       var info = [
         '',
         '<span class="line-bold">' + username + '@' + hostname + '</span>',
         '──────────────────',
-        '<span class="line-bold">OS:</span> Zyl OS 0.1.0 riscv64',
-        '<span class="line-bold">Host:</span> Banana Pi BPI-F3',
-        '<span class="line-bold">Kernel:</span> 6.6.63',
+        '<span class="line-bold">OS:</span> ' + (d.osVersion || 'Zyl OS 0.1.0') + ' riscv64',
+        '<span class="line-bold">Host:</span> ' + (d.deviceName || 'Banana Pi BPI-F3'),
+        '<span class="line-bold">Kernel:</span> ' + (d.kernel ? d.kernel.replace('Linux ', '') : '6.6.63'),
         '<span class="line-bold">Uptime:</span> 3 hours, 42 mins',
-        '<span class="line-bold">Shell:</span> bash 5.2.26',
-        '<span class="line-bold">Resolution:</span> 720x1280',
+        '<span class="line-bold">Shell:</span> ' + (d.shell || 'bash 5.2.26'),
+        '<span class="line-bold">Resolution:</span> ' + (d.resolution || '720x1280'),
         '<span class="line-bold">DE:</span> Zyl OS Shell',
         '<span class="line-bold">WM:</span> Wayland',
         '<span class="line-bold">Terminal:</span> zyl-terminal',
-        '<span class="line-bold">CPU:</span> SpacemiT K1 (8) @ 1.6GHz',
+        '<span class="line-bold">CPU:</span> ' + (d.soc || 'SpacemiT K1 (RISC-V)').replace(' (RISC-V)', '') + ' (8) @ 1.6GHz',
         '<span class="line-bold">Memory:</span> 4423MiB / 16384MiB',
         '',
         '<span style="color:#ff4444">███</span><span style="color:#ff8800">███</span><span style="color:#ffff00">███</span><span style="color:#00ff41">███</span><span style="color:#4a9eff">███</span><span style="color:#a78bfa">███</span>',
@@ -449,9 +469,10 @@
 
   /* ─── Welcome Message ─── */
   function showWelcome() {
+    var d = deviceData || {};
     addHtml('<span class="line-bold">Zyl OS Terminal v1.0.0</span>', 'line-info');
     addLine('Copyright (c) 2026 Zyl OS Project', 'line-output');
-    addLine('Running on Banana Pi BPI-F3 (SpacemiT K1 RISC-V)', 'line-output');
+    addLine('Running on ' + (d.deviceName || 'Banana Pi BPI-F3') + ' (' + (d.soc || 'SpacemiT K1 (RISC-V)') + ')', 'line-output');
     addLine('');
     addLine('Type \'help\' for available commands.', 'line-output');
     addLine('');

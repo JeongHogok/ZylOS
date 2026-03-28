@@ -37,25 +37,44 @@
   var pageContent = document.getElementById('page-content');
   var ntpSearchInput = document.getElementById('ntp-search-input');
 
-  /* ─── Simulated Pages ─── */
-  var simulatedPages = {
-    'zylos.dev': {
-      title: 'Zyl OS Official',
-      html: '<div class="sim-header"><h1>Zyl OS</h1><p>A modern Linux-based mobile operating system designed for Banana Pi single-board computers with RISC-V architecture.</p></div>' +
-        '<div class="sim-section"><h3>Features</h3><p>Custom UI toolkit, WebKitGTK browser, hardware-accelerated graphics, and full RISC-V support.</p></div>' +
-        '<div class="sim-section"><h3>Getting Started</h3><p>Flash the Zyl OS image to your SD card and boot your Banana Pi F3 board.</p></div>'
-    },
-    'github.com': {
-      title: 'GitHub',
-      html: '<div class="sim-header"><h1>GitHub</h1><p>Where the world builds software. Millions of developers use GitHub to build, ship, and maintain their software.</p></div>' +
-        '<div class="sim-section"><h3>Trending Repositories</h3><p>Explore popular open source projects and contribute to the community.</p></div>'
-    },
-    'riscv.org': {
-      title: 'RISC-V International',
-      html: '<div class="sim-header"><h1>RISC-V International</h1><p>RISC-V is a free and open ISA enabling a new era of processor innovation.</p></div>' +
-        '<div class="sim-section"><h3>Open Standard</h3><p>The RISC-V ISA is provided under open source licenses with no fees.</p></div>'
-    }
-  };
+  /* ─── Simulated Pages (loaded from service) ─── */
+  var simulatedPages = {};
+  var bookmarksData = [];
+  var quickLinksData = [];
+
+  /* Request browser data from central service */
+  function requestBrowserData() {
+    window.parent.postMessage(JSON.stringify({
+      type: 'service.request', service: 'browser', method: 'getSimulatedPages'
+    }), '*');
+    window.parent.postMessage(JSON.stringify({
+      type: 'service.request', service: 'browser', method: 'getBookmarks'
+    }), '*');
+    window.parent.postMessage(JSON.stringify({
+      type: 'service.request', service: 'browser', method: 'getQuickLinks'
+    }), '*');
+  }
+
+  /* Listen for service responses */
+  window.addEventListener('message', function (e) {
+    try {
+      var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+      if (!msg || msg.type !== 'service.response') return;
+      if (msg.service === 'browser') {
+        if (msg.method === 'getSimulatedPages' && msg.data) {
+          simulatedPages = msg.data;
+        } else if (msg.method === 'getBookmarks' && msg.data) {
+          bookmarksData = msg.data;
+          renderBookmarks();
+        } else if (msg.method === 'getQuickLinks' && msg.data) {
+          quickLinksData = msg.data;
+          renderQuickLinks();
+        }
+      }
+    } catch (err) { /* ignore */ }
+  });
+
+  requestBrowserData();
 
   /* ─── Helper: Get active tab ─── */
   function getActiveTab() {
@@ -279,23 +298,58 @@
     bookmarksSidebar.classList.add('hidden');
   });
 
-  document.querySelectorAll('.bookmark-item').forEach(function (item) {
-    item.addEventListener('click', function () {
-      var url = item.dataset.url;
-      urlInput.value = url;
-      showWebPage(url);
-      bookmarksSidebar.classList.add('hidden');
+  /* ─── Render Bookmarks from service data ─── */
+  function renderBookmarks() {
+    var list = document.getElementById('bookmarks-list');
+    if (!list) return;
+    list.innerHTML = '';
+    if (bookmarksData.length === 0) {
+      list.innerHTML = '<div style="padding:16px;opacity:0.5;text-align:center">No bookmarks</div>';
+      return;
+    }
+    bookmarksData.forEach(function (bm) {
+      var el = document.createElement('div');
+      el.className = 'bookmark-item';
+      el.dataset.url = bm.url;
+      var domain = bm.url.replace(/^https?:\/\/(www\.)?/, '').replace(/\/.*$/, '');
+      el.innerHTML =
+        '<div class="bookmark-favicon">' + (bm.favicon || bm.name.charAt(0)) + '</div>' +
+        '<div class="bookmark-info">' +
+          '<span class="bookmark-name">' + bm.name + '</span>' +
+          '<span class="bookmark-url">' + domain + '</span>' +
+        '</div>';
+      el.addEventListener('click', function () {
+        urlInput.value = bm.url;
+        showWebPage(bm.url);
+        bookmarksSidebar.classList.add('hidden');
+      });
+      list.appendChild(el);
     });
-  });
+  }
 
-  /* ─── Quick Links ─── */
-  document.querySelectorAll('.quick-link').forEach(function (link) {
-    link.addEventListener('click', function () {
-      var url = link.dataset.url;
-      urlInput.value = url;
-      showWebPage(url);
+  /* ─── Render Quick Links from service data ─── */
+  function renderQuickLinks() {
+    var container = document.getElementById('quick-links');
+    if (!container) return;
+    container.innerHTML = '';
+    if (quickLinksData.length === 0) return;
+    quickLinksData.forEach(function (ql) {
+      var el = document.createElement('div');
+      el.className = 'quick-link';
+      el.dataset.url = ql.url;
+      var fillAttr = ql.svgFill ? ' fill="' + ql.svgFill + '"' : '';
+      el.innerHTML =
+        '<div class="quick-link-icon" style="background: ' + ql.iconBg + ';">' +
+          '<svg viewBox="0 0 24 24" width="24" height="24"><path' + fillAttr + ' d="' + ql.svgPath + '"/></svg>' +
+        '</div>' +
+        '<span>' + ql.name + '</span>';
+      el.addEventListener('click', function () {
+        urlInput.value = ql.url;
+        showWebPage(ql.url);
+      });
+      container.appendChild(el);
     });
-  });
+  }
 
   /* ─── Menu Button (placeholder) ─── */
   btnMenu.addEventListener('click', function () {

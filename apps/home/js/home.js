@@ -26,17 +26,31 @@
     store:    '<svg viewBox="0 0 24 24"><path d="M18.36 9l.6 3H5.04l.6-3h12.72M20 4H4v2h16V4zm0 3H4l-1 5v2h1v6h10v-6h4v6h2v-6h1v-2l-1-5zM6 18v-4h6v4H6z"/></svg>',
   };
 
-  /* ─── 앱 정의 (아이콘 + 색상) ─── */
-  var defaultApps = [
-    { id: 'com.zylos.camera',   nameKey: 'app.camera',   icon: 'camera',   color: 'icon-red'     },
-    { id: 'com.zylos.gallery',  nameKey: 'app.gallery',  icon: 'gallery',  color: 'icon-pink'    },
-    { id: 'com.zylos.music',    nameKey: 'app.music',    icon: 'music',    color: 'icon-red'     },
-    { id: 'com.zylos.clock',    nameKey: 'app.clock',    icon: 'clock',    color: 'icon-indigo'  },
-    { id: 'com.zylos.calc',     nameKey: 'app.calc',     icon: 'calc',     color: 'icon-orange'  },
-    { id: 'com.zylos.notes',    nameKey: 'app.notes',    icon: 'notes',    color: 'icon-amber'   },
-    { id: 'com.zylos.weather',  nameKey: 'app.weather',  icon: 'weather',  color: 'icon-cyan'    },
-    { id: 'com.zylos.store',    nameKey: 'app.store',    icon: 'store',    color: 'icon-emerald' },
-  ];
+  /* ─── 앱 정의 (서비스에서 로드) ─── */
+  var defaultApps = [];
+
+  /* Request app list from central service */
+  function requestAppList() {
+    window.parent.postMessage(JSON.stringify({
+      type: 'service.request',
+      service: 'apps',
+      method: 'getInstalled'
+    }), '*');
+  }
+
+  /* Listen for service responses */
+  window.addEventListener('message', function (e) {
+    try {
+      var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+      if (!msg || msg.type !== 'service.response') return;
+      if (msg.service === 'apps' && msg.method === 'getInstalled' && msg.data) {
+        defaultApps = msg.data;
+        renderAppGrid(defaultApps);
+      }
+    } catch (err) { /* ignore */ }
+  });
+
+  requestAppList();
 
   /* ─── 시계 (shared ZylClock 사용) ─── */
   var clockTime = document.getElementById('clock-time');
@@ -104,7 +118,11 @@
     renderAppGrid(defaultApps);
   });
 
-  /* ─── 초기 렌더링 ─── */
-  renderAppGrid(defaultApps);
+  /* ─── 초기 렌더링 (서비스 응답 전 로딩 상태) ─── */
+  if (defaultApps.length === 0) {
+    appGrid.innerHTML = '<div style="text-align:center;opacity:0.5;padding:32px;grid-column:1/-1">Loading...</div>';
+  } else {
+    renderAppGrid(defaultApps);
+  }
 
 })();

@@ -10,47 +10,33 @@
 (function () {
   'use strict';
 
-  /* ─── Simulated File System ─── */
-  var fileSystem = {
-    '/': [
-      { name: 'Documents', type: 'folder', date: '2026-03-27', size: null },
-      { name: 'Downloads', type: 'folder', date: '2026-03-28', size: null },
-      { name: 'Pictures', type: 'folder', date: '2026-03-25', size: null },
-      { name: 'Music', type: 'folder', date: '2026-03-20', size: null },
-      { name: 'Videos', type: 'folder', date: '2026-03-15', size: null },
-      { name: 'readme.txt', type: 'document', date: '2026-03-28', size: 2400 },
-      { name: 'system.log', type: 'code', date: '2026-03-28', size: 15360 }
-    ],
-    '/Documents': [
-      { name: 'Work', type: 'folder', date: '2026-03-26', size: null },
-      { name: 'report_2026.pdf', type: 'document', date: '2026-03-26', size: 1258291 },
-      { name: 'notes.md', type: 'code', date: '2026-03-27', size: 4096 },
-      { name: 'budget.xlsx', type: 'document', date: '2026-03-20', size: 52480 },
-      { name: 'presentation.pptx', type: 'document', date: '2026-03-18', size: 3145728 }
-    ],
-    '/Downloads': [
-      { name: 'zylos-image-v0.1.img.gz', type: 'archive', date: '2026-03-28', size: 524288000 },
-      { name: 'linux-6.6.63.tar.xz', type: 'archive', date: '2026-03-25', size: 142606336 },
-      { name: 'wallpaper.jpg', type: 'image', date: '2026-03-27', size: 2097152 },
-      { name: 'setup.sh', type: 'code', date: '2026-03-24', size: 8192 }
-    ],
-    '/Pictures': [
-      { name: 'Screenshots', type: 'folder', date: '2026-03-28', size: null },
-      { name: 'photo_001.jpg', type: 'image', date: '2026-03-27', size: 3145728 },
-      { name: 'photo_002.jpg', type: 'image', date: '2026-03-26', size: 2621440 },
-      { name: 'avatar.png', type: 'image', date: '2026-03-20', size: 524288 },
-      { name: 'banner.svg', type: 'image', date: '2026-03-15', size: 12288 }
-    ],
-    '/Music': [
-      { name: 'playlist_01.mp3', type: 'audio', date: '2026-03-10', size: 5242880 },
-      { name: 'podcast_ep12.m4a', type: 'audio', date: '2026-03-22', size: 31457280 },
-      { name: 'ringtone.ogg', type: 'audio', date: '2026-02-15', size: 204800 }
-    ],
-    '/Videos': [
-      { name: 'demo_riscv.mp4', type: 'video', date: '2026-03-18', size: 157286400 },
-      { name: 'screen_record_01.webm', type: 'video', date: '2026-03-25', size: 52428800 }
-    ]
-  };
+  /* ─── File System (loaded from service) ─── */
+  var fileSystem = {};
+  var serviceReady = false;
+
+  /* Request filesystem data from central service */
+  function requestFileSystem() {
+    window.parent.postMessage(JSON.stringify({
+      type: 'service.request',
+      service: 'fs',
+      method: 'getAllData'
+    }), '*');
+  }
+
+  /* Listen for service responses */
+  window.addEventListener('message', function (e) {
+    try {
+      var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+      if (!msg || msg.type !== 'service.response') return;
+      if (msg.service === 'fs' && msg.method === 'getAllData' && msg.data) {
+        fileSystem = msg.data.tree || {};
+        serviceReady = true;
+        renderFiles();
+      }
+    } catch (err) { /* ignore */ }
+  });
+
+  requestFileSystem();
 
   /* ─── State ─── */
   var currentPath = '/';
@@ -160,6 +146,12 @@
   /* ─── Render File List ─── */
   function renderFiles() {
     fileList.innerHTML = '';
+
+    if (!serviceReady) {
+      fileList.innerHTML = '<div class="empty-state"><span>Loading...</span></div>';
+      return;
+    }
+
     var files = fileSystem[currentPath];
 
     if (!files || files.length === 0) {

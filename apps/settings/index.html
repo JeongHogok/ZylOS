@@ -108,7 +108,7 @@
         </div>
         <div class="setting-text">
           <span class="setting-label" data-i18n="settings.storage">저장공간</span>
-          <span class="setting-value">12.3 GB / 16 GB</span>
+          <span class="setting-value" id="storage-summary">Loading...</span>
         </div>
         <svg class="chevron" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
       </div>
@@ -181,30 +181,9 @@
 
   <!-- 기기 정보 서브 페이지 -->
   <div id="page-about" class="sub-page hidden">
-    <div class="settings-group">
+    <div class="settings-group" id="about-info-list">
       <div class="setting-item no-tap">
-        <span class="setting-label" data-i18n="settings.device_name">기기 이름</span>
-        <span class="setting-value">BPI-F3</span>
-      </div>
-      <div class="setting-item no-tap">
-        <span class="setting-label" data-i18n="settings.os_version">OS 버전</span>
-        <span class="setting-value">Zyl OS 0.1.0</span>
-      </div>
-      <div class="setting-item no-tap">
-        <span class="setting-label">SoC</span>
-        <span class="setting-value">SpacemiT K1 (RISC-V)</span>
-      </div>
-      <div class="setting-item no-tap">
-        <span class="setting-label">RAM</span>
-        <span class="setting-value">16 GB LPDDR4X</span>
-      </div>
-      <div class="setting-item no-tap">
-        <span class="setting-label" data-i18n="settings.kernel">커널</span>
-        <span class="setting-value">Linux 6.6.63</span>
-      </div>
-      <div class="setting-item no-tap">
-        <span class="setting-label" data-i18n="settings.build">빌드</span>
-        <span class="setting-value">Zyl OS.20260328.dev</span>
+        <span class="setting-label" style="opacity:0.5">Loading...</span>
       </div>
     </div>
   </div>
@@ -220,18 +199,9 @@
         </label>
       </div>
     </div>
-    <div class="settings-group">
+    <div class="settings-group" id="wifi-networks-list">
       <div class="setting-item no-tap">
-        <span class="setting-label">ZylNet-5G</span>
-        <span class="setting-value" data-i18n="settings.connected">연결됨</span>
-      </div>
-      <div class="setting-item no-tap">
-        <span class="setting-label">Home_WiFi</span>
-        <span class="setting-value">WPA2</span>
-      </div>
-      <div class="setting-item no-tap">
-        <span class="setting-label">Guest_Network</span>
-        <span class="setting-value">WPA2</span>
+        <span class="setting-label" style="opacity:0.5">Loading...</span>
       </div>
     </div>
   </div>
@@ -247,14 +217,9 @@
         </label>
       </div>
     </div>
-    <div class="settings-group">
+    <div class="settings-group" id="bt-devices-list">
       <div class="setting-item no-tap">
-        <span class="setting-label">Zyl Buds Pro</span>
-        <span class="setting-value" data-i18n="settings.connected">연결됨</span>
-      </div>
-      <div class="setting-item no-tap">
-        <span class="setting-label">BT Speaker</span>
-        <span class="setting-value">Paired</span>
+        <span class="setting-label" style="opacity:0.5">Loading...</span>
       </div>
     </div>
   </div>
@@ -315,18 +280,9 @@
 
   <!-- 저장공간 서브 페이지 -->
   <div id="page-storage" class="sub-page hidden">
-    <div class="settings-group">
+    <div class="settings-group" id="storage-info-list">
       <div class="setting-item no-tap">
-        <span class="setting-label" data-i18n="settings.storage">전체 저장공간</span>
-        <span class="setting-value">16 GB</span>
-      </div>
-      <div class="setting-item no-tap">
-        <span class="setting-label">사용 중</span>
-        <span class="setting-value">12.3 GB</span>
-      </div>
-      <div class="setting-item no-tap">
-        <span class="setting-label">사용 가능</span>
-        <span class="setting-value">3.7 GB</span>
+        <span class="setting-label" style="opacity:0.5">Loading...</span>
       </div>
     </div>
   </div>

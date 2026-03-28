@@ -97,6 +97,129 @@
     });
   });
 
+  /* ─── System Service IPC ─── */
+  function requestService(service, method, params) {
+    window.parent.postMessage(JSON.stringify({
+      type: 'service.request',
+      service: service,
+      method: method,
+      params: params || {}
+    }), '*');
+  }
+
+  /* Listen for service responses */
+  window.addEventListener('message', function (e) {
+    try {
+      var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+      if (!msg || msg.type !== 'service.response') return;
+
+      if (msg.service === 'wifi' && msg.method === 'getNetworks' && msg.data) {
+        renderWifiNetworks(msg.data);
+      } else if (msg.service === 'bluetooth' && msg.method === 'getDevices' && msg.data) {
+        renderBtDevices(msg.data);
+      } else if (msg.service === 'device' && msg.method === 'getInfo' && msg.data) {
+        renderAboutInfo(msg.data);
+      } else if (msg.service === 'storage' && msg.method === 'getFormatted' && msg.data) {
+        renderStorageInfo(msg.data);
+      }
+    } catch (err) { /* ignore */ }
+  });
+
+  /* ─── WiFi Networks Renderer ─── */
+  function renderWifiNetworks(networks) {
+    var list = document.getElementById('wifi-networks-list');
+    if (!list) return;
+    list.innerHTML = '';
+    if (!networks || networks.length === 0) {
+      list.innerHTML = '<div class="setting-item no-tap"><span class="setting-label" style="opacity:0.5">No networks found</span></div>';
+      return;
+    }
+    networks.forEach(function (net) {
+      var el = document.createElement('div');
+      el.className = 'setting-item no-tap';
+      var status = net.connected ? t('settings.connected') : net.security;
+      el.innerHTML =
+        '<span class="setting-label">' + net.ssid + '</span>' +
+        '<span class="setting-value">' + status + '</span>';
+      list.appendChild(el);
+    });
+  }
+
+  /* ─── Bluetooth Devices Renderer ─── */
+  function renderBtDevices(devices) {
+    var list = document.getElementById('bt-devices-list');
+    if (!list) return;
+    list.innerHTML = '';
+    if (!devices || devices.length === 0) {
+      list.innerHTML = '<div class="setting-item no-tap"><span class="setting-label" style="opacity:0.5">No devices</span></div>';
+      return;
+    }
+    devices.forEach(function (dev) {
+      if (!dev.paired) return;
+      var el = document.createElement('div');
+      el.className = 'setting-item no-tap';
+      var status = dev.connected ? t('settings.connected') : 'Paired';
+      el.innerHTML =
+        '<span class="setting-label">' + dev.name + '</span>' +
+        '<span class="setting-value">' + status + '</span>';
+      list.appendChild(el);
+    });
+  }
+
+  /* ─── About Device Renderer ─── */
+  function renderAboutInfo(info) {
+    var list = document.getElementById('about-info-list');
+    if (!list) return;
+    list.innerHTML = '';
+    var items = [
+      { label: t('settings.device_name'), value: info.deviceName },
+      { label: t('settings.os_version'),  value: info.osVersion },
+      { label: 'SoC',                     value: info.soc },
+      { label: 'RAM',                     value: info.ram },
+      { label: t('settings.kernel'),      value: info.kernel },
+      { label: t('settings.build'),       value: info.build }
+    ];
+    items.forEach(function (item) {
+      var el = document.createElement('div');
+      el.className = 'setting-item no-tap';
+      el.innerHTML =
+        '<span class="setting-label">' + item.label + '</span>' +
+        '<span class="setting-value">' + item.value + '</span>';
+      list.appendChild(el);
+    });
+  }
+
+  /* ─── Storage Renderer ─── */
+  function renderStorageInfo(data) {
+    /* Update main menu summary */
+    var summary = document.getElementById('storage-summary');
+    if (summary) summary.textContent = data.used + ' / ' + data.total;
+
+    /* Update sub-page */
+    var list = document.getElementById('storage-info-list');
+    if (!list) return;
+    list.innerHTML = '';
+    var items = [
+      { label: t('settings.storage'), value: data.total },
+      { label: '사용 중',             value: data.used },
+      { label: '사용 가능',           value: data.available }
+    ];
+    items.forEach(function (item) {
+      var el = document.createElement('div');
+      el.className = 'setting-item no-tap';
+      el.innerHTML =
+        '<span class="setting-label">' + item.label + '</span>' +
+        '<span class="setting-value">' + item.value + '</span>';
+      list.appendChild(el);
+    });
+  }
+
+  /* Request all settings-relevant service data on init */
+  requestService('wifi', 'getNetworks');
+  requestService('bluetooth', 'getDevices');
+  requestService('device', 'getInfo');
+  requestService('storage', 'getFormatted');
+
   /* ─── 초기화 ─── */
   applyTranslations();
   updateLangChecks();

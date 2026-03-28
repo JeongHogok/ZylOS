@@ -691,6 +691,25 @@
     return Math.floor(diff / 86400) + '일 전';
   }
 
+  /* ═══ System Services IPC ═══ */
+  function handleServiceRequest(msg, source) {
+    if (!msg.service || !msg.method) return;
+    var data = ZylServices.handleRequest(msg.service, msg.method, msg.params || {});
+    var response = JSON.stringify({
+      type: 'service.response',
+      service: msg.service,
+      method: msg.method,
+      data: data
+    });
+    try {
+      if (source) {
+        source.postMessage(response, '*');
+      } else {
+        appFrame.contentWindow.postMessage(response, '*');
+      }
+    } catch (err) { /* iframe not ready */ }
+  }
+
   /* ═══ iframe 메시지 ═══ */
   window.addEventListener('message', function (e) {
     try {
@@ -719,6 +738,9 @@
           break;
         case 'notification.clearAll':
           clearAllNotifications();
+          break;
+        case 'service.request':
+          handleServiceRequest(msg, e.source);
           break;
       }
     } catch (err) { /* ignore */ }
@@ -791,6 +813,11 @@
   function bootDevice(profile) {
     logEl.innerHTML = '';
     state.booted = false;
+
+    /* 서비스에 디바이스 프로필 적용 */
+    if (typeof ZylServices !== 'undefined') {
+      ZylServices.device.applyProfile(profile);
+    }
 
     syslog('Zyl OS v0.1.0 booting...', 'sys');
     syslog('Device: ' + profile.name, 'sys');
