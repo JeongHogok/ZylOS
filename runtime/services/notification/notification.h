@@ -19,9 +19,9 @@ extern "C" {
 
 /* ── D-Bus Constants ──────────────────────────────────────── */
 
-#define ZYL_NOTIFICATION_DBUS_NAME "org.zyl.Notification"
-#define ZYL_NOTIFICATION_DBUS_PATH "/org/zyl/Notification"
-#define ZYL_NOTIFICATION_DBUS_IFACE "org.zyl.Notification"
+#define ZYL_NOTIFICATION_DBUS_NAME "org.zylos.Notification"
+#define ZYL_NOTIFICATION_DBUS_PATH "/org/zylos/Notification"
+#define ZYL_NOTIFICATION_DBUS_IFACE "org.zylos.Notification"
 
 /* ── Enums ────────────────────────────────────────────────── */
 

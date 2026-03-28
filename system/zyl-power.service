@@ -1,6 +1,6 @@
 [Unit]
 Description=Zyl OS Power Management Service
-After=dbus.service
+After=dbus.service zyl-compositor.service
 Wants=zyl-compositor.service
 
 [Service]

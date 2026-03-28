@@ -473,3 +473,24 @@ void zyl_power_on_wake(ZylPowerService *svc, zyl_wake_fn cb, void *data) {
     svc->wake_cb = cb;
     svc->wake_cb_data = data;
 }
+
+/* ─── 데몬 진입점 ─── */
+int main(int argc, char *argv[]) {
+    (void)argc;
+    (void)argv;
+
+    ZylPowerService *svc = zyl_power_create();
+    if (!svc) {
+        g_critical("[Power] Failed to create service");
+        return 1;
+    }
+
+    g_message("[Power] Zyl OS Power Manager started");
+
+    GMainLoop *loop = g_main_loop_new(NULL, FALSE);
+    g_main_loop_run(loop);
+
+    g_main_loop_unref(loop);
+    zyl_power_destroy(svc);
+    return 0;
+}

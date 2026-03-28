@@ -1,6 +1,7 @@
 [Unit]
 Description=Zyl OS User Session
 Requires=zyl-compositor.service zyl-wam.service
+Wants=zyl-notification.service zyl-power.service zyl-sensors.service
 After=zyl-compositor.service zyl-wam.service
 
 [Install]
