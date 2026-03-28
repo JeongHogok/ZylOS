@@ -1,4 +1,4 @@
-executable('zyl-appstore',
+static_library('zyl-appstore',
   'appstore.c',
-  install: true,
+  install: false,
 )

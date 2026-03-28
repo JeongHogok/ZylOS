@@ -1,4 +1,4 @@
-executable('zyl-updater',
+static_library('zyl-updater',
   'updater.c',
-  install: true,
+  install: false,
 )

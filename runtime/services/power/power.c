@@ -75,6 +75,35 @@ static bool sysfs_write_str(const char *path, const char *str) {
     return true;
 }
 
+/* ─── logind D-Bus 호출 ─── */
+static bool logind_call(const char *method) {
+    GError *error = NULL;
+    GDBusConnection *bus = g_bus_get_sync(G_BUS_TYPE_SYSTEM, NULL, &error);
+    if (!bus) {
+        g_warning("[Power] Cannot connect to system bus: %s", error->message);
+        g_error_free(error);
+        return false;
+    }
+    GVariant *result = g_dbus_connection_call_sync(bus,
+        "org.freedesktop.login1",
+        "/org/freedesktop/login1",
+        "org.freedesktop.login1.Manager",
+        method,
+        g_variant_new("(b)", TRUE),
+        NULL,
+        G_DBUS_CALL_FLAGS_NONE,
+        -1, NULL, &error);
+    if (!result) {
+        g_warning("[Power] logind %s failed: %s", method, error->message);
+        g_error_free(error);
+        g_object_unref(bus);
+        return false;
+    }
+    g_variant_unref(result);
+    g_object_unref(bus);
+    return true;
+}
+
 /* ─── backlight 장치 자동 감지 ─── */
 static char *detect_backlight_device(int *max_brightness) {
     GDir *dir = g_dir_open(BACKLIGHT_PATH, 0, NULL);
@@ -355,9 +384,9 @@ int zyl_power_request_suspend(ZylPowerService *svc) {
      *     org.freedesktop.login1.Manager.Suspend
      *     boolean:true
      */
-    if (system("echo mem > /sys/power/state") != 0) {
-        g_warning("[Power] Failed to suspend — trying systemd");
-        system("systemctl suspend");
+    if (!sysfs_write_str("/sys/power/state", "mem")) {
+        g_warning("[Power] Failed to suspend via sysfs — trying logind");
+        logind_call("Suspend");
     }
 
     /* 리쥼 후 여기로 돌아옴 */
@@ -374,7 +403,7 @@ int zyl_power_request_shutdown(ZylPowerService *svc) {
     g_message("[Power] Shutting down...");
 
     sync();
-    system("systemctl poweroff");
+    logind_call("PowerOff");
     return 0;
 }
 
@@ -384,7 +413,7 @@ int zyl_power_request_reboot(ZylPowerService *svc) {
     g_message("[Power] Rebooting...");
 
     sync();
-    system("systemctl reboot");
+    logind_call("Reboot");
     return 0;
 }
 

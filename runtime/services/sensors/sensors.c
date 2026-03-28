@@ -80,17 +80,6 @@ static double sysfs_read_double(const char *path) {
     return val;
 }
 
-static bool sysfs_read_str(const char *path, char *buf, size_t len) {
-    FILE *f = fopen(path, "r");
-    if (!f) return false;
-    if (!fgets(buf, (int)len, f)) { fclose(f); return false; }
-    /* 개행 제거 */
-    size_t n = strlen(buf);
-    if (n > 0 && buf[n - 1] == '\n') buf[n - 1] = '\0';
-    fclose(f);
-    return true;
-}
-
 /* ─── 현재 시각 나노초 ─── */
 static uint64_t now_ns(void) {
     struct timespec ts;
@@ -552,12 +541,18 @@ int zyl_sensor_register_listener(ZylSensorService *svc,
     lis->cb = cb;
     lis->user_data = user_data;
     lis->thread_running = true;
-    pthread_mutex_unlock(&svc->lock);
 
     /* 폴링 스레드 시작 */
     PollContext *ctx = malloc(sizeof(PollContext));
+    if (!ctx) {
+        lis->active = false;
+        lis->thread_running = false;
+        pthread_mutex_unlock(&svc->lock);
+        return -1;
+    }
     ctx->svc = svc;
     ctx->lis = lis;
+    pthread_mutex_unlock(&svc->lock);
     pthread_create(&lis->thread, NULL, sensor_poll_thread_v2, ctx);
 
     g_message("[Sensors] Listener registered: type=%d rate=%.1f Hz", type, rate_hz);
