@@ -34,6 +34,36 @@ body {
 .hidden { display: none !important; }
 
 /* ══════════════════════════════════════════
+   Device Picker (부팅 전 디바이스 선택)
+   ══════════════════════════════════════════ */
+#device-picker {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 24px;
+}
+#device-picker h1 { font-size: 32px; font-weight: 600; color: white; letter-spacing: -1px; }
+.picker-sub { font-size: 14px; color: rgba(255,255,255,0.4); margin-top: -12px; }
+
+#device-list { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; }
+
+.picker-card {
+  width: 240px; padding: 24px 20px; border-radius: 20px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+  cursor: pointer; transition: all 0.2s;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.picker-card:hover {
+  background: rgba(74,158,255,0.08);
+  border-color: rgba(74,158,255,0.3);
+  transform: translateY(-4px);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+}
+.picker-card:active { transform: translateY(-2px) scale(0.98); }
+.picker-card-name { font-size: 17px; font-weight: 600; color: white; }
+.picker-card-desc { font-size: 13px; color: rgba(255,255,255,0.5); }
+.picker-card-specs { font-size: 11px; color: rgba(255,255,255,0.3); margin-top: 4px; }
+
+/* ══════════════════════════════════════════
    Device Frame
    ══════════════════════════════════════════ */
 #device-frame {
