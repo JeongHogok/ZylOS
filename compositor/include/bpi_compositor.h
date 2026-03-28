@@ -2,13 +2,13 @@
  * [Clean Architecture] Domain Layer - Interface
  *
  * 역할: 컴포지터 핵심 타입 정의 및 모듈 간 인터페이스 선언
- * 수행범위: bpi_server 구조체, 설정값, 모든 모듈이 공유하는 타입 정의
+ * 수행범위: zyl_server 구조체, 설정값, 모든 모듈이 공유하는 타입 정의
  * 의존방향: 없음 (최상위 인터페이스, 다른 모듈이 이 헤더에 의존)
  * SOLID: ISP — 각 모듈이 필요한 인터페이스만 참조하도록 타입 분리
  * ────────────────────────────────────────────────────────── */
 
-#ifndef BPI_COMPOSITOR_H
-#define BPI_COMPOSITOR_H
+#ifndef ZYL_COMPOSITOR_H
+#define ZYL_COMPOSITOR_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -35,15 +35,15 @@ enum gesture_direction {
 };
 
 /* ─── Runtime configuration (no #defines) ─── */
-struct bpi_config {
+struct zyl_config {
     int swipe_threshold_px;    /* Min px to register a swipe          */
     int swipe_from_bottom_px;  /* Bottom-edge hot zone height         */
     int swipe_from_top_px;     /* Top-edge hot zone height            */
     int statusbar_height_px;   /* Pixels reserved for the status bar  */
 };
 
-/* Return a bpi_config populated with sensible defaults. */
-struct bpi_config bpi_config_defaults(void);
+/* Return a zyl_config populated with sensible defaults. */
+struct zyl_config zyl_config_defaults(void);
 
 /* ─── Touch tracking state ─── */
 struct touch_state {
@@ -55,9 +55,9 @@ struct touch_state {
 };
 
 /* ─── Per-view (window) state ─── */
-struct bpi_view {
+struct zyl_view {
     struct wl_list          link;
-    struct bpi_server      *server;
+    struct zyl_server      *server;
     struct wlr_xdg_toplevel *xdg_toplevel;
     struct wlr_scene_tree  *scene_tree;
 
@@ -68,9 +68,9 @@ struct bpi_view {
 };
 
 /* ─── Per-output (display) state ─── */
-struct bpi_output {
+struct zyl_output {
     struct wl_list      link;
-    struct bpi_server  *server;
+    struct zyl_server  *server;
     struct wlr_output  *wlr_output;
 
     struct wl_listener frame;
@@ -79,11 +79,11 @@ struct bpi_output {
 };
 
 /* ─── Gesture handler callback ─── */
-typedef void (*gesture_handler_fn)(struct bpi_server *server);
+typedef void (*gesture_handler_fn)(struct zyl_server *server);
 
 /* ─── Server (root compositor state) ─── */
-struct bpi_server {
-    struct bpi_config config;
+struct zyl_server {
+    struct zyl_config config;
 
     struct wl_display          *wl_display;
     struct wlr_backend         *backend;
@@ -96,7 +96,7 @@ struct bpi_server {
     struct wlr_xdg_shell *xdg_shell;
     struct wl_listener     new_xdg_toplevel;
     struct wl_listener     new_xdg_popup;
-    struct wl_list         views;          /* bpi_view::link */
+    struct wl_list         views;          /* zyl_view::link */
 
     /* Cursor / pointer */
     struct wlr_cursor         *cursor;
@@ -121,11 +121,11 @@ struct bpi_server {
 
     /* Outputs */
     struct wlr_output_layout *output_layout;
-    struct wl_list            outputs;     /* bpi_output::link */
+    struct wl_list            outputs;     /* zyl_output::link */
     struct wl_listener        new_output;
 
     /* Mobile state */
-    struct bpi_view *active_view;
+    struct zyl_view *active_view;
     bool  home_screen_visible;
     int   screen_width;
     int   screen_height;
@@ -135,6 +135,6 @@ struct bpi_server {
 };
 
 /* ─── Utility ─── */
-uint32_t bpi_now_ms(void);
+uint32_t zyl_now_ms(void);
 
-#endif /* BPI_COMPOSITOR_H */
+#endif /* ZYL_COMPOSITOR_H */

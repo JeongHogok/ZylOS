@@ -28,17 +28,17 @@
   var filesystem = {
     '/home/user': ['Documents', 'Downloads', 'Pictures', 'Music', '.bashrc', '.profile', 'readme.txt'],
     '/home/user/Documents': ['report.pdf', 'notes.md', 'project/', 'budget.xlsx'],
-    '/home/user/Downloads': ['bpios-v0.1.img.gz', 'linux-6.6.63.tar.xz'],
+    '/home/user/Downloads': ['zylos-v0.1.img.gz', 'linux-6.6.63.tar.xz'],
     '/home/user/Pictures': ['photo_001.jpg', 'photo_002.jpg', 'screenshots/'],
     '/home/user/Music': ['playlist.mp3', 'podcast.m4a'],
     '/': ['bin', 'boot', 'dev', 'etc', 'home', 'lib', 'mnt', 'opt', 'proc', 'root', 'run', 'sbin', 'sys', 'tmp', 'usr', 'var']
   };
 
   var fileContents = {
-    '/home/user/readme.txt': 'Welcome to BPI-OS!\n\nThis is a Linux-based mobile operating system\ndesigned for Banana Pi RISC-V boards.\n\nVisit: https://bpios.dev',
-    '/home/user/.bashrc': '# ~/.bashrc\nexport PATH=$HOME/bin:$PATH\nexport EDITOR=nano\nalias ll="ls -la"\nalias ..="cd .."\n\n# BPI-OS environment\nexport BPIOS_VERSION=0.1.0',
+    '/home/user/readme.txt': 'Welcome to Zyl OS!\n\nThis is a Linux-based mobile operating system\ndesigned for Banana Pi RISC-V boards.\n\nVisit: https://zylos.dev',
+    '/home/user/.bashrc': '# ~/.bashrc\nexport PATH=$HOME/bin:$PATH\nexport EDITOR=nano\nalias ll="ls -la"\nalias ..="cd .."\n\n# Zyl OS environment\nexport BPIOS_VERSION=0.1.0',
     '/home/user/.profile': '# ~/.profile\n[ -f ~/.bashrc ] && . ~/.bashrc',
-    '/home/user/Documents/notes.md': '# Project Notes\n\n## BPI-OS Development\n- UI framework complete\n- Browser app in progress\n- Terminal emulator done\n\n## TODO\n- [ ] Camera app\n- [ ] File manager polish\n- [x] Settings app'
+    '/home/user/Documents/notes.md': '# Project Notes\n\n## Zyl OS Development\n- UI framework complete\n- Browser app in progress\n- Terminal emulator done\n\n## TODO\n- [ ] Camera app\n- [ ] File manager polish\n- [x] Settings app'
   };
 
   /* ─── Prompt String ─── */
@@ -77,7 +77,7 @@
   /* ─── Commands ─── */
   var commands = {
     help: function () {
-      addLine('BPI-OS Terminal - Available commands:', 'line-info');
+      addLine('Zyl OS Terminal - Available commands:', 'line-info');
       addLine('');
       var cmds = [
         ['ls [path]', 'List directory contents'],
@@ -252,15 +252,15 @@
         '',
         '<span class="line-bold">' + username + '@' + hostname + '</span>',
         '──────────────────',
-        '<span class="line-bold">OS:</span> BPI-OS 0.1.0 riscv64',
+        '<span class="line-bold">OS:</span> Zyl OS 0.1.0 riscv64',
         '<span class="line-bold">Host:</span> Banana Pi BPI-F3',
         '<span class="line-bold">Kernel:</span> 6.6.63',
         '<span class="line-bold">Uptime:</span> 3 hours, 42 mins',
         '<span class="line-bold">Shell:</span> bash 5.2.26',
         '<span class="line-bold">Resolution:</span> 720x1280',
-        '<span class="line-bold">DE:</span> BPI-OS Shell',
+        '<span class="line-bold">DE:</span> Zyl OS Shell',
         '<span class="line-bold">WM:</span> Wayland',
-        '<span class="line-bold">Terminal:</span> bpi-terminal',
+        '<span class="line-bold">Terminal:</span> zyl-terminal',
         '<span class="line-bold">CPU:</span> SpacemiT K1 (8) @ 1.6GHz',
         '<span class="line-bold">Memory:</span> 4423MiB / 16384MiB',
         '',
@@ -435,7 +435,7 @@
 
   /* ─── Info Button ─── */
   btnInfo.addEventListener('click', function () {
-    addLine('BPI-OS Terminal v1.0.0', 'line-info');
+    addLine('Zyl OS Terminal v1.0.0', 'line-info');
     addLine('Shell: bash 5.2.26 (riscv64)', 'line-output');
     addLine('Type \'help\' for available commands.', 'line-output');
     addLine('');
@@ -449,8 +449,8 @@
 
   /* ─── Welcome Message ─── */
   function showWelcome() {
-    addHtml('<span class="line-bold">BPI-OS Terminal v1.0.0</span>', 'line-info');
-    addLine('Copyright (c) 2026 BPI-OS Project', 'line-output');
+    addHtml('<span class="line-bold">Zyl OS Terminal v1.0.0</span>', 'line-info');
+    addLine('Copyright (c) 2026 Zyl OS Project', 'line-output');
     addLine('Running on Banana Pi BPI-F3 (SpacemiT K1 RISC-V)', 'line-output');
     addLine('');
     addLine('Type \'help\' for available commands.', 'line-output');

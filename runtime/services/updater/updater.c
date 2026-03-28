@@ -19,17 +19,17 @@
 
 /* ─── 내부 상수 ─── */
 #define BOOTCTL_PATH          "/usr/sbin/bootctl"
-#define SLOT_METADATA_PATH    "/var/lib/bpi-os/slot-metadata"
-#define UPDATE_CACHE_DEFAULT  "/var/cache/bpi-os/updates"
-#define CURRENT_VERSION_FILE  "/etc/bpi-os/version"
-#define VERIFY_FLAG_FILE      "/var/lib/bpi-os/slot-verified"
+#define SLOT_METADATA_PATH    "/var/lib/zyl-os/slot-metadata"
+#define UPDATE_CACHE_DEFAULT  "/var/cache/zyl-os/updates"
+#define CURRENT_VERSION_FILE  "/etc/zyl-os/version"
+#define VERIFY_FLAG_FILE      "/var/lib/zyl-os/slot-verified"
 
 /* ─── 업데이터 내부 구조체 ─── */
-struct BpiUpdater {
+struct ZylUpdater {
     char *server_url;           /* OTA 서버 URL */
     char *cache_dir;            /* 다운로드 캐시 */
-    BpiUpdateState state;       /* 현재 상태 */
-    BpiUpdateManifest *pending; /* 대기 중인 업데이트 */
+    ZylUpdateState state;       /* 현재 상태 */
+    ZylUpdateManifest *pending; /* 대기 중인 업데이트 */
 
     /* A/B 파티션 */
     char *active_slot;          /* "a" 또는 "b" */
@@ -40,7 +40,7 @@ struct BpiUpdater {
     int auto_check_interval_h;
 
     /* 진행률 */
-    bpi_update_progress_fn progress_cb;
+    zyl_update_progress_fn progress_cb;
     void *progress_data;
 };
 
@@ -81,7 +81,7 @@ static bool write_file_string(const char *path, const char *content) {
     return true;
 }
 
-static void report_progress(BpiUpdater *u, int pct, const char *msg) {
+static void report_progress(ZylUpdater *u, int pct, const char *msg) {
     if (u->progress_cb)
         u->progress_cb(u->state, pct, msg, u->progress_data);
 }
@@ -90,8 +90,8 @@ static void report_progress(BpiUpdater *u, int pct, const char *msg) {
 static char *detect_active_slot(void) {
     /*
      * 실제 구현에서는 U-Boot 환경변수 또는 커널 커맨드라인에서 읽음:
-     *   cat /proc/cmdline | grep -o 'bpi.slot=[ab]'
-     *   또는 fw_printenv bpi_active_slot
+     *   cat /proc/cmdline | grep -o 'zyl.slot=[ab]'
+     *   또는 fw_printenv zyl_active_slot
      */
     char *slot = read_file_string(SLOT_METADATA_PATH);
     return slot ? slot : strdup("a");
@@ -99,15 +99,15 @@ static char *detect_active_slot(void) {
 
 /* ─── 공개 API 구현 ─── */
 
-BpiUpdater *bpi_updater_create(const char *update_server_url,
+ZylUpdater *zyl_updater_create(const char *update_server_url,
                                 const char *cache_dir) {
-    BpiUpdater *u = calloc(1, sizeof(BpiUpdater));
+    ZylUpdater *u = calloc(1, sizeof(ZylUpdater));
     if (!u) return NULL;
 
     u->server_url = strdup(update_server_url ? update_server_url
-        : "https://update.bpi-os.dev/v1");
+        : "https://update.zyl-os.dev/v1");
     u->cache_dir = strdup(cache_dir ? cache_dir : UPDATE_CACHE_DEFAULT);
-    u->state = BPI_UPDATE_IDLE;
+    u->state = ZYL_UPDATE_IDLE;
     u->pending = NULL;
 
     mkdir_p(u->cache_dir);
@@ -123,21 +123,21 @@ BpiUpdater *bpi_updater_create(const char *update_server_url,
     return u;
 }
 
-void bpi_updater_destroy(BpiUpdater *u) {
+void zyl_updater_destroy(ZylUpdater *u) {
     if (!u) return;
     free(u->server_url);
     free(u->cache_dir);
     free(u->active_slot);
     free(u->current_version);
-    if (u->pending) bpi_update_manifest_free(u->pending);
+    if (u->pending) zyl_update_manifest_free(u->pending);
     free(u);
 }
 
-BpiUpdateState bpi_updater_check(BpiUpdater *u,
-                                  BpiUpdateManifest **out_manifest) {
-    if (!u) return BPI_UPDATE_FAILED;
+ZylUpdateState zyl_updater_check(ZylUpdater *u,
+                                  ZylUpdateManifest **out_manifest) {
+    if (!u) return ZYL_UPDATE_FAILED;
 
-    u->state = BPI_UPDATE_CHECKING;
+    u->state = ZYL_UPDATE_CHECKING;
     report_progress(u, 0, "Checking for updates...");
 
     /*
@@ -147,7 +147,7 @@ BpiUpdateState bpi_updater_check(BpiUpdater *u,
      *   3. 서명 검증
      *
      * 예시 요청:
-     *   curl -s "https://update.bpi-os.dev/v1/check?version=0.1.0&arch=riscv64"
+     *   curl -s "https://update.zyl-os.dev/v1/check?version=0.1.0&arch=riscv64"
      *
      * 예시 응답:
      *   {
@@ -155,7 +155,7 @@ BpiUpdateState bpi_updater_check(BpiUpdater *u,
      *     "version": "0.2.0",
      *     "type": "delta",
      *     "size": 52428800,
-     *     "url": "https://cdn.bpi-os.dev/updates/0.1.0-to-0.2.0-riscv64.bpiupd",
+     *     "url": "https://cdn.zyl-os.dev/updates/0.1.0-to-0.2.0-riscv64.bpiupd",
      *     "sha256": "...",
      *     "signature": "...",
      *     "changelog": { "ko": "버그 수정 및 성능 개선", "en": "Bug fixes..." },
@@ -165,21 +165,21 @@ BpiUpdateState bpi_updater_check(BpiUpdater *u,
      */
 
     /* 프로토타입: 항상 "최신"으로 반환 */
-    u->state = BPI_UPDATE_UP_TO_DATE;
+    u->state = ZYL_UPDATE_UP_TO_DATE;
     report_progress(u, 100, "System is up to date");
 
     if (out_manifest) *out_manifest = NULL;
     return u->state;
 }
 
-bool bpi_updater_download(BpiUpdater *u,
-                           bpi_update_progress_fn callback,
+bool zyl_updater_download(ZylUpdater *u,
+                           zyl_update_progress_fn callback,
                            void *user_data) {
-    if (!u || u->state != BPI_UPDATE_AVAILABLE) return false;
+    if (!u || u->state != ZYL_UPDATE_AVAILABLE) return false;
 
     u->progress_cb = callback;
     u->progress_data = user_data;
-    u->state = BPI_UPDATE_DOWNLOADING;
+    u->state = ZYL_UPDATE_DOWNLOADING;
 
     /*
      * 실제 구현:
@@ -196,7 +196,7 @@ bool bpi_updater_download(BpiUpdater *u,
      */
 
     report_progress(u, 100, "Download complete");
-    u->state = BPI_UPDATE_VERIFYING;
+    u->state = ZYL_UPDATE_VERIFYING;
 
     /* SHA-256 검증 */
     report_progress(u, 50, "Verifying package integrity...");
@@ -207,14 +207,14 @@ bool bpi_updater_download(BpiUpdater *u,
     return true;
 }
 
-bool bpi_updater_apply(BpiUpdater *u,
-                        bpi_update_progress_fn callback,
+bool zyl_updater_apply(ZylUpdater *u,
+                        zyl_update_progress_fn callback,
                         void *user_data) {
     if (!u) return false;
 
     u->progress_cb = callback;
     u->progress_data = user_data;
-    u->state = BPI_UPDATE_APPLYING;
+    u->state = ZYL_UPDATE_APPLYING;
 
     /*
      * A/B 파티션 업데이트 흐름:
@@ -228,17 +228,17 @@ bool bpi_updater_apply(BpiUpdater *u,
      *    - DELTA: bsdiff/bspatch로 델타 적용
      *      bspatch /dev/mmcblk0p${active_part} /dev/mmcblk0p${inactive_part} delta.patch
      *    - APPS_ONLY: 시스템 앱 디렉토리만 업데이트
-     *      rsync -a update/apps/ /usr/share/bpi-os/apps/
+     *      rsync -a update/apps/ /usr/share/zyl-os/apps/
      *    - KERNEL: 커널 이미지만 교체
      *      cp update/Image /boot/Image.${inactive}
      *
      * 3. 부트로더 플래그 설정
-     *    fw_setenv bpi_next_slot ${inactive}
-     *    fw_setenv bpi_slot_verified 0
-     *    fw_setenv bpi_boot_count 0
+     *    fw_setenv zyl_next_slot ${inactive}
+     *    fw_setenv zyl_slot_verified 0
+     *    fw_setenv zyl_boot_count 0
      *
      * 4. 검증 메타데이터 저장
-     *    echo "${new_version}" > /var/lib/bpi-os/slot-${inactive}-version
+     *    echo "${new_version}" > /var/lib/zyl-os/slot-${inactive}-version
      */
 
     const char *inactive = strcmp(u->active_slot, "a") == 0 ? "b" : "a";
@@ -254,7 +254,7 @@ bool bpi_updater_apply(BpiUpdater *u,
     /* Step 3: 부트 플래그 설정 */
     char flag_path[256];
     snprintf(flag_path, sizeof(flag_path),
-             "/var/lib/bpi-os/next-slot");
+             "/var/lib/zyl-os/next-slot");
     write_file_string(flag_path, inactive);
 
     report_progress(u, 90, "Saving metadata...");
@@ -263,18 +263,18 @@ bool bpi_updater_apply(BpiUpdater *u,
     if (u->pending) {
         char ver_path[256];
         snprintf(ver_path, sizeof(ver_path),
-                 "/var/lib/bpi-os/slot-%s-version", inactive);
+                 "/var/lib/zyl-os/slot-%s-version", inactive);
         write_file_string(ver_path, u->pending->version);
     }
 
     report_progress(u, 100, "Update applied. Reboot to activate.");
-    u->state = BPI_UPDATE_PENDING_REBOOT;
+    u->state = ZYL_UPDATE_PENDING_REBOOT;
 
     return true;
 }
 
-bool bpi_updater_reboot_to_update(BpiUpdater *u) {
-    if (!u || u->state != BPI_UPDATE_PENDING_REBOOT) return false;
+bool zyl_updater_reboot_to_update(ZylUpdater *u) {
+    if (!u || u->state != ZYL_UPDATE_PENDING_REBOOT) return false;
 
     /*
      * 실제 구현:
@@ -287,7 +287,7 @@ bool bpi_updater_reboot_to_update(BpiUpdater *u) {
     return true;
 }
 
-bool bpi_updater_mark_verified(BpiUpdater *u) {
+bool zyl_updater_mark_verified(ZylUpdater *u) {
     if (!u) return false;
 
     /*
@@ -297,8 +297,8 @@ bool bpi_updater_mark_verified(BpiUpdater *u) {
      *   3. 터치 입력 응답 확인
      *
      * 검증 성공 시:
-     *   fw_setenv bpi_slot_verified 1
-     *   fw_setenv bpi_active_slot ${current_slot}
+     *   fw_setenv zyl_slot_verified 1
+     *   fw_setenv zyl_active_slot ${current_slot}
      */
 
     write_file_string(VERIFY_FLAG_FILE, "1");
@@ -312,40 +312,40 @@ bool bpi_updater_mark_verified(BpiUpdater *u) {
     return true;
 }
 
-bool bpi_updater_rollback(BpiUpdater *u) {
+bool zyl_updater_rollback(ZylUpdater *u) {
     if (!u) return false;
 
-    u->state = BPI_UPDATE_ROLLING_BACK;
+    u->state = ZYL_UPDATE_ROLLING_BACK;
 
     /*
      * 롤백 시나리오:
      *   1. 자동 롤백: 부팅 3회 연속 실패 시 U-Boot이 자동 전환
      *      fw_setenv에서 boot_count > 3이면 이전 슬롯으로
      *   2. 수동 롤백: 사용자가 설정에서 요청
-     *      fw_setenv bpi_next_slot ${previous_slot}
+     *      fw_setenv zyl_next_slot ${previous_slot}
      *      reboot
      */
 
     const char *previous = strcmp(u->active_slot, "a") == 0 ? "b" : "a";
 
     char flag_path[256];
-    snprintf(flag_path, sizeof(flag_path), "/var/lib/bpi-os/next-slot");
+    snprintf(flag_path, sizeof(flag_path), "/var/lib/zyl-os/next-slot");
     write_file_string(flag_path, previous);
 
     fprintf(stderr, "[UPDATER] Rollback to slot '%s' scheduled\n", previous);
-    u->state = BPI_UPDATE_PENDING_REBOOT;
+    u->state = ZYL_UPDATE_PENDING_REBOOT;
 
     return true;
 }
 
-BpiUpdateState bpi_updater_get_state(const BpiUpdater *u) {
-    return u ? u->state : BPI_UPDATE_FAILED;
+ZylUpdateState zyl_updater_get_state(const ZylUpdater *u) {
+    return u ? u->state : ZYL_UPDATE_FAILED;
 }
 
-BpiPartitionInfo *bpi_updater_get_partition_info(const BpiUpdater *u) {
+ZylPartitionInfo *zyl_updater_get_partition_info(const ZylUpdater *u) {
     if (!u) return NULL;
 
-    BpiPartitionInfo *info = calloc(1, sizeof(BpiPartitionInfo));
+    ZylPartitionInfo *info = calloc(1, sizeof(ZylPartitionInfo));
     info->active_slot = strdup(u->active_slot);
     info->inactive_slot = strdup(
         strcmp(u->active_slot, "a") == 0 ? "b" : "a");
@@ -354,7 +354,7 @@ BpiPartitionInfo *bpi_updater_get_partition_info(const BpiUpdater *u) {
     /* 비활성 슬롯 버전 */
     char ver_path[256];
     snprintf(ver_path, sizeof(ver_path),
-             "/var/lib/bpi-os/slot-%s-version", info->inactive_slot);
+             "/var/lib/zyl-os/slot-%s-version", info->inactive_slot);
     info->inactive_version = read_file_string(ver_path);
     if (!info->inactive_version) info->inactive_version = strdup("(empty)");
 
@@ -366,14 +366,14 @@ BpiPartitionInfo *bpi_updater_get_partition_info(const BpiUpdater *u) {
     return info;
 }
 
-void bpi_updater_set_auto_check(BpiUpdater *u, bool enabled,
+void zyl_updater_set_auto_check(ZylUpdater *u, bool enabled,
                                  int interval_hours) {
     if (!u) return;
     u->auto_check_enabled = enabled;
     u->auto_check_interval_h = interval_hours > 0 ? interval_hours : 24;
 }
 
-void bpi_update_manifest_free(BpiUpdateManifest *m) {
+void zyl_update_manifest_free(ZylUpdateManifest *m) {
     if (!m) return;
     free(m->version);
     free(m->current_version);
@@ -385,7 +385,7 @@ void bpi_update_manifest_free(BpiUpdateManifest *m) {
     free(m);
 }
 
-void bpi_partition_info_free(BpiPartitionInfo *info) {
+void zyl_partition_info_free(ZylPartitionInfo *info) {
     if (!info) return;
     free(info->active_slot);
     free(info->inactive_slot);

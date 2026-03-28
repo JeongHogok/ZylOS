@@ -1,5 +1,5 @@
 {
-  "id": "com.bpios.lockscreen",
+  "id": "com.zylos.lockscreen",
   "name": "Lock Screen",
   "version": "1.0.0",
   "entry": "index.html",

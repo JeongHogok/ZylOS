@@ -2,13 +2,13 @@
  * [Clean Architecture] Domain Layer - Interface
  *
  * 역할: JS-Native 브릿지 인터페이스 정의 — 메시지 핸들러 콜백 및 주입 함수
- * 수행범위: BpiBridgeHandler 타입, bpi_bridge_inject/register 함수 선언
+ * 수행범위: ZylBridgeHandler 타입, zyl_bridge_inject/register 함수 선언
  * 의존방향: manifest.h
  * SOLID: DIP — 브릿지 구현이 아닌 콜백 인터페이스에 의존
  * ────────────────────────────────────────────────────────── */
 
-#ifndef BPI_WAM_BRIDGE_H
-#define BPI_WAM_BRIDGE_H
+#ifndef ZYL_WAM_BRIDGE_H
+#define ZYL_WAM_BRIDGE_H
 
 #include <glib.h>
 #include <webkit/webkit.h>
@@ -22,9 +22,9 @@
  * manifest - manifest of the sending app
  * user_data - opaque pointer passed at registration time
  */
-typedef void (*BpiBridgeHandler)(const char       *type,
+typedef void (*ZylBridgeHandler)(const char       *type,
                                  gpointer          msg_obj,
-                                 BpiAppManifest   *manifest,
+                                 ZylAppManifest   *manifest,
                                  gpointer          user_data);
 
 /*
@@ -38,9 +38,9 @@ typedef void (*BpiBridgeHandler)(const char       *type,
  *
  * Returns TRUE on success.
  */
-gboolean bpi_bridge_inject(const char      *bridge_js_path,
+gboolean zyl_bridge_inject(const char      *bridge_js_path,
                            WebKitWebView   *webview,
-                           BpiAppManifest  *manifest);
+                           ZylAppManifest  *manifest);
 
 /*
  * Process an incoming bridge message JSON string.
@@ -50,9 +50,9 @@ gboolean bpi_bridge_inject(const char      *bridge_js_path,
  * msg_str   - raw JSON string from JS
  * user_data - forwarded to handler
  */
-void bpi_bridge_dispatch(BpiBridgeHandler  handler,
-                         BpiAppManifest   *manifest,
+void zyl_bridge_dispatch(ZylBridgeHandler  handler,
+                         ZylAppManifest   *manifest,
                          const char       *msg_str,
                          gpointer          user_data);
 
-#endif /* BPI_WAM_BRIDGE_H */
+#endif /* ZYL_WAM_BRIDGE_H */

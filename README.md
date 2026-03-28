@@ -1,4 +1,4 @@
-# BPI-OS
+# Zyl OS
 
 BPI-F3 (SpacemiT K1 RISC-V) 기반 커스텀 모바일 운영체제
 

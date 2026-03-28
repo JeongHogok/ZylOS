@@ -3,7 +3,7 @@
  *
  * 역할: XDG shell 윈도우/뷰 라이프사이클 관리
  * 수행범위: toplevel/popup 서피스 생성, 포커스, 풀스크린, map/unmap, 파괴
- * 의존방향: view.h → bpi_compositor.h
+ * 의존방향: view.h → zyl_compositor.h
  * SOLID: SRP — 윈도우 뷰 관리 로직만 담당
  * ────────────────────────────────────────────────────────── */
 
@@ -20,12 +20,12 @@
  * Focus
  * ================================================================ */
 
-void view_focus(struct bpi_view *view)
+void view_focus(struct zyl_view *view)
 {
     if (!view)
         return;
 
-    struct bpi_server *server = view->server;
+    struct zyl_server *server = view->server;
     struct wlr_seat   *seat   = server->seat;
     struct wlr_surface *prev  = seat->keyboard_state.focused_surface;
     struct wlr_surface *surface =
@@ -72,7 +72,7 @@ void view_focus(struct bpi_view *view)
 
 static void xdg_toplevel_map(struct wl_listener *listener, void *data)
 {
-    struct bpi_view *view = wl_container_of(listener, view, map);
+    struct zyl_view *view = wl_container_of(listener, view, map);
     (void)data;
     wl_list_insert(&view->server->views, &view->link);
     view_focus(view);
@@ -80,7 +80,7 @@ static void xdg_toplevel_map(struct wl_listener *listener, void *data)
 
 static void xdg_toplevel_unmap(struct wl_listener *listener, void *data)
 {
-    struct bpi_view *view = wl_container_of(listener, view, unmap);
+    struct zyl_view *view = wl_container_of(listener, view, unmap);
     (void)data;
     if (view == view->server->active_view)
         view->server->active_view = NULL;
@@ -89,7 +89,7 @@ static void xdg_toplevel_unmap(struct wl_listener *listener, void *data)
 
 static void xdg_toplevel_destroy(struct wl_listener *listener, void *data)
 {
-    struct bpi_view *view = wl_container_of(listener, view, destroy);
+    struct zyl_view *view = wl_container_of(listener, view, destroy);
     (void)data;
     wl_list_remove(&view->map.link);
     wl_list_remove(&view->unmap.link);
@@ -101,7 +101,7 @@ static void xdg_toplevel_destroy(struct wl_listener *listener, void *data)
 static void xdg_toplevel_request_fullscreen(struct wl_listener *listener,
                                              void *data)
 {
-    struct bpi_view *view =
+    struct zyl_view *view =
         wl_container_of(listener, view, request_fullscreen);
     (void)data;
     /* Mobile OS: every app is always fullscreen */
@@ -114,11 +114,11 @@ static void xdg_toplevel_request_fullscreen(struct wl_listener *listener,
 
 static void handle_new_xdg_toplevel(struct wl_listener *listener, void *data)
 {
-    struct bpi_server *server =
+    struct zyl_server *server =
         wl_container_of(listener, server, new_xdg_toplevel);
     struct wlr_xdg_toplevel *toplevel = data;
 
-    struct bpi_view *view = calloc(1, sizeof(*view));
+    struct zyl_view *view = calloc(1, sizeof(*view));
     view->server       = server;
     view->xdg_toplevel = toplevel;
     view->scene_tree   =
@@ -163,7 +163,7 @@ static void handle_new_xdg_popup(struct wl_listener *listener, void *data)
  * Public
  * ================================================================ */
 
-void view_register_listeners(struct bpi_server *server)
+void view_register_listeners(struct zyl_server *server)
 {
     server->new_xdg_toplevel.notify = handle_new_xdg_toplevel;
     wl_signal_add(&server->xdg_shell->events.new_toplevel,

@@ -7,7 +7,7 @@
 // SOLID: OCP — 콜백 기반으로 제스처 액션 확장 가능
 // ──────────────────────────────────────────────────────────
 
-var BpiGesture = (function () {
+var ZylGesture = (function () {
   'use strict';
 
   /**

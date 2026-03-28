@@ -1,12 +1,12 @@
 <!--
-  BPI-OS: App Development Guide
-  Copyright (c) 2026 BPI-OS Project
+  Zyl OS: App Development Guide
+  Copyright (c) 2026 Zyl OS Project
   SPDX-License-Identifier: MIT
 -->
 
-# BPI-OS 앱 개발 가이드
+# Zyl OS 앱 개발 가이드
 
-BPI-OS용 앱을 개발하기 위한 공식 가이드입니다.
+Zyl OS용 앱을 개발하기 위한 공식 가이드입니다.
 
 ---
 
@@ -32,7 +32,7 @@ BPI-OS용 앱을 개발하기 위한 공식 가이드입니다.
 
 - 텍스트 에디터 (VS Code 권장)
 - 웹 브라우저 (Chrome/Firefox - 개발 중 테스트용)
-- BPI-OS SDK CLI (선택사항)
+- Zyl OS SDK CLI (선택사항)
 
 ### 첫 번째 앱 만들기
 
@@ -72,7 +72,7 @@ touch myapp/app.json myapp/index.html myapp/css/style.css myapp/js/app.js
     <h1>My App</h1>
   </header>
   <main id="content">
-    <p>Hello, BPI-OS!</p>
+    <p>Hello, Zyl OS!</p>
   </main>
   <script src="js/app.js"></script>
 </body>
@@ -125,10 +125,10 @@ myapp/
     "ja": "素晴らしいアプリ"
   },
   "version": "1.2.3",
-  "description": "A sample BPI-OS application",
+  "description": "A sample Zyl OS application",
   "description_i18n": {
-    "ko": "BPI-OS 샘플 애플리케이션",
-    "en": "A sample BPI-OS application"
+    "ko": "Zyl OS 샘플 애플리케이션",
+    "en": "A sample Zyl OS application"
   },
   "author": "Your Name",
   "email": "you@example.com",
@@ -178,13 +178,13 @@ myapp/
 
 ## 4. JS-Native Bridge API
 
-BPI-OS는 `navigator.system` 객체를 통해 네이티브 기능을 제공합니다.
+Zyl OS는 `navigator.system` 객체를 통해 네이티브 기능을 제공합니다.
 
 ### 4.1 앱 관리
 
 ```javascript
 // 다른 앱 실행
-navigator.system.launch('com.bpios.settings');
+navigator.system.launch('com.zylos.settings');
 
 // 현재 앱 정보
 console.log(navigator.system.app.id);      // "com.yourname.myapp"
@@ -276,8 +276,8 @@ Bridge가 없는 환경(일반 브라우저)에서도 앱이 동작하도록 폴
 ```javascript
 // shared/bridge.js가 자동으로 폴백을 제공
 // navigator.system이 없으면 콘솔 로그만 출력
-BpiBridge.launch('com.example.app');
-// → Bridge 없으면: console.log('[BpiBridge] launch: com.example.app')
+ZylBridge.launch('com.example.app');
+// → Bridge 없으면: console.log('[ZylBridge] launch: com.example.app')
 ```
 
 ---
@@ -383,18 +383,18 @@ main {
 // <script src="../../shared/i18n.js"></script>
 
 // 번역
-var text = bpiI18n.t('greeting');
+var text = zylI18n.t('greeting');
 
 // 파라미터 치환
-var msg = bpiI18n.t('welcome', { name: '사용자' });
+var msg = zylI18n.t('welcome', { name: '사용자' });
 // → "사용자님 환영합니다" (ko)
 // → "Welcome, 사용자" (en)
 
 // 날짜 포맷
-var dateStr = bpiI18n.formatDate(new Date());
+var dateStr = zylI18n.formatDate(new Date());
 
 // 로케일 변경 감지
-bpiI18n.onLocaleChange(function(newLocale) {
+zylI18n.onLocaleChange(function(newLocale) {
   // UI 업데이트
 });
 ```
@@ -517,7 +517,7 @@ zip -r ../myapp-signed.ospkg . -x ".*"
 
 ### 9.1 등록 절차
 
-1. **개발자 등록**: [developer.bpi-os.dev](https://developer.bpi-os.dev) 에서 계정 생성
+1. **개발자 등록**: [developer.zyl-os.com](https://developer.zyl-os.com) 에서 계정 생성
 2. **인증서 발급**: 개발자 포털에서 공식 인증서 발급 요청
 3. **앱 제출**: 서명된 `.ospkg` 파일 업로드
 4. **심사**: 보안 + 품질 검토 (3-5 영업일)
@@ -553,13 +553,13 @@ python3 -m http.server 8080 --directory myapp/
 # 브라우저에서 http://localhost:8080 접속
 ```
 
-Bridge API가 없는 환경에서는 `BpiBridge`가 자동으로 콘솔 로그 폴백을 제공합니다.
+Bridge API가 없는 환경에서는 `ZylBridge`가 자동으로 콘솔 로그 폴백을 제공합니다.
 
-### 10.2 BPI-OS에서 디버깅
+### 10.2 Zyl OS에서 디버깅
 
 ```bash
 # 앱 로그 확인
-journalctl -u bpi-wam -f
+journalctl -u zyl-wam -f
 
 # WebKit Inspector 활성화 (개발자 모드)
 export WEBKIT_INSPECTOR_SERVER=0.0.0.0:8090
@@ -572,7 +572,7 @@ export WEBKIT_INSPECTOR_SERVER=0.0.0.0:8090
 | 문제 | 원인 | 해결 |
 |------|------|------|
 | 앱이 설치되지 않음 | 서명 없음 | 개발자 모드 활성화 또는 패키지 서명 |
-| Bridge API 작동 안함 | 일반 브라우저 | BpiBridge 폴백 확인 |
+| Bridge API 작동 안함 | 일반 브라우저 | ZylBridge 폴백 확인 |
 | CSS 깨짐 | safe area 미적용 | `--safe-top`, `--safe-bottom` 사용 |
 | 터치 응답 없음 | 터치 타겟 너무 작음 | 최소 44x44px |
 
@@ -602,7 +602,7 @@ export WEBKIT_INSPECTOR_SERVER=0.0.0.0:8090
 | `info.getOsVersion()` | string | OS 버전 |
 | `info.getLocale()` | string | 현재 로케일 |
 
-### bpiI18n (공유 모듈)
+### zylI18n (공유 모듈)
 
 | 메서드 | 반환 | 설명 |
 |--------|------|------|
@@ -617,4 +617,4 @@ export WEBKIT_INSPECTOR_SERVER=0.0.0.0:8090
 
 ## 라이선스
 
-BPI-OS SDK와 이 가이드는 MIT 라이선스 하에 배포됩니다.
+Zyl OS SDK와 이 가이드는 MIT 라이선스 하에 배포됩니다.

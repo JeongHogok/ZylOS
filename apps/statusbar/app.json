@@ -1,5 +1,5 @@
 {
-  "id": "com.bpios.statusbar",
+  "id": "com.zylos.statusbar",
   "name": "Status Bar",
   "version": "1.0.0",
   "entry": "index.html",

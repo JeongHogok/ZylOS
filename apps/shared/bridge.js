@@ -7,14 +7,14 @@
 // SOLID: DIP — 네이티브 API 구현이 아닌 추상 인터페이스에 의존
 // ──────────────────────────────────────────────────────────
 
-var BpiBridge = (function () {
+var ZylBridge = (function () {
   'use strict';
 
   var DEBUG = false;
 
   function log() {
     if (DEBUG) {
-      console.log.apply(console, ['[BpiBridge]'].concat(Array.prototype.slice.call(arguments)));
+      console.log.apply(console, ['[ZylBridge]'].concat(Array.prototype.slice.call(arguments)));
     }
   }
 
@@ -38,7 +38,7 @@ var BpiBridge = (function () {
 
   /**
    * Launch an app by its bundle identifier.
-   * @param {string} appId - e.g. 'com.bpios.browser'
+   * @param {string} appId - e.g. 'com.zylos.browser'
    * @returns {Promise<boolean>}
    */
   function launch(appId) {

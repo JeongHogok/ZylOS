@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# BPI-OS 개발 환경 설정 스크립트
+# Zyl OS 개발 환경 설정 스크립트
 # RISC-V 64비트 크로스 컴파일 툴체인 및 의존성 설치
 #
 
@@ -18,7 +18,7 @@ error() { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
 OS="$(uname -s)"
 ARCH="$(uname -m)"
 
-info "BPI-OS 개발 환경 설정"
+info "Zyl OS 개발 환경 설정"
 info "Host: $OS ($ARCH)"
 echo ""
 

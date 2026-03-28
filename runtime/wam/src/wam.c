@@ -2,7 +2,7 @@
  * [Clean Architecture] Application Layer - Service
  *
  * 역할: WAM(Web App Manager) 메인 서비스 — 모듈 조립 및 WebKitGTK 구현
- * 수행범위: manifest, lifecycle, bridge, D-Bus 모듈 연결, BpiWebEngine/BpiAppInterface vtable 구현
+ * 수행범위: manifest, lifecycle, bridge, D-Bus 모듈 연결, ZylWebEngine/ZylAppInterface vtable 구현
  * 의존방향: wam.h, manifest.h, lifecycle.h, bridge.h, dbus_service.h
  * SOLID: SRP — 모듈 조립과 WebKitGTK 바인딩만 담당
  * ────────────────────────────────────────────────────────── */
@@ -14,34 +14,34 @@
 #include <string.h>
 #include <webkit/webkit.h>
 
-static BpiWam *g_wam = NULL;
+static ZylWam *g_wam = NULL;
 
 /* ════════════════════════════════════════════════════════════════
- *  BpiAppInterface implementation (backed by GHashTable lookups)
+ *  ZylAppInterface implementation (backed by GHashTable lookups)
  * ════════════════════════════════════════════════════════════════ */
 
-static BpiAppManifest *iface_get_manifest(BpiAppInterface *self,
+static ZylAppManifest *iface_get_manifest(ZylAppInterface *self,
                                           const char      *app_id) {
-    BpiWam *wam = self->impl_data;
+    ZylWam *wam = self->impl_data;
     return g_hash_table_lookup(wam->manifests, app_id);
 }
 
-static gpointer iface_get_instance(BpiAppInterface *self,
+static gpointer iface_get_instance(ZylAppInterface *self,
                                    const char      *app_id) {
-    BpiWam *wam = self->impl_data;
+    ZylWam *wam = self->impl_data;
     return g_hash_table_lookup(wam->instances, app_id);
 }
 
-static void iface_store_instance(BpiAppInterface *self,
+static void iface_store_instance(ZylAppInterface *self,
                                  const char      *app_id,
                                  gpointer         instance) {
-    BpiWam *wam = self->impl_data;
+    ZylWam *wam = self->impl_data;
     g_hash_table_insert(wam->instances, g_strdup(app_id), instance);
 }
 
-static void iface_remove_instance(BpiAppInterface *self,
+static void iface_remove_instance(ZylAppInterface *self,
                                   const char      *app_id) {
-    BpiWam *wam = self->impl_data;
+    ZylWam *wam = self->impl_data;
     g_hash_table_remove(wam->instances, app_id);
 }
 
@@ -51,18 +51,18 @@ static void iface_remove_instance(BpiAppInterface *self,
 
 static void on_bridge_message_cb(const char     *type,
                                  gpointer        msg_obj,
-                                 BpiAppManifest *manifest,
+                                 ZylAppManifest *manifest,
                                  gpointer        user_data) {
-    BpiWam *wam = user_data;
+    ZylWam *wam = user_data;
     (void)msg_obj;
 
     if (g_strcmp0(type, "app.close") == 0) {
-        bpi_lifecycle_close(&wam->iface, manifest->id);
+        zyl_lifecycle_close(&wam->iface, manifest->id);
     } else if (g_strcmp0(type, "app.launch") == 0) {
         /* msg_obj is a JsonObject*; extract appId */
         JsonObject *obj = msg_obj;
         const char *target = json_object_get_string_member(obj, "appId");
-        bpi_lifecycle_launch(&wam->iface, &wam->engine, target);
+        zyl_lifecycle_launch(&wam->iface, &wam->engine, target);
     } else if (g_strcmp0(type, "notification.create") == 0) {
         JsonObject *obj = msg_obj;
         const char *title = json_object_get_string_member(obj, "title");
@@ -78,13 +78,13 @@ static void on_bridge_message_cb(const char     *type,
 static void on_webkit_bridge_message(WebKitUserContentManager *manager,
                                      WebKitJavascriptResult   *result,
                                      gpointer                  user_data) {
-    BpiAppInstance *instance = user_data;
+    ZylAppInstance *instance = user_data;
     (void)manager;
 
     JSCValue *value = webkit_javascript_result_get_js_value(result);
     char *msg_str = jsc_value_to_string(value);
 
-    bpi_bridge_dispatch(on_bridge_message_cb,
+    zyl_bridge_dispatch(on_bridge_message_cb,
                         instance->manifest,
                         msg_str,
                         g_wam);
@@ -93,11 +93,11 @@ static void on_webkit_bridge_message(WebKitUserContentManager *manager,
 }
 
 /* ════════════════════════════════════════════════════════════════
- *  BpiWebEngine implementation (WebKitGTK back-end)
+ *  ZylWebEngine implementation (WebKitGTK back-end)
  * ════════════════════════════════════════════════════════════════ */
 
-static GtkWidget *webkit_create_webview(BpiWebEngine   *self,
-                                        BpiAppManifest *manifest,
+static GtkWidget *webkit_create_webview(ZylWebEngine   *self,
+                                        ZylAppManifest *manifest,
                                         gpointer        instance_ctx) {
     (void)self;
 
@@ -118,13 +118,13 @@ static GtkWidget *webkit_create_webview(BpiWebEngine   *self,
     webkit_web_view_set_settings(webview, settings);
 
     /* Inject JS bridge from external file */
-    bpi_bridge_inject(WAM_BRIDGE_JS, webview, manifest);
+    zyl_bridge_inject(WAM_BRIDGE_JS, webview, manifest);
 
     g_object_unref(settings);
     return GTK_WIDGET(webview);
 }
 
-static void webkit_load_uri(BpiWebEngine *self,
+static void webkit_load_uri(ZylWebEngine *self,
                             GtkWidget    *webview_widget,
                             const char   *uri) {
     (void)self;
@@ -137,10 +137,10 @@ static void webkit_load_uri(BpiWebEngine *self,
 
 static void dbus_launch(GVariant *params, GDBusMethodInvocation *inv,
                         gpointer user_data) {
-    BpiWam *wam = user_data;
+    ZylWam *wam = user_data;
     const gchar *app_id;
     g_variant_get(params, "(&s)", &app_id);
-    BpiAppInstance *inst = bpi_lifecycle_launch(&wam->iface,
+    ZylAppInstance *inst = zyl_lifecycle_launch(&wam->iface,
                                                &wam->engine, app_id);
     g_dbus_method_invocation_return_value(inv,
         g_variant_new("(b)", inst != NULL));
@@ -148,25 +148,25 @@ static void dbus_launch(GVariant *params, GDBusMethodInvocation *inv,
 
 static void dbus_close(GVariant *params, GDBusMethodInvocation *inv,
                        gpointer user_data) {
-    BpiWam *wam = user_data;
+    ZylWam *wam = user_data;
     const gchar *app_id;
     g_variant_get(params, "(&s)", &app_id);
-    bpi_lifecycle_close(&wam->iface, app_id);
+    zyl_lifecycle_close(&wam->iface, app_id);
     g_dbus_method_invocation_return_value(inv, NULL);
 }
 
 static void dbus_suspend(GVariant *params, GDBusMethodInvocation *inv,
                          gpointer user_data) {
-    BpiWam *wam = user_data;
+    ZylWam *wam = user_data;
     const gchar *app_id;
     g_variant_get(params, "(&s)", &app_id);
-    bpi_lifecycle_suspend(&wam->iface, app_id);
+    zyl_lifecycle_suspend(&wam->iface, app_id);
     g_dbus_method_invocation_return_value(inv, NULL);
 }
 
 static void dbus_list_apps(GVariant *params, GDBusMethodInvocation *inv,
                            gpointer user_data) {
-    BpiWam *wam = user_data;
+    ZylWam *wam = user_data;
     (void)params;
     GVariantBuilder builder;
     g_variant_builder_init(&builder, G_VARIANT_TYPE("as"));
@@ -181,7 +181,7 @@ static void dbus_list_apps(GVariant *params, GDBusMethodInvocation *inv,
 
 static void dbus_list_running(GVariant *params, GDBusMethodInvocation *inv,
                               gpointer user_data) {
-    BpiWam *wam = user_data;
+    ZylWam *wam = user_data;
     (void)params;
     GVariantBuilder builder;
     g_variant_builder_init(&builder, G_VARIANT_TYPE("as"));
@@ -194,7 +194,7 @@ static void dbus_list_running(GVariant *params, GDBusMethodInvocation *inv,
         g_variant_new("(as)", &builder));
 }
 
-static const BpiDbusMethodEntry dbus_methods[] = {
+static const ZylDbusMethodEntry dbus_methods[] = {
     { "Launch",      dbus_launch      },
     { "Close",       dbus_close       },
     { "Suspend",     dbus_suspend     },
@@ -208,13 +208,13 @@ static const BpiDbusMethodEntry dbus_methods[] = {
  * ════════════════════════════════════════════════════════════════ */
 
 static void on_activate(GApplication *app, gpointer user_data) {
-    BpiWam *wam = user_data;
+    ZylWam *wam = user_data;
 
-    bpi_manifest_scan_dir(wam->manifests, WAM_APP_DIR,  TRUE);
-    bpi_manifest_scan_dir(wam->manifests, WAM_USER_DIR, FALSE);
+    zyl_manifest_scan_dir(wam->manifests, WAM_APP_DIR,  TRUE);
+    zyl_manifest_scan_dir(wam->manifests, WAM_USER_DIR, FALSE);
 
     /* Auto-launch home screen */
-    bpi_lifecycle_launch(&wam->iface, &wam->engine, "com.bpios.home");
+    zyl_lifecycle_launch(&wam->iface, &wam->engine, "com.zylos.home");
 
     g_message("WAM activated, %d apps registered",
               g_hash_table_size(wam->manifests));
@@ -225,12 +225,12 @@ static void on_activate(GApplication *app, gpointer user_data) {
  * ════════════════════════════════════════════════════════════════ */
 
 int main(int argc, char *argv[]) {
-    BpiWam wam = {0};
+    ZylWam wam = {0};
     g_wam = &wam;
 
     /* Hash tables */
     wam.manifests = g_hash_table_new_full(g_str_hash, g_str_equal,
-                                          g_free, bpi_manifest_free);
+                                          g_free, zyl_manifest_free);
     wam.instances = g_hash_table_new_full(g_str_hash, g_str_equal,
                                           g_free, NULL);
 
@@ -247,10 +247,10 @@ int main(int argc, char *argv[]) {
     wam.engine.impl_data      = NULL;
 
     /* Start D-Bus service */
-    wam.dbus_owner_id = bpi_dbus_service_start(dbus_methods, &wam);
+    wam.dbus_owner_id = zyl_dbus_service_start(dbus_methods, &wam);
 
     /* GTK application */
-    wam.app = G_APPLICATION(gtk_application_new("org.bpios.wam",
+    wam.app = G_APPLICATION(gtk_application_new("org.zylos.wam",
         G_APPLICATION_DEFAULT_FLAGS));
     g_signal_connect(wam.app, "activate", G_CALLBACK(on_activate), &wam);
 

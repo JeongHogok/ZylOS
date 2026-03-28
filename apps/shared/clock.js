@@ -3,11 +3,11 @@
 //
 // 역할: 재사용 가능한 시계 위젯 — 시간 및 로케일 기반 날짜 표시
 // 수행범위: HH:MM 시간 표시, 포맷된 날짜 표시, 1초 간격 자동 업데이트
-// 의존방향: bpiI18n (i18n.js)
+// 의존방향: zylI18n (i18n.js)
 // SOLID: SRP — 시계 표시 로직만 담당
 // ──────────────────────────────────────────────────────────
 
-var BpiClock = (function () {
+var ZylClock = (function () {
   'use strict';
 
   /**
@@ -45,9 +45,9 @@ var BpiClock = (function () {
           dateEl.textContent =
             now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
         } else {
-          /* 'long' - use bpiI18n if available, otherwise fallback */
-          if (window.bpiI18n && typeof window.bpiI18n.formatDate === 'function') {
-            dateEl.textContent = window.bpiI18n.formatDate(now);
+          /* 'long' - use zylI18n if available, otherwise fallback */
+          if (window.zylI18n && typeof window.zylI18n.formatDate === 'function') {
+            dateEl.textContent = window.zylI18n.formatDate(now);
           } else {
             dateEl.textContent = now.toLocaleDateString();
           }
@@ -61,8 +61,8 @@ var BpiClock = (function () {
 
     /* Listen for locale changes to refresh the date immediately */
     var removeListener = null;
-    if (window.bpiI18n && typeof window.bpiI18n.onLocaleChange === 'function') {
-      removeListener = window.bpiI18n.onLocaleChange(function () {
+    if (window.zylI18n && typeof window.zylI18n.onLocaleChange === 'function') {
+      removeListener = window.zylI18n.onLocaleChange(function () {
         update();
       });
     }

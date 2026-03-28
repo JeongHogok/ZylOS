@@ -2,13 +2,13 @@
  * [Clean Architecture] Domain Layer - Interface
  *
  * 역할: OTA 업데이터 인터페이스 정의 — 업데이트 상태, 파티션, 검증 함수
- * 수행범위: BpiUpdateState/BpiPartition 타입, 업데이트 확인/적용/롤백 함수 선언
+ * 수행범위: ZylUpdateState/ZylPartition 타입, 업데이트 확인/적용/롤백 함수 선언
  * 의존방향: stdbool.h, stdint.h
  * SOLID: DIP — 업데이트 구현이 아닌 추상 인터페이스에 의존
  * ────────────────────────────────────────────────────────── */
 
-#ifndef BPI_UPDATER_H
-#define BPI_UPDATER_H
+#ifndef ZYL_UPDATER_H
+#define ZYL_UPDATER_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -16,25 +16,25 @@
 
 /* ─── 업데이트 상태 ─── */
 typedef enum {
-    BPI_UPDATE_IDLE,            /* 대기 중 */
-    BPI_UPDATE_CHECKING,        /* 업데이트 확인 중 */
-    BPI_UPDATE_AVAILABLE,       /* 업데이트 있음 */
-    BPI_UPDATE_DOWNLOADING,     /* 다운로드 중 */
-    BPI_UPDATE_VERIFYING,       /* 검증 중 */
-    BPI_UPDATE_APPLYING,        /* 적용 중 */
-    BPI_UPDATE_PENDING_REBOOT,  /* 재부팅 대기 */
-    BPI_UPDATE_ROLLING_BACK,    /* 롤백 중 */
-    BPI_UPDATE_FAILED,          /* 실패 */
-    BPI_UPDATE_UP_TO_DATE,      /* 최신 */
-} BpiUpdateState;
+    ZYL_UPDATE_IDLE,            /* 대기 중 */
+    ZYL_UPDATE_CHECKING,        /* 업데이트 확인 중 */
+    ZYL_UPDATE_AVAILABLE,       /* 업데이트 있음 */
+    ZYL_UPDATE_DOWNLOADING,     /* 다운로드 중 */
+    ZYL_UPDATE_VERIFYING,       /* 검증 중 */
+    ZYL_UPDATE_APPLYING,        /* 적용 중 */
+    ZYL_UPDATE_PENDING_REBOOT,  /* 재부팅 대기 */
+    ZYL_UPDATE_ROLLING_BACK,    /* 롤백 중 */
+    ZYL_UPDATE_FAILED,          /* 실패 */
+    ZYL_UPDATE_UP_TO_DATE,      /* 최신 */
+} ZylUpdateState;
 
 /* ─── 업데이트 유형 ─── */
 typedef enum {
-    BPI_UPDATE_TYPE_FULL,       /* 전체 시스템 이미지 */
-    BPI_UPDATE_TYPE_DELTA,      /* 차이분만 적용 */
-    BPI_UPDATE_TYPE_APPS_ONLY,  /* 시스템 앱만 업데이트 */
-    BPI_UPDATE_TYPE_KERNEL,     /* 커널만 업데이트 */
-} BpiUpdateType;
+    ZYL_UPDATE_TYPE_FULL,       /* 전체 시스템 이미지 */
+    ZYL_UPDATE_TYPE_DELTA,      /* 차이분만 적용 */
+    ZYL_UPDATE_TYPE_APPS_ONLY,  /* 시스템 앱만 업데이트 */
+    ZYL_UPDATE_TYPE_KERNEL,     /* 커널만 업데이트 */
+} ZylUpdateType;
 
 /* ─── 업데이트 매니페스트 ─── */
 typedef struct {
@@ -46,14 +46,14 @@ typedef struct {
     size_t installed_size;      /* 설치 후 크기 */
     char *sha256_hash;          /* 패키지 SHA-256 */
     char *signature;            /* RSA 서명 */
-    BpiUpdateType type;         /* 업데이트 유형 */
+    ZylUpdateType type;         /* 업데이트 유형 */
     bool is_mandatory;          /* 필수 업데이트 여부 */
     char *min_battery_pct;      /* 최소 배터리 요구량 */
-} BpiUpdateManifest;
+} ZylUpdateManifest;
 
 /* ─── 진행률 콜백 ─── */
-typedef void (*bpi_update_progress_fn)(
-    BpiUpdateState state,
+typedef void (*zyl_update_progress_fn)(
+    ZylUpdateState state,
     int progress_pct,       /* 0-100 */
     const char *message,    /* 상태 메시지 */
     void *user_data
@@ -66,60 +66,60 @@ typedef struct {
     char *active_version;   /* 활성 슬롯 OS 버전 */
     char *inactive_version; /* 비활성 슬롯 OS 버전 */
     bool verified;          /* 현재 슬롯 검증 완료 여부 */
-} BpiPartitionInfo;
+} ZylPartitionInfo;
 
 /* ─── 업데이터 서비스 인터페이스 ─── */
-typedef struct BpiUpdater BpiUpdater;
+typedef struct ZylUpdater ZylUpdater;
 
 /*
  * 업데이터 생성
  * update_server_url: OTA 서버 URL
  * cache_dir: 다운로드 캐시 디렉토리
  */
-BpiUpdater *bpi_updater_create(const char *update_server_url,
+ZylUpdater *zyl_updater_create(const char *update_server_url,
                                 const char *cache_dir);
 
 /* 업데이터 해제 */
-void bpi_updater_destroy(BpiUpdater *updater);
+void zyl_updater_destroy(ZylUpdater *updater);
 
 /* 업데이트 확인 */
-BpiUpdateState bpi_updater_check(BpiUpdater *updater,
-                                  BpiUpdateManifest **out_manifest);
+ZylUpdateState zyl_updater_check(ZylUpdater *updater,
+                                  ZylUpdateManifest **out_manifest);
 
 /* 업데이트 다운로드 시작 (비동기) */
-bool bpi_updater_download(BpiUpdater *updater,
-                           bpi_update_progress_fn callback,
+bool zyl_updater_download(ZylUpdater *updater,
+                           zyl_update_progress_fn callback,
                            void *user_data);
 
 /* 다운로드된 업데이트 적용 (비활성 파티션에) */
-bool bpi_updater_apply(BpiUpdater *updater,
-                        bpi_update_progress_fn callback,
+bool zyl_updater_apply(ZylUpdater *updater,
+                        zyl_update_progress_fn callback,
                         void *user_data);
 
 /* 재부팅하여 업데이트 완료 */
-bool bpi_updater_reboot_to_update(BpiUpdater *updater);
+bool zyl_updater_reboot_to_update(ZylUpdater *updater);
 
 /* 현재 슬롯을 검증 완료로 마킹 (성공적 부팅 후) */
-bool bpi_updater_mark_verified(BpiUpdater *updater);
+bool zyl_updater_mark_verified(ZylUpdater *updater);
 
 /* 이전 슬롯으로 롤백 */
-bool bpi_updater_rollback(BpiUpdater *updater);
+bool zyl_updater_rollback(ZylUpdater *updater);
 
 /* 현재 상태 조회 */
-BpiUpdateState bpi_updater_get_state(const BpiUpdater *updater);
+ZylUpdateState zyl_updater_get_state(const ZylUpdater *updater);
 
 /* 파티션 정보 조회 */
-BpiPartitionInfo *bpi_updater_get_partition_info(const BpiUpdater *updater);
+ZylPartitionInfo *zyl_updater_get_partition_info(const ZylUpdater *updater);
 
 /* 자동 업데이트 스케줄 설정 */
-void bpi_updater_set_auto_check(BpiUpdater *updater,
+void zyl_updater_set_auto_check(ZylUpdater *updater,
                                  bool enabled,
                                  int interval_hours);
 
 /* 매니페스트 해제 */
-void bpi_update_manifest_free(BpiUpdateManifest *manifest);
+void zyl_update_manifest_free(ZylUpdateManifest *manifest);
 
 /* 파티션 정보 해제 */
-void bpi_partition_info_free(BpiPartitionInfo *info);
+void zyl_partition_info_free(ZylPartitionInfo *info);
 
-#endif /* BPI_UPDATER_H */
+#endif /* ZYL_UPDATER_H */

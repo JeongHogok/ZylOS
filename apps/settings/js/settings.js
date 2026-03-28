@@ -3,7 +3,7 @@
 //
 // 역할: 설정 앱 UI — 시스템 설정 관리 페이지
 // 수행범위: 언어 변경, 디스플레이 설정, 시스템 정보, 개발자 옵션
-// 의존방향: bpiI18n (i18n.js), BpiBridge (bridge.js)
+// 의존방향: zylI18n (i18n.js), ZylBridge (bridge.js)
 // SOLID: SRP — 설정 UI 렌더링과 설정값 관리만 담당
 // ──────────────────────────────────────────────────────────
 
@@ -13,14 +13,14 @@
   /* ─── Language display names ─── */
   var LANG_NAMES = { ko: '한국어', en: 'English', ja: '日本語', zh: '中文', es: 'Español' };
 
-  /* ─── i18n helper (delegates to shared bpiI18n) ─── */
+  /* ─── i18n helper (delegates to shared zylI18n) ─── */
   function t(key, params) {
-    return bpiI18n.t(key, params);
+    return zylI18n.t(key, params);
   }
 
   function applyTranslations() {
-    bpiI18n.applyTranslations();
-    document.getElementById('current-lang').textContent = LANG_NAMES[bpiI18n.getLocale()];
+    zylI18n.applyTranslations();
+    document.getElementById('current-lang').textContent = LANG_NAMES[zylI18n.getLocale()];
   }
 
   /* ─── 네비게이션 ─── */
@@ -65,7 +65,7 @@
 
   /* ─── 언어 선택 ─── */
   function updateLangChecks() {
-    var locale = bpiI18n.getLocale();
+    var locale = zylI18n.getLocale();
     document.querySelectorAll('.lang-option').forEach(function (opt) {
       var check = opt.querySelector('.check-icon');
       if (opt.dataset.lang === locale) {
@@ -79,12 +79,12 @@
   document.querySelectorAll('.lang-option').forEach(function (opt) {
     opt.addEventListener('click', function () {
       var newLocale = opt.dataset.lang;
-      bpiI18n.setLocale(newLocale);
+      zylI18n.setLocale(newLocale);
       updateLangChecks();
       applyTranslations();
 
       /* 시스템 전체에 언어 변경 알림 (bridge 사용) */
-      BpiBridge.setLocale(newLocale);
+      ZylBridge.setLocale(newLocale);
 
       /* 헤더 제목도 업데이트 */
       headerTitle.textContent = t('settings.language');

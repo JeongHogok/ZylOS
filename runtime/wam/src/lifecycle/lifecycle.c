@@ -13,26 +13,26 @@
 #include <string.h>
 
 /* ─── Launch (or re-activate) an app ─── */
-BpiAppInstance *bpi_lifecycle_launch(BpiAppInterface *iface,
-                                    BpiWebEngine    *engine,
+ZylAppInstance *zyl_lifecycle_launch(ZylAppInterface *iface,
+                                    ZylWebEngine    *engine,
                                     const char      *app_id) {
     /* If already running, just present it */
-    BpiAppInstance *existing = iface->get_instance(iface, app_id);
+    ZylAppInstance *existing = iface->get_instance(iface, app_id);
     if (existing) {
         gtk_window_present(GTK_WINDOW(existing->window));
-        existing->state = BPI_APP_STATE_RUNNING;
+        existing->state = ZYL_APP_STATE_RUNNING;
         return existing;
     }
 
-    BpiAppManifest *manifest = iface->get_manifest(iface, app_id);
+    ZylAppManifest *manifest = iface->get_manifest(iface, app_id);
     if (!manifest) {
         g_warning("App not found: %s", app_id);
         return NULL;
     }
 
-    BpiAppInstance *instance = g_new0(BpiAppInstance, 1);
+    ZylAppInstance *instance = g_new0(ZylAppInstance, 1);
     instance->manifest = manifest;
-    instance->state    = BPI_APP_STATE_RUNNING;
+    instance->state    = ZYL_APP_STATE_RUNNING;
 
     /* GTK window (becomes a Wayland toplevel) */
     instance->window = gtk_window_new();
@@ -61,19 +61,19 @@ BpiAppInstance *bpi_lifecycle_launch(BpiAppInterface *iface,
 }
 
 /* ─── Suspend ─── */
-void bpi_lifecycle_suspend(BpiAppInterface *iface,
+void zyl_lifecycle_suspend(ZylAppInterface *iface,
                            const char      *app_id) {
-    BpiAppInstance *instance = iface->get_instance(iface, app_id);
-    if (!instance || instance->state == BPI_APP_STATE_SUSPENDED) return;
+    ZylAppInstance *instance = iface->get_instance(iface, app_id);
+    if (!instance || instance->state == ZYL_APP_STATE_SUSPENDED) return;
 
-    instance->state = BPI_APP_STATE_SUSPENDED;
+    instance->state = ZYL_APP_STATE_SUSPENDED;
     g_message("Suspended app: %s", app_id);
 }
 
 /* ─── Close ─── */
-void bpi_lifecycle_close(BpiAppInterface *iface,
+void zyl_lifecycle_close(ZylAppInterface *iface,
                          const char      *app_id) {
-    BpiAppInstance *instance = iface->get_instance(iface, app_id);
+    ZylAppInstance *instance = iface->get_instance(iface, app_id);
     if (!instance) return;
 
     gtk_window_close(GTK_WINDOW(instance->window));

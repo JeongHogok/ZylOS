@@ -14,9 +14,9 @@
 #include <json-glib/json-glib.h>
 
 /* ─── Load and inject the JS bridge ─── */
-gboolean bpi_bridge_inject(const char      *bridge_js_path,
+gboolean zyl_bridge_inject(const char      *bridge_js_path,
                            WebKitWebView   *webview,
-                           BpiAppManifest  *manifest) {
+                           ZylAppManifest  *manifest) {
     gchar *template = NULL;
     gsize length = 0;
     GError *error = NULL;
@@ -56,8 +56,8 @@ gboolean bpi_bridge_inject(const char      *bridge_js_path,
 }
 
 /* ─── Dispatch an incoming bridge message ─── */
-void bpi_bridge_dispatch(BpiBridgeHandler  handler,
-                         BpiAppManifest   *manifest,
+void zyl_bridge_dispatch(ZylBridgeHandler  handler,
+                         ZylAppManifest   *manifest,
                          const char       *msg_str,
                          gpointer          user_data) {
     JsonParser *parser = json_parser_new();

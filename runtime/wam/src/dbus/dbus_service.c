@@ -42,7 +42,7 @@ static const char *introspection_xml =
 
 /* ─── Module-level state ─── */
 typedef struct {
-    const BpiDbusMethodEntry *table;
+    const ZylDbusMethodEntry *table;
     gpointer                  user_data;
     GDBusConnection          *connection;
 } DbusCtx;
@@ -62,7 +62,7 @@ static void handle_method_call(GDBusConnection       *connection,
 
     DbusCtx *ctx = user_data;
 
-    for (const BpiDbusMethodEntry *e = ctx->table; e->name != NULL; e++) {
+    for (const ZylDbusMethodEntry *e = ctx->table; e->name != NULL; e++) {
         if (g_strcmp0(method_name, e->name) == 0) {
             e->func(parameters, invocation, ctx->user_data);
             return;
@@ -111,7 +111,7 @@ static void on_name_lost(GDBusConnection *conn, const gchar *name,
 }
 
 /* ─── Public: start the service ─── */
-guint bpi_dbus_service_start(const BpiDbusMethodEntry *dispatch_table,
+guint zyl_dbus_service_start(const ZylDbusMethodEntry *dispatch_table,
                              gpointer                  user_data) {
     g_ctx.table     = dispatch_table;
     g_ctx.user_data = user_data;

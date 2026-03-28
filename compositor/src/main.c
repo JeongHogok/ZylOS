@@ -3,7 +3,7 @@
  *
  * 역할: Wayland 디스플레이, wlroots 백엔드, 렌더러 초기화 및 이벤트 루프 진입
  * 수행범위: 컴포지터 프로세스의 시작점으로 모든 모듈을 초기화하고 이벤트 루프 실행
- * 의존방향: output, view, gesture 모듈 → bpi_compositor.h
+ * 의존방향: output, view, gesture 모듈 → zyl_compositor.h
  * SOLID: SRP — main()은 초기화와 이벤트 루프 진입만 담당
  * ────────────────────────────────────────────────────────── */
 
@@ -28,13 +28,13 @@
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
 
-#include "bpi_compositor.h"
+#include "zyl_compositor.h"
 #include "input/gesture.h"
 #include "output/output.h"
 #include "view/view.h"
 
 /* ─── Utility: monotonic clock in milliseconds ─── */
-uint32_t bpi_now_ms(void)
+uint32_t zyl_now_ms(void)
 {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -42,9 +42,9 @@ uint32_t bpi_now_ms(void)
 }
 
 /* ─── Default configuration ─── */
-struct bpi_config bpi_config_defaults(void)
+struct zyl_config zyl_config_defaults(void)
 {
-    return (struct bpi_config){
+    return (struct zyl_config){
         .swipe_threshold_px   = 50,
         .swipe_from_bottom_px = 40,
         .swipe_from_top_px    = 40,
@@ -59,10 +59,10 @@ int main(int argc, char *argv[])
     (void)argv;
 
     wlr_log_init(WLR_DEBUG, NULL);
-    wlr_log(WLR_INFO, "BPI-OS Compositor starting...");
+    wlr_log(WLR_INFO, "Zyl OS Compositor starting...");
 
-    struct bpi_server server = {0};
-    server.config              = bpi_config_defaults();
+    struct zyl_server server = {0};
+    server.config              = zyl_config_defaults();
     server.home_screen_visible = true;
     wl_list_init(&server.views);
     wl_list_init(&server.outputs);
@@ -141,7 +141,7 @@ int main(int argc, char *argv[])
 
     setenv("WAYLAND_DISPLAY", socket, true);
     wlr_log(WLR_INFO,
-        "BPI-OS Compositor running on WAYLAND_DISPLAY=%s", socket);
+        "Zyl OS Compositor running on WAYLAND_DISPLAY=%s", socket);
 
     /* ── Event loop ── */
     wl_display_run(server.wl_display);
@@ -156,6 +156,6 @@ int main(int argc, char *argv[])
     wlr_backend_destroy(server.backend);
     wl_display_destroy(server.wl_display);
 
-    wlr_log(WLR_INFO, "BPI-OS Compositor shut down cleanly");
+    wlr_log(WLR_INFO, "Zyl OS Compositor shut down cleanly");
     return 0;
 }

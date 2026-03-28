@@ -29,7 +29,7 @@
       { name: 'presentation.pptx', type: 'document', date: '2026-03-18', size: 3145728 }
     ],
     '/Downloads': [
-      { name: 'bpios-image-v0.1.img.gz', type: 'archive', date: '2026-03-28', size: 524288000 },
+      { name: 'zylos-image-v0.1.img.gz', type: 'archive', date: '2026-03-28', size: 524288000 },
       { name: 'linux-6.6.63.tar.xz', type: 'archive', date: '2026-03-25', size: 142606336 },
       { name: 'wallpaper.jpg', type: 'image', date: '2026-03-27', size: 2097152 },
       { name: 'setup.sh', type: 'code', date: '2026-03-24', size: 8192 }

@@ -3,7 +3,7 @@
  *
  * 역할: 터치 이벤트를 고수준 제스처(스와이프)로 변환 및 디스패치
  * 수행범위: touchstart/move/end 이벤트 처리, 방향 감지, 콜백 테이블 디스패치
- * 의존방향: gesture.h → bpi_compositor.h
+ * 의존방향: gesture.h → zyl_compositor.h
  * SOLID: OCP — 함수 포인터 테이블로 제스처 액션을 교체 가능
  * ────────────────────────────────────────────────────────── */
 
@@ -25,7 +25,7 @@
 
 enum gesture_direction gesture_detect(const struct touch_state *t,
                                       int screen_h,
-                                      const struct bpi_config *cfg)
+                                      const struct zyl_config *cfg)
 {
     double dx     = t->current_x - t->start_x;
     double dy     = t->current_y - t->start_y;
@@ -61,31 +61,31 @@ enum gesture_direction gesture_detect(const struct touch_state *t,
  * Default gesture action implementations
  * ================================================================ */
 
-static void action_go_home(struct bpi_server *server)
+static void action_go_home(struct zyl_server *server)
 {
     wlr_log(WLR_INFO, "Gesture: Go Home");
     server->home_screen_visible = true;
 }
 
-static void action_notification_panel(struct bpi_server *server)
+static void action_notification_panel(struct zyl_server *server)
 {
     wlr_log(WLR_INFO, "Gesture: Notification Panel");
     /* TODO: top notification drawer */
 }
 
-static void action_go_back(struct bpi_server *server)
+static void action_go_back(struct zyl_server *server)
 {
     wlr_log(WLR_INFO, "Gesture: Go Back");
     /* TODO: send back event to active app */
 }
 
-static void action_app_switcher(struct bpi_server *server)
+static void action_app_switcher(struct zyl_server *server)
 {
     wlr_log(WLR_INFO, "Gesture: App Switcher");
     /* TODO: app-switcher overlay */
 }
 
-void gesture_init_handlers(struct bpi_server *server)
+void gesture_init_handlers(struct zyl_server *server)
 {
     for (int i = 0; i < GESTURE_DIRECTION_COUNT; i++)
         server->gesture_handlers[i] = NULL;
@@ -102,7 +102,7 @@ void gesture_init_handlers(struct bpi_server *server)
 
 static void handle_touch_down(struct wl_listener *listener, void *data)
 {
-    struct bpi_server *server =
+    struct zyl_server *server =
         wl_container_of(listener, server, touch_down);
     struct wlr_touch_down_event *event = data;
 
@@ -114,7 +114,7 @@ static void handle_touch_down(struct wl_listener *listener, void *data)
     server->touch.start_y       = abs_y;
     server->touch.current_x     = abs_x;
     server->touch.current_y     = abs_y;
-    server->touch.start_time_ms = bpi_now_ms();
+    server->touch.start_time_ms = zyl_now_ms();
     server->touch.pending       = GESTURE_NONE;
 
     wlr_cursor_warp_absolute(server->cursor, NULL, event->x, event->y);
@@ -123,7 +123,7 @@ static void handle_touch_down(struct wl_listener *listener, void *data)
 
 static void handle_touch_motion(struct wl_listener *listener, void *data)
 {
-    struct bpi_server *server =
+    struct zyl_server *server =
         wl_container_of(listener, server, touch_motion);
     struct wlr_touch_motion_event *event = data;
 
@@ -133,7 +133,7 @@ static void handle_touch_motion(struct wl_listener *listener, void *data)
 
 static void handle_touch_up(struct wl_listener *listener, void *data)
 {
-    struct bpi_server *server =
+    struct zyl_server *server =
         wl_container_of(listener, server, touch_up);
     (void)data;
 
@@ -156,7 +156,7 @@ static void handle_touch_up(struct wl_listener *listener, void *data)
 
 static void handle_cursor_motion(struct wl_listener *listener, void *data)
 {
-    struct bpi_server *server =
+    struct zyl_server *server =
         wl_container_of(listener, server, cursor_motion);
     struct wlr_pointer_motion_event *event = data;
     wlr_cursor_move(server->cursor, &event->pointer->base,
@@ -166,7 +166,7 @@ static void handle_cursor_motion(struct wl_listener *listener, void *data)
 static void handle_cursor_motion_absolute(struct wl_listener *listener,
                                            void *data)
 {
-    struct bpi_server *server =
+    struct zyl_server *server =
         wl_container_of(listener, server, cursor_motion_absolute);
     struct wlr_pointer_motion_absolute_event *event = data;
     wlr_cursor_warp_absolute(server->cursor, &event->pointer->base,
@@ -175,7 +175,7 @@ static void handle_cursor_motion_absolute(struct wl_listener *listener,
 
 static void handle_cursor_button(struct wl_listener *listener, void *data)
 {
-    struct bpi_server *server =
+    struct zyl_server *server =
         wl_container_of(listener, server, cursor_button);
     struct wlr_pointer_button_event *event = data;
     wlr_seat_pointer_notify_button(server->seat,
@@ -187,7 +187,7 @@ static void handle_cursor_button(struct wl_listener *listener, void *data)
 
 static void handle_cursor_axis(struct wl_listener *listener, void *data)
 {
-    struct bpi_server *server =
+    struct zyl_server *server =
         wl_container_of(listener, server, cursor_axis);
     struct wlr_pointer_axis_event *event = data;
     wlr_seat_pointer_notify_axis(server->seat, event->time_msec,
@@ -197,7 +197,7 @@ static void handle_cursor_axis(struct wl_listener *listener, void *data)
 
 static void handle_cursor_frame(struct wl_listener *listener, void *data)
 {
-    struct bpi_server *server =
+    struct zyl_server *server =
         wl_container_of(listener, server, cursor_frame);
     (void)data;
     wlr_seat_pointer_notify_frame(server->seat);
@@ -209,7 +209,7 @@ static void handle_cursor_frame(struct wl_listener *listener, void *data)
 
 static void handle_request_cursor(struct wl_listener *listener, void *data)
 {
-    struct bpi_server *server =
+    struct zyl_server *server =
         wl_container_of(listener, server, request_cursor);
     struct wlr_seat_pointer_request_set_cursor_event *event = data;
     struct wlr_seat_client *focused =
@@ -223,7 +223,7 @@ static void handle_request_cursor(struct wl_listener *listener, void *data)
 static void handle_request_set_selection(struct wl_listener *listener,
                                           void *data)
 {
-    struct bpi_server *server =
+    struct zyl_server *server =
         wl_container_of(listener, server, request_set_selection);
     struct wlr_seat_request_set_selection_event *event = data;
     wlr_seat_set_selection(server->seat, event->source, event->serial);
@@ -235,7 +235,7 @@ static void handle_request_set_selection(struct wl_listener *listener,
 
 static void handle_new_input(struct wl_listener *listener, void *data)
 {
-    struct bpi_server *server =
+    struct zyl_server *server =
         wl_container_of(listener, server, new_input);
     struct wlr_input_device *device = data;
 
@@ -275,7 +275,7 @@ static void handle_new_input(struct wl_listener *listener, void *data)
  * Public: wire all input listeners
  * ================================================================ */
 
-void gesture_register_listeners(struct bpi_server *server)
+void gesture_register_listeners(struct zyl_server *server)
 {
     /* Touch */
     server->touch_down.notify = handle_touch_down;

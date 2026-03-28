@@ -1,5 +1,5 @@
 /*
- * BPI-OS WAM: JS Bridge Script
+ * Zyl OS WAM: JS Bridge Script
  *
  * Injected into every web app at document start.  Provides the
  * navigator.system API that apps use to communicate with the
@@ -10,7 +10,7 @@
  *   {{APP_NAME}}    - display name
  *   {{APP_VERSION}} - version string
  *
- * Copyright (c) 2026 BPI-OS Project
+ * Copyright (c) 2026 Zyl OS Project
  * SPDX-License-Identifier: MIT
  */
 
@@ -27,7 +27,7 @@
     return new Promise(function (resolve) {
       _cbId += 1;
       msg._cbId = _cbId;
-      window["_bpiCb_" + _cbId] = resolve;
+      window["_zylCb_" + _cbId] = resolve;
       postBridge(msg);
     });
   }

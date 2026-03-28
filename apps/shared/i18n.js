@@ -7,7 +7,7 @@
 // SOLID: SRP — 국제화 로직만 담당
 // ──────────────────────────────────────────────────────────
 
-window.bpiI18n = (function () {
+window.zylI18n = (function () {
   'use strict';
 
   /* ─── Translation Data (merged from home + settings) ─── */

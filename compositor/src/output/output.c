@@ -3,7 +3,7 @@
  *
  * 역할: 디스플레이 출력 관리 — 모드 선택, 프레임 렌더링, 상태 요청, 해제
  * 수행범위: output 생성/파괴 리스너, 프레임 렌더링, scene graph 커밋
- * 의존방향: output.h → bpi_compositor.h
+ * 의존방향: output.h → zyl_compositor.h
  * SOLID: SRP — 디스플레이 출력 라이프사이클 관리만 담당
  * ────────────────────────────────────────────────────────── */
 
@@ -18,7 +18,7 @@
 /* ─── Frame render ─── */
 static void output_frame(struct wl_listener *listener, void *data)
 {
-    struct bpi_output *output = wl_container_of(listener, output, frame);
+    struct zyl_output *output = wl_container_of(listener, output, frame);
     struct wlr_scene *scene   = output->server->scene;
     struct wlr_scene_output *scene_output =
         wlr_scene_get_scene_output(scene, output->wlr_output);
@@ -33,7 +33,7 @@ static void output_frame(struct wl_listener *listener, void *data)
 /* ─── Output state request (mode change, enable/disable, ...) ─── */
 static void output_request_state(struct wl_listener *listener, void *data)
 {
-    struct bpi_output *output =
+    struct zyl_output *output =
         wl_container_of(listener, output, request_state);
     const struct wlr_output_event_request_state *event = data;
     wlr_output_commit_state(output->wlr_output, event->state);
@@ -42,7 +42,7 @@ static void output_request_state(struct wl_listener *listener, void *data)
 /* ─── Output destroyed ─── */
 static void output_destroy(struct wl_listener *listener, void *data)
 {
-    struct bpi_output *output = wl_container_of(listener, output, destroy);
+    struct zyl_output *output = wl_container_of(listener, output, destroy);
     (void)data;
 
     wl_list_remove(&output->frame.link);
@@ -55,7 +55,7 @@ static void output_destroy(struct wl_listener *listener, void *data)
 /* ─── New output connected ─── */
 static void handle_new_output(struct wl_listener *listener, void *data)
 {
-    struct bpi_server *server =
+    struct zyl_server *server =
         wl_container_of(listener, server, new_output);
     struct wlr_output *wlr_output = data;
 
@@ -71,7 +71,7 @@ static void handle_new_output(struct wl_listener *listener, void *data)
     wlr_output_commit_state(wlr_output, &state);
     wlr_output_state_finish(&state);
 
-    struct bpi_output *output = calloc(1, sizeof(*output));
+    struct zyl_output *output = calloc(1, sizeof(*output));
     output->wlr_output = wlr_output;
     output->server     = server;
 
@@ -97,7 +97,7 @@ static void handle_new_output(struct wl_listener *listener, void *data)
  * Public
  * ================================================================ */
 
-void output_register_listeners(struct bpi_server *server)
+void output_register_listeners(struct zyl_server *server)
 {
     server->new_output.notify = handle_new_output;
     wl_signal_add(&server->backend->events.new_output, &server->new_output);

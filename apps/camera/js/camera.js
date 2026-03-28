@@ -3,7 +3,7 @@
 //
 // 역할: 카메라 앱 메인 로직
 // 수행범위: 촬영, 모드 전환, 타이머, 줌, 포커스 인터랙션
-// 의존방향: BpiBridge (shared/bridge.js)
+// 의존방향: ZylBridge (shared/bridge.js)
 // SOLID: SRP — 카메라 UI 인터랙션만 담당
 // ──────────────────────────────────────────────────────────
 
@@ -128,7 +128,7 @@
     state.frontCamera = !state.frontCamera;
   });
   document.getElementById('btn-gallery').addEventListener('click', function () {
-    if (typeof BpiBridge !== 'undefined') BpiBridge.launch('com.bpios.gallery');
+    if (typeof ZylBridge !== 'undefined') ZylBridge.launch('com.zylos.gallery');
   });
 
   /* ─── Preview actions ─── */

@@ -39,11 +39,11 @@
 
   /* ─── Simulated Pages ─── */
   var simulatedPages = {
-    'bpios.dev': {
-      title: 'BPI-OS Official',
-      html: '<div class="sim-header"><h1>BPI-OS</h1><p>A modern Linux-based mobile operating system designed for Banana Pi single-board computers with RISC-V architecture.</p></div>' +
+    'zylos.dev': {
+      title: 'Zyl OS Official',
+      html: '<div class="sim-header"><h1>Zyl OS</h1><p>A modern Linux-based mobile operating system designed for Banana Pi single-board computers with RISC-V architecture.</p></div>' +
         '<div class="sim-section"><h3>Features</h3><p>Custom UI toolkit, WebKitGTK browser, hardware-accelerated graphics, and full RISC-V support.</p></div>' +
-        '<div class="sim-section"><h3>Getting Started</h3><p>Flash the BPI-OS image to your SD card and boot your Banana Pi F3 board.</p></div>'
+        '<div class="sim-section"><h3>Getting Started</h3><p>Flash the Zyl OS image to your SD card and boot your Banana Pi F3 board.</p></div>'
     },
     'github.com': {
       title: 'GitHub',
@@ -216,7 +216,7 @@
       return 'https://' + trimmed;
     }
     /* Treat as search query */
-    return 'https://search.bpios.dev/?q=' + encodeURIComponent(trimmed);
+    return 'https://search.zylos.dev/?q=' + encodeURIComponent(trimmed);
   }
 
   function extractDomain(url) {

@@ -3,16 +3,16 @@
 //
 // 역할: 상태바 위젯 — 시간, 배터리, 네트워크 상태 표시
 // 수행범위: 시간 업데이트, 배터리 레벨 표시, 퀵 설정 패널
-// 의존방향: BpiClock (clock.js)
+// 의존방향: ZylClock (clock.js)
 // SOLID: SRP — 상태바 UI 렌더링만 담당
 // ──────────────────────────────────────────────────────────
 
 (function () {
   'use strict';
 
-  /* ─── 시간 업데이트 (shared BpiClock 사용) ─── */
+  /* ─── 시간 업데이트 (shared ZylClock 사용) ─── */
   var sbTime = document.getElementById('sb-time');
-  var clock = BpiClock.create(sbTime, null, { showDate: false });
+  var clock = ZylClock.create(sbTime, null, { showDate: false });
 
   /* ─── 배터리 시뮬레이션 ─── */
   var batteryPct = document.getElementById('sb-battery-pct');

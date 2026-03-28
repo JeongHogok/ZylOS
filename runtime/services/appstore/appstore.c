@@ -26,11 +26,11 @@
 #define HASH_SIZE            32    /* SHA-256 */
 
 /* ─── 앱스토어 내부 구조체 ─── */
-struct BpiAppStore {
+struct ZylAppStore {
     char *trust_store_path;     /* 인증서 저장소 경로 */
     char *app_install_dir;      /* 앱 설치 디렉토리 */
 
-    BpiDeveloperCert *certs;    /* 등록된 인증서 목록 */
+    ZylDeveloperCert *certs;    /* 등록된 인증서 목록 */
     int n_certs;
     int certs_capacity;
 
@@ -109,7 +109,7 @@ static bool verify_rsa_signature(const uint8_t *hash, size_t hash_len,
 }
 
 /* ─── 인증서 검색 ─── */
-static BpiDeveloperCert *find_cert(BpiAppStore *store,
+static ZylDeveloperCert *find_cert(ZylAppStore *store,
                                     const char *fingerprint) {
     for (int i = 0; i < store->n_certs; i++) {
         /* 실제로는 인증서의 SHA-256 지문과 비교 */
@@ -123,15 +123,15 @@ static BpiDeveloperCert *find_cert(BpiAppStore *store,
 
 /* ─── 공개 API 구현 ─── */
 
-BpiAppStore *bpi_appstore_create(const char *trust_store_path,
+ZylAppStore *zyl_appstore_create(const char *trust_store_path,
                                   const char *app_install_dir) {
-    BpiAppStore *store = calloc(1, sizeof(BpiAppStore));
+    ZylAppStore *store = calloc(1, sizeof(ZylAppStore));
     if (!store) return NULL;
 
     store->trust_store_path = strdup(trust_store_path);
     store->app_install_dir = strdup(app_install_dir);
     store->certs_capacity = 64;
-    store->certs = calloc(store->certs_capacity, sizeof(BpiDeveloperCert));
+    store->certs = calloc(store->certs_capacity, sizeof(ZylDeveloperCert));
     store->n_certs = 0;
     store->dev_mode = false;
 
@@ -150,7 +150,7 @@ BpiAppStore *bpi_appstore_create(const char *trust_store_path,
     return store;
 }
 
-void bpi_appstore_destroy(BpiAppStore *store) {
+void zyl_appstore_destroy(ZylAppStore *store) {
     if (!store) return;
 
     for (int i = 0; i < store->n_certs; i++) {
@@ -164,16 +164,16 @@ void bpi_appstore_destroy(BpiAppStore *store) {
     free(store);
 }
 
-BpiPkgSignatureStatus bpi_appstore_verify_package(
-    BpiAppStore *store,
+ZylPkgSignatureStatus zyl_appstore_verify_package(
+    ZylAppStore *store,
     const char *package_path,
-    BpiPackageMeta **out_meta) {
+    ZylPackageMeta **out_meta) {
 
-    if (!store || !package_path) return BPI_PKG_UNSIGNED;
+    if (!store || !package_path) return ZYL_PKG_UNSIGNED;
 
     /* 개발자 모드: 서명 검증 우회 */
     if (store->dev_mode) {
-        return BPI_PKG_VALID_SIGNATURE;
+        return ZYL_PKG_VALID_SIGNATURE;
     }
 
     /*
@@ -188,7 +188,7 @@ BpiPkgSignatureStatus bpi_appstore_verify_package(
 
     /* Step 1: 패키지 존재 확인 */
     if (!file_exists(package_path)) {
-        return BPI_PKG_UNSIGNED;
+        return ZYL_PKG_UNSIGNED;
     }
 
     /* Step 2-3: 인증서 확인 (프로토타입) */
@@ -205,7 +205,7 @@ BpiPkgSignatureStatus bpi_appstore_verify_package(
     /* Step 5-6: 해시 + 서명 검증 */
     uint8_t hash[HASH_SIZE];
     if (!compute_sha256(package_path, hash)) {
-        return BPI_PKG_UNSIGNED;
+        return ZYL_PKG_UNSIGNED;
     }
 
     /*
@@ -213,31 +213,31 @@ BpiPkgSignatureStatus bpi_appstore_verify_package(
      * 신뢰 저장소에 인증서가 있으면 유효로 간주
      */
 
-    return BPI_PKG_VALID_SIGNATURE;
+    return ZYL_PKG_VALID_SIGNATURE;
 }
 
-BpiInstallResult bpi_appstore_install(BpiAppStore *store,
+ZylInstallResult zyl_appstore_install(ZylAppStore *store,
                                       const char *package_path) {
     if (!store || !package_path)
-        return BPI_INSTALL_ERR_IO;
+        return ZYL_INSTALL_ERR_IO;
 
     /* 1. 서명 검증 */
-    BpiPackageMeta *meta = NULL;
-    BpiPkgSignatureStatus sig_status =
-        bpi_appstore_verify_package(store, package_path, &meta);
+    ZylPackageMeta *meta = NULL;
+    ZylPkgSignatureStatus sig_status =
+        zyl_appstore_verify_package(store, package_path, &meta);
 
     if (!store->dev_mode) {
         switch (sig_status) {
-        case BPI_PKG_UNSIGNED:
-            return BPI_INSTALL_ERR_UNSIGNED;
-        case BPI_PKG_INVALID_SIGNATURE:
-            return BPI_INSTALL_ERR_INVALID_SIG;
-        case BPI_PKG_EXPIRED_CERT:
-            return BPI_INSTALL_ERR_EXPIRED_CERT;
-        case BPI_PKG_REVOKED_CERT:
-            return BPI_INSTALL_ERR_REVOKED_CERT;
-        case BPI_PKG_VALID_SIGNATURE:
-        case BPI_PKG_SYSTEM_TRUSTED:
+        case ZYL_PKG_UNSIGNED:
+            return ZYL_INSTALL_ERR_UNSIGNED;
+        case ZYL_PKG_INVALID_SIGNATURE:
+            return ZYL_INSTALL_ERR_INVALID_SIG;
+        case ZYL_PKG_EXPIRED_CERT:
+            return ZYL_INSTALL_ERR_EXPIRED_CERT;
+        case ZYL_PKG_REVOKED_CERT:
+            return ZYL_INSTALL_ERR_REVOKED_CERT;
+        case ZYL_PKG_VALID_SIGNATURE:
+        case ZYL_PKG_SYSTEM_TRUSTED:
             break; /* OK, 설치 진행 */
         }
     }
@@ -261,22 +261,22 @@ BpiInstallResult bpi_appstore_install(BpiAppStore *store,
     /* 5. 앱 등록 (WAM에 알림) */
     /* TODO: D-Bus로 WAM에 새 앱 등록 알림 */
 
-    if (meta) bpi_package_meta_free(meta);
+    if (meta) zyl_package_meta_free(meta);
 
-    return BPI_INSTALL_SUCCESS;
+    return ZYL_INSTALL_SUCCESS;
 }
 
-BpiInstallResult bpi_appstore_uninstall(BpiAppStore *store,
+ZylInstallResult zyl_appstore_uninstall(ZylAppStore *store,
                                         const char *app_id) {
     if (!store || !app_id)
-        return BPI_INSTALL_ERR_IO;
+        return ZYL_INSTALL_ERR_IO;
 
     /* 시스템 앱은 제거 불가 */
     char manifest_path[512];
     snprintf(manifest_path, sizeof(manifest_path),
-             "/usr/share/bpi-os/apps/%s/app.json", app_id);
+             "/usr/share/zyl-os/apps/%s/app.json", app_id);
     if (file_exists(manifest_path)) {
-        return BPI_INSTALL_ERR_PERMISSION_DENIED;
+        return ZYL_INSTALL_ERR_PERMISSION_DENIED;
     }
 
     /* 사용자 앱 디렉토리 삭제 */
@@ -285,7 +285,7 @@ BpiInstallResult bpi_appstore_uninstall(BpiAppStore *store,
              "%s/%s", store->app_install_dir, app_id);
 
     if (!file_exists(app_dir)) {
-        return BPI_INSTALL_ERR_IO;
+        return ZYL_INSTALL_ERR_IO;
     }
 
     /*
@@ -294,11 +294,11 @@ BpiInstallResult bpi_appstore_uninstall(BpiAppStore *store,
      *   D-Bus로 WAM에 앱 제거 알림
      */
 
-    return BPI_INSTALL_SUCCESS;
+    return ZYL_INSTALL_SUCCESS;
 }
 
-int bpi_appstore_list_installed(BpiAppStore *store,
-                                BpiPackageMeta ***out_apps,
+int zyl_appstore_list_installed(ZylAppStore *store,
+                                ZylPackageMeta ***out_apps,
                                 int *out_count) {
     if (!store || !out_apps || !out_count) return -1;
 
@@ -311,7 +311,7 @@ int bpi_appstore_list_installed(BpiAppStore *store,
     }
 
     int count = 0;
-    BpiPackageMeta **apps = calloc(MAX_INSTALLED_APPS, sizeof(BpiPackageMeta *));
+    ZylPackageMeta **apps = calloc(MAX_INSTALLED_APPS, sizeof(ZylPackageMeta *));
 
     struct dirent *entry;
     while ((entry = readdir(dir)) != NULL && count < MAX_INSTALLED_APPS) {
@@ -321,7 +321,7 @@ int bpi_appstore_list_installed(BpiAppStore *store,
         snprintf(manifest, sizeof(manifest),
                  "%s/%s/app.json", store->app_install_dir, entry->d_name);
         if (file_exists(manifest)) {
-            /* TODO: 매니페스트 파싱하여 BpiPackageMeta 생성 */
+            /* TODO: 매니페스트 파싱하여 ZylPackageMeta 생성 */
             count++;
         }
     }
@@ -332,19 +332,19 @@ int bpi_appstore_list_installed(BpiAppStore *store,
     return 0;
 }
 
-bool bpi_appstore_register_cert(BpiAppStore *store,
-                                 const BpiDeveloperCert *cert) {
+bool zyl_appstore_register_cert(ZylAppStore *store,
+                                 const ZylDeveloperCert *cert) {
     if (!store || !cert || !cert->developer_id) return false;
 
     /* 용량 확인 */
     if (store->n_certs >= store->certs_capacity) {
         store->certs_capacity *= 2;
         store->certs = realloc(store->certs,
-            store->certs_capacity * sizeof(BpiDeveloperCert));
+            store->certs_capacity * sizeof(ZylDeveloperCert));
     }
 
     /* 인증서 복사 */
-    BpiDeveloperCert *dst = &store->certs[store->n_certs];
+    ZylDeveloperCert *dst = &store->certs[store->n_certs];
     dst->developer_id = strdup(cert->developer_id);
     dst->developer_name = cert->developer_name ? strdup(cert->developer_name) : NULL;
     dst->public_key_pem = cert->public_key_pem ? strdup(cert->public_key_pem) : NULL;
@@ -368,9 +368,9 @@ bool bpi_appstore_register_cert(BpiAppStore *store,
     return true;
 }
 
-bool bpi_appstore_revoke_cert(BpiAppStore *store,
+bool zyl_appstore_revoke_cert(ZylAppStore *store,
                                const char *cert_fingerprint) {
-    BpiDeveloperCert *cert = find_cert(store, cert_fingerprint);
+    ZylDeveloperCert *cert = find_cert(store, cert_fingerprint);
     if (!cert) return false;
 
     cert->is_revoked = true;
@@ -379,7 +379,7 @@ bool bpi_appstore_revoke_cert(BpiAppStore *store,
     return true;
 }
 
-void bpi_appstore_set_dev_mode(BpiAppStore *store, bool enabled) {
+void zyl_appstore_set_dev_mode(ZylAppStore *store, bool enabled) {
     if (!store) return;
     store->dev_mode = enabled;
     /* 로그 기록 - 보안 감사 */
@@ -387,7 +387,7 @@ void bpi_appstore_set_dev_mode(BpiAppStore *store, bool enabled) {
             enabled ? "ENABLED" : "DISABLED");
 }
 
-void bpi_package_meta_free(BpiPackageMeta *meta) {
+void zyl_package_meta_free(ZylPackageMeta *meta) {
     if (!meta) return;
     free(meta->app_id);
     free(meta->name);

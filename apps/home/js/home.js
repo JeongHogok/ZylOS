@@ -3,7 +3,7 @@
 //
 // 역할: 홈스크린 UI — 앱 그리드, 독, 검색, 시계 표시
 // 수행범위: 앱 아이콘 렌더링, 검색 필터링, 페이지 인디케이터, 앱 실행
-// 의존방향: bpiI18n (i18n.js), BpiClock (clock.js), BpiBridge (bridge.js)
+// 의존방향: zylI18n (i18n.js), ZylClock (clock.js), ZylBridge (bridge.js)
 // SOLID: SRP — 홈스크린 UI 렌더링과 인터랙션만 담당
 // ──────────────────────────────────────────────────────────
 
@@ -28,20 +28,20 @@
 
   /* ─── 앱 정의 (아이콘 + 색상) ─── */
   var defaultApps = [
-    { id: 'com.bpios.camera',   nameKey: 'app.camera',   icon: 'camera',   color: 'icon-red'     },
-    { id: 'com.bpios.gallery',  nameKey: 'app.gallery',  icon: 'gallery',  color: 'icon-pink'    },
-    { id: 'com.bpios.music',    nameKey: 'app.music',    icon: 'music',    color: 'icon-red'     },
-    { id: 'com.bpios.clock',    nameKey: 'app.clock',    icon: 'clock',    color: 'icon-indigo'  },
-    { id: 'com.bpios.calc',     nameKey: 'app.calc',     icon: 'calc',     color: 'icon-orange'  },
-    { id: 'com.bpios.notes',    nameKey: 'app.notes',    icon: 'notes',    color: 'icon-amber'   },
-    { id: 'com.bpios.weather',  nameKey: 'app.weather',  icon: 'weather',  color: 'icon-cyan'    },
-    { id: 'com.bpios.store',    nameKey: 'app.store',    icon: 'store',    color: 'icon-emerald' },
+    { id: 'com.zylos.camera',   nameKey: 'app.camera',   icon: 'camera',   color: 'icon-red'     },
+    { id: 'com.zylos.gallery',  nameKey: 'app.gallery',  icon: 'gallery',  color: 'icon-pink'    },
+    { id: 'com.zylos.music',    nameKey: 'app.music',    icon: 'music',    color: 'icon-red'     },
+    { id: 'com.zylos.clock',    nameKey: 'app.clock',    icon: 'clock',    color: 'icon-indigo'  },
+    { id: 'com.zylos.calc',     nameKey: 'app.calc',     icon: 'calc',     color: 'icon-orange'  },
+    { id: 'com.zylos.notes',    nameKey: 'app.notes',    icon: 'notes',    color: 'icon-amber'   },
+    { id: 'com.zylos.weather',  nameKey: 'app.weather',  icon: 'weather',  color: 'icon-cyan'    },
+    { id: 'com.zylos.store',    nameKey: 'app.store',    icon: 'store',    color: 'icon-emerald' },
   ];
 
-  /* ─── 시계 (shared BpiClock 사용) ─── */
+  /* ─── 시계 (shared ZylClock 사용) ─── */
   var clockTime = document.getElementById('clock-time');
   var clockDate = document.getElementById('clock-date');
-  var clock = BpiClock.create(clockTime, clockDate, { showDate: true, dateFormat: 'long' });
+  var clock = ZylClock.create(clockTime, clockDate, { showDate: true, dateFormat: 'long' });
 
   /* ─── 앱 그리드 렌더링 ─── */
   var appGrid = document.getElementById('app-grid');
@@ -54,7 +54,7 @@
       el.dataset.appId = app.id;
 
       var iconSvg = ICONS[app.icon] || ICONS.browser;
-      var name = bpiI18n.t(app.nameKey);
+      var name = zylI18n.t(app.nameKey);
 
       el.innerHTML =
         '<div class="app-icon-wrap ' + app.color + '">' + iconSvg + '</div>' +
@@ -67,13 +67,13 @@
     });
   }
 
-  /* ─── 앱 실행 (shared BpiBridge 사용) ─── */
+  /* ─── 앱 실행 (shared ZylBridge 사용) ─── */
   function launchApp(appId, el) {
     if (el) {
       el.classList.add('launching');
       setTimeout(function () { el.classList.remove('launching'); }, 500);
     }
-    BpiBridge.launch(appId);
+    ZylBridge.launch(appId);
   }
 
   /* ─── 독 클릭 ─── */
@@ -93,14 +93,14 @@
       return;
     }
     var filtered = defaultApps.filter(function (app) {
-      var name = bpiI18n.t(app.nameKey).toLowerCase();
+      var name = zylI18n.t(app.nameKey).toLowerCase();
       return name.includes(query) || app.id.toLowerCase().includes(query);
     });
     renderAppGrid(filtered);
   });
 
   /* ─── Re-render on locale change ─── */
-  bpiI18n.onLocaleChange(function () {
+  zylI18n.onLocaleChange(function () {
     renderAppGrid(defaultApps);
   });
 
