@@ -48,6 +48,12 @@
       "runtimeExecutable": "python3",
       "runtimeArgs": ["-m", "http.server", "8087", "--directory", "apps/camera"],
       "port": 8087
+    },
+    {
+      "name": "emulator",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "9000", "--directory", "."],
+      "port": 9000
     }
   ]
 }
