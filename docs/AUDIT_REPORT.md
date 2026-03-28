@@ -1,8 +1,34 @@
 # Zyl OS 프로덕션 준비 상태 감사 보고서
 
-**감사일**: 2026-03-28
-**코드베이스**: 8,894 LOC (C 3,988 + JS 4,906)
-**전체 평가**: 3.7/10 — 아키텍처 우수, OS 인프라 미구현
+**감사일**: 2026-03-28 (최종 검증: 2026-03-28)
+**코드베이스**: ~15,000 LOC (C ~8,000 + JS ~5,000 + 기타 ~2,000)
+**전체 평가**: 6.8/10 — CRITICAL 13/13 완료, 검증 수행, HIGH 진행 필요
+
+---
+
+## 검증 이력
+
+### 빌드 시스템 검증 (2026-03-28) ✅
+- meson.build 정합성: 모든 subdir/source/install 대상 존재 확인
+- 발견: power.c main() 누락 → **수정 완료**
+- 발견: notification D-Bus name 불일치 (org.zyl→org.zylos) → **수정 완료**
+- 발견: bpi_compositor.h 레거시 파일명 → **zyl_compositor.h로 변경 완료**
+
+### systemd 서비스 검증 (2026-03-28) ✅
+- 발견: power/location.service에 After= 누락 → **수정 완료**
+- 발견: zyl-os.target에 보조 서비스 Wants= 누락 → **수정 완료**
+
+### C 코드 보안 검증 (2026-03-28) ✅
+- 발견: telephony.c 미선언 변수 → **수정 완료**
+- 발견: appstore.c realloc 메모리 누수 → **수정 완료**
+- 발견: notification.c/sensors.c NULL 가드 누락 → **수정 완료**
+- 발견: updater.c system() 반환값 미확인 → **수정 완료**
+
+### JavaScript 보안 검증 (2026-03-28) ✅
+- 발견: home.js innerHTML XSS 취약점 → **textContent로 수정 완료**
+- 발견: 6개 앱에 postMessage origin 검증 누락 → **e.source 검증 추가 완료**
+- 발견: home.js 서비스 요청 타임아웃 없음 → **5초 타임아웃 추가 완료**
+- 발견: home.js 이벤트 리스너 메모리 누수 → **이벤트 위임으로 수정 완료**
 
 ---
 
