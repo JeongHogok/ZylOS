@@ -30,8 +30,14 @@
   var currentPage = null;
 
   var PAGE_TITLES = {
-    language: 'settings.language',
+    wifi: 'settings.wifi',
+    bluetooth: 'settings.bluetooth',
     display: 'settings.display',
+    sound: 'settings.sound',
+    language: 'settings.language',
+    wallpaper: 'settings.wallpaper',
+    security: 'settings.security',
+    storage: 'settings.storage',
     about: 'settings.about',
   };
 

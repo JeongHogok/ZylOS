@@ -265,3 +265,11 @@ main, .sub-page {
   overflow-y: auto;
   z-index: 50;
 }
+
+/* ─── 스크롤바 숨김 ─── */
+main::-webkit-scrollbar,
+.sub-page::-webkit-scrollbar { display: none; }
+main, .sub-page {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

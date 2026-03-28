@@ -277,6 +277,10 @@ html, body {
 #app-grid::-webkit-scrollbar {
   display: none;
 }
+#app-grid {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
 
 /* ─── 앱 실행 애니메이션 ─── */
 @keyframes app-launch {

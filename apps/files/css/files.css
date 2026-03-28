@@ -237,7 +237,11 @@ body {
 /* ─── File List ─── */
 #file-list {
   padding: 4px 16px 100px;
+  overflow-y: auto;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
+#file-list::-webkit-scrollbar { display: none; }
 
 .file-item {
   display: flex;

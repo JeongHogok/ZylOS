@@ -130,7 +130,17 @@
   /* ═══ App Lifecycle ═══ */
   function launchApp(appId) {
     var app = APPS[appId];
-    if (!app) { syslog('App not found: ' + appId, 'warn'); return; }
+    if (!app) {
+      syslog('App not found: ' + appId, 'warn');
+      showToast({
+        icon: '📦',
+        appName: 'System',
+        title: 'App not installed',
+        body: appId.replace('com.zylos.', '') + ' is not available',
+        appId: null
+      });
+      return;
+    }
     if (state.recentsOpen) hideRecents();
 
     /* 잠금 중에는 잠금화면만 실행 가능 */
@@ -597,7 +607,8 @@
     toast.querySelector('.toast-app').textContent = notif.appName;
     toast.querySelector('.toast-title').textContent = notif.title;
     toast.querySelector('.toast-body').textContent = notif.body;
-    toast.classList.remove('toast-hidden');
+    toast.classList.remove('toast-hidden', 'toast-show');
+    void toast.offsetWidth; /* 강제 리플로우 — transition 보장 */
     toast.classList.add('toast-show');
 
     toast.onclick = function() {

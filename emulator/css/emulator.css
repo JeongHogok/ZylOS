@@ -96,6 +96,10 @@ body {
   display: flex; flex-direction: column;
 }
 
+/* ── Global scrollbar hiding inside device screen ── */
+#device-screen *::-webkit-scrollbar { display: none; }
+#device-screen * { scrollbar-width: none; }
+
 /* 물리 버튼 모드에서 스크린은 원래 크기 유지 */
 #device-frame.nav-hw #device-screen { bottom: 60px; }
 
@@ -116,6 +120,7 @@ body {
 /* ── App Viewport ── */
 #app-viewport {
   flex: 1; position: relative; overflow: hidden; background: #0a0a1a;
+  z-index: 1; /* 토스트/QS 패널보다 낮게 */
 }
 #app-frame { width: 100%; height: 100%; border: none; background: #0a0a1a; }
 

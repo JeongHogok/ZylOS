@@ -102,17 +102,10 @@ body {
   scrollbar-color: rgba(0,255,65,0.2) transparent;
 }
 
-#terminal-output::-webkit-scrollbar {
-  width: 4px;
-}
-
-#terminal-output::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-#terminal-output::-webkit-scrollbar-thumb {
-  background: rgba(0,255,65,0.2);
-  border-radius: 2px;
+#terminal-output::-webkit-scrollbar { display: none; }
+#terminal-output {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 #output-content {

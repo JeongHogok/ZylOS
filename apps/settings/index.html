@@ -209,6 +209,128 @@
     </div>
   </div>
 
+  <!-- Wi-Fi 서브 페이지 -->
+  <div id="page-wifi" class="sub-page hidden">
+    <div class="settings-group">
+      <div class="setting-item no-tap">
+        <span class="setting-label">Wi-Fi</span>
+        <label class="toggle">
+          <input type="checkbox" checked>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+    <div class="settings-group">
+      <div class="setting-item no-tap">
+        <span class="setting-label">ZylNet-5G</span>
+        <span class="setting-value" data-i18n="settings.connected">연결됨</span>
+      </div>
+      <div class="setting-item no-tap">
+        <span class="setting-label">Home_WiFi</span>
+        <span class="setting-value">WPA2</span>
+      </div>
+      <div class="setting-item no-tap">
+        <span class="setting-label">Guest_Network</span>
+        <span class="setting-value">WPA2</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 블루투스 서브 페이지 -->
+  <div id="page-bluetooth" class="sub-page hidden">
+    <div class="settings-group">
+      <div class="setting-item no-tap">
+        <span class="setting-label" data-i18n="settings.bluetooth">블루투스</span>
+        <label class="toggle">
+          <input type="checkbox" checked>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+    <div class="settings-group">
+      <div class="setting-item no-tap">
+        <span class="setting-label">Zyl Buds Pro</span>
+        <span class="setting-value" data-i18n="settings.connected">연결됨</span>
+      </div>
+      <div class="setting-item no-tap">
+        <span class="setting-label">BT Speaker</span>
+        <span class="setting-value">Paired</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 사운드 서브 페이지 -->
+  <div id="page-sound" class="sub-page hidden">
+    <div class="settings-group">
+      <div class="setting-item no-tap">
+        <span class="setting-label" data-i18n="settings.sound">미디어 볼륨</span>
+        <input type="range" class="slider" min="0" max="100" value="70">
+      </div>
+      <div class="setting-item no-tap">
+        <span class="setting-label">알림 볼륨</span>
+        <input type="range" class="slider" min="0" max="100" value="80">
+      </div>
+      <div class="setting-item no-tap">
+        <span class="setting-label">알람 볼륨</span>
+        <input type="range" class="slider" min="0" max="100" value="90">
+      </div>
+    </div>
+    <div class="settings-group">
+      <div class="setting-item no-tap">
+        <span class="setting-label">진동</span>
+        <label class="toggle">
+          <input type="checkbox" checked>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- 배경화면 서브 페이지 -->
+  <div id="page-wallpaper" class="sub-page hidden">
+    <div class="settings-group">
+      <div class="setting-item no-tap">
+        <span class="setting-label" data-i18n="settings.wallpaper">배경화면</span>
+        <span class="setting-value">Default</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 보안 서브 페이지 -->
+  <div id="page-security" class="sub-page hidden">
+    <div class="settings-group">
+      <div class="setting-item no-tap">
+        <span class="setting-label">화면 잠금</span>
+        <span class="setting-value">PIN</span>
+      </div>
+      <div class="setting-item no-tap">
+        <span class="setting-label">지문 인식</span>
+        <label class="toggle">
+          <input type="checkbox">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- 저장공간 서브 페이지 -->
+  <div id="page-storage" class="sub-page hidden">
+    <div class="settings-group">
+      <div class="setting-item no-tap">
+        <span class="setting-label" data-i18n="settings.storage">전체 저장공간</span>
+        <span class="setting-value">16 GB</span>
+      </div>
+      <div class="setting-item no-tap">
+        <span class="setting-label">사용 중</span>
+        <span class="setting-value">12.3 GB</span>
+      </div>
+      <div class="setting-item no-tap">
+        <span class="setting-label">사용 가능</span>
+        <span class="setting-value">3.7 GB</span>
+      </div>
+    </div>
+  </div>
+
   <!-- Shared modules -->
   <script src="../shared/i18n.js"></script>
   <script src="../shared/bridge.js"></script>

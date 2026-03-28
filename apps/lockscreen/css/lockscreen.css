@@ -138,6 +138,7 @@ body {
 }
 
 #lock-notifications::-webkit-scrollbar { display: none; }
+#lock-notifications { -ms-overflow-style: none; scrollbar-width: none; }
 
 .lock-notif {
   display: flex;
