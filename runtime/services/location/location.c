@@ -77,7 +77,11 @@ static bool gpsd_connect(ZylLocationService *svc) {
                   GPSD_HOST, GPSD_PORT);
         return false;
     }
-    gps_stream(&svc->gps_data, WATCH_ENABLE | WATCH_JSON, NULL);
+    if (gps_stream(&svc->gps_data, WATCH_ENABLE | WATCH_JSON, NULL) != 0) {
+        g_warning("[Location] gps_stream() failed, closing GPSD connection");
+        gps_close(&svc->gps_data);
+        return false;
+    }
     svc->gpsd_connected = true;
     g_message("[Location] Connected to GPSD");
     return true;

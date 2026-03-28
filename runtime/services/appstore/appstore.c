@@ -47,6 +47,7 @@ static bool file_exists(const char *path) {
 
 /* ─── 유틸리티: 디렉토리 생성 (재귀) ─── */
 static bool mkdir_p(const char *path) {
+    if (!path || strlen(path) >= 512) return false;
     char tmp[512];
     snprintf(tmp, sizeof(tmp), "%s", path);
     for (char *p = tmp + 1; *p; p++) {

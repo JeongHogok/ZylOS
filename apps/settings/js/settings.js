@@ -111,6 +111,7 @@
   window.addEventListener('message', function (e) {
     if (e.source !== window.parent && e.source !== window) return;
     try {
+      if (!e.data) return;
       var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
       if (!msg || msg.type !== 'service.response') return;
 
@@ -350,7 +351,10 @@
   var brightnessSlider = document.getElementById('brightness-slider');
   if (brightnessSlider) {
     brightnessSlider.addEventListener('input', function () {
-      updateSetting('display', 'brightness', parseInt(brightnessSlider.value, 10));
+      var val = parseInt(brightnessSlider.value, 10);
+      if (isNaN(val)) return;
+      val = Math.max(10, Math.min(100, val));
+      updateSetting('display', 'brightness', val);
     });
   }
 
@@ -398,21 +402,30 @@
   var mediaVol = document.getElementById('media-volume');
   if (mediaVol) {
     mediaVol.addEventListener('input', function () {
-      updateSetting('sound', 'mediaVolume', parseInt(mediaVol.value, 10));
+      var val = parseInt(mediaVol.value, 10);
+      if (isNaN(val)) return;
+      val = Math.max(0, Math.min(100, val));
+      updateSetting('sound', 'mediaVolume', val);
     });
   }
 
   var notifVol = document.getElementById('notif-volume');
   if (notifVol) {
     notifVol.addEventListener('input', function () {
-      updateSetting('sound', 'notifVolume', parseInt(notifVol.value, 10));
+      var val = parseInt(notifVol.value, 10);
+      if (isNaN(val)) return;
+      val = Math.max(0, Math.min(100, val));
+      updateSetting('sound', 'notifVolume', val);
     });
   }
 
   var alarmVol = document.getElementById('alarm-volume');
   if (alarmVol) {
     alarmVol.addEventListener('input', function () {
-      updateSetting('sound', 'alarmVolume', parseInt(alarmVol.value, 10));
+      var val = parseInt(alarmVol.value, 10);
+      if (isNaN(val)) return;
+      val = Math.max(0, Math.min(100, val));
+      updateSetting('sound', 'alarmVolume', val);
     });
   }
 

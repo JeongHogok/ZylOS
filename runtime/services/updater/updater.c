@@ -155,6 +155,15 @@ static long json_get_long(const char *json, const char *key) {
     return strtol(pos, NULL, 10);
 }
 
+/* ─── 유틸리티: 버전 문자열 검증 (숫자와 점만 허용) ─── */
+static bool validate_version(const char *ver) {
+    if (!ver) return false;
+    for (const char *p = ver; *p; p++) {
+        if (!(*p >= '0' && *p <= '9') && *p != '.') return false;
+    }
+    return true;
+}
+
 /* ─── 유틸리티: popen으로 명령어 실행 후 출력 읽기 ─── */
 static char *run_command(const char *cmd, size_t *out_len) {
     FILE *fp = popen(cmd, "r");
@@ -270,7 +279,15 @@ ZylUpdateState zyl_updater_check(ZylUpdater *u,
 
     if (out_manifest) *out_manifest = NULL;
 
-    /* 1. 업데이트 확인 URL 구성 */
+    /* 1. 버전 문자열 검증 후 URL 구성 */
+    if (u->current_version && !validate_version(u->current_version)) {
+        fprintf(stderr, "[UPDATER] Invalid version format: %s\n",
+                u->current_version);
+        u->state = ZYL_UPDATE_FAILED;
+        report_progress(u, 100, "Invalid version format");
+        return u->state;
+    }
+
     char url[1024];
     snprintf(url, sizeof(url),
              "%s/check?version=%s&arch=riscv64&slot=%s",
