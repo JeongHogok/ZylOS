@@ -66,6 +66,10 @@
     recentsOpen: false,
   };
 
+  /* ═══ Notifications ═══ */
+  var notifications = []; // { id, appId, appName, icon, title, body, channel, priority, timestamp, read }
+  var notifIdCounter = 0;
+
   /* ═══ DOM ═══ */
   var pickerEl        = document.getElementById('device-picker');
   var deviceListEl    = document.getElementById('device-list');
@@ -159,6 +163,7 @@
   /* 잠금 검사를 거치는 네비게이션 */
   function goHome() {
     if (requireUnlock('Home')) return;
+    if (state.currentApp === 'com.zylos.home') return; // already on home
     launchApp('com.zylos.home');
   }
 
@@ -411,10 +416,12 @@
   statusbar.addEventListener('mousedown', function (e) { qsDragStart(e.clientY, 'statusbar'); });
   statusbar.addEventListener('touchstart', function (e) { qsDragStart(e.touches[0].clientY, 'statusbar'); }, { passive: true });
   statusbar.addEventListener('click', function (e) {
-    /* 상태바에서 시작된 드래그/클릭만 처리 */
-    if (qsDrag.source === 'statusbar' && !qsDrag.moved) {
+    /* 드래그로 이미 열었으면 무시, 아니면 토글 */
+    if (!qsDrag.moved) {
       if (qsOpen) closeQsPanel(); else openQsPanel();
     }
+    qsDrag.moved = false;
+    qsDrag.source = null;
   });
 
   /* 패널 자체 드래그 (위로 올려서 닫기) */
@@ -456,14 +463,23 @@
   viewport.addEventListener('click', function () { if (qsOpen) closeQsPanel(); });
 
   /* ═══ 제어 패널 ═══ */
-  document.getElementById('btn-power').addEventListener('click', function () {
+  document.getElementById('btn-power').addEventListener('click', powerToggle);
+  document.getElementById('btn-volup').addEventListener('click', function () { syslog('Vol+', 'sys'); });
+  document.getElementById('btn-voldown').addEventListener('click', function () { syslog('Vol-', 'sys'); });
+
+  /* 측면 물리 버튼 (디바이스 프레임 옆) */
+  function powerToggle() {
     state.screenOn = !state.screenOn;
     frameEl.classList.toggle('screen-off', !state.screenOn);
     syslog('Screen ' + (state.screenOn ? 'ON' : 'OFF'), 'sys');
     if (state.screenOn && isLocked()) launchApp('com.zylos.lockscreen');
-  });
-  document.getElementById('btn-volup').addEventListener('click', function () { syslog('Vol+', 'sys'); });
-  document.getElementById('btn-voldown').addEventListener('click', function () { syslog('Vol-', 'sys'); });
+  }
+  var sidePower = document.getElementById('side-power');
+  var sideVolUp = document.getElementById('side-volup');
+  var sideVolDown = document.getElementById('side-voldown');
+  if (sidePower) sidePower.addEventListener('click', powerToggle);
+  if (sideVolUp) sideVolUp.addEventListener('click', function () { syslog('Vol+', 'sys'); });
+  if (sideVolDown) sideVolDown.addEventListener('click', function () { syslog('Vol-', 'sys'); });
   document.getElementById('btn-reboot').addEventListener('click', function () {
     syslog('Rebooting...', 'warn');
     state.locked = true;
@@ -472,6 +488,158 @@
     updateRunningApps();
     bootDevice(device);
   });
+
+  /* ═══════════════════════════════════════════════════════
+     알림 시스템
+     ═══════════════════════════════════════════════════════ */
+  function pushNotification(data) {
+    var notif = {
+      id: ++notifIdCounter,
+      appId: data.appId || 'com.zylos.system',
+      appName: data.appName || APPS[data.appId]?.name || 'System',
+      icon: data.icon || '🔔',
+      title: data.title || '',
+      body: data.body || '',
+      channel: data.channel || 'default',
+      priority: data.priority || 1,
+      timestamp: Date.now(),
+      read: false,
+    };
+    notifications.unshift(notif);
+    updateNotifBadge();
+    renderQsNotifications();
+
+    // Show toast banner if screen is on and not locked
+    if (state.screenOn && !isLocked()) {
+      showToast(notif);
+    }
+
+    // If on lockscreen, push to lockscreen iframe
+    if (state.currentApp === 'com.zylos.lockscreen') {
+      broadcastToCurrentApp('notification.push', notif);
+    }
+
+    syslog('Notif: ' + notif.title, 'app');
+    return notif.id;
+  }
+
+  function dismissNotification(id) {
+    notifications = notifications.filter(function(n) { return n.id !== id; });
+    updateNotifBadge();
+    renderQsNotifications();
+  }
+
+  function clearAllNotifications() {
+    notifications = notifications.filter(function(n) { return n.persistent; });
+    updateNotifBadge();
+    renderQsNotifications();
+    syslog('Notifications cleared', 'sys');
+  }
+
+  function updateNotifBadge() {
+    var unread = notifications.filter(function(n) { return !n.read; }).length;
+    var badge = document.getElementById('notif-badge');
+    if (badge) {
+      badge.textContent = unread;
+      badge.classList.toggle('hidden', unread === 0);
+    }
+  }
+
+  function broadcastToCurrentApp(type, data) {
+    try {
+      appFrame.contentWindow.postMessage(JSON.stringify({ type: type, data: data }), '*');
+    } catch(e) {}
+  }
+
+  /* ═══ Toast Banner ═══ */
+  function showToast(notif) {
+    var toast = document.getElementById('notif-toast');
+    toast.querySelector('.toast-icon').textContent = notif.icon;
+    toast.querySelector('.toast-app').textContent = notif.appName;
+    toast.querySelector('.toast-title').textContent = notif.title;
+    toast.querySelector('.toast-body').textContent = notif.body;
+    toast.classList.remove('toast-hidden');
+    toast.classList.add('toast-show');
+
+    toast.onclick = function() {
+      hideToast();
+      if (notif.appId && APPS[notif.appId]) launchApp(notif.appId);
+    };
+
+    clearTimeout(toast._timer);
+    toast._timer = setTimeout(hideToast, 3000);
+  }
+
+  function hideToast() {
+    var toast = document.getElementById('notif-toast');
+    toast.classList.remove('toast-show');
+    toast.classList.add('toast-hidden');
+  }
+
+  /* ═══ QS Notification List ═══ */
+  function renderQsNotifications() {
+    var list = document.getElementById('qs-notif-list');
+    if (!list) return;
+    list.innerHTML = '';
+
+    var visible = notifications.filter(function(n) { return !n.read || true; }); // show all
+
+    if (visible.length === 0) {
+      list.innerHTML = '<div class="qs-notif-empty">알림이 없습니다</div>';
+      return;
+    }
+
+    visible.forEach(function(notif) {
+      var card = document.createElement('div');
+      card.className = 'qs-notif-card';
+      card.innerHTML =
+        '<div class="qs-notif-icon">' + notif.icon + '</div>' +
+        '<div class="qs-notif-content">' +
+          '<div class="qs-notif-app">' + notif.appName + '</div>' +
+          '<div class="qs-notif-title">' + notif.title + '</div>' +
+          '<div class="qs-notif-body">' + notif.body + '</div>' +
+        '</div>' +
+        '<div class="qs-notif-time">' + formatTimeAgo(notif.timestamp) + '</div>';
+
+      card.addEventListener('click', function() {
+        closeQsPanel();
+        if (notif.appId && APPS[notif.appId]) launchApp(notif.appId);
+      });
+
+      // Swipe to dismiss
+      var sx = 0;
+      card.addEventListener('mousedown', function(e) { sx = e.clientX; });
+      card.addEventListener('mouseup', function(e) {
+        if (Math.abs(e.clientX - sx) > 80) {
+          card.style.transform = 'translateX(' + (e.clientX > sx ? '100%' : '-100%') + ')';
+          card.style.opacity = '0';
+          setTimeout(function() { dismissNotification(notif.id); }, 300);
+        }
+      });
+
+      list.appendChild(card);
+    });
+
+    // Clear all button
+    if (visible.length > 0) {
+      var clearBtn = document.createElement('button');
+      clearBtn.className = 'qs-notif-clear';
+      clearBtn.textContent = '모두 지우기';
+      clearBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        clearAllNotifications();
+      });
+      list.appendChild(clearBtn);
+    }
+  }
+
+  function formatTimeAgo(ts) {
+    var diff = Math.floor((Date.now() - ts) / 1000);
+    if (diff < 60) return '방금';
+    if (diff < 3600) return Math.floor(diff / 60) + '분 전';
+    if (diff < 86400) return Math.floor(diff / 3600) + '시간 전';
+    return Math.floor(diff / 86400) + '일 전';
+  }
 
   /* ═══ iframe 메시지 ═══ */
   window.addEventListener('message', function (e) {
@@ -493,6 +661,15 @@
           syslog('Device unlocked', 'sys');
           goHome();
           break;
+        case 'notification.create':
+          pushNotification(msg);
+          break;
+        case 'notification.dismiss':
+          dismissNotification(msg.id);
+          break;
+        case 'notification.clearAll':
+          clearAllNotifications();
+          break;
       }
     } catch (err) { /* ignore */ }
   });
@@ -508,6 +685,7 @@
       launchApp('com.zylos.lockscreen');
       syslog('Locked', 'sys');
     }
+    else if (e.key === 'p' && !e.ctrlKey) powerToggle();
   });
 
   /* ═══════════════════════════════════════════════════════
@@ -578,6 +756,13 @@
       state.booted = true;
       state.locked = true;
       launchApp('com.zylos.lockscreen');
+
+      // System welcome notifications
+      setTimeout(function() {
+        pushNotification({ appId: 'com.zylos.settings', icon: '🔔', title: 'Zyl OS', body: '새로운 업데이트가 있습니다.', channel: 'system', priority: 1 });
+        pushNotification({ appId: 'com.zylos.browser', icon: '💬', title: '메시지', body: '안녕하세요! Zyl OS에 오신 것을 환영합니다.', channel: 'message', priority: 2 });
+        pushNotification({ appId: 'com.zylos.settings', icon: '🔐', title: '보안', body: 'PIN을 설정하여 기기를 보호하세요.', channel: 'security', priority: 1 });
+      }, 100);
     }, 600);
   }
 

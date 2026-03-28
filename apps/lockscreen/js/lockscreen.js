@@ -230,81 +230,62 @@
    * ════════════════════════════════════════════ */
   var notifList = document.getElementById('lock-notifications');
 
-  var demoNotifs = [
-    { icon: '💬', app: '메시지', appId: 'com.zylos.browser', title: '메시지', body: '안녕하세요! Zyl OS에 오신 것을 환영합니다.', time: '2분 전' },
-    { icon: '📧', app: '이메일', appId: 'com.zylos.settings', title: '이메일', body: '시스템 업데이트가 준비되었습니다.', time: '15분 전' },
-    { icon: '📷', app: '카메라', appId: 'com.zylos.camera', title: '카메라', body: '새로운 필터가 추가되었습니다.', time: '1시간 전' },
-  ];
+  /* 에뮬레이터/시스템에서 알림 수신 (postMessage) */
+  window.addEventListener('message', function (e) {
+    try {
+      var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+      if (!msg || msg.type !== 'notification.push') return;
+      addLockNotification(msg.data);
+    } catch (err) { /* ignore */ }
+  });
 
-  demoNotifs.forEach(function (n) {
+  function addLockNotification(n) {
     var el = document.createElement('div');
     el.className = 'lock-notif';
-    el.dataset.appId = n.appId;
+    el.dataset.appId = n.appId || '';
     el.innerHTML =
-      '<div class="lock-notif-icon">' + n.icon + '</div>' +
+      '<div class="lock-notif-icon">' + (n.icon || '🔔') + '</div>' +
       '<div class="lock-notif-text">' +
-        '<div class="lock-notif-app">' + n.app + '</div>' +
-        '<div class="lock-notif-title">' + n.title + '</div>' +
-        '<div class="lock-notif-body">' + n.body + '</div>' +
+        '<div class="lock-notif-app">' + (n.appName || 'System') + '</div>' +
+        '<div class="lock-notif-title">' + (n.title || '') + '</div>' +
+        '<div class="lock-notif-body">' + (n.body || '') + '</div>' +
       '</div>' +
-      '<div class="lock-notif-time">' + n.time + '</div>';
+      '<div class="lock-notif-time">방금</div>';
 
-    /* 알림 터치 → PIN 화면 (성공 시 해당 앱으로) */
-    el.addEventListener('click', function (e) {
+    el.addEventListener('click', function () {
       if (el.classList.contains('swiping')) return;
-      pendingAppId = n.appId;
+      pendingAppId = n.appId || null;
       lockMain.classList.add('sliding-out');
-      setTimeout(function () {
-        showPinScreen();
-      }, 350);
+      setTimeout(showPinScreen, 350);
     });
 
-    /* 알림 스와이프 삭제 */
-    var swipeStartX = 0;
-    var swiping = false;
-
-    el.addEventListener('mousedown', function (e) { swipeStartX = e.clientX; });
-    el.addEventListener('touchstart', function (e) { swipeStartX = e.touches[0].clientX; }, { passive: true });
-
-    el.addEventListener('mousemove', function (e) {
-      var dx = e.clientX - swipeStartX;
+    var sx = 0, swiping = false;
+    el.addEventListener('mousedown', function (e) { sx = e.clientX; });
+    el.addEventListener('touchstart', function (e) { sx = e.touches[0].clientX; }, { passive: true });
+    function onMove(dx) {
       if (Math.abs(dx) > 15) {
-        swiping = true;
-        el.classList.add('swiping');
+        swiping = true; el.classList.add('swiping');
         el.style.transform = 'translateX(' + dx + 'px)';
         el.style.opacity = 1 - Math.abs(dx) / 300;
       }
-    });
-    el.addEventListener('touchmove', function (e) {
-      var dx = e.touches[0].clientX - swipeStartX;
-      if (Math.abs(dx) > 15) {
-        swiping = true;
-        el.classList.add('swiping');
-        el.style.transform = 'translateX(' + dx + 'px)';
-        el.style.opacity = 1 - Math.abs(dx) / 300;
-      }
-    }, { passive: true });
-
+    }
+    el.addEventListener('mousemove', function (e) { onMove(e.clientX - sx); });
+    el.addEventListener('touchmove', function (e) { onMove(e.touches[0].clientX - sx); }, { passive: true });
     function endSwipe(dx) {
       if (Math.abs(dx) > 100) {
         el.classList.add('dismissed');
         setTimeout(function () { el.remove(); }, 350);
       } else {
-        el.classList.remove('swiping');
-        el.style.transform = '';
-        el.style.opacity = '';
+        el.classList.remove('swiping'); el.style.transform = ''; el.style.opacity = '';
       }
       setTimeout(function () { swiping = false; }, 50);
     }
+    el.addEventListener('mouseup', function (e) { endSwipe(e.clientX - sx); });
+    el.addEventListener('touchend', function (e) { endSwipe(e.changedTouches[0].clientX - sx); });
 
-    el.addEventListener('mouseup', function (e) {
-      endSwipe(e.clientX - swipeStartX);
-    });
-    el.addEventListener('touchend', function (e) {
-      endSwipe(e.changedTouches[0].clientX - swipeStartX);
-    });
+    notifList.prepend(el);
+  }
 
-    notifList.appendChild(el);
-  });
+  /* 목 알림 제거됨 — 알림은 에뮬레이터/시스템에서 postMessage로 전달됨 */
 
 })();

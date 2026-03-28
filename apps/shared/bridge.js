@@ -149,6 +149,62 @@ var ZylBridge = (function () {
     return Promise.resolve({ level: -1, charging: false });
   }
 
+  /* ─── Notifications ─── */
+
+  /**
+   * Post a notification through the system notification channel.
+   * @param {string} title
+   * @param {string} body
+   * @param {Object} [options] - { channel, icon, priority, appId, actions }
+   * @returns {Promise<number>} notification ID
+   */
+  function notify(title, body, options) {
+    var opts = options || {};
+    var msg = {
+      type: 'notification.create',
+      title: title,
+      body: body,
+      channel: opts.channel || 'default',
+      icon: opts.icon || '',
+      priority: opts.priority || 1,
+      appId: opts.appId || '',
+      actions: opts.actions || [],
+    };
+    log('notify', title);
+    if (isWebKitAvailable()) {
+      window.webkit.messageHandlers.bridge.postMessage(JSON.stringify(msg));
+      return Promise.resolve(Date.now());
+    }
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage(JSON.stringify(msg), '*');
+      return Promise.resolve(Date.now());
+    }
+    return Promise.resolve(0);
+  }
+
+  /**
+   * Dismiss a notification by ID.
+   * @param {number} id
+   */
+  function clearNotification(id) {
+    var msg = { type: 'notification.dismiss', id: id };
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage(JSON.stringify(msg), '*');
+    }
+    return Promise.resolve(true);
+  }
+
+  /**
+   * Clear all notifications.
+   */
+  function clearAllNotifications() {
+    var msg = { type: 'notification.clearAll' };
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage(JSON.stringify(msg), '*');
+    }
+    return Promise.resolve(true);
+  }
+
   /* ─── Public API ─── */
   return {
     isAvailable: isAvailable,
@@ -157,5 +213,8 @@ var ZylBridge = (function () {
     setLocale: setLocale,
     sendMessage: sendMessage,
     getBattery: getBattery,
+    notify: notify,
+    clearNotification: clearNotification,
+    clearAllNotifications: clearAllNotifications,
   };
 })();

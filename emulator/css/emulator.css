@@ -138,7 +138,8 @@ body {
   padding: 40px 20px 20px;
   transform: translateY(0);
   transition: transform 0.35s cubic-bezier(0.4,0,0.2,1), opacity 0.35s;
-  max-height: 80vh;
+  max-height: 90vh;
+  overflow-y: auto;
 }
 #qs-panel.qs-hidden {
   transform: translateY(-100%);
@@ -360,12 +361,99 @@ body {
 .log-app { color: #a78bfa; }
 .log-sys { color: #22c55e; }
 
+/* ══════════════════════════════════════════
+   Side Physical Buttons (전원/볼륨)
+   ══════════════════════════════════════════ */
+.side-btn {
+  position: absolute; z-index: 300;
+  width: 4px; border: none;
+  background: #3a3a55; color: transparent;
+  cursor: pointer; font-size: 0;
+  transition: background 0.15s, width 0.15s;
+  border-radius: 0;
+  padding: 0;
+}
+.side-btn:hover {
+  background: #5a5a80; width: 6px;
+}
+.side-btn:active {
+  background: #4a9eff; width: 6px;
+}
+.side-btn-right {
+  right: -4px;
+  border-radius: 0 3px 3px 0;
+}
+
 /* ── Screen off ── */
 #device-frame.screen-off #device-screen { background: #000 !important; }
 #device-frame.screen-off #app-viewport,
 #device-frame.screen-off #emu-statusbar,
 #device-frame.screen-off .nav-bar,
 #device-frame.screen-off #nav-hardware { opacity: 0; pointer-events: none; }
+
+/* ══════════════════════════════════════════
+   Toast Banner
+   ══════════════════════════════════════════ */
+#notif-toast {
+  position: absolute; top: 40px; left: 8px; right: 8px;
+  background: rgba(30,30,50,0.95);
+  backdrop-filter: blur(30px);
+  border-radius: 16px; padding: 12px 14px;
+  display: flex; gap: 10px; align-items: center;
+  z-index: 200; cursor: pointer;
+  transition: transform 0.35s cubic-bezier(0.4,0,0.2,1), opacity 0.35s;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.toast-hidden { transform: translateY(-120%); opacity: 0; pointer-events: none; }
+.toast-show { transform: translateY(0); opacity: 1; pointer-events: auto; }
+.toast-icon { font-size: 24px; flex-shrink: 0; }
+.toast-text { flex: 1; min-width: 0; }
+.toast-app { font-size: 10px; opacity: 0.4; text-transform: uppercase; letter-spacing: 0.5px; }
+.toast-title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.toast-body { font-size: 12px; opacity: 0.6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── Notification Badge ── */
+#notif-badge {
+  background: #ef4444; color: white; font-size: 9px; font-weight: 700;
+  min-width: 16px; height: 16px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0 4px; line-height: 1;
+}
+
+/* ══════════════════════════════════════════
+   QS Notification Section
+   ══════════════════════════════════════════ */
+#qs-notif-section { margin-top: 16px; }
+.qs-notif-header {
+  font-size: 12px; font-weight: 600; opacity: 0.4;
+  text-transform: uppercase; letter-spacing: 1px;
+  margin-bottom: 8px;
+}
+.qs-notif-empty { text-align: center; padding: 24px 0; font-size: 13px; opacity: 0.25; }
+
+.qs-notif-card {
+  display: flex; gap: 10px; padding: 12px 14px;
+  background: rgba(255,255,255,0.04); border-radius: 12px;
+  margin-bottom: 6px; cursor: pointer;
+  transition: transform 0.2s, opacity 0.3s, background 0.15s;
+  align-items: flex-start;
+}
+.qs-notif-card:active { background: rgba(255,255,255,0.1); }
+.qs-notif-icon { font-size: 20px; flex-shrink: 0; margin-top: 2px; }
+.qs-notif-content { flex: 1; min-width: 0; }
+.qs-notif-app { font-size: 10px; opacity: 0.35; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 1px; }
+.qs-notif-title { font-size: 13px; font-weight: 600; }
+.qs-notif-body { font-size: 12px; opacity: 0.5; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qs-notif-time { font-size: 10px; opacity: 0.3; flex-shrink: 0; margin-top: 2px; }
+
+.qs-notif-clear {
+  display: block; width: 100%; padding: 10px; margin-top: 4px;
+  background: none; border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px; color: rgba(255,255,255,0.4);
+  font-size: 12px; cursor: pointer; transition: all 0.15s;
+}
+.qs-notif-clear:hover { background: rgba(255,255,255,0.06); color: white; }
 
 /* ── Responsive ── */
 @media (max-width: 800px) {
