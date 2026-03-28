@@ -30,6 +30,13 @@
 - 발견: home.js 서비스 요청 타임아웃 없음 → **5초 타임아웃 추가 완료**
 - 발견: home.js 이벤트 리스너 메모리 누수 → **이벤트 위임으로 수정 완료**
 
+### 2차 심층 검증 (2026-03-28) ✅
+- 발견: sandbox/appstore/updater를 executable로 빌드 (main 없음) → **static_library로 변경 완료**
+- 발견: power.c system() 명령 인젝션 위험 → **D-Bus logind 호출로 교체 완료**
+- 발견: sensors.c 스레드 경합 조건 (unlock 후 포인터 사용) → **unlock 순서 수정 완료**
+- 발견: sensors.c 미사용 함수 sysfs_read_str → **제거 완료**
+- 1차 검증 수정 사항 재확인: 모든 수정 정상 적용 확인
+
 ---
 
 ## 현재 완성된 것 (15~20%)
