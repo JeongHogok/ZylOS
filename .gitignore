@@ -1,0 +1,35 @@
+# Build artifacts
+build/
+builddir/
+_build/
+*.o
+*.so
+*.a
+*.dylib
+
+# Buildroot
+buildroot/output/
+buildroot/dl/
+
+# Yocto
+meta-bpi-os/build/
+meta-bpi-os/downloads/
+meta-bpi-os/sstate-cache/
+meta-bpi-os/tmp/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Compiled binaries
+compositor/bpi-compositor
+runtime/wam/bpi-wam
+
+# Package artifacts
+*.ospkg
+*.img
+*.img.gz
