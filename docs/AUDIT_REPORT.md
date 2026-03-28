@@ -41,9 +41,13 @@
   - GoBack: 포커스된 앱에 D-Bus 시그널 전달
   - AppSwitcher: wl_list 순회로 view_focus() 호출
 
-### C5. 앱 라이프사이클 미완성
-- suspend/resume가 no-op — 백그라운드 앱이 무한히 메모리 점유
-- **필요**: JS 콜백 (onPause/onResume), 메모리 제한, OOM 핸들링
+### ~~C5. 앱 라이프사이클~~ ✅ 완료 (2026-03-28)
+- ~~suspend/resume no-op~~ → 실제 구현:
+  - Suspend: `zyl:pause` JS 이벤트 디스패치 + GTK 윈도우 숨김
+  - Resume: `zyl:resume` 이벤트 + 윈도우 표시
+  - Close: `zyl:destroy` 이벤트 → 100ms 대기 → 정리
+  - 메모리 경고: 5개 초과 시 로그
+  - D-Bus Resume 메서드 + ListRunning에 인스턴스 카운트 추가
 
 ### C6. AppStore 서비스 100% 스텁
 - 패키지 검증/설치/제거 모두 TODO 주석만 존재
