@@ -1,0 +1,83 @@
+{
+  "locale": "ko",
+  "name": "한국어",
+  "direction": "ltr",
+
+  "common": {
+    "ok": "확인",
+    "cancel": "취소",
+    "save": "저장",
+    "delete": "삭제",
+    "edit": "편집",
+    "done": "완료",
+    "back": "뒤로",
+    "next": "다음",
+    "search": "검색...",
+    "loading": "로딩 중...",
+    "error": "오류",
+    "retry": "재시도",
+    "yes": "예",
+    "no": "아니오"
+  },
+
+  "app": {
+    "browser": "브라우저",
+    "files": "파일",
+    "terminal": "터미널",
+    "settings": "설정",
+    "camera": "카메라",
+    "gallery": "갤러리",
+    "music": "음악",
+    "clock": "시계",
+    "calc": "계산기",
+    "notes": "메모",
+    "weather": "날씨",
+    "store": "앱스토어"
+  },
+
+  "settings": {
+    "title": "설정",
+    "wifi": "Wi-Fi",
+    "bluetooth": "블루투스",
+    "display": "디스플레이",
+    "sound": "사운드",
+    "language": "언어",
+    "wallpaper": "배경화면",
+    "security": "보안",
+    "storage": "저장공간",
+    "about": "이 기기 정보",
+    "connected": "연결됨",
+    "on": "켜짐",
+    "off": "꺼짐",
+    "brightness": "밝기",
+    "dark_mode": "다크 모드",
+    "auto_brightness": "자동 밝기",
+    "font_size": "글꼴 크기",
+    "device_name": "기기 이름",
+    "os_version": "OS 버전",
+    "kernel": "커널",
+    "build": "빌드"
+  },
+
+  "lock": {
+    "swipe": "위로 스와이프하여 잠금 해제",
+    "enter_pin": "PIN을 입력하세요",
+    "wrong_pin": "잘못된 PIN입니다",
+    "cancel": "취소"
+  },
+
+  "statusbar": {
+    "wifi": "Wi-Fi",
+    "bluetooth": "블루투스",
+    "silent": "무음",
+    "rotation": "회전",
+    "flashlight": "손전등",
+    "no_notifications": "알림이 없습니다"
+  },
+
+  "date": {
+    "format": "{y}년 {m}월 {d}일 {day}",
+    "days": ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"],
+    "months": ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"]
+  }
+}

@@ -1,0 +1,258 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+:root {
+  --bg: #0a0a1a;
+  --surface: rgba(255,255,255,0.06);
+  --text: #ffffff;
+  --text-secondary: rgba(255,255,255,0.5);
+  --accent: #4a9eff;
+  --header-h: 56px;
+  --safe-top: 36px;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Noto Sans KR', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+.hidden { display: none !important; }
+
+/* ─── 헤더 ─── */
+#header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: calc(var(--header-h) + var(--safe-top));
+  padding-top: var(--safe-top);
+  background: rgba(10, 10, 26, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  display: flex;
+  align-items: center;
+  padding-left: 16px;
+  padding-right: 16px;
+  z-index: 100;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+#header h1 {
+  font-size: 20px;
+  font-weight: 600;
+  flex: 1;
+}
+
+#btn-back {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 8px;
+  margin-right: 4px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+}
+
+#btn-back:active {
+  background: rgba(255,255,255,0.1);
+}
+
+#btn-back svg {
+  fill: var(--accent);
+}
+
+/* ─── 메인 콘텐츠 ─── */
+main, .sub-page {
+  padding: calc(var(--header-h) + var(--safe-top) + 12px) 16px 40px;
+}
+
+/* ─── 설정 그룹 ─── */
+.settings-group {
+  background: var(--surface);
+  border-radius: 16px;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+/* ─── 설정 항목 ─── */
+.setting-item {
+  display: flex;
+  align-items: center;
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: background 0.15s;
+  gap: 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+.setting-item:last-child {
+  border-bottom: none;
+}
+
+.setting-item:active:not(.no-tap) {
+  background: rgba(255,255,255,0.06);
+}
+
+.setting-item.no-tap {
+  cursor: default;
+}
+
+/* ─── 설정 아이콘 ─── */
+.setting-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.setting-icon svg {
+  width: 18px;
+  height: 18px;
+  fill: white;
+}
+
+.icon-blue    { background: linear-gradient(135deg, #4facfe, #2b6cb0); }
+.icon-indigo  { background: linear-gradient(135deg, #818cf8, #4338ca); }
+.icon-orange  { background: linear-gradient(135deg, #fbbf24, #ea580c); }
+.icon-pink    { background: linear-gradient(135deg, #f472b6, #db2777); }
+.icon-teal    { background: linear-gradient(135deg, #2dd4bf, #0d9488); }
+.icon-purple  { background: linear-gradient(135deg, #a78bfa, #7c3aed); }
+.icon-red     { background: linear-gradient(135deg, #f97066, #dc2626); }
+.icon-gray    { background: linear-gradient(135deg, #94a3b8, #475569); }
+.icon-emerald { background: linear-gradient(135deg, #6ee7b7, #059669); }
+
+/* ─── 텍스트 ─── */
+.setting-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.setting-label {
+  font-size: 15px;
+  font-weight: 400;
+}
+
+.setting-value {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* ─── 쉐브론 ─── */
+.chevron {
+  width: 20px;
+  height: 20px;
+  fill: rgba(255,255,255,0.2);
+  flex-shrink: 0;
+}
+
+/* ─── 체크 아이콘 (언어 선택) ─── */
+.check-icon {
+  width: 22px;
+  height: 22px;
+  fill: var(--accent);
+  margin-left: auto;
+}
+
+.lang-option {
+  padding: 16px;
+}
+
+.lang-option .setting-label {
+  flex: 1;
+}
+
+/* ─── 토글 스위치 ─── */
+.toggle {
+  position: relative;
+  display: inline-block;
+  width: 48px;
+  height: 28px;
+  flex-shrink: 0;
+}
+
+.toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background: rgba(255,255,255,0.15);
+  border-radius: 28px;
+  transition: background 0.3s;
+}
+
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  height: 22px;
+  width: 22px;
+  left: 3px;
+  bottom: 3px;
+  background: white;
+  border-radius: 50%;
+  transition: transform 0.3s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+
+.toggle input:checked + .toggle-slider {
+  background: var(--accent);
+}
+
+.toggle input:checked + .toggle-slider::before {
+  transform: translateX(20px);
+}
+
+/* ─── 슬라이더 ─── */
+.slider {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255,255,255,0.15);
+  outline: none;
+  max-width: 200px;
+  margin-left: auto;
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: white;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+}
+
+/* ─── 서브 페이지 트랜지션 ─── */
+.sub-page {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--bg);
+  overflow-y: auto;
+  z-index: 50;
+}

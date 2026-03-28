@@ -1,0 +1,261 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Noto Sans KR', sans-serif;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  color: white;
+  -webkit-font-smoothing: antialiased;
+}
+
+#wallpaper {
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 30% 40%, rgba(60, 40, 120, 0.5) 0%, transparent 60%),
+    radial-gradient(ellipse at 70% 70%, rgba(20, 60, 100, 0.4) 0%, transparent 50%),
+    linear-gradient(170deg, #0a0a1a 0%, #0d1b2a 50%, #1a1a2e 100%);
+  z-index: -1;
+}
+
+.hidden { display: none !important; }
+
+/* ─── 잠금 메인 ─── */
+#lock-main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100vh;
+  padding-top: 120px;
+}
+
+#lock-time {
+  font-size: 88px;
+  font-weight: 100;
+  letter-spacing: 4px;
+  line-height: 1;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.4);
+}
+
+#lock-date {
+  font-size: 17px;
+  font-weight: 300;
+  opacity: 0.7;
+  margin-top: 6px;
+  letter-spacing: 0.5px;
+}
+
+/* ─── 잠금 화면 알림 ─── */
+#lock-notifications {
+  flex: 1;
+  width: 100%;
+  padding: 40px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
+
+.lock-notif {
+  display: flex;
+  gap: 12px;
+  padding: 14px 16px;
+  background: rgba(255,255,255,0.08);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.05);
+  align-items: center;
+}
+
+.lock-notif-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.lock-notif-text {
+  flex: 1;
+}
+
+.lock-notif-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.lock-notif-body {
+  font-size: 12px;
+  opacity: 0.6;
+  margin-top: 2px;
+}
+
+.lock-notif-time {
+  font-size: 11px;
+  opacity: 0.35;
+}
+
+/* ─── 스와이프 힌트 ─── */
+#swipe-hint {
+  position: fixed;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  animation: hint-pulse 2s infinite;
+}
+
+#swipe-hint span {
+  font-size: 12px;
+  opacity: 0.4;
+  font-weight: 300;
+}
+
+.swipe-line {
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255,255,255,0.4);
+}
+
+@keyframes hint-pulse {
+  0%, 100% { opacity: 0.6; transform: translateX(-50%) translateY(0); }
+  50% { opacity: 1; transform: translateX(-50%) translateY(-6px); }
+}
+
+/* ─── PIN 화면 ─── */
+#pin-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100vh;
+  padding-top: 80px;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+}
+
+#pin-title {
+  font-size: 18px;
+  font-weight: 300;
+  margin-bottom: 28px;
+  opacity: 0.9;
+}
+
+/* ─── PIN 도트 ─── */
+#pin-dots {
+  display: flex;
+  gap: 18px;
+  margin-bottom: 12px;
+}
+
+.pin-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.4);
+  transition: all 0.15s;
+}
+
+.pin-dot.filled {
+  background: white;
+  border-color: white;
+  transform: scale(1.1);
+}
+
+#pin-error {
+  font-size: 13px;
+  color: #ef4444;
+  margin-bottom: 8px;
+  height: 20px;
+}
+
+/* ─── 숫자 패드 ─── */
+#numpad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  padding: 20px 40px;
+  max-width: 320px;
+  width: 100%;
+}
+
+.num-btn {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.06);
+  color: white;
+  font-size: 28px;
+  font-weight: 300;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+  transition: background 0.15s, transform 0.1s;
+  line-height: 1;
+}
+
+.num-btn:active {
+  background: rgba(255,255,255,0.2);
+  transform: scale(0.92);
+}
+
+.num-sub {
+  font-size: 9px;
+  letter-spacing: 2px;
+  opacity: 0.45;
+  margin-top: 2px;
+  font-weight: 400;
+}
+
+.num-empty {
+  border: none;
+  background: none;
+  pointer-events: none;
+}
+
+.num-delete {
+  border: none;
+  background: none;
+}
+
+.num-delete:active {
+  background: rgba(255,255,255,0.1);
+}
+
+#btn-cancel {
+  margin-top: 16px;
+  padding: 10px 32px;
+  border: none;
+  background: none;
+  color: rgba(255,255,255,0.5);
+  font-size: 15px;
+  cursor: pointer;
+  font-weight: 300;
+}
+
+#btn-cancel:active {
+  color: white;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 50%, 90% { transform: translateX(-8px); }
+  30%, 70% { transform: translateX(8px); }
+}
+
+.shake {
+  animation: shake 0.4s ease-in-out;
+}

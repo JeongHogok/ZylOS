@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>BPI-OS Status Bar</title>
+  <link rel="stylesheet" href="css/statusbar.css">
+</head>
+<body>
+  <div id="statusbar">
+    <!-- 왼쪽: 시간 + 알림 아이콘 -->
+    <div class="sb-left">
+      <span id="sb-time">14:00</span>
+      <div id="sb-notif-dot" class="hidden"></div>
+    </div>
+
+    <!-- 가운데: 앱 이름 (선택사항) -->
+    <div class="sb-center">
+      <span id="sb-app-name"></span>
+    </div>
+
+    <!-- 오른쪽: 시스템 아이콘들 -->
+    <div class="sb-right">
+      <!-- WiFi -->
+      <svg id="sb-wifi" class="sb-icon" viewBox="0 0 24 24">
+        <path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"/>
+      </svg>
+
+      <!-- Bluetooth -->
+      <svg id="sb-bt" class="sb-icon" viewBox="0 0 24 24">
+        <path d="M17.71 7.71L12 2h-1v7.59L6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 11 14.41V22h1l5.71-5.71-4.3-4.29 4.3-4.29zM13 5.83l1.88 1.88L13 9.59V5.83zm1.88 10.46L13 18.17v-3.76l1.88 1.88z"/>
+      </svg>
+
+      <!-- 배터리 -->
+      <div id="sb-battery">
+        <svg class="sb-icon" viewBox="0 0 24 24">
+          <path d="M15.67 4H14V2h-4v2H8.33C7.6 4 7 4.6 7 5.33v15.33C7 21.4 7.6 22 8.33 22h7.33c.74 0 1.34-.6 1.34-1.33V5.33C17 4.6 16.4 4 15.67 4z"/>
+        </svg>
+        <span id="sb-battery-pct">85%</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 알림 드로어 (위에서 아래로 스와이프) -->
+  <div id="notification-drawer" class="hidden">
+    <div class="drawer-handle"></div>
+
+    <!-- 빠른 설정 -->
+    <div id="quick-settings">
+      <button class="qs-btn active" id="qs-wifi">
+        <svg viewBox="0 0 24 24"><path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"/></svg>
+        <span data-i18n="qs.wifi">WiFi</span>
+      </button>
+      <button class="qs-btn" id="qs-bt">
+        <svg viewBox="0 0 24 24"><path d="M17.71 7.71L12 2h-1v7.59L6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 11 14.41V22h1l5.71-5.71-4.3-4.29 4.3-4.29zM13 5.83l1.88 1.88L13 9.59V5.83zm1.88 10.46L13 18.17v-3.76l1.88 1.88z"/></svg>
+        <span data-i18n="qs.bluetooth">BT</span>
+      </button>
+      <button class="qs-btn" id="qs-silent">
+        <svg viewBox="0 0 24 24"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>
+        <span data-i18n="qs.silent">무음</span>
+      </button>
+      <button class="qs-btn" id="qs-rotate">
+        <svg viewBox="0 0 24 24"><path d="M16.48 2.52c3.27 1.55 5.61 4.72 5.97 8.48h1.5C23.44 4.84 18.29 0 12 0l-.66.03 3.81 3.81 1.33-1.32zm-6.25-.77c-.59-.59-1.54-.59-2.12 0L1.75 8.11c-.59.59-.59 1.54 0 2.12l12.02 12.02c.59.59 1.54.59 2.12 0l6.36-6.36c.59-.59.59-1.54 0-2.12L10.23 1.75zm4.6 19.44L2.81 9.17l6.36-6.36 12.02 12.02-6.36 6.36zm-7.31.29l-1.33 1.33C9.06 23.69 10.51 24 12 24l.66-.03-3.81-3.81z"/></svg>
+        <span data-i18n="qs.rotation">회전</span>
+      </button>
+      <button class="qs-btn" id="qs-flashlight">
+        <svg viewBox="0 0 24 24"><path d="M6 14l3 3v5h6v-5l3-3V9H6v5zm5-12h2v3h-2V2zM3.5 5.88l1.41-1.41 2.12 2.12L5.62 8 3.5 5.88zm13.46.71l2.12-2.12 1.41 1.41L18.38 8l-1.42-1.41z"/></svg>
+        <span data-i18n="qs.flashlight">손전등</span>
+      </button>
+    </div>
+
+    <!-- 밝기 슬라이더 -->
+    <div id="brightness-control">
+      <svg class="sb-icon" viewBox="0 0 24 24"><path d="M20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12 20 8.69zM12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6 6 2.69 6 6-2.69 6-6 6zm0-10c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4z"/></svg>
+      <input type="range" id="brightness-slider" min="10" max="100" value="80">
+    </div>
+
+    <!-- 알림 목록 -->
+    <div id="notification-list">
+      <div class="notif-empty" data-i18n="notif.empty">알림이 없습니다</div>
+    </div>
+  </div>
+
+  <script src="css/../js/statusbar.js"></script>
+</body>
+</html>

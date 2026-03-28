@@ -1,0 +1,10 @@
+{
+  "id": "com.bpios.home",
+  "name": "Home",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "icon": "assets/home-icon.png",
+  "permissions": ["app.list", "app.launch", "wallpaper"],
+  "type": "system",
+  "role": "homescreen"
+}

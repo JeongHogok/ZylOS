@@ -1,0 +1,83 @@
+{
+  "locale": "en",
+  "name": "English",
+  "direction": "ltr",
+
+  "common": {
+    "ok": "OK",
+    "cancel": "Cancel",
+    "save": "Save",
+    "delete": "Delete",
+    "edit": "Edit",
+    "done": "Done",
+    "back": "Back",
+    "next": "Next",
+    "search": "Search...",
+    "loading": "Loading...",
+    "error": "Error",
+    "retry": "Retry",
+    "yes": "Yes",
+    "no": "No"
+  },
+
+  "app": {
+    "browser": "Browser",
+    "files": "Files",
+    "terminal": "Terminal",
+    "settings": "Settings",
+    "camera": "Camera",
+    "gallery": "Gallery",
+    "music": "Music",
+    "clock": "Clock",
+    "calc": "Calculator",
+    "notes": "Notes",
+    "weather": "Weather",
+    "store": "App Store"
+  },
+
+  "settings": {
+    "title": "Settings",
+    "wifi": "Wi-Fi",
+    "bluetooth": "Bluetooth",
+    "display": "Display",
+    "sound": "Sound",
+    "language": "Language",
+    "wallpaper": "Wallpaper",
+    "security": "Security",
+    "storage": "Storage",
+    "about": "About This Device",
+    "connected": "Connected",
+    "on": "On",
+    "off": "Off",
+    "brightness": "Brightness",
+    "dark_mode": "Dark Mode",
+    "auto_brightness": "Auto Brightness",
+    "font_size": "Font Size",
+    "device_name": "Device Name",
+    "os_version": "OS Version",
+    "kernel": "Kernel",
+    "build": "Build"
+  },
+
+  "lock": {
+    "swipe": "Swipe up to unlock",
+    "enter_pin": "Enter PIN",
+    "wrong_pin": "Wrong PIN",
+    "cancel": "Cancel"
+  },
+
+  "statusbar": {
+    "wifi": "Wi-Fi",
+    "bluetooth": "Bluetooth",
+    "silent": "Silent",
+    "rotation": "Rotation",
+    "flashlight": "Flashlight",
+    "no_notifications": "No notifications"
+  },
+
+  "date": {
+    "format": "{day}, {monthName} {d}, {y}",
+    "days": ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+    "months": ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+  }
+}

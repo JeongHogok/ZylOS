@@ -1,0 +1,10 @@
+{
+  "id": "com.bpios.statusbar",
+  "name": "Status Bar",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "icon": "assets/statusbar-icon.png",
+  "permissions": ["battery", "wifi", "bluetooth", "notification.read", "time"],
+  "type": "system",
+  "role": "statusbar"
+}

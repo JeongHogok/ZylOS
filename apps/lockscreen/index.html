@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>BPI-OS Lock Screen</title>
+  <link rel="stylesheet" href="css/lockscreen.css">
+</head>
+<body>
+  <div id="wallpaper"></div>
+
+  <!-- 잠금 화면 메인 -->
+  <div id="lock-main">
+    <div id="lock-time">00:00</div>
+    <div id="lock-date"></div>
+
+    <!-- 알림 미리보기 -->
+    <div id="lock-notifications">
+      <!-- JS로 동적 생성 -->
+    </div>
+
+    <!-- 하단 스와이프 인디케이터 -->
+    <div id="swipe-hint">
+      <div class="swipe-line"></div>
+      <span data-i18n="lock.swipe">위로 스와이프하여 잠금 해제</span>
+    </div>
+  </div>
+
+  <!-- PIN 입력 화면 -->
+  <div id="pin-screen" class="hidden">
+    <div id="pin-title" data-i18n="lock.enter_pin">PIN을 입력하세요</div>
+
+    <!-- PIN 도트 -->
+    <div id="pin-dots">
+      <span class="pin-dot"></span>
+      <span class="pin-dot"></span>
+      <span class="pin-dot"></span>
+      <span class="pin-dot"></span>
+    </div>
+
+    <div id="pin-error" class="hidden" data-i18n="lock.wrong_pin">잘못된 PIN입니다</div>
+
+    <!-- 숫자 패드 -->
+    <div id="numpad">
+      <button class="num-btn" data-num="1">1</button>
+      <button class="num-btn" data-num="2">2<span class="num-sub">ABC</span></button>
+      <button class="num-btn" data-num="3">3<span class="num-sub">DEF</span></button>
+      <button class="num-btn" data-num="4">4<span class="num-sub">GHI</span></button>
+      <button class="num-btn" data-num="5">5<span class="num-sub">JKL</span></button>
+      <button class="num-btn" data-num="6">6<span class="num-sub">MNO</span></button>
+      <button class="num-btn" data-num="7">7<span class="num-sub">PQRS</span></button>
+      <button class="num-btn" data-num="8">8<span class="num-sub">TUV</span></button>
+      <button class="num-btn" data-num="9">9<span class="num-sub">WXYZ</span></button>
+      <button class="num-btn num-empty"></button>
+      <button class="num-btn" data-num="0">0</button>
+      <button class="num-btn num-delete" id="btn-delete">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="white">
+          <path d="M22 3H7c-.69 0-1.23.35-1.59.88L0 12l5.41 8.11c.36.53.9.89 1.59.89h15c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-3 12.59L17.59 17 14 13.41 10.41 17 9 15.59 12.59 12 9 8.41 10.41 7 14 10.59 17.59 7 19 8.41 15.41 12 19 15.59z"/>
+        </svg>
+      </button>
+    </div>
+
+    <button id="btn-cancel" data-i18n="lock.cancel">취소</button>
+  </div>
+
+  <script src="js/lockscreen.js"></script>
+</body>
+</html>

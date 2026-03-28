@@ -1,0 +1,10 @@
+{
+  "id": "com.bpios.lockscreen",
+  "name": "Lock Screen",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "icon": "assets/lock-icon.png",
+  "permissions": ["time", "notification.read", "auth"],
+  "type": "system",
+  "role": "lockscreen"
+}

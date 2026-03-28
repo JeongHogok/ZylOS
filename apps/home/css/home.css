@@ -1,0 +1,281 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+:root {
+  --safe-top: 36px;
+  --safe-bottom: 24px;
+  --grid-cols: 4;
+  --grid-gap: 20px;
+  --icon-size: 60px;
+  --icon-radius: 16px;
+  --dock-height: 88px;
+  --text: #ffffff;
+  --text-shadow: 0 1px 4px rgba(0,0,0,0.5);
+}
+
+html, body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Noto Sans KR', 'Segoe UI', sans-serif;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── 배경 ─── */
+#wallpaper {
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 20% 50%, rgba(72, 52, 160, 0.4) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, rgba(29, 78, 137, 0.5) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 90%, rgba(15, 52, 96, 0.6) 0%, transparent 50%),
+    linear-gradient(160deg, #0a0a1a 0%, #0d1b2a 40%, #1b2838 100%);
+  z-index: -1;
+}
+
+/* ─── 시계 위젯 ─── */
+#clock-widget {
+  text-align: center;
+  padding-top: calc(var(--safe-top) + 32px);
+  margin-bottom: 16px;
+}
+
+#clock-time {
+  font-size: 72px;
+  font-weight: 100;
+  letter-spacing: 4px;
+  text-shadow: var(--text-shadow);
+  line-height: 1;
+}
+
+#clock-date {
+  font-size: 15px;
+  font-weight: 300;
+  opacity: 0.7;
+  margin-top: 4px;
+  letter-spacing: 0.5px;
+}
+
+/* ─── 검색바 ─── */
+#search-bar {
+  display: flex;
+  justify-content: center;
+  padding: 12px 28px 8px;
+}
+
+#search-input {
+  width: 100%;
+  max-width: 340px;
+  padding: 11px 20px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  color: white;
+  font-size: 14px;
+  font-weight: 300;
+  outline: none;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+#search-input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+#search-input:focus {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+/* ─── 앱 그리드 ─── */
+#app-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--grid-cols), 1fr);
+  gap: var(--grid-gap) 0;
+  padding: 16px 12px;
+  overflow-y: auto;
+  max-height: calc(100vh - 360px);
+  -webkit-overflow-scrolling: touch;
+}
+
+.app-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: transform 0.12s ease-out, opacity 0.12s;
+}
+
+.app-item:active {
+  transform: scale(0.82);
+  opacity: 0.8;
+}
+
+/* ─── 앱 아이콘 (개별 색상 그라데이션) ─── */
+.app-icon-wrap {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  border-radius: var(--icon-radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  position: relative;
+  overflow: hidden;
+}
+
+.app-icon-wrap::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  pointer-events: none;
+}
+
+.app-icon-wrap svg {
+  width: 28px;
+  height: 28px;
+  fill: white;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2));
+}
+
+.app-name {
+  font-size: 11px;
+  font-weight: 400;
+  text-align: center;
+  text-shadow: var(--text-shadow);
+  max-width: 76px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.9;
+}
+
+/* ─── 아이콘 색상 테마 ─── */
+.icon-blue    { background: linear-gradient(135deg, #4facfe 0%, #2b6cb0 100%); }
+.icon-green   { background: linear-gradient(135deg, #43e97b 0%, #38a169 100%); }
+.icon-purple  { background: linear-gradient(135deg, #a78bfa 0%, #7c3aed 100%); }
+.icon-red     { background: linear-gradient(135deg, #f97066 0%, #dc2626 100%); }
+.icon-orange  { background: linear-gradient(135deg, #fbbf24 0%, #ea580c 100%); }
+.icon-pink    { background: linear-gradient(135deg, #f472b6 0%, #db2777 100%); }
+.icon-teal    { background: linear-gradient(135deg, #2dd4bf 0%, #0d9488 100%); }
+.icon-indigo  { background: linear-gradient(135deg, #818cf8 0%, #4338ca 100%); }
+.icon-gray    { background: linear-gradient(135deg, #94a3b8 0%, #475569 100%); }
+.icon-cyan    { background: linear-gradient(135deg, #22d3ee 0%, #0891b2 100%); }
+.icon-amber   { background: linear-gradient(135deg, #fcd34d 0%, #d97706 100%); }
+.icon-emerald { background: linear-gradient(135deg, #6ee7b7 0%, #059669 100%); }
+
+/* ─── 하단 독 ─── */
+#dock {
+  position: fixed;
+  bottom: var(--safe-bottom);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 16px;
+  padding: 10px 20px 10px;
+  background: rgba(30, 30, 50, 0.55);
+  backdrop-filter: blur(40px) saturate(1.4);
+  -webkit-backdrop-filter: blur(40px) saturate(1.4);
+  border-radius: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.dock-app {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: transform 0.12s ease-out;
+}
+
+.dock-app:active {
+  transform: scale(0.82);
+}
+
+.dock-app .dock-icon {
+  width: 50px;
+  height: 50px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow:
+    0 3px 10px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  position: relative;
+}
+
+.dock-app .dock-icon::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.dock-app .dock-icon svg {
+  width: 24px;
+  height: 24px;
+  fill: white;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2));
+}
+
+.dock-app span {
+  font-size: 10px;
+  font-weight: 300;
+  opacity: 0.6;
+}
+
+/* ─── 페이지 인디케이터 ─── */
+#page-indicator {
+  position: fixed;
+  bottom: calc(var(--safe-bottom) + var(--dock-height) + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  transition: all 0.3s;
+}
+
+.dot.active {
+  width: 18px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.8);
+}
+
+/* ─── 스크롤바 숨김 ─── */
+#app-grid::-webkit-scrollbar {
+  display: none;
+}
+
+/* ─── 앱 실행 애니메이션 ─── */
+@keyframes app-launch {
+  0%   { transform: scale(1); opacity: 1; }
+  50%  { transform: scale(0.8); opacity: 0.6; }
+  100% { transform: scale(1.1); opacity: 0; }
+}
+
+.app-item.launching .app-icon-wrap {
+  animation: app-launch 0.4s ease-in-out forwards;
+}
