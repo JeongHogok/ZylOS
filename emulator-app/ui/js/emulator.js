@@ -54,9 +54,11 @@
   var _mountPoint = '';
 
   function appPath(relPath) {
-    if (_mountPoint && IS_TAURI && window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.convertFileSrc) {
-      /* 마운트된 OS 이미지에서 로드: /Volumes/ZylOS-0.1.0/apps/home/index.html → asset URL */
-      return window.__TAURI__.core.convertFileSrc(_mountPoint + '/' + relPath);
+    if (_mountPoint && IS_TAURI) {
+      /* 마운트된 OS 이미지에서 로드
+         convertFileSrc()는 /를 %2F로 인코딩해서 상대 경로가 깨지므로
+         asset URL을 직접 조합한다 */
+      return 'https://asset.localhost/' + encodeURI(_mountPoint + '/' + relPath);
     }
     /* 폴백: 에뮬레이터 번들에서 로드 */
     return relPath;
