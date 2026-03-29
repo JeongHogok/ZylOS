@@ -136,10 +136,12 @@ var ZylServices = (function () {
       return tauriInvoke('list_installed_apps').then(function (list) {
         if (list && list.length > 0) {
           apps._cache = list.map(function (m) {
+            /* icon 키: app ID의 마지막 부분 (com.zylos.browser → browser) */
+            var appName = (m.id || '').split('.').pop();
             return {
               id: m.id,
-              nameKey: 'app.' + (m.id || '').split('.').pop(),
-              icon: (m.icon || '').replace('.png', ''),
+              nameKey: 'app.' + appName,
+              icon: appName,
               color: 'icon-blue',
               version: m.version || '1.0.0'
             };

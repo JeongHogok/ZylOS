@@ -286,15 +286,16 @@
     apps.forEach(function (app) {
       var card = document.createElement('div');
       card.className = 'recents-card';
-      var name = document.createElement('span');
-      name.className = 'recents-card-name';
-      name.textContent = app.name;
-      name.onclick = function () { hideRecents(); launchApp(app.id); };
+      card.style.cursor = 'pointer';
+      card.onclick = function () { hideRecents(); launchApp(app.id); };
+      var nameEl = document.createElement('span');
+      nameEl.className = 'recents-card-name';
+      nameEl.textContent = app.name;
       var close = document.createElement('button');
       close.className = 'recents-card-close';
-      close.textContent = '×';
+      close.textContent = '\u00d7';
       close.onclick = function (e) { e.stopPropagation(); closeApp(app.id); renderRecentsCards(); if (state.runningApps.length === 0) hideRecents(); };
-      card.appendChild(name);
+      card.appendChild(nameEl);
       if (app.id !== 'com.zylos.home') card.appendChild(close);
       recentsCards.appendChild(card);
     });

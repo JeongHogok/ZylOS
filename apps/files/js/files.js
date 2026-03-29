@@ -29,10 +29,15 @@
     try {
       var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
       if (!msg || msg.type !== 'service.response') return;
-      if (msg.service === 'fs' && msg.method === 'getAllData' && msg.data) {
-        fileSystem = msg.data.tree || {};
-        serviceReady = true;
-        renderFiles();
+      if (msg.service === 'fs' && msg.data) {
+        if (msg.method === 'getAllData') {
+          fileSystem = msg.data.tree || {};
+          serviceReady = true;
+          renderFiles();
+        } else if (msg.method === 'getDirectory' && msg.params && msg.params.path) {
+          fileSystem[msg.params.path] = msg.data || [];
+          if (currentPath === msg.params.path) renderFiles();
+        }
       }
     } catch (err) { /* ignore */ }
   });
@@ -217,7 +222,19 @@
     headerTitle.textContent = folderName;
     btnBack.classList.toggle('hidden', path === '/');
     renderBreadcrumb();
-    renderFiles();
+
+    /* 해당 경로의 데이터가 없으면 서비스에 요청 */
+    if (!fileSystem[path]) {
+      window.parent.postMessage(JSON.stringify({
+        type: 'service.request',
+        service: 'fs',
+        method: 'getDirectory',
+        params: { path: path }
+      }), '*');
+      fileList.innerHTML = '<div style="text-align:center;opacity:0.5;padding:32px">Loading...</div>';
+    } else {
+      renderFiles();
+    }
   }
 
   /* ─── Context Menu ─── */
