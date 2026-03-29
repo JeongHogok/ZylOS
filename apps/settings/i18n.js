@@ -66,7 +66,23 @@
     'settings.key_height': '\uD0A4 \uB192\uC774',
     'settings.keyboard_sound': '\uD0A4 \uC785\uB825 \uC18C\uB9AC',
     'settings.keyboard_vibration': '\uD0A4 \uC785\uB825 \uC9C4\uB3D9',
-    'settings.auto_capitalize': '\uC790\uB3D9 \uB300\uBB38\uC790'
+    'settings.auto_capitalize': '\uC790\uB3D9 \uB300\uBB38\uC790',
+    'settings.applications': '\uC560\uD50C\uB9AC\uCF00\uC774\uC158',
+    'settings.app_version': '\uBC84\uC804',
+    'settings.app_package': '\uD328\uD0A4\uC9C0',
+    'settings.permissions': '\uAD8C\uD55C',
+    'settings.no_permissions': '\uAD8C\uD55C \uC5C6\uC74C',
+    'settings.no_apps': '\uC571 \uC5C6\uC74C',
+    'settings.perm_camera': '\uCE74\uBA54\uB77C',
+    'settings.perm_microphone': '\uB9C8\uC774\uD06C',
+    'settings.perm_location': '\uC704\uCE58',
+    'settings.perm_storage': '\uC800\uC7A5\uACF5\uAC04',
+    'settings.perm_contacts': '\uC5F0\uB77D\uCC98',
+    'settings.perm_notifications': '\uC54C\uB9BC',
+    'settings.perm_phone': '\uC804\uD654',
+    'settings.perm_bluetooth': '\uBE14\uB8E8\uD22C\uC2A4',
+    'settings.perm_network': '\uB124\uD2B8\uC6CC\uD06C',
+    'settings.perm_sensors': '\uC13C\uC11C'
   });
 
   zylI18n.addTranslations('en', {
@@ -126,7 +142,23 @@
     'settings.key_height': 'Key Height',
     'settings.keyboard_sound': 'Sound on Keypress',
     'settings.keyboard_vibration': 'Vibration on Keypress',
-    'settings.auto_capitalize': 'Auto Capitalize'
+    'settings.auto_capitalize': 'Auto Capitalize',
+    'settings.applications': 'Applications',
+    'settings.app_version': 'Version',
+    'settings.app_package': 'Package',
+    'settings.permissions': 'Permissions',
+    'settings.no_permissions': 'No permissions',
+    'settings.no_apps': 'No apps',
+    'settings.perm_camera': 'Camera',
+    'settings.perm_microphone': 'Microphone',
+    'settings.perm_location': 'Location',
+    'settings.perm_storage': 'Storage',
+    'settings.perm_contacts': 'Contacts',
+    'settings.perm_notifications': 'Notifications',
+    'settings.perm_phone': 'Phone',
+    'settings.perm_bluetooth': 'Bluetooth',
+    'settings.perm_network': 'Network',
+    'settings.perm_sensors': 'Sensors'
   });
 
   zylI18n.addTranslations('ja', {
@@ -186,7 +218,23 @@
     'settings.key_height': '\u30AD\u30FC\u306E\u9AD8\u3055',
     'settings.keyboard_sound': '\u30AD\u30FC\u5165\u529B\u97F3',
     'settings.keyboard_vibration': '\u30AD\u30FC\u5165\u529B\u632F\u52D5',
-    'settings.auto_capitalize': '\u81EA\u52D5\u5927\u6587\u5B57'
+    'settings.auto_capitalize': '\u81EA\u52D5\u5927\u6587\u5B57',
+    'settings.applications': '\u30A2\u30D7\u30EA',
+    'settings.app_version': '\u30D0\u30FC\u30B8\u30E7\u30F3',
+    'settings.app_package': '\u30D1\u30C3\u30B1\u30FC\u30B8',
+    'settings.permissions': '\u6A29\u9650',
+    'settings.no_permissions': '\u6A29\u9650\u306A\u3057',
+    'settings.no_apps': '\u30A2\u30D7\u30EA\u306A\u3057',
+    'settings.perm_camera': '\u30AB\u30E1\u30E9',
+    'settings.perm_microphone': '\u30DE\u30A4\u30AF',
+    'settings.perm_location': '\u4F4D\u7F6E\u60C5\u5831',
+    'settings.perm_storage': '\u30B9\u30C8\u30EC\u30FC\u30B8',
+    'settings.perm_contacts': '\u9023\u7D61\u5148',
+    'settings.perm_notifications': '\u901A\u77E5',
+    'settings.perm_phone': '\u96FB\u8A71',
+    'settings.perm_bluetooth': 'Bluetooth',
+    'settings.perm_network': '\u30CD\u30C3\u30C8\u30EF\u30FC\u30AF',
+    'settings.perm_sensors': '\u30BB\u30F3\u30B5\u30FC'
   });
 
   zylI18n.addTranslations('zh', {
@@ -246,7 +294,23 @@
     'settings.key_height': '\u6309\u952E\u9AD8\u5EA6',
     'settings.keyboard_sound': '\u6309\u952E\u97F3',
     'settings.keyboard_vibration': '\u6309\u952E\u632F\u52A8',
-    'settings.auto_capitalize': '\u81EA\u52A8\u5927\u5199'
+    'settings.auto_capitalize': '\u81EA\u52A8\u5927\u5199',
+    'settings.applications': '\u5E94\u7528\u7A0B\u5E8F',
+    'settings.app_version': '\u7248\u672C',
+    'settings.app_package': '\u5305\u540D',
+    'settings.permissions': '\u6743\u9650',
+    'settings.no_permissions': '\u65E0\u6743\u9650',
+    'settings.no_apps': '\u65E0\u5E94\u7528',
+    'settings.perm_camera': '\u76F8\u673A',
+    'settings.perm_microphone': '\u9EA6\u514B\u98CE',
+    'settings.perm_location': '\u4F4D\u7F6E',
+    'settings.perm_storage': '\u5B58\u50A8',
+    'settings.perm_contacts': '\u8054\u7CFB\u4EBA',
+    'settings.perm_notifications': '\u901A\u77E5',
+    'settings.perm_phone': '\u7535\u8BDD',
+    'settings.perm_bluetooth': '\u84DD\u7259',
+    'settings.perm_network': '\u7F51\u7EDC',
+    'settings.perm_sensors': '\u4F20\u611F\u5668'
   });
 
   zylI18n.addTranslations('es', {
@@ -306,6 +370,22 @@
     'settings.key_height': 'Altura de tecla',
     'settings.keyboard_sound': 'Sonido al pulsar',
     'settings.keyboard_vibration': 'Vibraci\u00F3n al pulsar',
-    'settings.auto_capitalize': 'May\u00FAsculas autom\u00E1ticas'
+    'settings.auto_capitalize': 'May\u00FAsculas autom\u00E1ticas',
+    'settings.applications': 'Aplicaciones',
+    'settings.app_version': 'Versi\u00F3n',
+    'settings.app_package': 'Paquete',
+    'settings.permissions': 'Permisos',
+    'settings.no_permissions': 'Sin permisos',
+    'settings.no_apps': 'Sin aplicaciones',
+    'settings.perm_camera': 'C\u00E1mara',
+    'settings.perm_microphone': 'Micr\u00F3fono',
+    'settings.perm_location': 'Ubicaci\u00F3n',
+    'settings.perm_storage': 'Almacenamiento',
+    'settings.perm_contacts': 'Contactos',
+    'settings.perm_notifications': 'Notificaciones',
+    'settings.perm_phone': 'Tel\u00E9fono',
+    'settings.perm_bluetooth': 'Bluetooth',
+    'settings.perm_network': 'Red',
+    'settings.perm_sensors': 'Sensores'
   });
 })();

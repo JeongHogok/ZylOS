@@ -1011,6 +1011,15 @@
       syslog('PIN changed via Settings', 'sys');
     }
 
+    /* ── 앱 권한 변경 → 권한 시스템 업데이트 ── */
+    if (category === 'app_permissions') {
+      syslog('App permissions updated: ' + key, 'sys');
+      if (typeof ZylPermissions !== 'undefined' && ZylPermissions.setAppOverride) {
+        var revoked = String(value || '').split(',').filter(Boolean);
+        ZylPermissions.setAppOverride(key, revoked);
+      }
+    }
+
     /* ── 배경화면 변경 → 홈 앱 배경 실제 변경 ── */
     if (category === 'wallpaper' && key === 'current') {
       _currentWallpaper = value;

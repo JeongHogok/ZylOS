@@ -112,6 +112,19 @@
       </div>
     </div>
 
+    <!-- 애플리케이션 -->
+    <div class="settings-group">
+      <div class="setting-item" data-page="applications">
+        <div class="setting-icon icon-green">
+          <svg viewBox="0 0 24 24"><path d="M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z"/></svg>
+        </div>
+        <div class="setting-text">
+          <span class="setting-label" data-i18n="settings.applications">Applications</span>
+        </div>
+        <svg class="chevron" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+      </div>
+    </div>
+
     <!-- 시스템 -->
     <div class="settings-group">
       <div class="setting-item" data-page="storage">
@@ -382,6 +395,21 @@
         <span class="setting-label" style="opacity:0.5">Loading...</span>
       </div>
     </div>
+  </div>
+
+  <!-- 애플리케이션 서브 페이지 -->
+  <div id="page-applications" class="sub-page hidden">
+    <div class="settings-group" id="app-list">
+      <div class="setting-item no-tap">
+        <span class="setting-label" style="opacity:0.5">Loading...</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 앱 상세 서브 페이지 -->
+  <div id="page-app-detail" class="sub-page hidden">
+    <div class="settings-group" id="app-detail-header"></div>
+    <div class="settings-group" id="app-detail-permissions"></div>
   </div>
 
   <!-- Shared modules -->

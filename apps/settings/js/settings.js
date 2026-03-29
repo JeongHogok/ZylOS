@@ -43,7 +43,11 @@
     security: 'settings.security',
     storage: 'settings.storage',
     about: 'settings.about',
+    applications: 'settings.applications',
   };
+
+  /* ─── Navigation stack for multi-level pages ─── */
+  var navStack = [];
 
   /* 메뉴 항목 클릭 → 서브 페이지 */
   document.querySelectorAll('.setting-item[data-page]').forEach(function (item) {
@@ -61,11 +65,22 @@
     });
   });
 
-  /* 뒤로가기 */
+  /* 뒤로가기 (navStack 지원) */
   btnBack.addEventListener('click', function () {
-    if (currentPage) {
-      var page = document.getElementById('page-' + currentPage);
-      if (page) page.classList.add('hidden');
+    if (!currentPage) return;
+
+    var curPageEl = document.getElementById('page-' + currentPage);
+    if (curPageEl) curPageEl.classList.add('hidden');
+
+    if (navStack.length > 0) {
+      /* Pop previous page from stack */
+      var prev = navStack.pop();
+      var prevPageEl = document.getElementById('page-' + prev);
+      if (prevPageEl) prevPageEl.classList.remove('hidden');
+      currentPage = prev;
+      headerTitle.textContent = t(PAGE_TITLES[prev] || 'settings.' + prev);
+    } else {
+      /* Back to main menu */
       mainMenu.classList.remove('hidden');
       btnBack.classList.add('hidden');
       headerTitle.textContent = t('settings.title');
@@ -122,7 +137,7 @@
       /* ── Navigation back handling ── */
       if (msg.type === 'navigation.back') {
         if (currentPage) {
-          /* Sub-page open → go back to main menu */
+          /* Sub-page open → go back (navStack or main menu) */
           btnBack.click();
           window.parent.postMessage(JSON.stringify({ type: 'navigation.handled' }), '*');
         } else {
@@ -142,6 +157,9 @@
         renderAboutInfo(msg.data);
       } else if (msg.service === 'storage' && msg.method === 'getFormatted' && msg.data) {
         renderStorageInfo(msg.data);
+      } else if (msg.service === 'apps' && msg.method === 'getInstalled' && msg.data) {
+        installedApps = msg.data;
+        renderAppList(msg.data);
       } else if (msg.service === 'settings' && msg.method === 'get' && msg.data) {
         handleSettingsGet(msg.params, msg.data);
       } else if (msg.service === 'settings' && msg.method === 'update' && msg.data) {
@@ -282,6 +300,8 @@
       applyKeyboardState(data);
     } else if (cat === 'wallpaper') {
       renderWallpaperGrid(data);
+    } else if (cat === 'app_permissions') {
+      appPermissions = data || {};
     }
   }
 
@@ -691,6 +711,111 @@
     });
   }
 
+  /* ═══ Applications Wiring ═══ */
+  var installedApps = [];
+  var appPermissions = {};
+
+  var PERM_LABELS = {
+    camera:       'settings.perm_camera',
+    microphone:   'settings.perm_microphone',
+    location:     'settings.perm_location',
+    storage:      'settings.perm_storage',
+    contacts:     'settings.perm_contacts',
+    notifications:'settings.perm_notifications',
+    phone:        'settings.perm_phone',
+    bluetooth:    'settings.perm_bluetooth',
+    network:      'settings.perm_network',
+    sensors:      'settings.perm_sensors'
+  };
+
+  function renderAppList(apps) {
+    var list = document.getElementById('app-list');
+    if (!list) return;
+    list.innerHTML = '';
+    if (!apps || apps.length === 0) {
+      list.innerHTML = '<div class="setting-item no-tap"><span class="setting-label" style="opacity:0.5">' + (t('settings.no_apps') || 'No apps') + '</span></div>';
+      return;
+    }
+    apps.forEach(function (app) {
+      var el = document.createElement('div');
+      el.className = 'setting-item';
+      el.innerHTML =
+        '<div class="setting-text">' +
+          '<span class="setting-label">' + (app.name || app.id) + '</span>' +
+          '<span class="setting-value">' + (app.version || '') + '</span>' +
+        '</div>' +
+        '<svg class="chevron" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>';
+      el.addEventListener('click', function () {
+        openAppDetail(app);
+      });
+      list.appendChild(el);
+    });
+  }
+
+  function openAppDetail(app) {
+    /* Push current page onto navStack */
+    if (currentPage) navStack.push(currentPage);
+
+    var curPageEl = document.getElementById('page-' + currentPage);
+    if (curPageEl) curPageEl.classList.add('hidden');
+
+    currentPage = 'app-detail';
+    var detailPage = document.getElementById('page-app-detail');
+    if (detailPage) detailPage.classList.remove('hidden');
+
+    headerTitle.textContent = app.name || app.id;
+
+    /* Render header info */
+    var header = document.getElementById('app-detail-header');
+    if (header) {
+      header.innerHTML =
+        '<div class="setting-item no-tap">' +
+          '<span class="setting-label">' + (t('settings.app_version') || 'Version') + '</span>' +
+          '<span class="setting-value">' + (app.version || '1.0.0') + '</span>' +
+        '</div>' +
+        '<div class="setting-item no-tap">' +
+          '<span class="setting-label">' + (t('settings.app_package') || 'Package') + '</span>' +
+          '<span class="setting-value" style="font-size:12px;opacity:0.7">' + (app.id || '') + '</span>' +
+        '</div>';
+    }
+
+    /* Render permissions */
+    var permList = document.getElementById('app-detail-permissions');
+    if (!permList) return;
+    var perms = app.permissions || [];
+    if (perms.length === 0) {
+      permList.innerHTML =
+        '<div class="setting-item no-tap">' +
+          '<span class="setting-label" style="opacity:0.5">' + (t('settings.no_permissions') || 'No permissions') + '</span>' +
+        '</div>';
+      return;
+    }
+
+    permList.innerHTML = '<div class="setting-item no-tap"><span class="setting-label" style="font-weight:600">' + (t('settings.permissions') || 'Permissions') + '</span></div>';
+    var appPerms = (appPermissions[app.id]) || {};
+
+    perms.forEach(function (perm) {
+      var granted = appPerms[perm] !== false; /* default granted */
+      var row = document.createElement('div');
+      row.className = 'setting-item no-tap';
+      var labelKey = PERM_LABELS[perm] || '';
+      var label = labelKey ? t(labelKey) : perm;
+      row.innerHTML =
+        '<span class="setting-label">' + label + '</span>' +
+        '<label class="toggle">' +
+          '<input type="checkbox" class="app-perm-toggle" data-app="' + app.id + '" data-perm="' + perm + '"' + (granted ? ' checked' : '') + '>' +
+          '<span class="toggle-slider"></span>' +
+        '</label>';
+      row.querySelector('.app-perm-toggle').addEventListener('change', function () {
+        var checked = this.checked;
+        if (!appPermissions[app.id]) appPermissions[app.id] = {};
+        appPermissions[app.id][perm] = checked;
+        updateSetting('app_permissions', app.id, appPermissions[app.id]);
+      });
+      permList.appendChild(row);
+    });
+  }
+
   /* ═══ Scan buttons ═══ */
   var wifiScanBtn = document.getElementById('wifi-scan-btn');
   var btScanBtn = document.getElementById('bt-scan-btn');
@@ -729,6 +854,8 @@
   requestService('settings', 'get', { category: 'security' });
   requestService('settings', 'get', { category: 'keyboard' });
   requestService('settings', 'get', { category: 'wallpaper' });
+  requestService('settings', 'get', { category: 'app_permissions' });
+  requestService('apps', 'getInstalled');
 
   /* ─── 초기화 ─── */
   applyTranslations();
