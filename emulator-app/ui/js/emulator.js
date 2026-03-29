@@ -185,6 +185,13 @@
     var loadAppId = appId;
     appFrame.onload = function () {
       syslog('[LOADED] ' + loadAppId, 'sys');
+      /* 모바일 시뮬레이션: iframe 내부 텍스트 선택 방지 */
+      try {
+        var iframeDoc = appFrame.contentDocument || appFrame.contentWindow.document;
+        var style = iframeDoc.createElement('style');
+        style.textContent = '* { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; } input, textarea { -webkit-user-select: text; user-select: text; }';
+        iframeDoc.head.appendChild(style);
+      } catch (e) { /* cross-origin 시 무시 */ }
       setTimeout(function () {
         /* 잠금화면: 알림 + PIN */
         if (loadAppId === 'com.zylos.lockscreen') {
