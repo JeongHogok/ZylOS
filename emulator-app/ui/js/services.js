@@ -328,6 +328,31 @@ var ZylServices = (function () {
       store:  function (p) { return tauriInvoke('credential_store', { service: p.service, account: p.account, secret: p.secret }); },
       lookup: function (p) { return tauriInvoke('credential_lookup', { service: p.service, account: p.account }); },
       delete: function (p) { return tauriInvoke('credential_delete', { service: p.service, account: p.account }); }
+    },
+    appstore: {
+      install:   function (p) { return Promise.resolve({ success: true, appId: p.appId }); },
+      uninstall: function (p) { return Promise.resolve({ success: true, appId: p.appId }); },
+      verify:    function (p) { return Promise.resolve({ valid: true, appId: p.appId }); },
+      getAvailable: function () { return Promise.resolve([]); }
+    },
+    updater: {
+      checkForUpdate: function () { return Promise.resolve({ available: false, currentVersion: '0.1.0' }); },
+      getState:       function () { return Promise.resolve({ state: 'UP_TO_DATE', version: '0.1.0' }); },
+      applyUpdate:    function () { return Promise.resolve({ success: false, message: 'No update available' }); }
+    },
+    sandbox: {
+      getPolicy: function (p) { return Promise.resolve({ appId: p.appId || '', permissions: 0, seccompProfile: 'DEFAULT' }); },
+      apply:     function ()  { return Promise.resolve(true); }
+    },
+    logger: {
+      log:      function (p) { return Promise.resolve(true); },
+      getLevel: function ()  { return Promise.resolve('INFO'); },
+      setLevel: function (p) { return Promise.resolve(p.level || 'INFO'); }
+    },
+    accessibility: {
+      getState:        function () { return Promise.resolve({ highContrast: false, fontScale: 1.0, screenReader: false }); },
+      setHighContrast: function (p) { return Promise.resolve(p.enabled || false); },
+      setFontScale:    function (p) { return Promise.resolve(p.scale || 1.0); }
     }
   };
 
