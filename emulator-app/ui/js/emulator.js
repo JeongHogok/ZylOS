@@ -426,70 +426,21 @@
   bindClick('hw-home', goHome);
   bindClick('hw-recents', toggleRecents);
 
-  /* ── 제스처 바 ── */
-  var gesture = { active: false, startX: 0, startY: 0, startTime: 0 };
+  /* ── Gesture Bar — via shared ZylTouch engine ── */
+  if (navGesture && typeof ZylTouch !== 'undefined') {
+    ZylTouch.createGestureBar(navGesture, {
+      onSwipeUp: goHome,
+      onSwipeUpSmall: showRecents,
+      onSwipeLeft: function () { switchApp(1); },
+      onSwipeRight: function () { switchApp(-1); },
+      upBigThreshold: 60,
+      upSmallThreshold: 20,
+      horizontalThreshold: 30,
+      velocityThreshold: 400
+    });
 
-  /* 제스처 이벤트를 nav-gesture 컨테이너 전체에서 감지 */
-  var gestureStartPos = null;
-
-  if (navGesture) navGesture.addEventListener('mousedown', function (e) {
-    gestureStartPos = { x: e.clientX, y: e.clientY };
-    onGStart(e);
-  });
-  if (navGesture) navGesture.addEventListener('touchstart', function (e) {
-    gestureStartPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-    onGStart({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY });
-  }, { passive: true });
-
-  /* 클릭 폴백: mousedown 없이 click만 온 경우 또는 5px 이내면 → 홈 */
-  if (navGesture) navGesture.addEventListener('click', function (e) {
-    if (!gestureStartPos) {
-      /* mousedown 없이 직접 click (JS .click() 호출 등) */
-      goHome();
-    } else {
-      var dx = Math.abs(e.clientX - gestureStartPos.x);
-      var dy = Math.abs(e.clientY - gestureStartPos.y);
-      if (dx < 5 && dy < 5) goHome();
-    }
-    gestureStartPos = null;
-  });
-  document.addEventListener('mousemove', onGMove);
-  document.addEventListener('touchmove', function (e) {
-    if (gesture.active) onGMove({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY });
-  }, { passive: true });
-  document.addEventListener('mouseup', onGEnd);
-  document.addEventListener('touchend', onGEnd);
-
-  function onGStart(e) {
-    if (!device || device.navMode !== 'gesture') return;
-    gesture.active = true;
-    gesture.startX = e.clientX;
-    gesture.startY = e.clientY;
-    gesture.startTime = Date.now();
-    navGesture.classList.add('dragging');
-  }
-
-  function onGMove() { /* no-op: 제스처 위치는 onGEnd에서 start/end 좌표로 계산 */ }
-
-  function onGEnd(e) {
-    if (!gesture.active) return;
-    gesture.active = false;
-    navGesture.classList.remove('dragging');
-
-    var endX = e.clientX || (e.changedTouches && e.changedTouches[0].clientX) || gesture.startX;
-    var endY = e.clientY || (e.changedTouches && e.changedTouches[0].clientY) || gesture.startY;
-    var dx = endX - gesture.startX;
-    var dy = gesture.startY - endY;
-    var elapsed = Date.now() - gesture.startTime;
-    var velocity = dy / Math.max(elapsed, 1) * 1000;
-
-    /* scale(0.85) 보정 — 실제 픽셀 이동이 작으므로 임계값 낮춤 */
-    if (Math.abs(dy) > 15 && Math.abs(dy) > Math.abs(dx)) {
-      if (dy > 60 || velocity > 400) goHome();
-      else if (dy > 20) showRecents();
-    } else if (Math.abs(dx) > 30 && Math.abs(dx) > Math.abs(dy)) {
-      switchApp(dx < 0 ? 1 : -1);
-    }
+    /* Tap (no swipe) → home */
+    navGesture.addEventListener('click', function () { goHome(); });
   }
 
   /* ═══════════════════════════════════════════════════════
@@ -532,120 +483,75 @@
     if (qsBackdrop) { qsBackdrop.classList.remove('qs-backdrop-show'); qsBackdrop.style.opacity = ''; }
   }
 
-  /* ═══ QS Panel Drag — real-time feedback (same pattern as lockscreen) ═══ */
-  var qsDrag = { active: false, startY: 0, currentY: 0, source: null };
-  var QS_DRAG_THRESHOLD = 40;
-  var panelHeight = 0;
+  /* ═══ QS Panel Drag — delegated to ZylTouch.createPanelDrag ═══ */
+  var qsPanelDrag = null;
+  var _qsDragMoved = false;
 
-  function getQsClientY(e) {
-    if (e.touches) return e.touches[0].clientY;
-    if (e.changedTouches) return e.changedTouches[0].clientY;
-    return e.clientY || 0;
+  function blockIframe(block) {
+    if (appFrame) appFrame.style.pointerEvents = block ? 'none' : '';
   }
 
-  function qsStartDrag(y, source) {
-    if (isLocked()) return;
-    qsDrag.active = true;
-    qsDrag.startY = y;
-    qsDrag.currentY = y;
-    qsDrag.source = source;
-    panelHeight = qsPanel.offsetHeight || 400;
-    qsPanel.style.transition = 'none';
-    if (qsBackdrop) qsBackdrop.style.transition = 'none';
-    /* Block iframe from capturing mouse events during drag */
-    if (appFrame) appFrame.style.pointerEvents = 'none';
-  }
-
-  function qsMoveDrag(y) {
-    if (!qsDrag.active) return;
-    qsDrag.currentY = y;
-    var dy = y - qsDrag.startY;
-
-    if (qsDrag.source === 'statusbar' && !qsOpen) {
-      /* Pulling down from statusbar → reveal panel */
-      var progress = Math.max(0, Math.min(dy / panelHeight, 1));
-      var translateY = -panelHeight + (panelHeight * progress);
-      qsPanel.classList.remove('qs-hidden');
-      qsPanel.style.transform = 'translateY(' + translateY + 'px)';
-      qsPanel.style.opacity = String(progress);
-      qsPanel.style.pointerEvents = progress > 0.5 ? 'auto' : 'none';
-      if (qsBackdrop) {
-        qsBackdrop.style.opacity = String(progress * 0.6);
-        qsBackdrop.style.pointerEvents = progress > 0.3 ? 'auto' : 'none';
-      }
-    } else if (qsDrag.source === 'panel' || (qsDrag.source === 'statusbar' && qsOpen)) {
-      /* Dragging up from open panel → close */
-      var upDy = Math.min(0, dy);
-      var closeProgress = Math.min(Math.abs(upDy) / panelHeight, 1);
-      qsPanel.style.transform = 'translateY(' + upDy + 'px)';
-      qsPanel.style.opacity = String(1 - closeProgress);
-      if (qsBackdrop) {
-        qsBackdrop.style.opacity = String((1 - closeProgress) * 0.6);
-      }
-    }
-  }
-
-  function qsEndDrag() {
-    if (!qsDrag.active) return;
-    qsDrag.active = false;
-    var dy = qsDrag.currentY - qsDrag.startY;
-
-    /* Restore iframe event reception */
-    if (appFrame) appFrame.style.pointerEvents = '';
-    /* Restore CSS transitions for snap animation */
-    qsPanel.style.transition = '';
-    if (qsBackdrop) qsBackdrop.style.transition = '';
-    qsPanel.style.pointerEvents = '';
-    if (qsBackdrop) qsBackdrop.style.pointerEvents = '';
-
-    if (qsDrag.source === 'statusbar' && !qsOpen) {
-      if (dy > QS_DRAG_THRESHOLD) {
-        openQsPanel();
-      } else {
-        /* Snap back closed */
-        qsPanel.style.transform = '';
-        qsPanel.style.opacity = '';
+  if (typeof ZylTouch !== 'undefined' && statusbar && qsPanel) {
+    qsPanelDrag = ZylTouch.createPanelDrag(statusbar, qsPanel, {
+      direction: 'down',
+      threshold: 40,
+      getHeight: function () { return qsPanel.offsetHeight || 400; },
+      onOpen: function () {
+        qsOpen = true;
+        updateQsClock();
+        renderQsNotifications();
+        qsPanel.classList.remove('qs-hidden');
+        qsPanel.style.pointerEvents = '';
+        if (qsBackdrop) { qsBackdrop.classList.add('qs-backdrop-show'); qsBackdrop.style.opacity = ''; }
+      },
+      onClose: function () {
+        qsOpen = false;
         qsPanel.classList.add('qs-hidden');
-        if (qsBackdrop) { qsBackdrop.style.opacity = ''; qsBackdrop.classList.remove('qs-backdrop-show'); }
+        if (qsBackdrop) { qsBackdrop.classList.remove('qs-backdrop-show'); qsBackdrop.style.opacity = ''; }
       }
-    } else if (qsDrag.source === 'panel' || (qsDrag.source === 'statusbar' && qsOpen)) {
-      if (dy < -QS_DRAG_THRESHOLD) {
-        closeQsPanel();
-      } else {
-        /* Snap back open */
-        qsPanel.style.transform = 'translateY(0)';
-        qsPanel.style.opacity = '1';
-      }
-    }
+    });
   }
 
   /* Statusbar: drag down to open, click to toggle */
-  statusbar.addEventListener('mousedown', function (e) { qsStartDrag(e.clientY, 'statusbar'); });
-  statusbar.addEventListener('touchstart', function (e) { qsStartDrag(getQsClientY(e), 'statusbar'); }, { passive: true });
+  statusbar.addEventListener('mousedown', function (e) {
+    _qsDragMoved = false;
+    if (qsPanelDrag && !isLocked()) qsPanelDrag.start(e.clientY, blockIframe);
+  });
+  statusbar.addEventListener('touchstart', function (e) {
+    _qsDragMoved = false;
+    if (qsPanelDrag && !isLocked()) qsPanelDrag.start(e.touches[0].clientY, blockIframe);
+  }, { passive: true });
 
   statusbar.addEventListener('click', function () {
-    /* Only toggle if drag distance was negligible */
-    var dragDist = Math.abs(qsDrag.currentY - qsDrag.startY);
-    if (dragDist < 5) {
-      if (qsOpen) closeQsPanel(); else openQsPanel();
-    }
+    if (_qsDragMoved) return;
+    if (qsOpen) closeQsPanel(); else openQsPanel();
   });
 
   /* Panel: drag up to close */
   qsPanel.addEventListener('mousedown', function (e) {
     if (e.target.closest('button, input, .qs-tile, .qs-notif-card')) return;
-    qsStartDrag(e.clientY, 'panel');
+    _qsDragMoved = false;
+    if (qsPanelDrag && !isLocked()) qsPanelDrag.start(e.clientY, blockIframe);
   });
   qsPanel.addEventListener('touchstart', function (e) {
     if (e.target.closest('button, input, .qs-tile, .qs-notif-card')) return;
-    qsStartDrag(getQsClientY(e), 'panel');
+    _qsDragMoved = false;
+    if (qsPanelDrag && !isLocked()) qsPanelDrag.start(e.touches[0].clientY, blockIframe);
   }, { passive: true });
 
   /* Global move/end listeners */
-  document.addEventListener('mousemove', function (e) { qsMoveDrag(e.clientY); });
-  document.addEventListener('touchmove', function (e) { qsMoveDrag(getQsClientY(e)); }, { passive: true });
-  document.addEventListener('mouseup', function () { qsEndDrag(); });
-  document.addEventListener('touchend', function () { qsEndDrag(); });
+  document.addEventListener('mousemove', function (e) {
+    if (qsPanelDrag && qsPanelDrag.isActive()) { qsPanelDrag.move(e.clientY); _qsDragMoved = true; }
+  });
+  document.addEventListener('touchmove', function (e) {
+    if (qsPanelDrag && qsPanelDrag.isActive()) { qsPanelDrag.move(e.touches[0].clientY); _qsDragMoved = true; }
+  }, { passive: true });
+  document.addEventListener('mouseup', function () {
+    if (qsPanelDrag && qsPanelDrag.isActive()) qsPanelDrag.end(blockIframe);
+  });
+  document.addEventListener('touchend', function () {
+    if (qsPanelDrag && qsPanelDrag.isActive()) qsPanelDrag.end(blockIframe);
+  });
 
   /* 퀵설정 타일 토글 + 서비스 호출 */
   document.querySelectorAll('.qs-tile').forEach(function (tile) {

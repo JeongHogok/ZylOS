@@ -272,18 +272,23 @@
     }
 
     updatePageIndicator();
-    snapToPage(currentPage, false);
-  }
 
-  function snapToPage(idx, animate) {
-    currentPage = Math.max(0, Math.min(idx, totalPages - 1));
-    if (animate !== false) {
-      pagesTrack.style.transition = 'transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
-    } else {
-      pagesTrack.style.transition = 'none';
+    if (viewport && typeof ZylTouch !== 'undefined' && !pageSwipe) {
+      pageSwipe = ZylTouch.createPageSwipe(viewport, pagesTrack, {
+        totalPages: totalPages,
+        threshold: 40,
+        velocityThreshold: 0.3,
+        rubberBand: true,
+        onPageChange: function (page) {
+          currentPage = page;
+          updatePageIndicator();
+        }
+      });
     }
-    pagesTrack.style.transform = 'translateX(-' + (currentPage * 100) + '%)';
-    updatePageIndicator();
+    if (pageSwipe) {
+      pageSwipe.setTotalPages(totalPages);
+      pageSwipe.snapTo(currentPage, false);
+    }
   }
 
   function updatePageIndicator() {
@@ -297,96 +302,9 @@
   }
 
   /* ═══════════════════════════════════════════════════════
-     Swipe — real-time drag feedback + momentum snap
+     Swipe — delegated to ZylTouch.createPageSwipe
      ═══════════════════════════════════════════════════════ */
-  var drag = {
-    active: false,
-    startX: 0,
-    startTime: 0,
-    currentX: 0,
-    moved: false
-  };
-
-  var SWIPE_THRESHOLD = 40;
-  var VELOCITY_THRESHOLD = 0.3;
-
-  function onDragStart(x) {
-    if (editMode) return;
-    drag.active = true;
-    drag.startX = x;
-    drag.currentX = x;
-    drag.startTime = Date.now();
-    drag.moved = false;
-    pagesTrack.style.transition = 'none';
-  }
-
-  function onDragMove(x) {
-    if (!drag.active) return;
-    drag.currentX = x;
-    var dx = x - drag.startX;
-    if (Math.abs(dx) > 5) drag.moved = true;
-
-    /* Translate track by drag delta, offset from current page */
-    var baseOffset = -(currentPage * 100);
-    var viewportWidth = viewport ? viewport.offsetWidth : 393;
-    var pxPercent = (dx / viewportWidth) * 100;
-
-    /* Rubber-band at edges */
-    if ((currentPage === 0 && dx > 0) || (currentPage >= totalPages - 1 && dx < 0)) {
-      pxPercent *= 0.3;
-    }
-
-    pagesTrack.style.transform = 'translateX(' + (baseOffset + pxPercent) + '%)';
-  }
-
-  function onDragEnd(x) {
-    if (!drag.active) return;
-    drag.active = false;
-
-    var dx = x - drag.startX;
-    var dt = Date.now() - drag.startTime;
-    var velocity = Math.abs(dx) / Math.max(dt, 1);
-
-    var nextPage = currentPage;
-    if (Math.abs(dx) > SWIPE_THRESHOLD || velocity > VELOCITY_THRESHOLD) {
-      if (dx < 0 && currentPage < totalPages - 1) nextPage = currentPage + 1;
-      else if (dx > 0 && currentPage > 0) nextPage = currentPage - 1;
-    }
-
-    snapToPage(nextPage, true);
-  }
-
-  if (viewport) {
-    /* Touch events */
-    viewport.addEventListener('touchstart', function (e) {
-      if (appDrag.active) return;
-      onDragStart(e.touches[0].clientX);
-    }, { passive: true });
-
-    viewport.addEventListener('touchmove', function (e) {
-      if (appDrag.active) return;
-      onDragMove(e.touches[0].clientX);
-    }, { passive: true });
-
-    viewport.addEventListener('touchend', function (e) {
-      if (appDrag.active) return;
-      onDragEnd(e.changedTouches[0].clientX);
-    });
-
-    /* Mouse events */
-    viewport.addEventListener('mousedown', function (e) {
-      if (appDrag.active) return;
-      onDragStart(e.clientX);
-    });
-
-    document.addEventListener('mousemove', function (e) {
-      if (drag.active && !appDrag.active) onDragMove(e.clientX);
-    });
-
-    document.addEventListener('mouseup', function (e) {
-      if (drag.active && !appDrag.active) onDragEnd(e.clientX);
-    });
-  }
+  var pageSwipe = null;
 
   /* ═══════════════════════════════════════════════════════
      Edit Mode — long press to enter, with delete + drag
@@ -536,8 +454,7 @@
     appDrag.source = isDock ? 'dock' : 'grid';
     appDrag.origEl = targetEl;
 
-    /* Cancel any page swipe in progress */
-    drag.active = false;
+    /* Cancel any page swipe in progress — pageSwipe handles its own state */
 
     /* Dim original */
     targetEl.classList.add('app-drag-placeholder');
@@ -761,7 +678,7 @@
   /* ─── App launch (click, not drag) ─── */
   pagesTrack.addEventListener('click', function (e) {
     if (editMode) return;
-    if (drag.moved) return; /* Prevent launch after swipe */
+    if (pageSwipe && pageSwipe.hasMoved()) return; /* Prevent launch after swipe */
     var appItem = e.target.closest('.app-item');
     if (!appItem) return;
     var appId = appItem.dataset.appId;
