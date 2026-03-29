@@ -1,0 +1,28 @@
+/* ──────────────────────────────────────────────────────────
+   [Clean Architecture] Presentation Layer - Style
+   역할: 시계 앱 스타일
+   수행범위: clock 앱 레이아웃과 시각적 표현
+   의존방향: clock/index.html
+   SOLID: SRP — clock 앱 스타일만 담당
+
+   클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
+   실제 디바이스 구동 기준이며, mock/demo 등 하드코딩 데이터가 있어서는 안 된다
+   ────────────────────────────────────────────────────────── */
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#0a0a1a; color:#e0e0e0; height:100vh; overflow:hidden; display:flex; flex-direction:column; }
+.hidden { display:none !important; }
+#header { padding:20px 16px 12px; }
+#header h1 { font-size:28px; font-weight:700; }
+#tabs { display:flex; border-bottom:1px solid #1a1a2e; }
+.tab { flex:1; padding:14px 0; text-align:center; background:none; border:none; color:#888; font-size:13px; cursor:pointer; }
+.tab.active { color:#6366f1; border-bottom:2px solid #6366f1; }
+.tab-content { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:20px; }
+#clock-display { font-size:64px; font-weight:200; letter-spacing:-2px; }
+#clock-date { font-size:16px; opacity:0.5; margin-top:8px; }
+#timer-display, #sw-display { font-size:56px; font-weight:200; margin-bottom:20px; }
+#timer-controls, #sw-controls { display:flex; gap:12px; }
+#timer-controls button, #sw-controls button { padding:10px 24px; border-radius:24px; border:none; background:#252535; color:#fff; font-size:15px; cursor:pointer; }
+#sw-laps { margin-top:16px; width:100%; max-height:200px; overflow-y:auto; }
+.lap { padding:8px 0; border-bottom:1px solid #1a1a2e; font-size:14px; }
+#alarm-list { width:100%; }
+#btn-add-alarm { margin-top:16px; padding:10px 24px; border-radius:24px; border:none; background:#6366f1; color:#fff; cursor:pointer; }

@@ -1,0 +1,21 @@
+/* ──────────────────────────────────────────────────────────
+   [Clean Architecture] Presentation Layer - Style
+   역할: 앱스토어 스타일
+   수행범위: store 앱 레이아웃과 시각적 표현
+   의존방향: store/index.html
+   SOLID: SRP — store 앱 스타일만 담당
+
+   클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
+   실제 디바이스 구동 기준이며, mock/demo 등 하드코딩 데이터가 있어서는 안 된다
+   ────────────────────────────────────────────────────────── */
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#0a0a1a; color:#e0e0e0; height:100vh; overflow:hidden; display:flex; flex-direction:column; }
+.hidden { display:none !important; }
+#header { padding:20px 16px 12px; }
+#header h1 { font-size:28px; font-weight:700; }
+#search-bar { padding:0 16px 12px; }
+#search-input { width:100%; padding:10px 14px; background:#111118; border:1px solid #252535; border-radius:10px; color:#fff; font-size:14px; outline:none; }
+#app-list { flex:1; overflow-y:auto; padding:0 16px; }
+.store-item { display:flex; justify-content:space-between; align-items:center; padding:14px 0; border-bottom:1px solid #1a1a2e; }
+.store-name { font-size:15px; }
+.store-status { font-size:13px; color:#22c55e; }

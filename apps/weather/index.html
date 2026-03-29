@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Zyl OS Weather</title>
+  <link rel="stylesheet" href="css/weather.css">
+</head>
+<body>
+  <div id="weather-main">
+    <div id="location-name">Loading...</div>
+    <div id="temperature">--&deg;</div>
+    <div id="condition">--</div>
+  </div>
+  <div id="details">
+    <div class="detail"><span class="label">Humidity</span><span id="humidity">--%</span></div>
+    <div class="detail"><span class="label">Wind</span><span id="wind">-- m/s</span></div>
+    <div class="detail"><span class="label">Pressure</span><span id="pressure">-- hPa</span></div>
+  </div>
+  <script src="../shared/bridge.js"></script>
+  <script src="js/weather.js"></script>
+</body></html>

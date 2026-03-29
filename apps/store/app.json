@@ -1,0 +1,1 @@
+{"id":"com.zylos.store","name":"App Store","version":"1.0.0","entry":"index.html","icon":"icon.png","permissions":["network","storage"],"type":"system","color":"icon-emerald","iconKey":"store"}

@@ -1,0 +1,23 @@
+/* ──────────────────────────────────────────────────────────
+   [Clean Architecture] Presentation Layer - Style
+   역할: 음악 앱 스타일
+   수행범위: music 앱 레이아웃과 시각적 표현
+   의존방향: music/index.html
+   SOLID: SRP — music 앱 스타일만 담당
+
+   클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
+   실제 디바이스 구동 기준이며, mock/demo 등 하드코딩 데이터가 있어서는 안 된다
+   ────────────────────────────────────────────────────────── */
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#0a0a1a; color:#e0e0e0; height:100vh; overflow:hidden; display:flex; flex-direction:column; }
+.hidden { display:none !important; }
+#header { padding:20px 16px 12px; }
+#header h1 { font-size:28px; font-weight:700; }
+#track-list { flex:1; overflow-y:auto; padding:8px 16px; }
+.track-item { padding:14px 0; border-bottom:1px solid #1a1a2e; cursor:pointer; }
+.track-item:hover { color:#6366f1; }
+#player { padding:16px; background:#111118; border-top:1px solid #1a1a2e; }
+#now-playing { font-size:14px; margin-bottom:8px; opacity:0.7; }
+#controls { display:flex; gap:16px; justify-content:center; margin-bottom:8px; }
+#controls button { background:none; border:none; color:#fff; font-size:24px; cursor:pointer; }
+#progress { width:100%; }

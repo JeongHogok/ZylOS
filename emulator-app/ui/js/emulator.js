@@ -63,6 +63,13 @@
     'com.zylos.files':      { name: 'Files',       path: 'apps/files/index.html',       system: true },
     'com.zylos.terminal':   { name: 'Terminal',    path: 'apps/terminal/index.html',    system: true },
     'com.zylos.camera':     { name: 'Camera',      path: 'apps/camera/index.html',      system: true },
+    'com.zylos.gallery':    { name: 'Gallery',     path: 'apps/gallery/index.html',     system: true },
+    'com.zylos.music':      { name: 'Music',       path: 'apps/music/index.html',       system: true },
+    'com.zylos.clock':      { name: 'Clock',       path: 'apps/clock/index.html',       system: true },
+    'com.zylos.calc':       { name: 'Calculator',  path: 'apps/calc/index.html',        system: true },
+    'com.zylos.notes':      { name: 'Notes',       path: 'apps/notes/index.html',       system: true },
+    'com.zylos.weather':    { name: 'Weather',     path: 'apps/weather/index.html',     system: true },
+    'com.zylos.store':      { name: 'App Store',   path: 'apps/store/index.html',       system: true },
   };
 
   /* ═══ State ═══ */

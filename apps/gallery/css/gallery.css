@@ -1,0 +1,21 @@
+/* ──────────────────────────────────────────────────────────
+   [Clean Architecture] Presentation Layer - Style
+   역할: 갤러리 스타일
+   수행범위: gallery 앱 레이아웃과 시각적 표현
+   의존방향: gallery/index.html
+   SOLID: SRP — gallery 앱 스타일만 담당
+
+   클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
+   실제 디바이스 구동 기준이며, mock/demo 등 하드코딩 데이터가 있어서는 안 된다
+   ────────────────────────────────────────────────────────── */
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#0a0a1a; color:#e0e0e0; height:100vh; overflow:hidden; display:flex; flex-direction:column; }
+.hidden { display:none !important; }
+#header { padding:20px 16px 12px; }
+#header h1 { font-size:28px; font-weight:700; }
+#photo-grid { flex:1; display:grid; grid-template-columns:repeat(3,1fr); gap:2px; padding:2px; overflow-y:auto; }
+.photo-thumb { aspect-ratio:1; background:#1a1a2e; display:flex; align-items:center; justify-content:center; font-size:11px; color:#888; cursor:pointer; }
+.photo-thumb:hover { background:#252540; }
+#viewer { position:fixed; inset:0; background:rgba(0,0,0,0.95); display:flex; align-items:center; justify-content:center; z-index:100; }
+#viewer-img { max-width:90%; max-height:90%; object-fit:contain; }
+#viewer-close { position:absolute; top:16px; right:16px; background:none; border:none; color:#fff; font-size:32px; cursor:pointer; }

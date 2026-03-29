@@ -1,0 +1,24 @@
+/* ──────────────────────────────────────────────────────────
+   [Clean Architecture] Presentation Layer - Style
+   역할: 날씨 앱 스타일
+   수행범위: weather 앱 레이아웃과 시각적 표현
+   의존방향: weather/index.html
+   SOLID: SRP — weather 앱 스타일만 담당
+
+   클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
+   실제 디바이스 구동 기준이며, mock/demo 등 하드코딩 데이터가 있어서는 안 된다
+   ────────────────────────────────────────────────────────── */
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#0a0a1a; color:#e0e0e0; height:100vh; overflow:hidden; display:flex; flex-direction:column; }
+.hidden { display:none !important; }
+#header { padding:20px 16px 12px; }
+#header h1 { font-size:28px; font-weight:700; }
+body { justify-content:center; align-items:center; }
+#weather-main { text-align:center; margin-bottom:32px; }
+#location-name { font-size:18px; opacity:0.6; margin-bottom:8px; }
+#temperature { font-size:72px; font-weight:200; }
+#condition { font-size:18px; opacity:0.7; margin-top:4px; }
+#details { display:flex; gap:24px; }
+.detail { text-align:center; }
+.detail .label { display:block; font-size:12px; opacity:0.5; margin-bottom:4px; }
+.detail span:last-child { font-size:18px; }

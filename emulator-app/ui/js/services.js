@@ -331,7 +331,20 @@ var ZylServices = (function () {
     },
     appstore: {
       install:   function (p) { return Promise.resolve({ success: true, appId: p.appId }); },
-      uninstall: function (p) { return Promise.resolve({ success: true, appId: p.appId }); },
+      uninstall: function (p) {
+        var SYSTEM_APPS = [
+          'com.zylos.home', 'com.zylos.lockscreen', 'com.zylos.statusbar',
+          'com.zylos.oobe', 'com.zylos.settings', 'com.zylos.browser',
+          'com.zylos.files', 'com.zylos.terminal', 'com.zylos.camera',
+          'com.zylos.gallery', 'com.zylos.music', 'com.zylos.clock',
+          'com.zylos.calc', 'com.zylos.notes', 'com.zylos.weather',
+          'com.zylos.store'
+        ];
+        if (SYSTEM_APPS.indexOf(p.appId) !== -1) {
+          return Promise.resolve({ success: false, error: 'System app cannot be uninstalled' });
+        }
+        return Promise.resolve({ success: true, appId: p.appId });
+      },
       verify:    function (p) { return Promise.resolve({ valid: true, appId: p.appId }); },
       getAvailable: function () { return Promise.resolve([]); }
     },

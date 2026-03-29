@@ -216,7 +216,9 @@
   /* 삭제 불가 앱 (기본 앱 + 시스템 서비스) */
   var UNDELETABLE = [
     'com.zylos.settings', 'com.zylos.browser', 'com.zylos.files',
-    'com.zylos.terminal', 'com.zylos.camera'
+    'com.zylos.terminal', 'com.zylos.camera', 'com.zylos.gallery',
+    'com.zylos.music', 'com.zylos.clock', 'com.zylos.calc',
+    'com.zylos.notes', 'com.zylos.weather', 'com.zylos.store'
   ];
 
   function enterEditMode() {

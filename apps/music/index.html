@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Zyl OS Music</title>
+  <link rel="stylesheet" href="css/music.css">
+</head>
+<body>
+  <div id="header"><h1>Music</h1></div>
+  <div id="track-list"></div>
+  <div id="player">
+    <div id="now-playing">No track selected</div>
+    <div id="controls">
+      <button id="btn-prev">⏮</button>
+      <button id="btn-play">▶</button>
+      <button id="btn-next">⏭</button>
+    </div>
+    <input type="range" id="progress" min="0" max="100" value="0">
+  </div>
+  <script src="../shared/bridge.js"></script>
+  <script src="js/music.js"></script>
+</body></html>

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Zyl OS Clock</title>
+  <link rel="stylesheet" href="css/clock.css">
+</head>
+<body>
+  <div id="tabs">
+    <button class="tab active" data-tab="clock">Clock</button>
+    <button class="tab" data-tab="alarm">Alarm</button>
+    <button class="tab" data-tab="timer">Timer</button>
+    <button class="tab" data-tab="stopwatch">Stopwatch</button>
+  </div>
+  <div id="tab-clock" class="tab-content active">
+    <div id="clock-display">00:00:00</div>
+    <div id="clock-date"></div>
+  </div>
+  <div id="tab-alarm" class="tab-content hidden">
+    <div id="alarm-list"></div>
+    <button id="btn-add-alarm">+ Add Alarm</button>
+  </div>
+  <div id="tab-timer" class="tab-content hidden">
+    <div id="timer-display">00:00</div>
+    <div id="timer-controls">
+      <button id="btn-timer-start">Start</button>
+      <button id="btn-timer-reset">Reset</button>
+    </div>
+  </div>
+  <div id="tab-stopwatch" class="tab-content hidden">
+    <div id="sw-display">00:00.00</div>
+    <div id="sw-controls">
+      <button id="btn-sw-start">Start</button>
+      <button id="btn-sw-lap">Lap</button>
+      <button id="btn-sw-reset">Reset</button>
+    </div>
+    <div id="sw-laps"></div>
+  </div>
+  <script src="../shared/clock.js"></script>
+  <script src="js/clock.js"></script>
+</body></html>

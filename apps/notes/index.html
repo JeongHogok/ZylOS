@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Zyl OS Notes</title>
+  <link rel="stylesheet" href="css/notes.css">
+</head>
+<body>
+  <div id="header">
+    <h1>Notes</h1>
+    <button id="btn-new">+</button>
+  </div>
+  <div id="notes-list"></div>
+  <div id="editor" class="hidden">
+    <div id="editor-header">
+      <button id="btn-back">&larr;</button>
+      <button id="btn-save">Save</button>
+      <button id="btn-delete">Delete</button>
+    </div>
+    <input type="text" id="note-title" placeholder="Title">
+    <textarea id="note-body" placeholder="Start writing..."></textarea>
+  </div>
+  <script src="../shared/bridge.js"></script>
+  <script src="js/notes.js"></script>
+</body></html>

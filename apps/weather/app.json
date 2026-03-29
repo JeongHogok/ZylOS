@@ -1,0 +1,1 @@
+{"id":"com.zylos.weather","name":"Weather","version":"1.0.0","entry":"index.html","icon":"icon.png","permissions":["network","location"],"type":"system","color":"icon-cyan","iconKey":"weather"}
