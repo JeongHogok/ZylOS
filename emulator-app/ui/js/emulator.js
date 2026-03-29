@@ -189,7 +189,7 @@
       try {
         var iframeDoc = appFrame.contentDocument || appFrame.contentWindow.document;
         var style = iframeDoc.createElement('style');
-        style.textContent = '* { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; } input, textarea { -webkit-user-select: text; user-select: text; }';
+        style.textContent = '* { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; } input, textarea { -webkit-user-select: text; user-select: text; } *::-webkit-scrollbar { display: none; } * { scrollbar-width: none; -webkit-overflow-scrolling: touch; }';
         iframeDoc.head.appendChild(style);
       } catch (e) { /* cross-origin 시 무시 */ }
       setTimeout(function () {
