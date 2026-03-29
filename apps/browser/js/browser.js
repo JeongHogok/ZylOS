@@ -335,10 +335,10 @@
       el.dataset.url = bm.url;
       var domain = bm.url.replace(/^https?:\/\/(www\.)?/, '').replace(/\/.*$/, '');
       el.innerHTML =
-        '<div class="bookmark-favicon">' + (bm.favicon || bm.name.charAt(0)) + '</div>' +
+        '<div class="bookmark-favicon">' + escapeHtml(bm.favicon || bm.name.charAt(0)) + '</div>' +
         '<div class="bookmark-info">' +
-          '<span class="bookmark-name">' + bm.name + '</span>' +
-          '<span class="bookmark-url">' + domain + '</span>' +
+          '<span class="bookmark-name">' + escapeHtml(bm.name) + '</span>' +
+          '<span class="bookmark-url">' + escapeHtml(domain) + '</span>' +
         '</div>';
       el.addEventListener('click', function () {
         urlInput.value = bm.url;

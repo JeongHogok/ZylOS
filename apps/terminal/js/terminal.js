@@ -495,7 +495,14 @@
         }
         scrollToBottom();
       }).catch(function (err) {
-        addLine('Error: ' + (err || 'execution failed'), 'line-error');
+        var msg = String(err || 'execution failed');
+        if (msg.indexOf('permission') >= 0 || msg.indexOf('denied') >= 0) {
+          addLine(command.split(' ')[0] + ': permission denied', 'line-error');
+        } else if (msg.indexOf('not found') >= 0) {
+          addLine(command.split(' ')[0] + ': command not found', 'line-error');
+        } else {
+          addLine('error: ' + msg, 'line-error');
+        }
         scrollToBottom();
       });
     } else {

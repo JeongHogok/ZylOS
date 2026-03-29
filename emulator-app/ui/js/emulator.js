@@ -279,9 +279,10 @@
 
   /* ═══ Recents UI ═══ */
   function renderRecentsCards() {
+    if (!recentsCards) return;
     recentsCards.innerHTML = '';
     var apps = state.runningApps.filter(function (a) { return a.id !== 'com.zylos.lockscreen'; });
-    recentsEmpty.style.display = apps.length === 0 ? 'block' : 'none';
+    if (recentsEmpty) recentsEmpty.style.display = apps.length === 0 ? 'block' : 'none';
     apps.forEach(function (app) {
       var card = document.createElement('div');
       card.className = 'recents-card';

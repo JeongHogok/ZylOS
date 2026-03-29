@@ -41,7 +41,15 @@
     navigator.mediaDevices.getUserMedia(constraints).then(function (stream) {
       _stream = stream;
       if (cameraVideo) { cameraVideo.srcObject = stream; }
-    }).catch(function () { /* 카메라 접근 실패 — UI만 표시 */ });
+    }).catch(function (err) {
+      var msg = err.name === 'NotAllowedError' ? 'Camera permission denied' : 'Camera unavailable';
+      if (viewfinder) {
+        var overlay = document.createElement('div');
+        overlay.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:14px;text-align:center;padding:20px;z-index:5';
+        overlay.textContent = msg;
+        viewfinder.appendChild(overlay);
+      }
+    });
   }
 
   function stopCamera() {

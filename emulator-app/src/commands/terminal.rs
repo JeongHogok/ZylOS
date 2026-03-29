@@ -1,8 +1,8 @@
 // ──────────────────────────────────────────────────────────
 // [Clean Architecture] Infrastructure Layer - Adapter
 //
-// 역할: 터미널 명령 실행 (샌드박스 내)
-// 수행범위: 쉘 명령 실행, stdout/stderr 캡처, 작업 디렉토리 관리
+// 역할: 터미널 명령 실행 (샌드박스 내, 위험 명령 필터링)
+// 수행범위: 허용된 쉘 명령 실행, stdout/stderr 캡처, 작업 디렉토리 제한
 // 의존방향: state (mount_point)
 // SOLID: SRP — 명령 실행만 담당
 // ──────────────────────────────────────────────────────────
@@ -20,13 +20,52 @@ pub struct ExecResult {
     pub exit_code: i32,
 }
 
-/// 쉘 명령 실행
+/// 위험 명령 패턴 필터링
+fn is_dangerous(command: &str) -> bool {
+    let lower = command.to_lowercase();
+    let patterns = [
+        "rm -rf /",
+        "rm -rf /*",
+        "rm -rf ~",
+        "mkfs",
+        "dd if=",
+        "> /dev/",
+        "chmod -R 777 /",
+        ":(){ :|:& };:",
+        "shutdown",
+        "reboot",
+        "halt",
+        "init 0",
+        "init 6",
+        "sudo",
+        "su -",
+        "passwd",
+        "chown -R",
+        "curl.*|.*sh",
+        "wget.*|.*sh",
+        "nc -l",
+        "ncat",
+        "/etc/shadow",
+        "/etc/passwd",
+    ];
+
+    for pat in &patterns {
+        if lower.contains(pat) {
+            return true;
+        }
+    }
+
+    false
+}
+
+/// 쉘 명령 실행 (샌드박스: 마운트 포인트 내에서만, 위험 명령 차단)
 #[tauri::command]
 pub fn exec_command(
     command: String,
     state: State<'_, Mutex<AppState>>,
 ) -> Result<ExecResult, String> {
-    if command.trim().is_empty() {
+    let trimmed = command.trim();
+    if trimmed.is_empty() {
         return Ok(ExecResult {
             stdout: String::new(),
             stderr: String::new(),
@@ -34,7 +73,16 @@ pub fn exec_command(
         });
     }
 
-    // 작업 디렉토리: 마운트 포인트 또는 홈
+    // 위험 명령 필터링
+    if is_dangerous(trimmed) {
+        return Ok(ExecResult {
+            stdout: String::new(),
+            stderr: format!("zyl-shell: command blocked for safety: {}", trimmed.split_whitespace().next().unwrap_or("")),
+            exit_code: 126,
+        });
+    }
+
+    // 작업 디렉토리: 마운트 포인트 또는 임시 디렉토리
     let cwd = {
         let app_state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
         app_state
@@ -44,8 +92,10 @@ pub fn exec_command(
     };
 
     let output = Command::new("sh")
-        .args(["-c", &command])
+        .args(["-c", trimmed])
         .current_dir(&cwd)
+        .env("HOME", &cwd)
+        .env("PATH", "/usr/local/bin:/usr/bin:/bin")
         .output()
         .map_err(|e| format!("Command execution failed: {}", e))?;
 
