@@ -5,8 +5,9 @@
   "entry": "index.html",
   "icon": "assets/home-icon.png",
   "permissions": [
-    "app.list",
     "app.launch",
+    "app.list",
+    "system",
     "wallpaper"
   ],
   "type": "system",

@@ -5,9 +5,10 @@
   "entry": "index.html",
   "icon": "assets/lock-icon.png",
   "permissions": [
-    "time",
+    "auth",
     "notification.read",
-    "auth"
+    "system",
+    "time"
   ],
   "type": "system",
   "role": "lockscreen",

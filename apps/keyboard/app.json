@@ -3,7 +3,11 @@
   "name": "Zyl Keyboard",
   "version": "1.0.0",
   "entry": "index.html",
-  "permissions": ["input", "i18n"],
+  "permissions": [
+    "input",
+    "i18n",
+    "audio"
+  ],
   "type": "system",
   "color": "icon-gray",
   "iconKey": "keyboard"
