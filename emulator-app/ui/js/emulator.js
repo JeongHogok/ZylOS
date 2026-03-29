@@ -463,7 +463,7 @@
   var qsBackdrop = document.getElementById('qs-backdrop');
 
   function openQsPanel() {
-    if (qsOpen || isLocked()) return;
+    if (qsOpen || isLocked() || isInOobe()) return;
     qsOpen = true;
     updateQsClock();
     renderQsNotifications();
@@ -515,11 +515,11 @@
   /* Statusbar: drag down to open, click to toggle */
   statusbar.addEventListener('mousedown', function (e) {
     _qsDragMoved = false;
-    if (qsPanelDrag && !isLocked()) qsPanelDrag.start(e.clientY, blockIframe);
+    if (qsPanelDrag && !isLocked() && !isInOobe()) qsPanelDrag.start(e.clientY, blockIframe);
   });
   statusbar.addEventListener('touchstart', function (e) {
     _qsDragMoved = false;
-    if (qsPanelDrag && !isLocked()) qsPanelDrag.start(e.touches[0].clientY, blockIframe);
+    if (qsPanelDrag && !isLocked() && !isInOobe()) qsPanelDrag.start(e.touches[0].clientY, blockIframe);
   }, { passive: true });
 
   statusbar.addEventListener('click', function () {
@@ -527,16 +527,19 @@
     if (qsOpen) closeQsPanel(); else openQsPanel();
   });
 
+  /* Block click-through on QS panel */
+  qsPanel.addEventListener('click', function (e) { e.stopPropagation(); });
+
   /* Panel: drag up to close */
   qsPanel.addEventListener('mousedown', function (e) {
     if (e.target.closest('button, input, .qs-tile, .qs-notif-card')) return;
     _qsDragMoved = false;
-    if (qsPanelDrag && !isLocked()) qsPanelDrag.start(e.clientY, blockIframe);
+    if (qsPanelDrag && !isLocked() && !isInOobe()) qsPanelDrag.start(e.clientY, blockIframe);
   });
   qsPanel.addEventListener('touchstart', function (e) {
     if (e.target.closest('button, input, .qs-tile, .qs-notif-card')) return;
     _qsDragMoved = false;
-    if (qsPanelDrag && !isLocked()) qsPanelDrag.start(e.touches[0].clientY, blockIframe);
+    if (qsPanelDrag && !isLocked() && !isInOobe()) qsPanelDrag.start(e.touches[0].clientY, blockIframe);
   }, { passive: true });
 
   /* Global move/end listeners */
@@ -560,13 +563,16 @@
       var qs = tile.dataset.qs;
       var on = tile.classList.contains('active');
       syslog('QS: ' + qs + ' ' + (on ? 'ON' : 'OFF'), 'sys');
-      /* Route ALL QS toggles through services */
-      if (qs === 'wifi') ZylServices.handleRequest('settings', 'update', { category: 'wifi', key: 'enabled', value: on });
-      if (qs === 'bt') ZylServices.handleRequest('settings', 'update', { category: 'bluetooth', key: 'enabled', value: on });
-      if (qs === 'silent') ZylServices.handleRequest('audio', 'setSilentMode', { enabled: on });
-      if (qs === 'airplane') ZylServices.handleRequest('settings', 'update', { category: 'network', key: 'airplaneMode', value: on });
-      if (qs === 'rotate') ZylServices.handleRequest('settings', 'update', { category: 'display', key: 'autoRotate', value: on });
-      if (qs === 'flashlight') ZylServices.handleRequest('settings', 'update', { category: 'display', key: 'flashlight', value: on });
+      /* Route ALL QS toggles through services + apply side effects */
+      var categoryMap = { wifi: 'wifi', bt: 'bluetooth', airplane: 'network', rotate: 'display', flashlight: 'display' };
+      var keyMap = { wifi: 'enabled', bt: 'enabled', airplane: 'airplaneMode', rotate: 'autoRotate', flashlight: 'flashlight' };
+      if (qs === 'silent') {
+        ZylServices.handleRequest('audio', 'setSilentMode', { enabled: on });
+        _systemSilentMode = on;
+      } else if (categoryMap[qs]) {
+        ZylServices.handleRequest('settings', 'update', { category: categoryMap[qs], key: keyMap[qs], value: on });
+        applySettingSideEffect(categoryMap[qs], keyMap[qs], on);
+      }
     });
   });
 
@@ -583,7 +589,15 @@
 
   /* 패널 핸들 / 백드롭 클릭으로 닫기 */
   if (qsPanel && qsPanel.querySelector('.qs-handle')) qsPanel.querySelector('.qs-handle').addEventListener('click', closeQsPanel);
-  if (qsBackdrop) qsBackdrop.addEventListener('click', closeQsPanel);
+  if (qsBackdrop) {
+    qsBackdrop.addEventListener('click', function (e) {
+      e.stopPropagation();
+      closeQsPanel();
+    });
+    /* Block ALL touch/mouse events from reaching app below */
+    qsBackdrop.addEventListener('touchstart', function (e) { e.stopPropagation(); }, { passive: false });
+    qsBackdrop.addEventListener('mousedown', function (e) { e.stopPropagation(); });
+  }
 
   /* ═══ 제어 패널 ═══ */
   document.getElementById('btn-power').addEventListener('click', powerToggle);

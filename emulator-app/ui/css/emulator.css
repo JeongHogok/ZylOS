@@ -87,17 +87,21 @@
 /* QS backdrop — darkens behind panel + blocks touch */
 #qs-backdrop {
   position: absolute; inset: 0; z-index: 140;
-  background: rgba(0,0,0,0.4);
+  background: rgba(0,0,0,0.5);
   opacity: 0; pointer-events: none;
   transition: opacity 0.3s;
 }
 #qs-backdrop.qs-backdrop-show {
   opacity: 1; pointer-events: auto;
+  /* Ensure backdrop blocks ALL clicks to app below */
+  touch-action: none;
 }
 
 #qs-panel {
   position: absolute; top: 0; left: 0; right: 0;
   z-index: 150; overflow: hidden;
+  /* Prevent click-through to app below */
+  touch-action: pan-y;
   background: rgba(10,10,30,0.97);
   backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px);
   border-radius: 0 0 24px 24px;
