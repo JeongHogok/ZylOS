@@ -822,11 +822,47 @@
       return;
     }
 
+    /* Check if this is a system app — system apps have locked permissions */
+    var SYSTEM_APPS = [
+      'com.zylos.home', 'com.zylos.lockscreen', 'com.zylos.statusbar',
+      'com.zylos.oobe', 'com.zylos.settings', 'com.zylos.browser',
+      'com.zylos.files', 'com.zylos.terminal', 'com.zylos.camera',
+      'com.zylos.gallery', 'com.zylos.music', 'com.zylos.clock',
+      'com.zylos.calc', 'com.zylos.notes', 'com.zylos.weather',
+      'com.zylos.store', 'com.zylos.keyboard'
+    ];
+    var isSystem = SYSTEM_APPS.indexOf(app.id) !== -1;
+
+    if (isSystem) {
+      permList.innerHTML =
+        '<div class="setting-item no-tap">' +
+          '<span class="setting-label" style="font-weight:600">' + (t('settings.permissions') || 'Permissions') + '</span>' +
+        '</div>' +
+        '<div class="setting-item no-tap">' +
+          '<span class="setting-label" style="opacity:0.5;font-size:13px">' + (t('settings.system_app_notice') || 'System app \u2014 all permissions granted') + '</span>' +
+        '</div>';
+      /* Show all permissions as locked ON */
+      perms.forEach(function (perm) {
+        var row = document.createElement('div');
+        row.className = 'setting-item no-tap';
+        var labelKey = PERM_LABELS[perm] || '';
+        var label = labelKey ? t(labelKey) : perm;
+        row.innerHTML =
+          '<span class="setting-label">' + label + '</span>' +
+          '<label class="toggle">' +
+            '<input type="checkbox" checked disabled>' +
+            '<span class="toggle-slider"></span>' +
+          '</label>';
+        permList.appendChild(row);
+      });
+      return;
+    }
+
     permList.innerHTML = '<div class="setting-item no-tap"><span class="setting-label" style="font-weight:600">' + (t('settings.permissions') || 'Permissions') + '</span></div>';
     var appPerms = (appPermissions[app.id]) || {};
 
     perms.forEach(function (perm) {
-      var granted = appPerms[perm] !== false; /* default granted */
+      var granted = appPerms[perm] !== false;
       var row = document.createElement('div');
       row.className = 'setting-item no-tap';
       var labelKey = PERM_LABELS[perm] || '';
@@ -841,7 +877,6 @@
         var checked = this.checked;
         if (!appPermissions[app.id]) appPermissions[app.id] = {};
         appPermissions[app.id][perm] = checked;
-        /* Serialize as comma-separated revoked list for settings backend */
         var revoked = [];
         var declared = app.permissions || [];
         declared.forEach(function (p) {
