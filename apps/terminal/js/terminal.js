@@ -483,34 +483,45 @@
     scrollToBottom();
   }
 
-  /* ─── Backend Execution (Tauri invoke via parent postMessage) ─── */
+  /* ─── Backend Execution (postMessage IPC → 에뮬레이터 서비스 라우터) ─── */
+  var _pendingExec = null;
+
   function execOnBackend(command) {
-    /* Tauri invoke를 부모 프레임을 통해 호출 */
-    if (typeof window.__TAURI__ !== 'undefined' && window.__TAURI__.core) {
-      window.__TAURI__.core.invoke('exec_command', { command: command }).then(function (result) {
+    _pendingExec = command;
+    window.parent.postMessage(JSON.stringify({
+      type: 'service.request',
+      service: 'terminal',
+      method: 'exec',
+      params: { command: command }
+    }), '*');
+  }
+
+  /* 에뮬레이터 서비스 응답 수신 */
+  window.addEventListener('message', function (e) {
+    if (e.source !== window.parent) return;
+    try {
+      var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+      if (!msg || msg.type !== 'service.response') return;
+
+      if (msg.service === 'terminal' && msg.method === 'exec' && msg.data) {
+        var result = msg.data;
         if (result.stdout) addLine(result.stdout.replace(/\n$/, ''), 'line-output');
         if (result.stderr) addLine(result.stderr.replace(/\n$/, ''), 'line-error');
         if (result.exit_code !== 0 && !result.stdout && !result.stderr) {
           addLine('Exit code: ' + result.exit_code, 'line-error');
         }
         scrollToBottom();
-      }).catch(function (err) {
-        var msg = String(err || 'execution failed');
-        if (msg.indexOf('permission') >= 0 || msg.indexOf('denied') >= 0) {
-          addLine(command.split(' ')[0] + ': permission denied', 'line-error');
-        } else if (msg.indexOf('not found') >= 0) {
-          addLine(command.split(' ')[0] + ': command not found', 'line-error');
-        } else {
-          addLine('error: ' + msg, 'line-error');
-        }
-        scrollToBottom();
-      });
-    } else {
-      /* Tauri 미사용 시 (브라우저 에뮬레이터) */
-      addLine(command.split(' ')[0] + ': command not found', 'line-error');
-      scrollToBottom();
-    }
-  }
+        _pendingExec = null;
+      }
+
+      /* fs 응답 (getAllData — 시뮬레이션 명령용) */
+      if (msg.service === 'fs' && msg.method === 'getAllData' && msg.data) {
+        fileSystem = msg.data.tree || {};
+        unixView = msg.data.unixTree || {};
+        fileContents = msg.data.fileContents || {};
+      }
+    } catch (err) { /* ignore */ }
+  });
 
   /* ─── Init ─── */
   showWelcome();

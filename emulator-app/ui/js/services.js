@@ -49,6 +49,18 @@ var ZylServices = (function () {
       }).catch(function () {
         return { tree: { '/': [] }, unixTree: {}, fileContents: {} };
       });
+    },
+    writeFile: function (params) {
+      return tauriInvoke('fs_write_file', { path: params.path, content: params.content });
+    },
+    mkdir: function (params) {
+      return tauriInvoke('fs_mkdir', { path: params.path });
+    },
+    remove: function (params) {
+      return tauriInvoke('fs_remove', { path: params.path });
+    },
+    rename: function (params) {
+      return tauriInvoke('fs_rename', { old_path: params.oldPath, new_path: params.newPath });
     }
   };
 
@@ -204,7 +216,11 @@ var ZylServices = (function () {
       getDirectory:     function (p) { return fs.getDirectory(p.path); },
       getUnixDirectory: function (p) { return fs.getUnixDirectory(p.path); },
       getFileContent:   function (p) { return fs.getFileContent(p.path); },
-      getAllData:        function ()  { return fs.getAllData(); }
+      getAllData:        function ()  { return fs.getAllData(); },
+      writeFile:        function (p) { return fs.writeFile(p); },
+      mkdir:            function (p) { return fs.mkdir(p); },
+      remove:           function (p) { return fs.remove(p); },
+      rename:           function (p) { return fs.rename(p); }
     },
     device: {
       getInfo: function () { return deviceInfo.getInfo(); }
@@ -220,6 +236,9 @@ var ZylServices = (function () {
     settings: {
       get:    function (p) { return settings.getSetting(p.category); },
       update: function (p) { return settings.updateSetting(p.category, p.key, p.value); }
+    },
+    terminal: {
+      exec: function (p) { return tauriInvoke('exec_command', { command: p.command }); }
     }
   };
 
