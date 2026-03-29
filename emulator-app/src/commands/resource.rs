@@ -32,7 +32,12 @@ pub async fn reserve_resources(
     // 2. 디스크 이미지 마운트
     let mount_point = disk_image::mount_image(&data_dir, &config.profile_id, &image_path)?;
 
-    // 3. 메모리 제한 적용 (실패해도 계속 진행)
+    // 3. 기본 디렉토리 구조 생성
+    for dir in &["Documents", "Downloads", "Pictures", "Music", "Videos"] {
+        let _ = std::fs::create_dir_all(mount_point.join(dir));
+    }
+
+    // 4. 메모리 제한 적용 (실패해도 계속 진행)
     if let Err(e) = memory_limit::apply_memory_limit(config.ram_mb) {
         log::warn!("Memory limit not applied (non-fatal): {}", e);
     }

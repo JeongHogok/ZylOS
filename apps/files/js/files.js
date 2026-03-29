@@ -38,11 +38,13 @@
 
       if (msg.service === 'fs' && msg.data) {
         if (msg.method === 'getAllData') {
-          fileSystem = msg.data.tree || {};
+          /* Rust fs_read_dir 응답을 앱 형식으로 변환 */
+          var rootEntries = msg.data.tree && msg.data.tree['/'] ? msg.data.tree['/'] : msg.data;
+          fileSystem['/'] = normalizeEntries(Array.isArray(rootEntries) ? rootEntries : []);
           serviceReady = true;
           renderFiles();
         } else if (msg.method === 'getDirectory' && msg.params && msg.params.path) {
-          fileSystem[msg.params.path] = msg.data || [];
+          fileSystem[msg.params.path] = normalizeEntries(msg.data || []);
           if (currentPath === msg.params.path) renderFiles();
         }
       }
@@ -52,6 +54,24 @@
       }
     } catch (err) { /* ignore */ }
   });
+
+  /* Rust FileEntry → Files 앱 형식 변환
+     Rust: {name, is_dir, size, modified, file_type}
+     App:  {name, type, date, size} */
+  function normalizeEntries(entries) {
+    if (!Array.isArray(entries)) return [];
+    return entries.map(function (e) {
+      /* 이미 앱 형식이면 그대로 */
+      if (e.type && e.date) return e;
+      /* Rust FileEntry → 앱 형식 */
+      return {
+        name: e.name,
+        type: e.is_dir ? 'folder' : (e.file_type || 'unknown'),
+        date: e.modified || '',
+        size: e.is_dir ? null : (e.size || 0)
+      };
+    });
+  }
 
   function updateStorageBar(data) {
     var valueEl = document.getElementById('storage-value');
@@ -70,6 +90,12 @@
   var currentPath = '/';
   var currentSort = 'name';
   var contextTarget = null;
+
+  function escapeHtml(str) {
+    var d = document.createElement('div');
+    d.appendChild(document.createTextNode(str || ''));
+    return d.innerHTML;
+  }
 
   /* ─── DOM ─── */
   var headerTitle = document.getElementById('header-title');
@@ -203,7 +229,7 @@
       el.innerHTML =
         '<div class="file-icon ' + getIconClass(file.type) + '">' + getIconSvg(file.type) + '</div>' +
         '<div class="file-info">' +
-          '<span class="file-name">' + file.name + '</span>' +
+          '<span class="file-name">' + escapeHtml(file.name) + '</span>' +
           '<span class="file-meta">' + meta + '</span>' +
         '</div>' +
         '<button class="file-more" aria-label="More">' + icons.more + '</button>';
