@@ -32,17 +32,9 @@ window.ZylKeyboard = (function () {
 
   /* ─── Audio Context (lazy) ─── */
 
-  var _audioCtx = null;
-
-  function getAudioContext() {
-    if (!_audioCtx) {
-      var Ctor = window.AudioContext || window.webkitAudioContext;
-      if (Ctor) {
-        _audioCtx = new Ctor();
-      }
-    }
-    return _audioCtx;
-  }
+  /* Audio/vibration feedback is handled by the compositor via audio service.
+     Keyboard does NOT directly access AudioContext or navigator.vibrate.
+     See emulator.js keyboard init callback → audio.playKeyClick service. */
 
   /* ─── Language Labels ─── */
 
@@ -145,34 +137,8 @@ window.ZylKeyboard = (function () {
     return label;
   }
 
-  /* ─── Feedback ─── */
-
-  function playClickSound() {
-    var ctx = getAudioContext();
-    if (!ctx) return;
-    try {
-      var osc = ctx.createOscillator();
-      var gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = 600;
-      gain.gain.value = 0.08;
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + 0.05);
-    } catch (e) {
-      /* silent fail on audio error */
-    }
-  }
-
-  function triggerFeedback() {
-    if (_soundEnabled) {
-      playClickSound();
-    }
-    if (_vibrationEnabled && navigator.vibrate) {
-      navigator.vibrate(10);
-    }
-  }
+  /* Feedback is delegated to compositor → audio service.
+     No direct hardware access from keyboard app. */
 
   /* ─── Language ─── */
 
@@ -255,7 +221,7 @@ window.ZylKeyboard = (function () {
   /* ─── Key Handler ─── */
 
   function handleKey(label) {
-    triggerFeedback();
+    /* Feedback handled by compositor via audio service — not here */
 
     /* Globe key — cycle language */
     if (label === '\uD83C\uDF10') {
