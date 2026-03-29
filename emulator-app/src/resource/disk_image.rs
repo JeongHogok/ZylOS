@@ -102,11 +102,9 @@ pub fn create_image(data_dir: &Path, profile_id: &str, size_gb: u32) -> Result<P
                 "-size",
                 &format!("{}g", size_gb),
                 "-fs",
-                "APFS",
-                "-type",
-                "SPARSE",
+                "HFS+",
                 "-volname",
-                &format!("ZylOS-{}", profile_id),
+                &format!("ZylData-{}", profile_id),
             ])
             .arg(&image_path)
             .status()
@@ -171,7 +169,7 @@ pub fn mount_image(data_dir: &Path, profile_id: &str, image_path: &Path) -> Resu
     #[cfg(target_os = "macos")]
     {
         let output = Command::new("hdiutil")
-            .args(["attach", "-mountpoint"])
+            .args(["attach", "-nobrowse", "-mountpoint"])
             .arg(&mount_point)
             .arg(image_path)
             .output()
