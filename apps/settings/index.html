@@ -202,7 +202,7 @@
     </div>
     <div id="wifi-off-msg" class="settings-group hidden">
       <div class="setting-item no-tap">
-        <span class="setting-label" style="opacity:0.5">Wi-Fi is off</span>
+        <span class="setting-label" style="opacity:0.5" data-i18n="settings.wifi_off">Wi-Fi is off</span>
       </div>
     </div>
     <div class="settings-group">
@@ -228,7 +228,7 @@
     </div>
     <div id="bt-off-msg" class="settings-group hidden">
       <div class="setting-item no-tap">
-        <span class="setting-label" style="opacity:0.5">Bluetooth is off</span>
+        <span class="setting-label" style="opacity:0.5" data-i18n="settings.bt_off">Bluetooth is off</span>
       </div>
     </div>
     <div class="settings-group">
@@ -245,21 +245,21 @@
   <div id="page-sound" class="sub-page hidden">
     <div class="settings-group">
       <div class="setting-item no-tap">
-        <span class="setting-label">Media Volume</span>
+        <span class="setting-label" data-i18n="settings.media_volume">Media Volume</span>
         <input type="range" class="slider" id="media-volume" min="0" max="100" value="70">
       </div>
       <div class="setting-item no-tap">
-        <span class="setting-label">Notification Volume</span>
+        <span class="setting-label" data-i18n="settings.notif_volume">Notification Volume</span>
         <input type="range" class="slider" id="notif-volume" min="0" max="100" value="80">
       </div>
       <div class="setting-item no-tap">
-        <span class="setting-label">Alarm Volume</span>
+        <span class="setting-label" data-i18n="settings.alarm_volume">Alarm Volume</span>
         <input type="range" class="slider" id="alarm-volume" min="0" max="100" value="90">
       </div>
     </div>
     <div class="settings-group">
       <div class="setting-item no-tap">
-        <span class="setting-label">Vibration</span>
+        <span class="setting-label" data-i18n="settings.vibration">Vibration</span>
         <label class="toggle">
           <input type="checkbox" id="vibration-toggle" checked>
           <span class="toggle-slider"></span>
@@ -272,7 +272,7 @@
   <div id="page-wallpaper" class="sub-page hidden">
     <div class="settings-group">
       <div class="setting-item no-tap">
-        <span class="setting-label">Select Wallpaper</span>
+        <span class="setting-label" data-i18n="settings.select_wallpaper">Select Wallpaper</span>
       </div>
       <div id="wallpaper-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:12px 16px;">
         <!-- dynamically populated -->
@@ -284,11 +284,11 @@
   <div id="page-security" class="sub-page hidden">
     <div class="settings-group">
       <div class="setting-item" id="lock-type-item">
-        <span class="setting-label">Screen Lock</span>
+        <span class="setting-label" data-i18n="settings.screen_lock">Screen Lock</span>
         <span class="setting-value" id="lock-type-value">PIN</span>
       </div>
       <div class="setting-item no-tap">
-        <span class="setting-label">Fingerprint</span>
+        <span class="setting-label" data-i18n="settings.fingerprint">Fingerprint</span>
         <label class="toggle">
           <input type="checkbox" id="fingerprint-toggle">
           <span class="toggle-slider"></span>
@@ -297,15 +297,15 @@
     </div>
     <div id="pin-change-dialog" class="settings-group hidden">
       <div class="setting-item no-tap">
-        <span class="setting-label">Current PIN</span>
+        <span class="setting-label" data-i18n="settings.current_pin">Current PIN</span>
         <input type="password" id="current-pin-input" maxlength="4" inputmode="numeric" style="width:80px;padding:6px 10px;border:1px solid rgba(255,255,255,0.2);border-radius:8px;background:rgba(255,255,255,0.08);color:#fff;font-size:16px;text-align:center;outline:none;">
       </div>
       <div class="setting-item no-tap">
-        <span class="setting-label">New PIN</span>
+        <span class="setting-label" data-i18n="settings.new_pin">New PIN</span>
         <input type="password" id="new-pin-input" maxlength="4" inputmode="numeric" style="width:80px;padding:6px 10px;border:1px solid rgba(255,255,255,0.2);border-radius:8px;background:rgba(255,255,255,0.08);color:#fff;font-size:16px;text-align:center;outline:none;">
       </div>
       <div style="padding:8px 16px 12px;">
-        <button id="pin-change-btn" style="width:100%;padding:10px;border:none;border-radius:8px;background:#4a9eff;color:#fff;font-size:14px;font-weight:600;cursor:pointer;">Change</button>
+        <button id="pin-change-btn" data-i18n="settings.change" style="width:100%;padding:10px;border:none;border-radius:8px;background:#4a9eff;color:#fff;font-size:14px;font-weight:600;cursor:pointer;">Change</button>
         <div id="pin-change-msg" style="margin-top:8px;font-size:12px;text-align:center;min-height:16px;"></div>
       </div>
     </div>
