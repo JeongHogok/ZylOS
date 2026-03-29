@@ -15,12 +15,18 @@
   var serviceReady = false;
 
   /* Request filesystem data from central service */
-  function requestFileSystem() {
+  function requestService(service, method, params) {
     window.parent.postMessage(JSON.stringify({
       type: 'service.request',
-      service: 'fs',
-      method: 'getAllData'
+      service: service,
+      method: method,
+      params: params || {}
     }), '*');
+  }
+
+  function requestFileSystem() {
+    requestService('fs', 'getAllData');
+    requestService('storage', 'getFormatted');
   }
 
   /* Listen for service responses */
@@ -29,6 +35,7 @@
     try {
       var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
       if (!msg || msg.type !== 'service.response') return;
+
       if (msg.service === 'fs' && msg.data) {
         if (msg.method === 'getAllData') {
           fileSystem = msg.data.tree || {};
@@ -39,8 +46,23 @@
           if (currentPath === msg.params.path) renderFiles();
         }
       }
+
+      if (msg.service === 'storage' && msg.method === 'getFormatted' && msg.data) {
+        updateStorageBar(msg.data);
+      }
     } catch (err) { /* ignore */ }
   });
+
+  function updateStorageBar(data) {
+    var valueEl = document.getElementById('storage-value');
+    var fillEl = document.getElementById('storage-fill');
+    if (valueEl && data) {
+      valueEl.textContent = (data.used || '0 B') + ' / ' + (data.total || '0 B');
+    }
+    if (fillEl && data) {
+      fillEl.style.width = Math.min(data.percent || 0, 100) + '%';
+    }
+  }
 
   requestFileSystem();
 
