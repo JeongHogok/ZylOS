@@ -650,9 +650,13 @@
       var qs = tile.dataset.qs;
       var on = tile.classList.contains('active');
       syslog('QS: ' + qs + ' ' + (on ? 'ON' : 'OFF'), 'sys');
-      /* 서비스 연동 */
+      /* Route ALL QS toggles through services */
       if (qs === 'wifi') ZylServices.handleRequest('settings', 'update', { category: 'wifi', key: 'enabled', value: on });
       if (qs === 'bt') ZylServices.handleRequest('settings', 'update', { category: 'bluetooth', key: 'enabled', value: on });
+      if (qs === 'silent') ZylServices.handleRequest('audio', 'setSilentMode', { enabled: on });
+      if (qs === 'airplane') ZylServices.handleRequest('settings', 'update', { category: 'network', key: 'airplaneMode', value: on });
+      if (qs === 'rotate') ZylServices.handleRequest('settings', 'update', { category: 'display', key: 'autoRotate', value: on });
+      if (qs === 'flashlight') ZylServices.handleRequest('settings', 'update', { category: 'display', key: 'flashlight', value: on });
     });
   });
 
@@ -928,6 +932,7 @@
   /* ── Apply real side effects when a setting changes ── */
   /* ─── 설정 변경 → 에뮬레이터에 실제 반영 ─── */
   var _currentPin = '';
+  var _systemSilentMode = false;
   var _currentWallpaper = 'default';
   var _wallpaperGradients = {
     'default':         'linear-gradient(160deg, #0a0a1a 0%, #0d1b2a 40%, #1b2838 100%)',
@@ -945,8 +950,10 @@
       syslog('WiFi ' + (value ? 'ON' : 'OFF'), 'sys');
     }
 
-    /* ── Bluetooth ── */
+    /* ── Bluetooth: statusbar icon opacity ── */
     if (category === 'bluetooth' && key === 'enabled') {
+      var sbIcos = document.querySelectorAll('#emu-statusbar .sb-ico');
+      if (sbIcos[1]) sbIcos[1].style.opacity = value ? '0.85' : '0.15';
       syslog('Bluetooth ' + (value ? 'ON' : 'OFF'), 'sys');
     }
 
@@ -973,6 +980,7 @@
 
     /* ── Sound ── */
     if (category === 'sound') {
+      if (key === 'silentMode') _systemSilentMode = !!value;
       syslog('Sound: ' + key + ' \u2192 ' + value, 'sys');
     }
 
@@ -1142,10 +1150,12 @@
     ZylKeyboard.init(kbContainer, function (key) {
       /* Forward key to current app iframe */
       broadcastToCurrentApp('input.key', { key: key });
-      /* Keypress feedback — sound and vibration controlled by keyboard settings */
+      /* Keypress feedback — respects keyboard settings AND system silent mode */
       try {
         var kbSoundOn = ZylKeyboard.getSoundEnabled ? ZylKeyboard.getSoundEnabled() : true;
         var kbVibOn = ZylKeyboard.getVibrationEnabled ? ZylKeyboard.getVibrationEnabled() : true;
+        /* System silent mode overrides keyboard sound */
+        if (_systemSilentMode) kbSoundOn = false;
         if (kbSoundOn) {
           var ctx = new (window.AudioContext || window.webkitAudioContext)();
           var osc = ctx.createOscillator();
