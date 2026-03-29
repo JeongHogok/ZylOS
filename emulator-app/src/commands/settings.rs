@@ -104,7 +104,10 @@ fn default_settings() -> serde_json::Value {
             "mediaVolume": 70,
             "notifVolume": 80,
             "alarmVolume": 90,
-            "vibration": true
+            "systemVolume": 50,
+            "ringtoneVolume": 80,
+            "vibration": true,
+            "silentMode": false
         },
         "security": {
             "lockType": "swipe",

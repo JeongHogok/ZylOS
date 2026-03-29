@@ -29,6 +29,7 @@ window.ZylSystemServices = (function () {
         if (s.notifVolume !== undefined) audioState.notifVolume = parseInt(s.notifVolume, 10);
         if (s.alarmVolume !== undefined) audioState.alarmVolume = parseInt(s.alarmVolume, 10);
         if (s.ringtoneVolume !== undefined) audioState.ringtoneVolume = parseInt(s.ringtoneVolume, 10);
+        if (s.systemVolume !== undefined) audioState.systemVolume = parseInt(s.systemVolume, 10);
         if (s.vibration !== undefined) audioState.vibration = !!s.vibration;
         if (s.silentMode !== undefined) audioState.silentMode = !!s.silentMode;
       }
@@ -306,7 +307,7 @@ window.ZylSystemServices = (function () {
   /* -- Audio State — loaded from settings on boot -- */
   var audioState = {
     mediaVolume: 70, notifVolume: 80, alarmVolume: 90,
-    ringtoneVolume: 80, vibration: true, silentMode: false
+    ringtoneVolume: 80, systemVolume: 50, vibration: true, silentMode: false
   };
 
   /* -- System apps list (used by appstore/sandbox) -- */
@@ -713,6 +714,7 @@ window.ZylSystemServices = (function () {
           notifVolume: audioState.notifVolume,
           alarmVolume: audioState.alarmVolume,
           ringtoneVolume: audioState.ringtoneVolume,
+          systemVolume: audioState.systemVolume,
           vibration: audioState.vibration,
           silentMode: audioState.silentMode
         });
@@ -785,7 +787,7 @@ window.ZylSystemServices = (function () {
           var ctx = new (window.AudioContext || window.webkitAudioContext)();
           var osc = ctx.createOscillator();
           var g = ctx.createGain();
-          g.gain.value = 0.05;
+          g.gain.value = (audioState.systemVolume / 100) * 0.1;
           osc.type = 'sine';
           osc.frequency.value = 800;
           osc.connect(g);
