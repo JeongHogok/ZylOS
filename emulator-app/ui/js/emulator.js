@@ -531,16 +531,32 @@
     qsDragEnd(e.changedTouches ? e.changedTouches[0].clientY : 0);
   });
 
-  /* 퀵설정 타일 토글 */
+  /* 퀵설정 타일 토글 + 서비스 호출 */
   document.querySelectorAll('.qs-tile').forEach(function (tile) {
     tile.addEventListener('click', function () {
       tile.classList.toggle('active');
-      syslog('QS: ' + tile.dataset.qs + ' ' + (tile.classList.contains('active') ? 'ON' : 'OFF'), 'sys');
+      var qs = tile.dataset.qs;
+      var on = tile.classList.contains('active');
+      syslog('QS: ' + qs + ' ' + (on ? 'ON' : 'OFF'), 'sys');
+      /* 서비스 연동 */
+      if (qs === 'wifi') ZylServices.handleRequest('settings', 'update', { category: 'wifi', key: 'enabled', value: on });
+      if (qs === 'bt') ZylServices.handleRequest('settings', 'update', { category: 'bluetooth', key: 'enabled', value: on });
     });
   });
 
+  /* 밝기 슬라이더 → 화면 밝기 반영 */
+  var qsBrightness = document.getElementById('qs-brightness');
+  if (qsBrightness) {
+    qsBrightness.addEventListener('input', function () {
+      var pct = parseInt(qsBrightness.value, 10);
+      var screen = document.getElementById('device-screen');
+      if (screen) screen.style.filter = 'brightness(' + (pct / 100) + ')';
+      syslog('Brightness: ' + pct + '%', 'sys');
+    });
+  }
+
   /* 패널 핸들 / 백드롭 클릭으로 닫기 */
-  qsPanel.querySelector('.qs-handle').addEventListener('click', closeQsPanel);
+  if (qsPanel && qsPanel.querySelector('.qs-handle')) qsPanel.querySelector('.qs-handle').addEventListener('click', closeQsPanel);
   if (qsBackdrop) qsBackdrop.addEventListener('click', closeQsPanel);
 
   /* ═══ 제어 패널 ═══ */
