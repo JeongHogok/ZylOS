@@ -362,6 +362,15 @@ window.ZylKeyboard = (function () {
     _onKey = callback;
   }
 
+  /* ─── Sound & Vibration state ─── */
+  var _soundEnabled = true;
+  var _vibrationEnabled = true;
+
+  function setSoundEnabled(v) { _soundEnabled = !!v; }
+  function setVibrationEnabled(v) { _vibrationEnabled = !!v; }
+  function getSoundEnabled() { return _soundEnabled; }
+  function getVibrationEnabled() { return _vibrationEnabled; }
+
   return {
     init: init,
     show: show,
@@ -374,6 +383,8 @@ window.ZylKeyboard = (function () {
     setKeyHeight: setKeyHeight,
     setSoundEnabled: setSoundEnabled,
     setVibrationEnabled: setVibrationEnabled,
+    getSoundEnabled: getSoundEnabled,
+    getVibrationEnabled: getVibrationEnabled,
     render: render
   };
 })();

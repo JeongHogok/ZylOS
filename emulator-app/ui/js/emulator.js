@@ -1133,6 +1133,26 @@
     ZylKeyboard.init(kbContainer, function (key) {
       /* Forward key to current app iframe */
       broadcastToCurrentApp('input.key', { key: key });
+      /* Keypress feedback — sound and vibration controlled by keyboard settings */
+      try {
+        var kbSoundOn = ZylKeyboard.getSoundEnabled ? ZylKeyboard.getSoundEnabled() : true;
+        var kbVibOn = ZylKeyboard.getVibrationEnabled ? ZylKeyboard.getVibrationEnabled() : true;
+        if (kbSoundOn) {
+          var ctx = new (window.AudioContext || window.webkitAudioContext)();
+          var osc = ctx.createOscillator();
+          var g = ctx.createGain();
+          g.gain.value = 0.05;
+          osc.type = 'sine';
+          osc.frequency.value = 800;
+          osc.connect(g);
+          g.connect(ctx.destination);
+          osc.start();
+          osc.stop(ctx.currentTime + 0.03);
+        }
+        if (kbVibOn && navigator.vibrate) {
+          navigator.vibrate(8);
+        }
+      } catch (e) { /* Web Audio unavailable */ }
     });
 
     /* Detect input focus inside app iframe */
