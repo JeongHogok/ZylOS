@@ -114,11 +114,16 @@ pub fn create_image(data_dir: &Path, profile_id: &str, size_gb: u32) -> Result<P
             return Err("Failed to create disk image via hdiutil".into());
         }
 
-        // hdiutil은 .sparseimage 확장자를 붙일 수 있음
-        let sparse_path = image_path.with_extension("img.sparseimage");
-        if sparse_path.exists() && !image_path.exists() {
-            fs::rename(&sparse_path, &image_path)
-                .map_err(|e| format!("Failed to rename image: {}", e))?;
+        // hdiutil은 .dmg 또는 .sparseimage 확장자를 자동 추가함
+        if !image_path.exists() {
+            for ext in &["img.dmg", "img.sparseimage"] {
+                let auto_path = image_path.with_extension(ext);
+                if auto_path.exists() {
+                    fs::rename(&auto_path, &image_path)
+                        .map_err(|e| format!("Failed to rename image: {}", e))?;
+                    break;
+                }
+            }
         }
     }
 
