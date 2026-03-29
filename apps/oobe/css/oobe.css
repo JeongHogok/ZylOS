@@ -18,9 +18,20 @@ body { font-family: -apple-system, 'Noto Sans KR', sans-serif; background: #0a0a
 h1 { font-size: 28px; font-weight: 300; }
 h2 { font-size: 22px; font-weight: 400; }
 p { font-size: 15px; opacity: 0.6; text-align: center; max-width: 300px; }
-.oobe-btn { width: 280px; padding: 14px; border: none; border-radius: 14px; background: #4a9eff; color: white; font-size: 16px; font-weight: 500; cursor: pointer; transition: transform 0.1s; }
+/* ─── Step Action Row (Back + Primary side by side) ─── */
+.oobe-step-actions { display: flex; gap: 10px; width: 280px; margin-top: 4px; }
+.oobe-step-actions .oobe-btn { flex: 1; width: auto; }
+
+/* ─── Primary Button ─── */
+.oobe-btn { width: 280px; padding: 14px; border: none; border-radius: 14px; background: #4a9eff; color: white; font-size: 16px; font-weight: 500; cursor: pointer; transition: transform 0.1s, opacity 0.15s; }
 .oobe-btn:active { transform: scale(0.97); }
-.oobe-btn-skip { background: none; border: none; color: rgba(255,255,255,0.4); font-size: 14px; cursor: pointer; padding: 8px; }
+
+/* ─── Back Button (subtle, left-aligned in action row) ─── */
+.oobe-btn-back { flex: 0 0 auto; width: 56px; padding: 14px 0; border: 1px solid rgba(255,255,255,0.12); border-radius: 14px; background: transparent; color: rgba(255,255,255,0.5); font-size: 14px; cursor: pointer; transition: background 0.15s, color 0.15s; }
+.oobe-btn-back:active { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.8); }
+
+/* ─── Skip/Later Link ─── */
+.oobe-btn-skip { background: none; border: none; color: rgba(255,255,255,0.4); font-size: 14px; cursor: pointer; padding: 8px; margin-top: -4px; }
 .oobe-list { width: 100%; max-width: 320px; display: flex; flex-direction: column; gap: 6px; max-height: 250px; overflow-y: auto; }
 .oobe-option { padding: 14px 16px; background: rgba(255,255,255,0.06); border-radius: 12px; cursor: pointer; transition: background 0.15s; border: 2px solid transparent; }
 .oobe-option:active { background: rgba(255,255,255,0.12); }

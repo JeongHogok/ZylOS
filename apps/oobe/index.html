@@ -28,7 +28,7 @@
         <div class="oobe-option" data-lang="es">Español</div>
       </div>
       <div class="oobe-step-actions">
-        <button class="oobe-btn-back" onclick="prevStep()" data-i18n="oobe.back">Back</button>
+        <button class="oobe-btn-back" onclick="prevStep()" aria-label="Back">&larr;</button>
         <button class="oobe-btn" onclick="nextStep()" data-i18n="oobe.next">Next</button>
       </div>
     </div>
@@ -40,7 +40,7 @@
         <div class="oobe-option" data-i18n="oobe.wifi_searching">Searching for networks...</div>
       </div>
       <div class="oobe-step-actions">
-        <button class="oobe-btn-back" onclick="prevStep()" data-i18n="oobe.back">Back</button>
+        <button class="oobe-btn-back" onclick="prevStep()" aria-label="Back">&larr;</button>
         <button class="oobe-btn" onclick="nextStep()" data-i18n="oobe.skip">Skip</button>
       </div>
     </div>
@@ -53,7 +53,7 @@
       <input type="password" id="pin-confirm" maxlength="4" placeholder="Confirm PIN" inputmode="numeric" pattern="[0-9]*">
       <div id="pin-msg"></div>
       <div class="oobe-step-actions">
-        <button class="oobe-btn-back" onclick="prevStep()" data-i18n="oobe.back">Back</button>
+        <button class="oobe-btn-back" onclick="prevStep()" aria-label="Back">&larr;</button>
         <button class="oobe-btn" onclick="setupPin()" data-i18n="oobe.pin_set">Set</button>
       </div>
       <button class="oobe-btn-skip" onclick="nextStep()" data-i18n="oobe.pin_later">Later</button>
@@ -71,7 +71,7 @@
         <span data-i18n="oobe.terms_agree">I agree to the Terms of Service</span>
       </label>
       <div class="oobe-step-actions">
-        <button class="oobe-btn-back" onclick="prevStep()" data-i18n="oobe.back">Back</button>
+        <button class="oobe-btn-back" onclick="prevStep()" aria-label="Back">&larr;</button>
         <button class="oobe-btn" onclick="acceptTerms()" data-i18n="oobe.agree">Agree</button>
       </div>
     </div>
