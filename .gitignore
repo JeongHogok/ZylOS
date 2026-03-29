@@ -39,3 +39,5 @@ emulator-app/ui/index.html.full
 *.ospkg
 *.img
 *.img.gz
+emulator-app/gen/
+emulator-app/*.bak

@@ -85,13 +85,14 @@ fn get_wifi_macos() -> Result<Vec<WifiNetwork>, String> {
             continue;
         }
 
-        // 간단한 파싱: 공백 분리 후 RSSI(음수) 위치로 SSID 추출
+        // airport -s 출력 파싱: SSID BSSID RSSI CHANNEL HT CC SECURITY
+        // RSSI(음수 정수) 위치로 SSID 영역을 추출
         let fields: Vec<&str> = trimmed.split_whitespace().collect();
         if fields.len() < 7 {
+            log::debug!("WiFi scan: skipping short line: {}", trimmed);
             continue;
         }
 
-        // RSSI는 음수 정수
         let rssi_idx = fields.iter().position(|f| {
             f.starts_with('-') && f[1..].parse::<i32>().is_ok()
         });

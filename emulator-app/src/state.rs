@@ -75,6 +75,7 @@ pub struct ResourceInfo {
     pub ram_limit_mb: u32,
     pub storage_total_bytes: u64,
     pub storage_used_bytes: u64,
+    pub storage_available_bytes: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -100,7 +101,7 @@ pub struct AppState {
 impl AppState {
     pub fn new() -> Self {
         let data_dir = dirs::data_local_dir()
-            .unwrap_or_else(|| PathBuf::from("/tmp"))
+            .unwrap_or_else(|| std::env::temp_dir())
             .join("zyl-emulator");
 
         Self {

@@ -100,12 +100,19 @@
   var deviceInfoEl    = document.getElementById('device-info-header');
   var notchEl         = document.getElementById('device-notch');
 
+  /* ═══ Helpers ═══ */
+  function esc(str) {
+    var d = document.createElement('div');
+    d.appendChild(document.createTextNode(str || ''));
+    return d.innerHTML;
+  }
+
   /* ═══ Syslog ═══ */
   function syslog(msg, type) {
     if (!logEl) return;
     var ts = new Date().toLocaleTimeString('en-US', { hour12: false });
     var line = document.createElement('div');
-    line.innerHTML = '<span class="log-' + (type || 'info') + '">[' + ts + ']</span> ' + msg;
+    line.innerHTML = '<span class="log-' + esc(type || 'info') + '">[' + ts + ']</span> ' + esc(msg);
     logEl.appendChild(line);
     logEl.scrollTop = logEl.scrollHeight;
   }
@@ -119,7 +126,7 @@
       String(now.getMinutes()).padStart(2, '0');
   }
   updateClock();
-  setInterval(updateClock, 1000);
+  var _clockInterval = setInterval(updateClock, 1000);
 
   /* ═══════════════════════════════════════════════════════
      잠금 상태 정책
@@ -676,13 +683,13 @@
       var card = document.createElement('div');
       card.className = 'qs-notif-card';
       card.innerHTML =
-        '<div class="qs-notif-icon">' + notif.icon + '</div>' +
+        '<div class="qs-notif-icon">' + esc(notif.icon) + '</div>' +
         '<div class="qs-notif-content">' +
-          '<div class="qs-notif-app">' + notif.appName + '</div>' +
-          '<div class="qs-notif-title">' + notif.title + '</div>' +
-          '<div class="qs-notif-body">' + notif.body + '</div>' +
+          '<div class="qs-notif-app">' + esc(notif.appName) + '</div>' +
+          '<div class="qs-notif-title">' + esc(notif.title) + '</div>' +
+          '<div class="qs-notif-body">' + esc(notif.body) + '</div>' +
         '</div>' +
-        '<div class="qs-notif-time">' + formatTimeAgo(notif.timestamp) + '</div>';
+        '<div class="qs-notif-time">' + esc(formatTimeAgo(notif.timestamp)) + '</div>';
 
       card.addEventListener('click', function() {
         closeQsPanel();
@@ -886,11 +893,11 @@
     var card = document.createElement('div');
     card.className = 'picker-card';
     card.innerHTML =
-      '<div class="picker-card-name">' + profile.name + '</div>' +
-      '<div class="picker-card-desc">' + profile.description + '</div>' +
+      '<div class="picker-card-name">' + esc(profile.name) + '</div>' +
+      '<div class="picker-card-desc">' + esc(profile.description) + '</div>' +
       '<div class="picker-card-specs">' +
-        profile.soc + ' · ' + profile.ram + ' · ' + profile.screen +
-        ' · Nav: ' + profile.navMode +
+        esc(profile.soc) + ' · ' + esc(profile.ram) + ' · ' + esc(profile.screen) +
+        ' · Nav: ' + esc(profile.navMode) +
       '</div>';
     card.addEventListener('click', function () {
       selectDevice(profile);
@@ -926,9 +933,9 @@
 
     /* 디바이스 정보 헤더 */
     deviceInfoEl.innerHTML =
-      '<h1>' + profile.name + '</h1>' +
-      '<p class="subtitle">' + profile.soc + ' · ' + profile.ram +
-      ' · ' + profile.navMode + ' nav</p>';
+      '<h1>' + esc(profile.name) + '</h1>' +
+      '<p class="subtitle">' + esc(profile.soc) + ' · ' + esc(profile.ram) +
+      ' · ' + esc(profile.navMode) + ' nav</p>';
 
     /* 네비게이션 모드 (하드웨어 속성 — 고정) */
     applyNavMode(profile.navMode);
@@ -974,7 +981,7 @@
         if (HAL.battery.init) HAL.battery.init();
         updateBattery();
         if (HAL.battery.onChange) HAL.battery.onChange(updateBattery);
-        setInterval(updateBattery, 30000);
+        var _batteryInterval = setInterval(updateBattery, 30000);
         syslog('Battery: ' + (HAL.battery.getState().level || '?') + '%', 'sys');
       }
 

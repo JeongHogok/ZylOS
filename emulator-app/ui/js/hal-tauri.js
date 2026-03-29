@@ -34,12 +34,12 @@ var ZylHalTauri = (function () {
   // ── Battery ──
   var battery = {
     _state: null,
+    _interval: null,
 
     init: function () {
-      // 초기 상태 조회
+      if (battery._interval) return; /* 중복 init 방지 */
       battery.refresh();
-      // 30초마다 갱신
-      setInterval(function () { battery.refresh(); }, 30000);
+      battery._interval = setInterval(function () { battery.refresh(); }, 30000);
     },
 
     refresh: function () {

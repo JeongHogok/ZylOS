@@ -13,10 +13,11 @@ cargo tauri dev
 ### 릴리즈 빌드
 ```bash
 cargo tauri build
+# 빌드 결과 (경로는 플랫폼/아키텍처에 따라 다를 수 있음):
 # macOS: target/release/bundle/macos/Zyl OS Emulator.app
-# macOS: target/release/bundle/dmg/Zyl OS Emulator_0.1.0_aarch64.dmg
-# Linux: target/release/bundle/deb/zyl-os-emulator_0.1.0_amd64.deb
-# Linux: target/release/bundle/appimage/zyl-os-emulator_0.1.0_amd64.AppImage
+#        target/release/bundle/dmg/Zyl OS Emulator_<version>_<arch>.dmg
+# Linux: target/release/bundle/deb/zyl-os-emulator_<version>_<arch>.deb
+#        target/release/bundle/appimage/zyl-os-emulator_<version>_<arch>.AppImage
 ```
 
 ## 기능

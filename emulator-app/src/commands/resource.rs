@@ -52,13 +52,12 @@ pub async fn reserve_resources(
         app_state.resource_reserved = true;
     }
 
-    let _ = available; // suppress unused warning
-
     Ok(ResourceInfo {
         mount_point: mount_point.to_string_lossy().into(),
         disk_image_path: image_path.to_string_lossy().into(),
         ram_limit_mb: config.ram_mb,
         storage_total_bytes: total,
+        storage_available_bytes: available,
         storage_used_bytes: used,
     })
 }

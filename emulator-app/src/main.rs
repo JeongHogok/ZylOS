@@ -102,5 +102,9 @@ fn main() {
             }
         })
         .run(tauri::generate_context!())
-        .expect("error while running Zyl OS Emulator");
+        .unwrap_or_else(|e| {
+            log::error!("Failed to start Zyl OS Emulator: {}", e);
+            eprintln!("Fatal: {}", e);
+            std::process::exit(1);
+        });
 }

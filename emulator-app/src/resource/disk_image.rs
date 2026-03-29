@@ -259,9 +259,9 @@ pub fn get_usage(mount_point: &Path) -> Result<(u64, u64, u64), String> {
         return Ok((0, 0, 0));
     }
 
-    let total = fields[1].parse::<u64>().unwrap_or(0) * 1024;
-    let used = fields[2].parse::<u64>().unwrap_or(0) * 1024;
-    let available = fields[3].parse::<u64>().unwrap_or(0) * 1024;
+    let total = fields[1].parse::<u64>().unwrap_or_else(|_| { log::warn!("df: failed to parse total"); 0 }) * 1024;
+    let used = fields[2].parse::<u64>().unwrap_or_else(|_| { log::warn!("df: failed to parse used"); 0 }) * 1024;
+    let available = fields[3].parse::<u64>().unwrap_or_else(|_| { log::warn!("df: failed to parse available"); 0 }) * 1024;
 
     Ok((total, used, available))
 }
