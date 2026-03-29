@@ -66,6 +66,15 @@ fn safe_path(mount_point: &Path, rel_path: &str) -> Result<PathBuf, String> {
         return Err("Path traversal blocked".into());
     }
 
+    // Block access to protected system files via filesystem service
+    let relative = cleaned.to_lowercase();
+    if relative == "settings.json"
+        || relative.starts_with(".credentials")
+        || relative.starts_with(".system")
+    {
+        return Err("Access denied: protected system file".into());
+    }
+
     Ok(full)
 }
 

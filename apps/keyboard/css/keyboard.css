@@ -1,0 +1,102 @@
+/* ──────────────────────────────────────────────────────────
+   [Clean Architecture] Presentation Layer - Style
+   역할: Zyl Keyboard 가상 키보드 스타일
+   수행범위: 키보드 레이아웃, 키 크기, 애니메이션, 다크 테마
+   의존방향: keyboard/js/keyboard.js
+   SOLID: SRP — 키보드 스타일만 담당
+
+   클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
+   실제 디바이스 구동 기준이며, mock/demo 등 하드코딩 데이터가 있어서는 안 된다
+   ────────────────────────────────────────────────────────── */
+
+/* ─── Container ─── */
+.zyl-keyboard {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 9000;
+  background: #1a1a2e;
+  padding: 6px 4px 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  transform: translateY(100%);
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.zyl-keyboard.visible {
+  transform: translateY(0);
+}
+
+/* ─── Row Layout ─── */
+.kb-row {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.kb-row:last-child {
+  margin-bottom: 0;
+}
+
+/* ─── Key Base ─── */
+.kb-key {
+  height: 36px;
+  min-width: 28px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 5px;
+  background: #2a2a40;
+  color: #e0e0e0;
+  font-size: 16px;
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  cursor: pointer;
+  flex: 1;
+  max-width: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.08s ease, transform 0.08s ease;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.kb-key:active {
+  background: #3a3a58;
+  transform: scale(0.94);
+}
+
+/* ─── Special Keys ─── */
+.kb-special {
+  background: #22223a;
+  color: #9090b0;
+  font-size: 14px;
+  min-width: 40px;
+  max-width: 52px;
+  flex: 1.5;
+}
+
+.kb-special:active {
+  background: #333350;
+}
+
+.kb-special.kb-active {
+  background: #4a4a6a;
+  color: #fff;
+}
+
+/* ─── Space Bar ─── */
+.kb-space {
+  flex: 5;
+  max-width: none;
+  min-width: 120px;
+  background: #2a2a40;
+}
+
+.kb-space:active {
+  background: #3a3a58;
+  transform: scale(0.98);
+}

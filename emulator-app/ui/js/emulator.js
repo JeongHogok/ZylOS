@@ -228,8 +228,12 @@
       appFrame.onload = null;
     };
 
-    if (!state.runningApps.find(function (a) { return a.id === appId; })) {
-      state.runningApps.push({ id: appId, name: app.name });
+    /* System-only apps never appear in recents */
+    var RECENTS_EXCLUDE = ['com.zylos.lockscreen', 'com.zylos.statusbar', 'com.zylos.oobe'];
+    if (RECENTS_EXCLUDE.indexOf(appId) === -1) {
+      if (!state.runningApps.find(function (a) { return a.id === appId; })) {
+        state.runningApps.push({ id: appId, name: app.name });
+      }
     }
     updateRunningApps();
   }
@@ -881,7 +885,8 @@
   /* ═══ System Services IPC ═══ */
   function handleServiceRequest(msg, source) {
     if (!msg.service || !msg.method) return;
-    var result = ZylServices.handleRequest(msg.service, msg.method, msg.params || {});
+    var callerAppId = state.currentApp || '';
+    var result = ZylServices.handleRequest(msg.service, msg.method, msg.params || {}, callerAppId);
 
     /* ── settings.update side effects ── */
     if (msg.service === 'settings' && msg.method === 'update') {
@@ -1096,8 +1101,37 @@
     else if (e.key === 'ArrowDown') { e.preventDefault(); adjustVolume(-5); }
   });
 
+  /* ═══ Virtual Keyboard (OS keyboard app, compositor-managed) ═══ */
+  var kbContainer = document.getElementById('keyboard-container');
+  if (typeof ZylKeyboard !== 'undefined' && kbContainer) {
+    ZylKeyboard.init(kbContainer, function (key) {
+      /* Forward key to current app iframe */
+      broadcastToCurrentApp('input.key', { key: key });
+    });
+
+    /* Detect input focus inside app iframe */
+    setInterval(function () {
+      if (!appFrame || !appFrame.contentWindow) return;
+      try {
+        var doc = appFrame.contentDocument || appFrame.contentWindow.document;
+        var active = doc.activeElement;
+        var isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
+        var inputType = active ? (active.type || '').toLowerCase() : '';
+        var excludeTypes = ['checkbox', 'radio', 'range', 'file', 'color', 'hidden'];
+        if (isInput && excludeTypes.indexOf(inputType) === -1) {
+          if (!ZylKeyboard.isVisible()) ZylKeyboard.show();
+        } else {
+          if (ZylKeyboard.isVisible()) ZylKeyboard.hide();
+        }
+      } catch (e) {
+        /* Cross-origin: hide keyboard */
+        if (ZylKeyboard.isVisible()) ZylKeyboard.hide();
+      }
+    }, 300);
+  }
+
   /* ═══════════════════════════════════════════════════════
-     디바이스 선택 화면
+     Device Selection Screen
      ═══════════════════════════════════════════════════════ */
   DEVICE_PROFILES.forEach(function (profile) {
     var card = document.createElement('div');

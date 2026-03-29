@@ -208,6 +208,51 @@ var ZylBridge = (function () {
     return Promise.resolve(true);
   }
 
+  /* ─── Incoming Message Handler (emulator → app iframe) ─── */
+
+  window.addEventListener('message', function (event) {
+    var msg;
+    if (typeof event.data === 'string') {
+      try { msg = JSON.parse(event.data); } catch (e) { return; }
+    } else if (typeof event.data === 'object') {
+      msg = event.data;
+    } else {
+      return;
+    }
+
+    /* Virtual keyboard input relay: emulator forwards key events */
+    if (msg.type === 'input.key' && msg.data) {
+      var focused = document.activeElement;
+      if (focused && (focused.tagName === 'INPUT' || focused.tagName === 'TEXTAREA')) {
+        var key = msg.data.key;
+        var start = focused.selectionStart;
+        var end = focused.selectionEnd;
+
+        if (key === 'Backspace') {
+          if (start !== end) {
+            focused.value = focused.value.slice(0, start) + focused.value.slice(end);
+            focused.selectionStart = focused.selectionEnd = start;
+          } else if (start > 0) {
+            focused.value = focused.value.slice(0, start - 1) + focused.value.slice(start);
+            focused.selectionStart = focused.selectionEnd = start - 1;
+          }
+        } else if (key === 'Enter') {
+          if (focused.tagName === 'TEXTAREA') {
+            focused.value = focused.value.slice(0, start) + '\n' + focused.value.slice(end);
+            focused.selectionStart = focused.selectionEnd = start + 1;
+          } else {
+            focused.blur();
+          }
+        } else if (key.length === 1) {
+          focused.value = focused.value.slice(0, start) + key + focused.value.slice(end);
+          focused.selectionStart = focused.selectionEnd = start + 1;
+        }
+
+        focused.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    }
+  });
+
   /* ─── Public API ─── */
   return {
     isAvailable: isAvailable,
