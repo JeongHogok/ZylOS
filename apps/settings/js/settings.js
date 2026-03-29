@@ -558,6 +558,30 @@
     });
   }
 
+  /* ═══ Scan buttons ═══ */
+  var wifiScanBtn = document.getElementById('wifi-scan-btn');
+  var btScanBtn = document.getElementById('bt-scan-btn');
+
+  if (wifiScanBtn) wifiScanBtn.addEventListener('click', function () {
+    wifiScanBtn.classList.add('scanning');
+    wifiScanBtn.textContent = t('settings.scanning') || 'Scanning...';
+    requestService('wifi', 'getNetworks');
+    setTimeout(function () {
+      wifiScanBtn.classList.remove('scanning');
+      wifiScanBtn.textContent = t('settings.wifi_scan') || 'Scan for Networks';
+    }, 3000);
+  });
+
+  if (btScanBtn) btScanBtn.addEventListener('click', function () {
+    btScanBtn.classList.add('scanning');
+    btScanBtn.textContent = t('settings.scanning') || 'Scanning...';
+    requestService('bluetooth', 'getDevices');
+    setTimeout(function () {
+      btScanBtn.classList.remove('scanning');
+      btScanBtn.textContent = t('settings.bt_scan') || 'Scan for Devices';
+    }, 3000);
+  });
+
   /* ═══ Request all service data on init ═══ */
   requestService('wifi', 'getNetworks');
   requestService('bluetooth', 'getDevices');

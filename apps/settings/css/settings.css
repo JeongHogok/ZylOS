@@ -276,3 +276,14 @@ main, .sub-page {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* ── Scan Button ── */
+.scan-btn {
+  width:100%; padding:12px; border:none; border-radius:10px;
+  background:#252535; color:#6366f1; font-size:14px; font-weight:600;
+  cursor:pointer; transition:background 0.15s;
+}
+.scan-btn:hover { background:#303045; }
+.scan-btn:active { background:#1a1a28; }
+.scan-btn.scanning { opacity:0.6; pointer-events:none; }
+
