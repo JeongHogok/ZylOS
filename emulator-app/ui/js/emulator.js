@@ -53,28 +53,9 @@
 
   /* ═══ 앱 경로 ═══
      부팅 시 Rust가 OS 이미지(.img)를 마운트 → apps/를 ui/apps/로 복사.
-     셧다운 시 정리. 따라서 앱은 항상 상대 경로로 접근. */
-
-  var APPS = {
-    'com.zylos.oobe':       { name: 'Setup',       path: 'apps/oobe/index.html',       system: true },
-    'com.zylos.lockscreen': { name: 'Lock Screen', path: 'apps/lockscreen/index.html', system: true },
-    'com.zylos.home':       { name: 'Home',        path: 'apps/home/index.html',       system: true },
-    'com.zylos.settings':   { name: 'Settings',    path: 'apps/settings/index.html',    system: true },
-    'com.zylos.browser':    { name: 'Browser',     path: 'apps/browser/index.html',     system: true },
-    'com.zylos.files':      { name: 'Files',       path: 'apps/files/index.html',       system: true },
-    'com.zylos.terminal':   { name: 'Terminal',    path: 'apps/terminal/index.html',    system: true },
-    'com.zylos.camera':     { name: 'Camera',      path: 'apps/camera/index.html',      system: true },
-    'com.zylos.gallery':    { name: 'Gallery',     path: 'apps/gallery/index.html',     system: true },
-    'com.zylos.music':      { name: 'Music',       path: 'apps/music/index.html',       system: true },
-    'com.zylos.clock':      { name: 'Clock',       path: 'apps/clock/index.html',       system: true },
-    'com.zylos.calc':       { name: 'Calculator',  path: 'apps/calc/index.html',        system: true },
-    'com.zylos.notes':      { name: 'Notes',       path: 'apps/notes/index.html',       system: true },
-    'com.zylos.weather':    { name: 'Weather',     path: 'apps/weather/index.html',     system: true },
-    'com.zylos.store':      { name: 'App Store',   path: 'apps/store/index.html',       system: true },
-    'com.zylos.phone':      { name: 'Phone',       path: 'apps/phone/index.html',       system: true },
-    'com.zylos.messages':   { name: 'Messages',    path: 'apps/messages/index.html',    system: true },
-    'com.zylos.contacts':   { name: 'Contacts',    path: 'apps/contacts/index.html',    system: true },
-  };
+     셧다운 시 정리. 따라서 앱은 항상 상대 경로로 접근.
+     앱 레지스트리는 OS 레벨 ZylAppRegistry (apps/system/app-registry.js)가 관리.
+     서비스 init 시 apps.getInstalled()로 자동 등록된다. */
 
   /* ═══ State ═══ */
   var device = null;   /* 선택된 디바이스 프로필 */
@@ -161,7 +142,7 @@
 
   /* ═══ App Lifecycle ═══ */
   function launchApp(appId) {
-    var app = APPS[appId];
+    var app = ZylAppRegistry.getApp(appId);
     if (!app) {
       syslog('App not found: ' + appId, 'warn');
       showToast({
@@ -181,7 +162,7 @@
       return;
     }
 
-    var appUrl = app.path + '?v=' + Date.now();
+    var appUrl = ZylAppRegistry.getPath(appId) + '?v=' + Date.now();
     syslog('Launch: ' + app.name + ' → ' + appUrl, 'app');
     viewport.classList.add('launching');
     setTimeout(function () { viewport.classList.remove('launching'); }, 300);
@@ -247,7 +228,8 @@
 
   function closeApp(appId) {
     state.runningApps = state.runningApps.filter(function (a) { return a.id !== appId; });
-    syslog('Close: ' + (APPS[appId] ? APPS[appId].name : appId), 'sys');
+    var closedApp = ZylAppRegistry.getApp(appId);
+    syslog('Close: ' + (closedApp ? closedApp.name : appId), 'sys');
     if (state.currentApp === appId) goHome();
     updateRunningApps();
   }
@@ -655,7 +637,7 @@
     var notif = {
       id: ++notifIdCounter,
       appId: data.appId || 'com.zylos.system',
-      appName: data.appName || (APPS[data.appId] && APPS[data.appId].name) || 'System',
+      appName: data.appName || (ZylAppRegistry.getApp(data.appId) && ZylAppRegistry.getApp(data.appId).name) || 'System',
       icon: data.icon || '🔔',
       title: data.title || '',
       body: data.body || '',
@@ -748,7 +730,7 @@
 
     toast.onclick = function() {
       hideToast();
-      if (notif.appId && APPS[notif.appId]) launchApp(notif.appId);
+      if (notif.appId && ZylAppRegistry.getApp(notif.appId)) launchApp(notif.appId);
     };
 
     clearTimeout(toast._timer);
@@ -788,7 +770,7 @@
 
       card.addEventListener('click', function() {
         closeQsPanel();
-        if (notif.appId && APPS[notif.appId]) launchApp(notif.appId);
+        if (notif.appId && ZylAppRegistry.getApp(notif.appId)) launchApp(notif.appId);
       });
 
       // Swipe to dismiss

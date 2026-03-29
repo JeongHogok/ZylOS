@@ -93,7 +93,9 @@ Co-Authored-By: {이름} <{이메일}>
 - [ ] `system()` 미사용
 - [ ] D-Bus 이름 `org.zylos.*` 규칙 준수
 - [ ] 앱에 `js/i18n.js` 포함 (5개 언어 번역)
+- [ ] 새 앱은 `app.json`에 `iconSvg` 필드 포함 (ZylAppRegistry 동적 로딩용)
 - [ ] 새 앱은 `app.json`에 필요한 권한 선언 (미선언 시 서비스 호출 차단)
+- [ ] 앱에서 `navigator.*` 브라우저 API 직접 호출 금지 (서비스 채널 사용)
 - [ ] 시스템 파일은 `apps/system/`에 배치 (services.js, permissions.js, security.js)
 - [ ] 관련 문서 업데이트 (해당 시)
 
@@ -103,7 +105,7 @@ Co-Authored-By: {이름} <{이메일}>
 compositor/        Wayland 컴포지터
 runtime/wam/       Web Application Manager
 runtime/hal/       Hardware Abstraction Layer
-runtime/services/  시스템 서비스 (16개 C/D-Bus)
+runtime/services/  시스템 서비스 (18개 C/D-Bus)
 apps/              시스템 앱 (HTML/CSS/JS)
 apps/system/       OS 서비스 로직 (services.js 25개, permissions.js, security.js)
 apps/keyboard/     가상 키보드 시스템 앱

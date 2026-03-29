@@ -9,8 +9,9 @@
 - **RISC-V 네이티브**: SpacemiT K1 SoC (8코어 X60) 최적화
 - **Wayland 컴포지터**: wlroots 0.18 기반 모바일 전용 (제스처, 풀스크린)
 - **웹 앱 런타임**: WebKitGTK 기반 — HTML/CSS/JS로 앱 개발
-- **25개 시스템 서비스**: OS 이미지 소유 (apps/system/services.js), 에뮬레이터는 IPC 라우터만 담당
-- **16개 시스템 앱**: 홈, 잠금, 설정, 브라우저, 파일, 터미널, 카메라, 갤러리 등
+- **27개 시스템 서비스**: OS 이미지 소유 (apps/system/services.js), 에뮬레이터는 IPC 라우터만 담당
+- **19개 시스템 앱**: 홈, 잠금, 설정, 브라우저, 파일, 터미널, 카메라, 갤러리, 전화, 메시지, 연락처 등
+- **ZylAppRegistry**: 동적 앱 로딩 — app.json 메타데이터 기반 앱 레지스트리 (단일 진실 소스)
 - **앱별 i18n**: 공유 엔진(shared/i18n.js) + 앱별 번역 데이터 (ko/en/ja/zh/es)
 - **5계층 보안**: namespace + seccomp + cgroup + network + D-Bus 정책
 - **네이티브 에뮬레이터**: Tauri 데스크톱 앱 — IPC 라우터 + 컴포지터, Rust 백엔드
@@ -26,8 +27,8 @@
 | **부트로더** | U-Boot + OpenSBI | RISC-V 부팅 |
 | **디스플레이** | wlroots 0.18 + Wayland | 모바일 컴포지터 (제스처, 풀스크린) |
 | **앱 런타임** | WebKitGTK 6.0 | 앱별 독립 WebView 프로세스 |
-| **IPC** | D-Bus | 25개 시스템 서비스 통신 |
-| **앱 프레임워크** | HTML/CSS/JS (ES5) | 시스템 앱 16개 |
+| **IPC** | D-Bus | 27개 시스템 서비스 통신 |
+| **앱 프레임워크** | HTML/CSS/JS (ES5) | 시스템 앱 19개 |
 | **HAL** | C (sysfs, wpa_supplicant, BlueZ, PipeWire) | 하드웨어 추상화 |
 | **샌드박싱** | namespace + seccomp-bpf + cgroup v2 | 5계층 앱 격리 |
 | **패키징** | .ospkg (RSA-2048 서명) | 앱 배포/검증 |
@@ -49,7 +50,7 @@
 | **설정 영속화** | JSON (마운트 포인트) | 재부팅 시 설정 유지 |
 | **빌드** | Cargo + tauri-cli | macOS/Linux 배포 |
 
-### 시스템 서비스 (25개, D-Bus)
+### 시스템 서비스 (27개, D-Bus)
 
 | 서비스 | D-Bus 이름 | 기술 |
 |--------|-----------|------|
@@ -59,7 +60,9 @@
 | 입력 | org.zylos.InputService | evdev, 멀티터치 10점 |
 | 센서 | org.zylos.SensorService | IIO (가속도/자이로/근접/조도/자기) |
 | 위치 | org.zylos.LocationService | GPSD + GeoIP 퓨전 |
-| 통화 | org.zylos.Telephony | ModemManager (통화/SMS/5G) |
+| 통화 | org.zylos.Telephony | ModemManager (통화/SMS/5G), 통화 이력 |
+| 연락처 | org.zylos.Contacts | 연락처 CRUD, 검색, 그룹 관리 |
+| 메시징 | org.zylos.Messaging | SMS/MMS 수신함, 대화 스레드 관리 |
 | USB | org.zylos.UsbManager | configfs 가젯 (MTP/ADB) |
 | 사용자 | org.zylos.UserManager | 멀티유저 프로필 |
 | 자격증명 | org.zylos.CredentialManager | 암호화 키체인 |
@@ -78,6 +81,8 @@
 | 업데이터 | (라이브러리) | OTA A/B 파티션 업데이트 |
 | 샌드박스 | (라이브러리) | seccomp + namespace + cgroup |
 | 오디오 | (서비스 라우터) | 볼륨 키, OSD, 알림 사운드, 진동 |
+| 연락처 | (서비스 라우터) | 연락처 저장/검색/그룹 |
+| 메시징 | (서비스 라우터) | SMS/MMS 대화 스레드 |
 
 ## 빠른 시작
 
@@ -109,7 +114,7 @@ compositor/          Wayland 모바일 컴포지터 (C, wlroots)
 runtime/wam/         Web Application Manager (C, WebKitGTK)
 runtime/hal/         Hardware Abstraction Layer (C)
 runtime/services/    시스템 서비스 16개 (C, D-Bus)
-apps/                시스템 앱 16개 (HTML/CSS/JS)
+apps/                시스템 앱 19개 (HTML/CSS/JS)
 apps/system/         OS 서비스 (services.js, permissions.js, security.js)
 apps/keyboard/       가상 키보드 시스템 앱
 

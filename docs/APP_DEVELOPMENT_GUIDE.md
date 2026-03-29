@@ -52,6 +52,7 @@ touch myapp/app.json myapp/index.html myapp/css/style.css myapp/js/app.js
   "version": "1.0.0",
   "entry": "index.html",
   "icon": "assets/icon.png",
+  "iconSvg": "<svg viewBox='0 0 24 24'>...</svg>",
   "permissions": [],
   "min_os_version": "0.1.0"
 }
@@ -158,6 +159,7 @@ myapp/
 | `version` | string | 시맨틱 버전 (major.minor.patch) |
 | `entry` | string | HTML 진입점 파일 경로 |
 | `icon` | string | 앱 아이콘 경로 (192x192 PNG 권장) |
+| `iconSvg` | string | 인라인 SVG 아이콘 (ZylAppRegistry가 홈/런처에서 사용) |
 
 ### 선택 필드
 
@@ -656,7 +658,7 @@ export WEBKIT_INSPECTOR_SERVER=0.0.0.0:8090
 | `addTranslations(locale, keys)` | void | 앱별 번역 키 등록 |
 | `applyTranslations()` | void | DOM data-i18n 재적용 |
 
-### 시스템 서비스 (25개)
+### 시스템 서비스 (27개)
 
 앱에서 `postMessage` IPC로 접근 가능한 서비스 목록 (OS 이미지의 `apps/system/services.js`에서 처리):
 
@@ -687,6 +689,8 @@ export WEBKIT_INSPECTOR_SERVER=0.0.0.0:8090
 | 23 | logger | getLogs, clearLogs |
 | 24 | accessibility | getSettings, setFontScale, setHighContrast |
 | 25 | audio | getVolume, setVolume, playNotificationSound, vibrate |
+| 26 | contacts | getAll, getById, create, update, delete, search |
+| 27 | messaging | getConversations, getMessages, sendMessage, deleteMessage |
 
 ---
 

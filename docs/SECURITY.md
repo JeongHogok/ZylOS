@@ -55,8 +55,8 @@ Zyl OS는 6계층 보안(namespace, seccomp, cgroup, network, D-Bus 정책, 앱 
 - **적용**: 명령 실행 전 패턴 매칭, 마운트 포인트 내에서만 실행 허용
 
 ### 시스템 앱 보호 (SYSTEM_APPS)
-- **현재**: 16개 시스템 앱은 App Store에서 삭제 불가
-- **보호 대상**: home, lockscreen, statusbar, oobe, settings, browser, files, terminal, camera, gallery, music, clock, calc, notes, weather, store
+- **현재**: 19개 시스템 앱은 App Store에서 삭제 불가
+- **보호 대상**: home, lockscreen, statusbar, oobe, settings, browser, files, terminal, camera, gallery, music, clock, calc, notes, weather, store, phone, messages, contacts
 - **적용**: OS 서비스(apps/system/services.js)에서 SYSTEM_APPS 리스트 확인 후 uninstall 차단
 
 ### 파일시스템 보호 (Rust 백엔드)
@@ -71,6 +71,11 @@ Zyl OS는 6계층 보안(namespace, seccomp, cgroup, network, D-Bus 정책, 앱 
 - **적용**: 앱이 서비스를 호출할 때마다 `app.json`의 `permissions` 배열과 대조
 - **차단**: 미선언 권한으로 서비스 호출 시 즉시 에러 응답, 요청 무시
 - 이전 버전의 권고 수준 권한에서 **강제 시행**으로 변경
+
+### 연락처/메시징 서비스 권한
+- **contacts 서비스**: `contacts` 권한 필요 — 미선언 시 연락처 접근 차단
+- **messaging 서비스**: `messaging` 권한 필요 — 미선언 시 메시지 접근 차단
+- 두 서비스 모두 **높음** 위험도로 분류, 설치 시 명시적 사용자 승인 필요
 
 ### OOBE 격리
 - OOBE 앱은 최근 앱(Recents) 목록에서 제외

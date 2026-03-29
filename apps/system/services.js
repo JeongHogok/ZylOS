@@ -215,12 +215,17 @@ window.ZylSystemServices = (function () {
               version: m.version || '1.0.0',
               description: m.description || '',
               system: m.system || false,
-              permissions: m.permissions || []
+              permissions: m.permissions || [],
+              iconSvg: m.iconSvg || ''
             };
           });
           /* Register app permissions with the permission system */
           if (typeof ZylPermissions !== 'undefined' && ZylPermissions.registerFromAppList) {
             ZylPermissions.registerFromAppList(apps._cache);
+          }
+          /* Register apps with the OS-level app registry */
+          if (typeof ZylAppRegistry !== 'undefined' && ZylAppRegistry.register) {
+            ZylAppRegistry.register(apps._cache);
           }
         }
         return apps._cache || [];
@@ -323,15 +328,8 @@ window.ZylSystemServices = (function () {
     ringtoneVolume: 80, systemVolume: 50, vibration: true, silentMode: false
   };
 
-  /* -- System apps list (used by appstore/sandbox) -- */
-  var SYSTEM_APPS = [
-    'com.zylos.home', 'com.zylos.lockscreen', 'com.zylos.statusbar',
-    'com.zylos.oobe', 'com.zylos.settings', 'com.zylos.browser',
-    'com.zylos.files', 'com.zylos.terminal', 'com.zylos.camera',
-    'com.zylos.gallery', 'com.zylos.music', 'com.zylos.clock',
-    'com.zylos.calc', 'com.zylos.notes', 'com.zylos.weather',
-    'com.zylos.store', 'com.zylos.keyboard'
-  ];
+  /* -- System apps list — single source of truth in ZylPermissions -- */
+  var SYSTEM_APPS = (typeof ZylPermissions !== 'undefined') ? ZylPermissions.SYSTEM_APPS : [];
 
 
   /* ===============================================================

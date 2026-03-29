@@ -158,8 +158,8 @@
     }
   };
 
-  /* Select default language based on browser locale */
-  var detectedLang = (navigator.language || 'en').split('-')[0];
+  /* Select default language based on i18n locale (avoid navigator.language bypass) */
+  var detectedLang = (typeof zylI18n !== 'undefined' && zylI18n.getLocale) ? zylI18n.getLocale() : 'en';
   var langOption = document.querySelector('.oobe-option[data-lang="' + detectedLang + '"]');
   if (langOption) {
     document.querySelectorAll('.oobe-option[data-lang]').forEach(function (o) { o.classList.remove('selected'); });

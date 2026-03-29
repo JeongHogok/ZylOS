@@ -2,7 +2,7 @@
 
 **감사일**: 2026-03-28 (최종 업데이트: 2026-03-29)
 **코드베이스**: 21,000+ LOC (C 11,725 + JS 5,070+ + CSS 3,090+ + HTML 1,100+ + 기타 2,132)
-**소스 파일**: 117개+ | **시스템 서비스**: 25개 | **앱**: 16개 + 시스템 2개 | **커밋**: 50+개
+**소스 파일**: 117개+ | **시스템 서비스**: 27개 | **앱**: 19개 + 시스템 2개 | **커밋**: 50+개
 **전체 평가**: 9.3/10 — 47/47 기술 항목 완료 + 상업적 릴리스 준비 완료
 **릴리스 상태**: Developer Preview v0.1.0 — 상업적 리뷰 14건 중 5건 CRITICAL 해결
 
@@ -233,15 +233,17 @@
 
 ## Phase 6: 대규모 리팩토링 (2026-03-29)
 
-### 서비스 확장 (14개 → 25개) + 아키텍처 변경
-- 기존 14개 C/D-Bus 서비스 + OS 이미지 서비스 9개(fs, device, storage, apps, settings, terminal, wifi, bluetooth, audio) = **25개 완전 기능 서비스**
+### 서비스 확장 (14개 → 27개) + 아키텍처 변경
+- 기존 14개 C/D-Bus 서비스 + OS 이미지 서비스 9개(fs, device, storage, apps, settings, terminal, wifi, bluetooth, audio) + contacts, messaging = **27개 완전 기능 서비스**
 - **아키텍처 변경**: 25개 서비스 비즈니스 로직이 에뮬레이터(`emulator-app/ui/js/services.js`)에서 OS 이미지(`apps/system/services.js`)로 이동
 - 에뮬레이터는 순수 IPC 라우터로 역할 축소, OS 이미지가 서비스 로직 소유
 - 모든 서비스 상태 유지 (stateful) — 스텁/하드코딩 제거
 - 25번째 서비스: audio (볼륨 키, OSD, 알림 사운드, 진동)
+- 26번째 서비스: contacts (연락처 CRUD, 검색, 그룹 관리)
+- 27번째 서비스: messaging (SMS/MMS 수신함, 대화 스레드 관리)
 
-### 시스템 앱 확장 (10개 → 16개)
-- 신규 앱: calc, clock, gallery, music, notes, weather, store, statusbar
+### 시스템 앱 확장 (10개 → 19개)
+- 신규 앱: calc, clock, gallery, music, notes, weather, store, statusbar, phone, messages, contacts
 - 기존 앱 전면 재작성: home, settings, browser, files, terminal, camera
 - 모든 앱에 postMessage IPC + 서비스 연동 구현
 
@@ -255,16 +257,22 @@
 - PIN 입력 로직 수정 (잠금화면)
 - Statusbar IPC: postMessage 기반 상태바 ↔ 앱 통신
 - Terminal 위험 명령 필터링: 22개 패턴 (rm -rf, sudo, dd 등)
-- SYSTEM_APPS 보호 리스트: 16개 앱 삭제 차단
+- SYSTEM_APPS 보호 리스트: 19개 앱 삭제 차단
 - **파일시스템 보호** (Rust 백엔드): settings.json, .credentials/, .system/ 접근 차단
 - **앱 권한 시행**: ZylPermissions — 서비스 호출 시 app.json 권한 실시간 검증, 미선언 권한 차단
 - **OOBE 격리**: 최근 앱 제외, 네비게이션 차단, 전원 토글 시 잠금 없음
 
 ### OS 시스템 컴포넌트 추가
-- `apps/system/services.js`: 25개 서비스 비즈니스 로직 (에뮬레이터에서 이동)
+- `apps/system/services.js`: 27개 서비스 비즈니스 로직 (에뮬레이터에서 이동)
 - `apps/system/permissions.js`: 앱 권한 시행 (ZylPermissions)
 - `apps/system/security.js`: 파일시스템 보호, 자격증명 격리
 - `apps/keyboard/`: 가상 키보드 시스템 앱 (에뮬레이터 컴포지터가 마운트, postMessage 키 전달)
+
+### Phone/Messages/Contacts 앱 추가
+- **phone** (`apps/phone/`): 전화 앱 — 다이얼러, 통화 이력, 연락처 빠른 검색, telephony 서비스 연동
+- **messages** (`apps/messages/`): 메시지 앱 — SMS/MMS 대화 목록, 메시지 작성/수신, messaging 서비스 연동
+- **contacts** (`apps/contacts/`): 연락처 앱 — 연락처 목록/상세/편집, 그룹 관리, contacts 서비스 연동
+- 3개 앱 모두 ZylAppRegistry를 통해 동적 로딩, app.json에 iconSvg 포함
 
 ### 에뮬레이터 역할 변경 (IPC 라우터 + 컴포지터)
 - 서비스 비즈니스 로직을 OS 이미지로 이동 → 에뮬레이터는 순수 IPC 라우터

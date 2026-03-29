@@ -137,17 +137,18 @@ var ZylBridge = (function () {
   /* ─── Hardware ─── */
 
   /**
-   * Get battery information if available.
+   * Get battery information.
+   * @deprecated Use power service via postMessage instead of direct navigator.getBattery.
    * @returns {Promise<{ level: number, charging: boolean }>}
    */
   function getBattery() {
-    if (navigator.getBattery) {
-      return navigator.getBattery().then(function (battery) {
-        return {
-          level: Math.round(battery.level * 100),
-          charging: battery.charging,
-        };
-      });
+    /* Delegate to OS power service via postMessage IPC.
+       Direct navigator.getBattery() is a Clean Architecture violation —
+       battery state must come from the power service. */
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage(JSON.stringify({
+        type: 'service.request', service: 'power', method: 'getState', params: {}
+      }), '*');
     }
     return Promise.resolve({ level: -1, charging: false });
   }

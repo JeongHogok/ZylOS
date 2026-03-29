@@ -42,12 +42,7 @@
    *  Battery — periodic polling
    * ════════════════════════════════════════════ */
   function updateBattery() {
-    if (navigator.getBattery) {
-      navigator.getBattery().then(function (battery) {
-        var level = Math.round(battery.level * 100);
-        if (batteryPct) batteryPct.textContent = level + '%';
-      });
-    }
+    sendServiceRequest('power', 'getState', {});
   }
   updateBattery();
   setInterval(updateBattery, 60000);
@@ -268,7 +263,12 @@
   }
 
   function handleServiceResponse(msg) {
-    /* Handle responses to our own requests if needed */
+    /* Battery level from power service */
+    if (msg.service === 'power' && msg.method === 'getState' && msg.data) {
+      if (batteryPct && msg.data.batteryLevel !== undefined) {
+        batteryPct.textContent = msg.data.batteryLevel + '%';
+      }
+    }
   }
 
   /* ─── Request initial state ─── */
