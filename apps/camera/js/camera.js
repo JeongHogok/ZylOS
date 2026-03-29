@@ -40,7 +40,11 @@
     };
     navigator.mediaDevices.getUserMedia(constraints).then(function (stream) {
       _stream = stream;
-      if (cameraVideo) { cameraVideo.srcObject = stream; }
+      if (cameraVideo) {
+        cameraVideo.srcObject = stream;
+        var gradient = document.getElementById('viewfinder-gradient');
+        if (gradient) gradient.style.display = 'none';
+      }
     }).catch(function (err) {
       var msg = err.name === 'NotAllowedError' ? 'Camera permission denied' : 'Camera unavailable';
       if (viewfinder) {

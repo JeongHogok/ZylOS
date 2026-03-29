@@ -282,7 +282,8 @@ pub fn list_installed_apps() -> Result<Vec<serde_json::Value>, String> {
                             let is_system_only = app_role == "system"
                                 || app_id == "com.zylos.lockscreen"
                                 || app_id == "com.zylos.statusbar"
-                                || app_id == "com.zylos.oobe";
+                                || app_id == "com.zylos.oobe"
+                                || app_id == "com.zylos.home";
 
                             if let Some(obj) = manifest.as_object_mut() {
                                 obj.insert("installed".into(), serde_json::json!(true));

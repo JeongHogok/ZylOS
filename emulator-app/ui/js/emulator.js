@@ -744,7 +744,7 @@
   /* ═══ System Services IPC ═══ */
   function handleServiceRequest(msg, source) {
     if (!msg.service || !msg.method) return;
-    var data = ZylServices.handleRequest(msg.service, msg.method, msg.params || {});
+    var result = ZylServices.handleRequest(msg.service, msg.method, msg.params || {});
 
     /* ── settings.update side effects ── */
     if (msg.service === 'settings' && msg.method === 'update') {
@@ -752,21 +752,31 @@
       applySettingSideEffect(p.category, p.key, p.value);
     }
 
-    var response = JSON.stringify({
-      type: 'service.response',
-      service: msg.service,
-      method: msg.method,
-      params: msg.params || {},
-      requestId: msg.requestId || null,  /* H17: 요청-응답 상관 ID */
-      data: data
-    });
-    try {
-      if (source) {
-        source.postMessage(response, '*');
-      } else {
-        appFrame.contentWindow.postMessage(response, '*');
-      }
-    } catch (err) { /* iframe not ready */ }
+    function sendResponse(data) {
+      var response = JSON.stringify({
+        type: 'service.response',
+        service: msg.service,
+        method: msg.method,
+        params: msg.params || {},
+        requestId: msg.requestId || null,
+        data: data
+      });
+      try {
+        if (source) {
+          source.postMessage(response, '*');
+        } else if (appFrame && appFrame.contentWindow) {
+          appFrame.contentWindow.postMessage(response, '*');
+        }
+      } catch (err) { /* iframe not ready */ }
+    }
+
+    /* Promise 또는 동기 데이터 모두 처리 */
+    if (result && typeof result.then === 'function') {
+      result.then(function (data) { sendResponse(data); })
+            .catch(function () { sendResponse(null); });
+    } else {
+      sendResponse(result);
+    }
   }
 
   /* ── Apply real side effects when a setting changes ── */

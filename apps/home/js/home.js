@@ -68,7 +68,7 @@
       if (msg.type === 'service.response' && msg.service === 'apps' && msg.method === 'getInstalled' && msg.data) {
         appListReceived = true;
         if (appListTimeoutId) { clearTimeout(appListTimeoutId); appListTimeoutId = null; }
-        var SYSTEM_ONLY = ['com.zylos.lockscreen', 'com.zylos.statusbar', 'com.zylos.oobe'];
+        var SYSTEM_ONLY = ['com.zylos.lockscreen', 'com.zylos.statusbar', 'com.zylos.oobe', 'com.zylos.home'];
         defaultApps = msg.data.filter(function (app) {
           return SYSTEM_ONLY.indexOf(app.id) === -1;
         });
