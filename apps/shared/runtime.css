@@ -1,0 +1,52 @@
+/* ──────────────────────────────────────────────────────────
+   [Clean Architecture] Shared Layer - Runtime Style
+   Role: OS-level runtime CSS injected into every app
+   Scope: Touch behavior, scroll, selection policy, scrollbar hiding
+   Dependency: None (loaded by every app via <link>)
+   SOLID: SRP — runtime behavior styles only
+
+   Clean Architecture, SOLID principles, i18n rules strictly followed
+   Built for real device runtime; no mock/demo or hardcoded data allowed
+   ────────────────────────────────────────────────────────── */
+
+/* ─── Mobile simulation: prevent text selection (except inputs) ─── */
+* {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+input, textarea, [contenteditable] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* ─── Touch scrolling: MUST be explicitly enabled ─── */
+html, body {
+  touch-action: manipulation;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Scrollable containers: allow vertical pan */
+[style*="overflow-y"], [style*="overflow: auto"],
+.scrollable, .sub-page, .oobe-list, .oobe-terms-box,
+#app-list, #file-list, #track-list, #wifi-networks-list,
+#bt-devices-list, #about-info-list, #storage-info-list,
+#notification-list, #photo-grid, #note-list {
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+  overflow-y: auto;
+}
+
+/* ─── Hide scrollbars (mobile convention) ─── */
+*::-webkit-scrollbar {
+  display: none;
+}
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+/* ─── Tap highlight removal ─── */
+* {
+  -webkit-tap-highlight-color: transparent;
+}

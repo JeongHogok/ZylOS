@@ -205,13 +205,17 @@
     var loadAppId = appId;
     appFrame.onload = function () {
       syslog('[LOADED] ' + loadAppId, 'sys');
-      /* 모바일 시뮬레이션: iframe 내부 텍스트 선택 방지 */
+      /* Inject OS runtime CSS into app iframe */
       try {
         var iframeDoc = appFrame.contentDocument || appFrame.contentWindow.document;
-        var style = iframeDoc.createElement('style');
-        style.textContent = '* { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; } input, textarea { -webkit-user-select: text; user-select: text; } *::-webkit-scrollbar { display: none; } * { scrollbar-width: none; -webkit-overflow-scrolling: touch; }';
-        iframeDoc.head.appendChild(style);
-      } catch (e) { /* cross-origin 시 무시 */ }
+        if (!iframeDoc.getElementById('zyl-runtime-css')) {
+          var link = iframeDoc.createElement('link');
+          link.id = 'zyl-runtime-css';
+          link.rel = 'stylesheet';
+          link.href = '../shared/runtime.css';
+          iframeDoc.head.appendChild(link);
+        }
+      } catch (e) { /* cross-origin: skip */ }
       setTimeout(function () {
         /* Inject saved locale into every app — always send, even if 'en' */
         var savedLocale = ZylEmuI18n.getLocale();
