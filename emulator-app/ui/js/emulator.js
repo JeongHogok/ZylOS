@@ -215,9 +215,8 @@
           notifications.forEach(function (n) {
             broadcastToCurrentApp('notification.push', n);
           });
-          if (_currentPin !== '0000') {
-            broadcastToCurrentApp('settings.pinChanged', { pin: _currentPin });
-          }
+          /* Always send PIN state — lockscreen decides behavior based on empty vs set */
+          broadcastToCurrentApp('settings.pinChanged', { pin: _currentPin });
         }
         /* Home: wallpaper */
         if (loadAppId === 'com.zylos.home') {
@@ -810,7 +809,7 @@
 
   /* ── Apply real side effects when a setting changes ── */
   /* ─── 설정 변경 → 에뮬레이터에 실제 반영 ─── */
-  var _currentPin = '0000';
+  var _currentPin = '';
   var _currentWallpaper = 'default';
   var _wallpaperGradients = {
     'default':         'linear-gradient(160deg, #0a0a1a 0%, #0d1b2a 40%, #1b2838 100%)',
@@ -1030,6 +1029,22 @@
       syslog('Boot complete', 'sys');
       state.booted = true;
       state.locked = true;
+
+      /* Load persisted PIN from settings (survives emulator restart) */
+      var pinLoad = ZylServices.handleRequest('settings', 'get', { category: 'security' });
+      if (pinLoad && typeof pinLoad.then === 'function') {
+        pinLoad.then(function (sec) {
+          if (sec && sec.pin) _currentPin = String(sec.pin);
+        });
+      }
+
+      /* Load persisted locale */
+      var localeLoad = ZylServices.handleRequest('settings', 'get', { category: 'language' });
+      if (localeLoad && typeof localeLoad.then === 'function') {
+        localeLoad.then(function (lang) {
+          if (lang && lang.locale) ZylEmuI18n.setLocale(String(lang.locale));
+        });
+      }
 
       /* Check if OOBE was completed; if not, show OOBE first */
       var oobeCheck = ZylServices.handleRequest('settings', 'get', { category: 'system' });
