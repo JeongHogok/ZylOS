@@ -91,7 +91,7 @@
       return;
     }
     if (pin !== confirm) {
-      msg.textContent = 'PIN이 일치하지 않습니다';
+      msg.textContent = 'PINs do not match';
       return;
     }
 

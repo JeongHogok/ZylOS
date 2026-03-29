@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <!-- [Clean Architecture] Presentation Layer - Page
-     역할: Zyl OS 네이티브 에뮬레이터 SPA 엔트리포인트 -->
-<html lang="ko">
+     역할: Zyl OS 네이티브 에뮬레이터 SPA 엔트리포인트
+     클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
+     에뮬레이터는 실제 디바이스 구동 환경 제공이 목적이며, OS 이미지 영역의 콘텐츠를 포함하지 않는다 -->
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -15,31 +17,31 @@
   <div id="config-screen">
     <div class="config-header">
       <h1 class="config-title">Zyl OS Emulator</h1>
-      <p class="config-subtitle">가상 디바이스를 설정하고 부팅하세요</p>
+      <p class="config-subtitle">Configure and boot a virtual device</p>
     </div>
 
-    <!-- 저장된 디바이스 목록 -->
+    <!-- Saved Devices 목록 -->
     <div id="saved-devices-section" class="config-section hidden">
-      <h2 class="section-title">저장된 디바이스</h2>
+      <h2 class="section-title">Saved Devices</h2>
       <div id="saved-devices-list" class="device-cards"></div>
     </div>
 
     <!-- Step 1: 디바이스 프로필 선택 -->
     <div id="config-step-1" class="config-step">
-      <h2 class="section-title">새 디바이스 만들기</h2>
+      <h2 class="section-title">Create New Device</h2>
       <div id="profile-cards" class="device-cards"></div>
     </div>
 
-    <!-- Step 2: 리소스 설정 -->
+    <!-- Step 2: Resource Settings -->
     <div id="config-step-2" class="config-step hidden">
-      <h2 class="section-title">리소스 설정</h2>
+      <h2 class="section-title">Resource Settings</h2>
       <div class="config-form">
         <div class="form-group">
-          <label>OS 이미지</label>
+          <label>OS Image</label>
           <div id="os-version-options"></div>
         </div>
         <div class="form-group">
-          <label>저장공간</label>
+          <label>Storage</label>
           <div id="storage-options" class="option-row"></div>
         </div>
         <div class="form-group">
@@ -49,18 +51,18 @@
         <div class="host-info" id="host-info"></div>
       </div>
       <div class="step-actions">
-        <button id="btn-back-step1" class="btn btn-secondary">이전</button>
-        <button id="btn-next-step3" class="btn btn-primary">다음</button>
+        <button id="btn-back-step1" class="btn btn-secondary">Back</button>
+        <button id="btn-next-step3" class="btn btn-primary">Next</button>
       </div>
     </div>
 
     <!-- Step 3: 확인 -->
     <div id="config-step-3" class="config-step hidden">
-      <h2 class="section-title">설정 확인</h2>
+      <h2 class="section-title">Confirm Settings</h2>
       <div id="config-summary" class="summary-card"></div>
       <div class="step-actions">
-        <button id="btn-back-step2" class="btn btn-secondary">이전</button>
-        <button id="btn-boot" class="btn btn-boot">부팅</button>
+        <button id="btn-back-step2" class="btn btn-secondary">Back</button>
+        <button id="btn-boot" class="btn btn-boot">Boot</button>
       </div>
     </div>
   </div>
