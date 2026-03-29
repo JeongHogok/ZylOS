@@ -186,7 +186,41 @@ pub fn fs_write_file(
         fs::create_dir_all(parent).map_err(|e| format!("Mkdir error: {}", e))?;
     }
 
+    // base64 감지: JPEG/PNG 등 바이너리 데이터는 base64로 전달됨
+    if content.len() > 100 && !content.contains('\n') && content.chars().all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '=') {
+        // base64 디코딩 시도
+        use std::io::Write;
+        let decoded = base64_decode(&content);
+        if !decoded.is_empty() {
+            let mut file = fs::File::create(&full_path).map_err(|e| format!("Create error: {}", e))?;
+            file.write_all(&decoded).map_err(|e| format!("Write error: {}", e))?;
+            return Ok(());
+        }
+    }
+
     fs::write(&full_path, content).map_err(|e| format!("Write error: {}", e))
+}
+
+/// 간단한 base64 디코딩 (외부 크레이트 없이)
+fn base64_decode(input: &str) -> Vec<u8> {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut result = Vec::new();
+    let mut buf: u32 = 0;
+    let mut bits: u32 = 0;
+    for &b in input.as_bytes() {
+        if b == b'=' { break; }
+        let val = TABLE.iter().position(|&c| c == b);
+        if let Some(v) = val {
+            buf = (buf << 6) | (v as u32);
+            bits += 6;
+            if bits >= 8 {
+                bits -= 8;
+                result.push((buf >> bits) as u8);
+                buf &= (1 << bits) - 1;
+            }
+        }
+    }
+    result
 }
 
 /// 디렉토리 생성

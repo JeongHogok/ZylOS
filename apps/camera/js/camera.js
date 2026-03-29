@@ -189,6 +189,39 @@
     photoPreview.classList.add('hidden');
   });
   document.getElementById('btn-save').addEventListener('click', function () {
+    /* 캡처된 이미지를 마운트 포인트의 Pictures/에 저장 */
+    if (captureCanvas && captureCanvas.width > 0) {
+      var dataUrl = captureCanvas.toDataURL('image/jpeg', 0.9);
+      var base64 = dataUrl.split(',')[1] || '';
+      var filename = 'IMG_' + new Date().toISOString().replace(/[:\-T]/g, '').slice(0, 14) + '.jpg';
+      var path = 'Pictures/' + filename;
+
+      if (typeof window.__TAURI__ !== 'undefined' && window.__TAURI__.core) {
+        window.__TAURI__.core.invoke('fs_write_file', {
+          path: path,
+          content: base64
+        }).then(function () {
+          showNotice('Saved: ' + filename);
+        }).catch(function () {
+          showNotice('Save failed');
+        });
+      } else {
+        /* 브라우저 폴백: 다운로드 */
+        var link = document.createElement('a');
+        link.download = filename;
+        link.href = dataUrl;
+        link.click();
+        showNotice('Downloaded: ' + filename);
+      }
+    }
     photoPreview.classList.add('hidden');
   });
+
+  function showNotice(msg) {
+    var el = document.createElement('div');
+    el.style.cssText = 'position:fixed;bottom:200px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);color:#fff;padding:10px 20px;border-radius:8px;font-size:13px;z-index:999';
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(function () { el.remove(); }, 2000);
+  }
 })();
