@@ -205,17 +205,8 @@
     var loadAppId = appId;
     appFrame.onload = function () {
       syslog('[LOADED] ' + loadAppId, 'sys');
-      /* Inject OS runtime CSS into app iframe */
-      try {
-        var iframeDoc = appFrame.contentDocument || appFrame.contentWindow.document;
-        if (!iframeDoc.getElementById('zyl-runtime-css')) {
-          var link = iframeDoc.createElement('link');
-          link.id = 'zyl-runtime-css';
-          link.rel = 'stylesheet';
-          link.href = '../shared/runtime.css';
-          iframeDoc.head.appendChild(link);
-        }
-      } catch (e) { /* cross-origin: skip */ }
+      /* Runtime CSS is loaded by each app via <link> in its own HTML.
+         The emulator does NOT inject anything into iframes. */
       setTimeout(function () {
         /* Inject saved locale into every app — always send, even if 'en' */
         var savedLocale = ZylEmuI18n.getLocale();
