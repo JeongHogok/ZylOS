@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>NSCameraUsageDescription</key>
+    <string>Zyl OS Camera app requires camera access</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Zyl OS Camera app requires microphone access for video recording</string>
+</dict>
+</plist>

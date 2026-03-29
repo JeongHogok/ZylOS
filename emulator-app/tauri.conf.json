@@ -4,7 +4,7 @@
   "identifier": "com.zylos.emulator",
   "build": {
     "frontendDist": "./ui",
-    "beforeDevCommand": "bash scripts/deploy-apps.sh"
+    "beforeDevCommand": "DIR=$(cd \"$(dirname \"$0\")\" 2>/dev/null && pwd); for d in . emulator-app; do [ -f \"$d/scripts/deploy-apps.sh\" ] && bash \"$d/scripts/deploy-apps.sh\" && exit 0; done; echo '[deploy] script not found, skipping'"
   },
   "app": {
     "withGlobalTauri": true,
@@ -30,6 +30,9 @@
       "icons/128x128@2x.png",
       "icons/icon.icns"
     ],
-    "resources": []
+    "resources": [],
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    }
   }
 }

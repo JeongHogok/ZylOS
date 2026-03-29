@@ -64,11 +64,14 @@
       var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
       if (!msg) return;
 
-      /* 앱 목록 응답 */
+      /* 앱 목록 응답 — 시스템 전용 앱은 홈 그리드에서 제외 */
       if (msg.type === 'service.response' && msg.service === 'apps' && msg.method === 'getInstalled' && msg.data) {
         appListReceived = true;
         if (appListTimeoutId) { clearTimeout(appListTimeoutId); appListTimeoutId = null; }
-        defaultApps = msg.data;
+        var SYSTEM_ONLY = ['com.zylos.lockscreen', 'com.zylos.statusbar', 'com.zylos.oobe'];
+        defaultApps = msg.data.filter(function (app) {
+          return SYSTEM_ONLY.indexOf(app.id) === -1;
+        });
         renderAppGrid(defaultApps);
       }
 

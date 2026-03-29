@@ -183,10 +183,24 @@
       pageFrame.onload = function () {
         pageLoading.classList.remove('active');
         pageFrame.style.display = 'block';
+        /* X-Frame-Options 차단 감지 — contentDocument 접근 불가 시 */
+        var blocked = false;
         try {
-          tab.title = pageFrame.contentDocument.title || domain || url;
+          var doc = pageFrame.contentDocument;
+          if (doc && doc.title) {
+            tab.title = doc.title;
+          } else if (doc && doc.body && doc.body.innerHTML.length < 10) {
+            blocked = true;
+          } else {
+            tab.title = domain || url;
+          }
         } catch (e) {
+          /* cross-origin — 정상 로드됨 (타이틀 접근 불가는 보안상 정상) */
           tab.title = domain || url;
+        }
+        if (blocked) {
+          pageFrame.style.display = 'none';
+          showBlockedPage(url, domain);
         }
         renderTabs();
         pageFrame.onload = null;
@@ -194,12 +208,12 @@
       pageFrame.onerror = function () {
         pageLoading.classList.remove('active');
         pageFrame.style.display = 'none';
-        showToast('Failed to load page');
+        showBlockedPage(url, domain);
         pageFrame.onerror = null;
       };
       pageFrame.src = url;
 
-      /* 10초 타임아웃 — 로딩이 너무 오래 걸리면 표시 */
+      /* 8초 타임아웃 */
       setTimeout(function () {
         if (pageLoading.classList.contains('active')) {
           pageLoading.classList.remove('active');
@@ -207,7 +221,7 @@
           tab.title = domain || url;
           renderTabs();
         }
-      }, 10000);
+      }, 8000);
     }
   }
 
@@ -258,6 +272,26 @@
     }
     /* Treat as search query */
     return 'https://search.zylos.dev/?q=' + encodeURIComponent(trimmed);
+  }
+
+  /* X-Frame-Options 차단 시 안내 페이지 표시 */
+  function showBlockedPage(url, domain) {
+    var webPage = document.getElementById('web-page');
+    if (!webPage) return;
+    /* page-frame 뒤에 안내 div 추가 */
+    var existing = document.getElementById('blocked-notice');
+    if (existing) existing.remove();
+    var notice = document.createElement('div');
+    notice.id = 'blocked-notice';
+    notice.style.cssText = 'position:absolute;inset:0;background:#f8f9fa;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;text-align:center;color:#333;z-index:2';
+    notice.innerHTML =
+      '<div style="font-size:48px;margin-bottom:16px">🔒</div>' +
+      '<div style="font-size:16px;font-weight:600;margin-bottom:8px">' + escapeHtml(domain || url) + '</div>' +
+      '<div style="font-size:13px;color:#666;line-height:1.6;max-width:280px">' +
+        'This site blocks iframe embedding (X-Frame-Options).<br>' +
+        'On real hardware, pages load via native WebKitGTK.' +
+      '</div>';
+    webPage.appendChild(notice);
   }
 
   function extractDomain(url) {
