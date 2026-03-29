@@ -1,1 +1,15 @@
-{"id":"com.zylos.gallery","name":"Gallery","version":"1.0.0","entry":"index.html","icon":"icon.png","permissions":["storage"],"type":"system","color":"icon-pink","iconKey":"gallery"}
+{
+  "id": "com.zylos.gallery",
+  "name": "Gallery",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "icon": "icon.png",
+  "permissions": [
+    "storage",
+    "files.read",
+    "files.delete"
+  ],
+  "type": "system",
+  "color": "icon-pink",
+  "iconKey": "gallery"
+}

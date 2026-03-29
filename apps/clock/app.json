@@ -1,1 +1,15 @@
-{"id":"com.zylos.clock","name":"Clock","version":"1.0.0","entry":"index.html","icon":"icon.png","permissions":[],"type":"system","color":"icon-indigo","iconKey":"clock"}
+{
+  "id": "com.zylos.clock",
+  "name": "Clock",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "icon": "icon.png",
+  "permissions": [
+    "audio",
+    "notification",
+    "storage"
+  ],
+  "type": "system",
+  "color": "icon-indigo",
+  "iconKey": "clock"
+}

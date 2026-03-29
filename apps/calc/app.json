@@ -1,1 +1,11 @@
-{"id":"com.zylos.calc","name":"Calculator","version":"1.0.0","entry":"index.html","icon":"icon.png","permissions":[],"type":"system","color":"icon-orange","iconKey":"calc"}
+{
+  "id": "com.zylos.calc",
+  "name": "Calculator",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "icon": "icon.png",
+  "permissions": [],
+  "type": "system",
+  "color": "icon-orange",
+  "iconKey": "calc"
+}

@@ -1,1 +1,14 @@
-{"id":"com.zylos.music","name":"Music","version":"1.0.0","entry":"index.html","icon":"icon.png","permissions":["storage"],"type":"system","color":"icon-red","iconKey":"music"}
+{
+  "id": "com.zylos.music",
+  "name": "Music",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "icon": "icon.png",
+  "permissions": [
+    "storage",
+    "audio"
+  ],
+  "type": "system",
+  "color": "icon-red",
+  "iconKey": "music"
+}

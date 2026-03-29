@@ -189,9 +189,14 @@ window.ZylSystemServices = (function () {
               color: m.color || 'icon-blue',
               version: m.version || '1.0.0',
               description: m.description || '',
-              system: m.system || false
+              system: m.system || false,
+              permissions: m.permissions || []
             };
           });
+          /* Register app permissions with the permission system */
+          if (typeof ZylPermissions !== 'undefined' && ZylPermissions.registerFromAppList) {
+            ZylPermissions.registerFromAppList(apps._cache);
+          }
         }
         return apps._cache || [];
       }).catch(function () { return []; });
