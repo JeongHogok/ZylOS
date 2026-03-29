@@ -440,11 +440,15 @@
     var media = document.getElementById('media-volume');
     var notif = document.getElementById('notif-volume');
     var alarm = document.getElementById('alarm-volume');
+    var ringtone = document.getElementById('ringtone-volume');
+    var system = document.getElementById('system-volume');
     var vibration = document.getElementById('vibration-toggle');
 
     if (media) media.value = data.mediaVolume;
     if (notif) notif.value = data.notifVolume;
     if (alarm) alarm.value = data.alarmVolume;
+    if (ringtone) ringtone.value = data.ringtoneVolume || 80;
+    if (system) system.value = data.systemVolume || 50;
     if (vibration) vibration.checked = data.vibration;
   }
 
@@ -478,6 +482,28 @@
       val = Math.max(0, Math.min(100, val));
       updateSetting('sound', 'alarmVolume', val);
       requestService('audio', 'setVolume', { stream: 'alarm', value: val });
+    });
+  }
+
+  var ringtoneVol = document.getElementById('ringtone-volume');
+  if (ringtoneVol) {
+    ringtoneVol.addEventListener('input', function () {
+      var val = parseInt(ringtoneVol.value, 10);
+      if (isNaN(val)) return;
+      val = Math.max(0, Math.min(100, val));
+      updateSetting('sound', 'ringtoneVolume', val);
+      requestService('audio', 'setVolume', { stream: 'ringtone', value: val });
+    });
+  }
+
+  var systemVol = document.getElementById('system-volume');
+  if (systemVol) {
+    systemVol.addEventListener('input', function () {
+      var val = parseInt(systemVol.value, 10);
+      if (isNaN(val)) return;
+      val = Math.max(0, Math.min(100, val));
+      updateSetting('sound', 'systemVolume', val);
+      requestService('audio', 'setVolume', { stream: 'system', value: val });
     });
   }
 
