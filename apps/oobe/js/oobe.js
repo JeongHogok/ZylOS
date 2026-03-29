@@ -57,7 +57,7 @@
       if (typeof zylI18n !== 'undefined') {
         zylI18n.setLocale(lang);
       }
-      /* Save locale to settings */
+      /* Save locale to settings — emulator applies via applySettingSideEffect */
       if (window.parent && window.parent !== window) {
         window.parent.postMessage(JSON.stringify({
           type: 'service.request',
@@ -65,13 +65,6 @@
           method: 'update',
           params: { category: 'language', key: 'locale', value: lang }
         }), '*');
-        /* Also notify emulator directly */
-        window.parent.postMessage(JSON.stringify({
-          type: 'system.setLocale', locale: lang
-        }), '*');
-      }
-      if (typeof ZylBridge !== 'undefined') {
-        ZylBridge.setLocale(lang);
       }
     });
   });
