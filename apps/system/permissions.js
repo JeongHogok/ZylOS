@@ -116,22 +116,33 @@ window.ZylPermissions = (function () {
    * Format: { appId: ['camera', 'storage'], ... }
    */
   function setUserOverrides(overrides) {
-    _userOverrides = overrides || {};
+    if (!overrides) { _userOverrides = {}; return; }
+    /* Filter out any overrides targeting system apps — immutable */
+    var safe = {};
+    Object.keys(overrides).forEach(function (appId) {
+      if (!_systemLocked[appId]) safe[appId] = overrides[appId];
+    });
+    _userOverrides = safe;
   }
 
   /**
    * Set override for a single app.
    * revokedPermissions: array of permission strings that are DENIED.
+   * SECURITY: system apps CANNOT have permissions revoked.
    */
   function setAppOverride(appId, revokedPermissions) {
+    if (_systemLocked[appId]) return; /* Immutable — reject silently */
     _userOverrides[appId] = revokedPermissions || [];
   }
 
   /**
    * Get effective permissions for an app (declared minus revoked).
+   * System apps always return full permissions — overrides are ignored.
    */
   function getEffectivePermissions(appId) {
     var declared = _appPermissions[appId] || [];
+    /* System apps: ALWAYS return full declared permissions, ignore overrides */
+    if (_systemLocked[appId]) return declared.slice();
     var revoked = _userOverrides[appId] || [];
     if (revoked.length === 0) return declared.slice();
     return declared.filter(function (p) {
