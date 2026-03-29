@@ -57,6 +57,9 @@ window.ZylPermissions = (function () {
   /* App-declared permissions from app.json */
   var _appPermissions = {};
 
+  /* System apps locked — cannot be overwritten by user apps */
+  var _systemLocked = {};
+
   /* User overrides from settings (revoked permissions) */
   var _userOverrides = {};
 
@@ -75,8 +78,11 @@ window.ZylPermissions = (function () {
    * System apps receive ALL permissions automatically.
    */
   function registerApp(appId, permissions) {
+    /* Reject attempts to register over a locked system app */
+    if (_systemLocked[appId]) return;
     if (SYSTEM_APPS.indexOf(appId) !== -1) {
       _appPermissions[appId] = ALL_PERMISSIONS.slice();
+      _systemLocked[appId] = true;
     } else {
       _appPermissions[appId] = (permissions || []).slice();
     }
@@ -88,17 +94,20 @@ window.ZylPermissions = (function () {
    * Also auto-registers all system apps with full permissions.
    */
   function registerFromAppList(appList) {
-    /* Register system apps first (they may not appear in appList) */
+    /* Register system apps first with full permissions.
+       These are locked — user apps CANNOT override them. */
     for (var s = 0; s < SYSTEM_APPS.length; s++) {
       _appPermissions[SYSTEM_APPS[s]] = ALL_PERMISSIONS.slice();
+      _systemLocked[SYSTEM_APPS[s]] = true;
     }
-    /* Register user apps from list */
+    /* Register user apps from list.
+       SECURITY: if an app claims a system app ID, it is REJECTED (spoofing defense). */
     if (!appList || !appList.length) return;
     for (var i = 0; i < appList.length; i++) {
       var app = appList[i];
-      if (app.id) {
-        registerApp(app.id, app.permissions || []);
-      }
+      if (!app.id) continue;
+      if (_systemLocked[app.id]) continue; /* Reject spoofed system app IDs */
+      _appPermissions[app.id] = (app.permissions || []).slice();
     }
   }
 
