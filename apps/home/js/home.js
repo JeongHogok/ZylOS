@@ -65,7 +65,7 @@
       /* App list response */
       if (msg.type === 'service.response' && msg.service === 'apps' && msg.method === 'getInstalled' && msg.data) {
         appListReceived = true;
-        var SYSTEM_ONLY = ['com.zylos.lockscreen', 'com.zylos.statusbar', 'com.zylos.oobe', 'com.zylos.home'];
+        var SYSTEM_ONLY = ['com.zylos.lockscreen', 'com.zylos.statusbar', 'com.zylos.oobe', 'com.zylos.home', 'com.zylos.keyboard'];
         defaultApps = msg.data.filter(function (app) {
           return SYSTEM_ONLY.indexOf(app.id) === -1;
         });
