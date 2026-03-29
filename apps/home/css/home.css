@@ -38,6 +38,10 @@ html, body {
   color: var(--text);
   -webkit-font-smoothing: antialiased;
 }
+body {
+  display: flex;
+  flex-direction: column;
+}
 
 /* ─── 배경 ─── */
 #wallpaper {

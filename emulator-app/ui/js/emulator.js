@@ -532,6 +532,8 @@
     panelHeight = qsPanel.offsetHeight || 400;
     qsPanel.style.transition = 'none';
     if (qsBackdrop) qsBackdrop.style.transition = 'none';
+    /* Block iframe from capturing mouse events during drag */
+    if (appFrame) appFrame.style.pointerEvents = 'none';
   }
 
   function qsMoveDrag(y) {
@@ -568,6 +570,8 @@
     qsDrag.active = false;
     var dy = qsDrag.currentY - qsDrag.startY;
 
+    /* Restore iframe event reception */
+    if (appFrame) appFrame.style.pointerEvents = '';
     /* Restore CSS transitions for snap animation */
     qsPanel.style.transition = '';
     if (qsBackdrop) qsBackdrop.style.transition = '';
