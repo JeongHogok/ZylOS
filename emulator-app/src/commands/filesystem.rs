@@ -126,7 +126,7 @@ pub fn fs_read_dir(
 
         let name = entry.file_name().to_string_lossy().into_owned();
 
-        // 숨김 파일 스킵 (lost+found 등)
+        // Skip hidden files (OS security.js handles protected file filtering)
         if name.starts_with('.') || name == "lost+found" {
             continue;
         }

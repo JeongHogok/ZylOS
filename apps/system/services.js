@@ -68,13 +68,20 @@ window.ZylSystemServices = (function () {
      =============================================================== */
   var fs = {
     getDirectory: function (path) {
-      return _invoke('fs_read_dir', { path: path || '/' });
+      return _invoke('fs_read_dir', { path: path || '/' }).then(function (entries) {
+        if (!entries || typeof ZylSecurity === 'undefined') return entries;
+        return entries.filter(function (e) {
+          return !ZylSecurity.isHiddenFromListing(e.name);
+        });
+      });
     },
     getUnixDirectory: function (path) {
       var p = _invoke('fs_read_dir', { path: path || '/' });
       if (p && typeof p.then === 'function') {
         return p.then(function (entries) {
-          return (entries || []).map(function (e) {
+          return (entries || []).filter(function (e) {
+            return typeof ZylSecurity === 'undefined' || !ZylSecurity.isHiddenFromListing(e.name);
+          }).map(function (e) {
             return (e.is_dir ? 'drwxr-xr-x' : '-rw-r--r--') +
               '  user user  ' + (e.size || 0) + '  ' + e.name;
           }).join('\n');
@@ -87,7 +94,10 @@ window.ZylSystemServices = (function () {
     },
     getAllData: function () {
       return _invoke('fs_read_dir', { path: '/' }).then(function (entries) {
-        return { tree: { '/': entries || [] }, unixTree: {}, fileContents: {} };
+        var filtered = (entries || []).filter(function (e) {
+          return typeof ZylSecurity === 'undefined' || !ZylSecurity.isHiddenFromListing(e.name);
+        });
+        return { tree: { '/': filtered }, unixTree: {}, fileContents: {} };
       }).catch(function () {
         return { tree: { '/': [] }, unixTree: {}, fileContents: {} };
       });
@@ -810,7 +820,22 @@ window.ZylSystemServices = (function () {
   /* ===============================================================
      Request Handler
      =============================================================== */
-  function handleRequest(service, method, params) {
+  function handleRequest(service, method, params, appId) {
+    /* ── Permission check (OS-level, not emulator) ── */
+    if (typeof ZylPermissions !== 'undefined' && appId) {
+      if (!ZylPermissions.checkPermission(appId, service, method)) {
+        return Promise.resolve({ error: 'Permission denied', service: service, method: method });
+      }
+    }
+
+    /* ── File security check (OS-level) ── */
+    if (service === 'fs' && typeof ZylSecurity !== 'undefined') {
+      var path = (params && (params.path || params.oldPath)) || '';
+      if (ZylSecurity.isProtectedPath(path)) {
+        return Promise.resolve({ error: 'Access denied: protected system file' });
+      }
+    }
+
     var svc = serviceMap[service];
     if (!svc) return null;
     var fn = svc[method];

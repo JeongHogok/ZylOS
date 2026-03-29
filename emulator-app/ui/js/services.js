@@ -34,24 +34,12 @@ var ZylServices = (function () {
      Request Handler — permission + security gates, then delegate
      =============================================================== */
   function handleRequest(service, method, params, appId) {
-    /* Permission check */
-    if (typeof ZylPermissions !== 'undefined' && appId) {
-      if (!ZylPermissions.checkPermission(appId, service, method)) {
-        return Promise.resolve({ error: 'Permission denied', service: service, method: method });
-      }
-    }
-
-    /* Security check for fs operations */
-    if (service === 'fs' && typeof ZylSecurity !== 'undefined') {
-      var path = (params && (params.path || params.oldPath)) || '';
-      if (ZylSecurity.isProtectedPath(path)) {
-        return Promise.resolve({ error: 'Access denied: protected system file' });
-      }
-    }
+    /* All security checks (permissions, file protection) are handled
+       by the OS service framework (apps/system/). Emulator is just an IPC relay. */
 
     /* Delegate to OS service framework */
     if (typeof ZylSystemServices !== 'undefined') {
-      return ZylSystemServices.handleRequest(service, method, params);
+      return ZylSystemServices.handleRequest(service, method, params, appId);
     }
 
     return null;

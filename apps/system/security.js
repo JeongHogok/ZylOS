@@ -29,7 +29,22 @@ window.ZylSecurity = (function () {
     return false;
   }
 
+  /**
+   * Check if a filename should be hidden from directory listings.
+   * Used by fs.getDirectory to filter protected system files from user view.
+   */
+  function isHiddenFromListing(filename) {
+    var name = (filename || '').replace(/^\/+/, '');
+    for (var i = 0; i < PROTECTED_PATHS.length; i++) {
+      if (name === PROTECTED_PATHS[i] || name.indexOf(PROTECTED_PATHS[i]) === 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   return {
-    isProtectedPath: isProtectedPath
+    isProtectedPath: isProtectedPath,
+    isHiddenFromListing: isHiddenFromListing
   };
 })();
