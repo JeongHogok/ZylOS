@@ -67,13 +67,13 @@
         if (!list) return;
         list.innerHTML = '';
         if (msg.data.length === 0) {
-          list.innerHTML = '<div class="oobe-option">네트워크 없음</div>';
+          list.innerHTML = '<div class="oobe-option">No networks found</div>';
           return;
         }
         msg.data.forEach(function (net) {
           var el = document.createElement('div');
           el.className = 'oobe-option' + (net.connected ? ' selected' : '');
-          el.textContent = net.ssid + (net.connected ? ' (연결됨)' : '');
+          el.textContent = net.ssid + (net.connected ? ' (Connected)' : '');
           list.appendChild(el);
         });
       }

@@ -167,7 +167,7 @@
       if (!dev.paired) return;
       var el = document.createElement('div');
       el.className = 'setting-item no-tap';
-      var status = dev.connected ? t('settings.connected') : 'Paired';
+      var status = dev.connected ? t('settings.connected') : (t('settings.paired') || 'Paired');
       el.innerHTML =
         '<span class="setting-label">' + dev.name + '</span>' +
         '<span class="setting-value">' + status + '</span>';
@@ -183,8 +183,8 @@
     var items = [
       { label: t('settings.device_name'), value: info.deviceName },
       { label: t('settings.os_version'),  value: info.osVersion },
-      { label: 'SoC',                     value: info.soc },
-      { label: 'RAM',                     value: info.ram },
+      { label: t('settings.soc') || 'SoC', value: info.soc },
+      { label: t('settings.ram') || 'RAM', value: info.ram },
       { label: t('settings.kernel'),      value: info.kernel },
       { label: t('settings.build'),       value: info.build }
     ];
@@ -229,7 +229,10 @@
 
   /* Font size cycle map */
   var FONT_SIZES = ['small', 'medium', 'large'];
-  var FONT_SIZE_LABELS = { small: 'Small', medium: 'Medium', large: 'Large' };
+  function fontSizeLabel(size) {
+    var map = { small: t('settings.font_small'), medium: t('settings.font_medium'), large: t('settings.font_large') };
+    return map[size] || size;
+  }
 
   /* Wallpaper color map for swatches */
   var WALLPAPER_COLORS = {
@@ -348,7 +351,7 @@
     if (brightnessSlider) brightnessSlider.value = data.brightness;
     if (darkToggle) darkToggle.checked = data.darkMode;
     if (autoToggle) autoToggle.checked = data.autoBrightness;
-    if (fontVal) fontVal.textContent = FONT_SIZE_LABELS[data.fontSize] || 'Medium';
+    if (fontVal) fontVal.textContent = fontSizeLabel(data.fontSize);
   }
 
   var brightnessSlider = document.getElementById('brightness-slider');
@@ -383,7 +386,7 @@
       var next = FONT_SIZES[(idx + 1) % FONT_SIZES.length];
       updateSetting('display', 'fontSize', next);
       var fontVal = document.getElementById('fontsize-value');
-      if (fontVal) fontVal.textContent = FONT_SIZE_LABELS[next] || '보통';
+      if (fontVal) fontVal.textContent = fontSizeLabel(next);
       /* Update local cache */
       if (settingsCache.display) settingsCache.display.fontSize = next;
     });
