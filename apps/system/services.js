@@ -33,6 +33,16 @@ window.ZylSystemServices = (function () {
         if (s.silentMode !== undefined) audioState.silentMode = !!s.silentMode;
       }
     });
+    /* Load permission overrides from settings */
+    settings._loadFromBackend().then(function () {
+      var perms = settings.state.app_permissions;
+      if (perms && typeof ZylPermissions !== 'undefined') {
+        Object.keys(perms).forEach(function (appId) {
+          var revoked = String(perms[appId]).split(',').filter(Boolean);
+          ZylPermissions.setAppOverride(appId, revoked);
+        });
+      }
+    });
     /* Pre-load app list to register permissions immediately on boot.
        This ensures OOBE and other early apps have permissions before
        any app explicitly calls apps.getInstalled(). */
@@ -375,6 +385,16 @@ window.ZylSystemServices = (function () {
         return _invoke('get_bluetooth_devices').then(function (devs) {
           return (devs || []).filter(function (d) { return d.connected; });
         });
+      }
+    },
+
+    /* -- Network -- */
+    network: {
+      fetch: function (p) {
+        if (typeof ZylSandbox !== 'undefined' && !ZylSandbox.isAllowedDomain(p.url || '')) {
+          return Promise.resolve({ error: 'Domain not in whitelist' });
+        }
+        return _invoke('http_fetch', { url: p.url || '' });
       }
     },
 
@@ -734,6 +754,29 @@ window.ZylSystemServices = (function () {
             osc2.stop(ctx.currentTime + 0.12);
           }, 180);
         } catch (e) { /* Web Audio unavailable */ }
+        return Promise.resolve(true);
+      },
+      playBeep: function (p) {
+        if (audioState.silentMode) return Promise.resolve(false);
+        var freq = parseInt(p.frequency, 10) || 880;
+        var dur = parseInt(p.duration, 10) || 200;
+        var rep = parseInt(p.repeat, 10) || 1;
+        try {
+          var ctx = new (window.AudioContext || window.webkitAudioContext)();
+          var gain = ctx.createGain();
+          gain.gain.value = (audioState.alarmVolume / 100) * 0.5;
+          gain.connect(ctx.destination);
+          for (var i = 0; i < rep; i++) {
+            (function (delay) {
+              var osc = ctx.createOscillator();
+              osc.type = 'sine';
+              osc.frequency.value = freq;
+              osc.connect(gain);
+              osc.start(ctx.currentTime + delay);
+              osc.stop(ctx.currentTime + delay + dur / 1000);
+            })(i * (dur + 100) / 1000);
+          }
+        } catch (e) {}
         return Promise.resolve(true);
       },
       playKeyClick: function () {

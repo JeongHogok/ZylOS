@@ -82,6 +82,7 @@ fn main() {
             // Network commands
             commands::network::get_wifi_networks,
             commands::network::get_bluetooth_devices,
+            commands::network::http_fetch,
             // App registry
             commands::config::list_installed_apps,
             // Emulated system services

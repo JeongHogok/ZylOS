@@ -301,7 +301,12 @@
     } else if (cat === 'wallpaper') {
       renderWallpaperGrid(data);
     } else if (cat === 'app_permissions') {
-      appPermissions = data || {};
+      /* data = { 'com.zylos.camera': 'microphone,gallery', ... } */
+      Object.keys(data).forEach(function (appId) {
+        var revokedList = String(data[appId]).split(',').filter(Boolean);
+        appPermissions[appId] = {};
+        revokedList.forEach(function (p) { appPermissions[appId][p] = false; });
+      });
     }
   }
 
@@ -810,7 +815,15 @@
         var checked = this.checked;
         if (!appPermissions[app.id]) appPermissions[app.id] = {};
         appPermissions[app.id][perm] = checked;
-        updateSetting('app_permissions', app.id, appPermissions[app.id]);
+        /* Serialize as comma-separated revoked list for settings backend */
+        var revoked = [];
+        var declared = app.permissions || [];
+        declared.forEach(function (p) {
+          if (appPermissions[app.id] && appPermissions[app.id][p] === false) {
+            revoked.push(p);
+          }
+        });
+        updateSetting('app_permissions', app.id, revoked.join(','));
       });
       permList.appendChild(row);
     });

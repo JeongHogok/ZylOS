@@ -74,42 +74,16 @@
   });
 
   /* ═══════════════════════════════════════════════════════════
-     Audio — generate beep via Web Audio API
+     Audio — delegate to audio.playBeep service
      ═══════════════════════════════════════════════════════════ */
 
-  var audioCtx = null;
   var systemAlarmVolume = 90;
 
-  function getAudioContext() {
-    if (!audioCtx) {
-      var Ctor = window.AudioContext || window.webkitAudioContext;
-      if (Ctor) audioCtx = new Ctor();
-    }
-    return audioCtx;
-  }
-
   function playBeep(frequency, durationMs, repeat) {
-    var ctx = getAudioContext();
-    if (!ctx) return;
-    var count = repeat || 3;
-    var gap = 200; // ms between beeps
-    var i = 0;
-
-    function beepOnce() {
-      if (i >= count) return;
-      var osc = ctx.createOscillator();
-      var gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = frequency || 880;
-      gain.gain.value = (systemAlarmVolume / 100) * 0.5;
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + (durationMs || 200) / 1000);
-      i++;
-      setTimeout(beepOnce, (durationMs || 200) + gap);
-    }
-    beepOnce();
+    window.parent.postMessage(JSON.stringify({
+      type: 'service.request', service: 'audio', method: 'playBeep',
+      params: { frequency: frequency, duration: durationMs, repeat: repeat }
+    }), '*');
   }
 
   /* ═══════════════════════════════════════════════════════════

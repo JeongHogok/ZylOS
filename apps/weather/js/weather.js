@@ -60,6 +60,14 @@
       }
 
       if (msg.type !== 'service.response') return;
+      if (msg.service === 'network' && msg.method === 'fetch' && msg.data) {
+        try {
+          var data = typeof msg.data === 'string' ? JSON.parse(msg.data) : msg.data;
+          renderCurrent(data);
+          renderForecast(data);
+        } catch (err) { showError('Weather data unavailable'); }
+      }
+
       if (msg.service === 'location' && msg.method === 'getLastKnown' && msg.data) {
         clearTimeout(locationTimeout);
         lastLat = msg.data.latitude;
@@ -83,33 +91,15 @@
     });
   }
 
-  /* ─── Fetch weather from Open-Meteo ─── */
+  /* ─── Fetch weather from Open-Meteo via network service ─── */
   function fetchWeather(lat, lon) {
     var url = 'https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon +
       '&current=temperature_2m,relative_humidity_2m,wind_speed_10m,surface_pressure,weather_code' +
       '&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=7';
 
-    var xhr = new XMLHttpRequest();
-    xhr.open('GET', url, true);
-    xhr.timeout = 10000;
-    xhr.onreadystatechange = function () {
-      if (xhr.readyState === 4) {
-        if (xhr.status === 200) {
-          try {
-            var data = JSON.parse(xhr.responseText);
-            renderCurrent(data);
-            renderForecast(data);
-          } catch (err) {
-            showError('Weather data unavailable');
-          }
-        } else {
-          showError('Weather service error');
-        }
-      }
-    };
-    xhr.onerror = function () { showError('Network error'); };
-    xhr.ontimeout = function () { showError('Request timeout'); };
-    xhr.send();
+    window.parent.postMessage(JSON.stringify({
+      type: 'service.request', service: 'network', method: 'fetch', params: { url: url }
+    }), '*');
   }
 
   /* ─── Render current weather ─── */

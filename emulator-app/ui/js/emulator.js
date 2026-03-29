@@ -184,8 +184,17 @@
     setTimeout(function () { viewport.classList.remove('launching'); }, 300);
 
     state.previousApp = state.currentApp;
-    appFrame.src = appUrl;
     state.currentApp = appId;
+
+    /* Apply OS sandbox policy before loading app */
+    if (typeof ZylSandbox !== 'undefined') {
+      appFrame.setAttribute('sandbox', ZylSandbox.SANDBOX_FLAGS);
+      var effectivePerms = (typeof ZylPermissions !== 'undefined')
+        ? ZylPermissions.getEffectivePermissions(appId) : [];
+      appFrame.setAttribute('allow', ZylSandbox.getPolicy(appId, effectivePerms));
+    }
+
+    appFrame.src = appUrl;
 
     /* iframe 로드 에러 감지 */
     appFrame.onerror = function () {
@@ -894,6 +903,33 @@
   function handleServiceRequest(msg, source) {
     if (!msg.service || !msg.method) return;
     var callerAppId = state.currentApp || '';
+
+    /* Camera access: dynamically grant iframe permissions */
+    if (msg.service === 'camera' && msg.method === 'requestAccess') {
+      var hasAccess = (typeof ZylPermissions !== 'undefined')
+        ? ZylPermissions.hasPermission(callerAppId, 'camera') : false;
+      if (hasAccess && typeof ZylSandbox !== 'undefined') {
+        var perms = ZylPermissions.getEffectivePermissions(callerAppId);
+        appFrame.setAttribute('allow', ZylSandbox.getPolicy(callerAppId, perms));
+      }
+      var camResponse = JSON.stringify({
+        type: 'service.response',
+        service: msg.service,
+        method: msg.method,
+        params: msg.params || {},
+        requestId: msg.requestId || null,
+        data: { granted: hasAccess }
+      });
+      try {
+        if (source) {
+          source.postMessage(camResponse, '*');
+        } else if (appFrame && appFrame.contentWindow) {
+          appFrame.contentWindow.postMessage(camResponse, '*');
+        }
+      } catch (err) { /* iframe not ready */ }
+      return;
+    }
+
     var result = ZylServices.handleRequest(msg.service, msg.method, msg.params || {}, callerAppId);
 
     /* ── settings.update side effects ── */

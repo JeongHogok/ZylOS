@@ -243,3 +243,29 @@ fn get_bt_linux() -> Result<Vec<BluetoothDevice>, String> {
 
     Ok(devices)
 }
+
+// ════════════════════════════════════════════
+// HTTP Proxy — network.fetch service backend
+// ════════════════════════════════════════════
+
+/// Fetch a URL via curl. Domain whitelist is enforced in the OS service layer (sandbox.js).
+/// This command is the backend for apps that need network access (weather, etc.).
+#[tauri::command]
+pub fn http_fetch(url: String) -> Result<String, String> {
+    // Basic URL validation
+    if !url.starts_with("https://") && !url.starts_with("http://") {
+        return Err("Invalid URL: must start with http:// or https://".into());
+    }
+
+    let output = Command::new("curl")
+        .args(["-s", "-m", "10", "-L", &url])
+        .output()
+        .map_err(|e| format!("curl failed: {}", e))?;
+
+    if !output.status.success() {
+        return Err(format!("HTTP request failed with status: {}", output.status));
+    }
+
+    String::from_utf8(output.stdout)
+        .map_err(|e| format!("Response encoding error: {}", e))
+}
