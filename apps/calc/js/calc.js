@@ -122,5 +122,21 @@
     }
     update();
   });
+
+  /* ─── Message Handler ─── */
+  window.addEventListener('message', function (e) {
+    if (e.source !== window.parent) return;
+    try {
+      var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+      if (!msg) return;
+
+      /* Navigation back handling */
+      if (msg.type === 'navigation.back') {
+        window.parent.postMessage(JSON.stringify({ type: 'navigation.exit' }), '*');
+        return;
+      }
+    } catch (err) { /* ignore */ }
+  });
+
   update();
 })();

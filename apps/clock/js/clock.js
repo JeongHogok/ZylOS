@@ -40,7 +40,21 @@
     try {
       if (!e.data) return;
       var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-      if (!msg || msg.type !== 'service.response') return;
+      if (!msg) return;
+
+      /* Navigation back handling */
+      if (msg.type === 'navigation.back') {
+        if (alarmForm && !alarmForm.classList.contains('hidden')) {
+          alarmForm.classList.add('hidden');
+          if (btnAddAlarm) btnAddAlarm.classList.remove('hidden');
+          window.parent.postMessage(JSON.stringify({ type: 'navigation.handled' }), '*');
+        } else {
+          window.parent.postMessage(JSON.stringify({ type: 'navigation.exit' }), '*');
+        }
+        return;
+      }
+
+      if (msg.type !== 'service.response') return;
       var key = msg.service + '.' + msg.method;
       if (serviceCallbacks[key]) {
         serviceCallbacks[key](msg.params, msg.data);

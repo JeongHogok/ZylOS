@@ -58,7 +58,20 @@
     if (e.source !== window.parent) return;
     try {
       var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-      if (!msg || msg.type !== 'service.response') return;
+      if (!msg) return;
+
+      /* ── Navigation back handling ── */
+      if (msg.type === 'navigation.back') {
+        if (viewer && !viewer.classList.contains('hidden')) {
+          closeViewer();
+          window.parent.postMessage(JSON.stringify({ type: 'navigation.handled' }), '*');
+        } else {
+          window.parent.postMessage(JSON.stringify({ type: 'navigation.exit' }), '*');
+        }
+        return;
+      }
+
+      if (msg.type !== 'service.response') return;
 
       if (msg.service === 'fs' && msg.method === 'getDirectory' && msg.data) {
         renderMediaList(msg.data);

@@ -248,16 +248,52 @@
     launchApp('com.zylos.home');
   }
 
+  var _backResponsePending = false;
+
   function goBack() {
     if (requireUnlock('Back')) return;
-    /* 홈에서 뒤로가기 → 무시 (홈은 루트) */
     if (state.currentApp === 'com.zylos.home') return;
-    syslog('← Back', 'sys');
-    try {
-      var w = appFrame.contentWindow;
-      if (w && w.history.length > 1) w.history.back();
-      else goHome();
-    } catch (e) { goHome(); }
+    if (_backResponsePending) return;
+
+    syslog('\u2190 Back', 'sys');
+
+    /* Ask the app to handle back navigation internally.
+       The app should respond with navigation.handled (stayed in app)
+       or navigation.exit (wants to leave). If no response in 300ms, go home. */
+    _backResponsePending = true;
+    broadcastToCurrentApp('navigation.back', {});
+
+    var backTimer = setTimeout(function () {
+      /* No response from app — treat as exit */
+      _backResponsePending = false;
+      goHome();
+    }, 300);
+
+    /* One-time listener for the app's response */
+    function onBackResponse(e) {
+      try {
+        var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+        if (!msg) return;
+        if (msg.type === 'navigation.handled') {
+          /* App handled it internally — stay in app */
+          clearTimeout(backTimer);
+          _backResponsePending = false;
+          window.removeEventListener('message', onBackResponse);
+        } else if (msg.type === 'navigation.exit') {
+          /* App says go home */
+          clearTimeout(backTimer);
+          _backResponsePending = false;
+          window.removeEventListener('message', onBackResponse);
+          goHome();
+        }
+      } catch (err) { /* ignore */ }
+    }
+    window.addEventListener('message', onBackResponse);
+
+    /* Auto-cleanup listener after timeout */
+    setTimeout(function () {
+      window.removeEventListener('message', onBackResponse);
+    }, 350);
   }
 
   function showRecents() {

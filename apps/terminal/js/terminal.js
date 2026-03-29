@@ -84,7 +84,15 @@
     if (e.source !== window.parent && e.source !== window) return;
     try {
       var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-      if (!msg || msg.type !== 'service.response') return;
+      if (!msg) return;
+
+      /* Navigation back handling */
+      if (msg.type === 'navigation.back') {
+        window.parent.postMessage(JSON.stringify({ type: 'navigation.exit' }), '*');
+        return;
+      }
+
+      if (msg.type !== 'service.response') return;
       /* Handle async callbacks first */
       if (msg.requestId && _asyncCallbacks[msg.requestId]) {
         _asyncCallbacks[msg.requestId](msg.data);

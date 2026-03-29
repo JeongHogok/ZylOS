@@ -110,13 +110,28 @@
     }), '*');
   }
 
-  /* Listen for service responses */
+  /* Listen for messages from emulator */
   window.addEventListener('message', function (e) {
     if (e.source !== window.parent && e.source !== window) return;
     try {
       if (!e.data) return;
       var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-      if (!msg || msg.type !== 'service.response') return;
+      if (!msg) return;
+
+      /* ── Navigation back handling ── */
+      if (msg.type === 'navigation.back') {
+        if (currentPage) {
+          /* Sub-page open → go back to main menu */
+          btnBack.click();
+          window.parent.postMessage(JSON.stringify({ type: 'navigation.handled' }), '*');
+        } else {
+          /* Already on main menu → exit to home */
+          window.parent.postMessage(JSON.stringify({ type: 'navigation.exit' }), '*');
+        }
+        return;
+      }
+
+      if (msg.type !== 'service.response') return;
 
       if (msg.service === 'wifi' && msg.method === 'getNetworks' && msg.data) {
         renderWifiNetworks(msg.data);

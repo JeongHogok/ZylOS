@@ -67,7 +67,15 @@
     } catch (err) {
       return;
     }
-    if (!msg || msg.type !== 'service.response') return;
+    if (!msg) return;
+
+    /* Navigation back handling */
+    if (msg.type === 'navigation.back') {
+      window.parent.postMessage(JSON.stringify({ type: 'navigation.exit' }), '*');
+      return;
+    }
+
+    if (msg.type !== 'service.response') return;
 
     if (msg.service === 'appstore' && msg.method === 'getAvailable' && msg.data) {
       availableApps = Array.isArray(msg.data) ? msg.data : [];
