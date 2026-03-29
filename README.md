@@ -72,8 +72,6 @@
 cd emulator-app && cargo tauri dev
 
 # 브라우저 (간편 테스트)
-python3 -m http.server 9000
-# http://localhost:9000/emulator/index.html
 ```
 
 ### 네이티브 빌드
@@ -97,7 +95,7 @@ runtime/wam/         Web Application Manager (C, WebKitGTK)
 runtime/hal/         Hardware Abstraction Layer (C)
 runtime/services/    시스템 서비스 14개 (C, D-Bus)
 apps/                시스템 앱 9개 (HTML/CSS/JS)
-emulator/            웹 기반 에뮬레이터 (HTML/CSS/JS)
+
 emulator-app/        Tauri 네이티브 에뮬레이터 (Rust + HTML/CSS/JS)
 system/              systemd, Plymouth, DTS, AppArmor, 복구 모드
 tests/               단위/통합 테스트 (C, bash)

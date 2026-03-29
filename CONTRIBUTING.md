@@ -95,7 +95,6 @@ runtime/wam/       Web Application Manager
 runtime/hal/       Hardware Abstraction Layer
 runtime/services/  시스템 서비스 (14개)
 apps/              시스템 앱 (HTML/CSS/JS)
-emulator/          웹 기반 에뮬레이터
 system/            systemd, plymouth, DTS, AppArmor
 tools/             빌드/개발 도구
 tests/             테스트

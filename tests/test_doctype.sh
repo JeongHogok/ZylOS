@@ -21,7 +21,7 @@ ERRORS=0
 CHECKED=0
 
 # apps/ 와 emulator/ 내 모든 HTML 파일 검사
-for f in $(find "$PROJECT_DIR/apps/" "$PROJECT_DIR/emulator/" -name '*.html' 2>/dev/null); do
+for f in $(find "$PROJECT_DIR/apps/" -name '*.html' 2>/dev/null); do
     CHECKED=$((CHECKED + 1))
     first_line=$(head -1 "$f")
     if ! echo "$first_line" | grep -qi '<!doctype'; then

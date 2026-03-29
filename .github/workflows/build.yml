@@ -51,7 +51,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Check JavaScript syntax
         run: |
-          find apps/ emulator/ -name '*.js' | while read f; do
+          find apps/ -name '*.js' | while read f; do
             node --check "$f" || exit 1
           done
           echo "All JS files parse OK"
