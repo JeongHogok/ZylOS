@@ -4,7 +4,13 @@
   "version": "1.0.0",
   "entry": "index.html",
   "icon": "assets/lock-icon.png",
-  "permissions": ["time", "notification.read", "auth"],
+  "permissions": [
+    "time",
+    "notification.read",
+    "auth"
+  ],
   "type": "system",
-  "role": "lockscreen"
+  "role": "lockscreen",
+  "color": "icon-blue",
+  "iconKey": "browser"
 }

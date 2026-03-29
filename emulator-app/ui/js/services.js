@@ -135,19 +135,13 @@ var ZylServices = (function () {
       if (apps._cache) return apps._cache;
       return tauriInvoke('list_installed_apps').then(function (list) {
         if (list && list.length > 0) {
-          var colorMap = {
-            browser: 'icon-blue', files: 'icon-orange', terminal: 'icon-gray',
-            settings: 'icon-purple', camera: 'icon-red', gallery: 'icon-pink',
-            music: 'icon-red', clock: 'icon-indigo', calc: 'icon-orange',
-            notes: 'icon-amber', weather: 'icon-cyan', store: 'icon-emerald'
-          };
           apps._cache = list.map(function (m) {
             var appName = (m.id || '').split('.').pop();
             return {
               id: m.id,
               nameKey: 'app.' + appName,
-              icon: appName,
-              color: colorMap[appName] || 'icon-blue',
+              icon: m.iconKey || appName,
+              color: m.color || 'icon-blue',
               version: m.version || '1.0.0'
             };
           });

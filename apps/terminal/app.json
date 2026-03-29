@@ -4,6 +4,13 @@
   "version": "1.0.0",
   "entry": "index.html",
   "icon": "assets/terminal-icon.png",
-  "permissions": ["shell", "files.read", "files.write", "system"],
-  "type": "system"
+  "permissions": [
+    "shell",
+    "files.read",
+    "files.write",
+    "system"
+  ],
+  "type": "system",
+  "color": "icon-gray",
+  "iconKey": "terminal"
 }

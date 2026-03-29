@@ -4,7 +4,13 @@
   "version": "1.0.0",
   "entry": "index.html",
   "icon": "assets/oobe-icon.png",
-  "permissions": ["wifi", "i18n", "system"],
+  "permissions": [
+    "wifi",
+    "i18n",
+    "system"
+  ],
   "type": "system",
-  "role": "oobe"
+  "role": "oobe",
+  "color": "icon-blue",
+  "iconKey": "browser"
 }

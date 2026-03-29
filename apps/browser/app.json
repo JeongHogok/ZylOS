@@ -4,6 +4,13 @@
   "version": "1.0.0",
   "entry": "index.html",
   "icon": "assets/browser-icon.png",
-  "permissions": ["network", "webview", "downloads", "bookmarks"],
-  "type": "system"
+  "permissions": [
+    "network",
+    "webview",
+    "downloads",
+    "bookmarks"
+  ],
+  "type": "system",
+  "color": "icon-blue",
+  "iconKey": "browser"
 }

@@ -4,6 +4,16 @@
   "version": "1.0.0",
   "entry": "index.html",
   "icon": "assets/settings-icon.png",
-  "permissions": ["wifi", "bluetooth", "display", "audio", "system", "app.manage", "i18n"],
-  "type": "system"
+  "permissions": [
+    "wifi",
+    "bluetooth",
+    "display",
+    "audio",
+    "system",
+    "app.manage",
+    "i18n"
+  ],
+  "type": "system",
+  "color": "icon-purple",
+  "iconKey": "settings"
 }

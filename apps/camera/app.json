@@ -4,6 +4,13 @@
   "version": "1.0.0",
   "entry": "index.html",
   "icon": "assets/camera-icon.png",
-  "permissions": ["camera", "microphone", "storage", "gallery"],
-  "type": "system"
+  "permissions": [
+    "camera",
+    "microphone",
+    "storage",
+    "gallery"
+  ],
+  "type": "system",
+  "color": "icon-red",
+  "iconKey": "camera"
 }
