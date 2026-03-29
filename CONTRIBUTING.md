@@ -30,6 +30,12 @@ ninja -C builddir
 - `system()` 호출 금지 → D-Bus 또는 sysfs 사용
 - `snprintf`에 `sizeof(buffer)` 사용 (매직 넘버 금지)
 
+### HTML
+- **`<!DOCTYPE html>`이 반드시 파일 첫 번째 줄이어야 합니다**
+- 주석은 DOCTYPE 뒤에 배치: `<!DOCTYPE html>\n<!-- 주석 -->`
+- Tauri WKWebView가 첫 바이트로 MIME 타입을 판단하므로, `<!--`로 시작하면 `application/octet-stream`으로 인식되어 렌더링 실패합니다
+- CI에서 `tests/test_doctype.sh`로 자동 검증됩니다
+
 ### JavaScript
 - ES5 호환 (WebKitGTK RISC-V 지원)
 - `var` 사용 (`let`/`const` 사용 금지)

@@ -18,8 +18,12 @@
 
 ### 에뮬레이터 (하드웨어 불필요)
 ```bash
+# 방법 1: 네이티브 앱 (Tauri — 실제 리소스 예약)
+cd emulator-app && cargo tauri dev
+
+# 방법 2: 브라우저 (간편 테스트)
 python3 -m http.server 9000
-# 브라우저에서 http://localhost:9000/emulator/index.html 접속
+# http://localhost:9000/emulator/index.html
 ```
 
 ### 네이티브 빌드
@@ -43,7 +47,8 @@ runtime/wam/         Web Application Manager
 runtime/hal/         Hardware Abstraction Layer
 runtime/services/    시스템 서비스 (14개)
 apps/                시스템 앱 (11개)
-emulator/            웹 기반 디바이스 에뮬레이터
+emulator/            웹 기반 디바이스 에뮬레이터 (브라우저)
+emulator-app/        Tauri 네이티브 에뮬레이터 (.app/.dmg/.deb)
 system/              systemd, Plymouth, DTS, AppArmor, 복구 모드
 tests/               단위/통합 테스트
 tools/               빌드/프로파일링 도구

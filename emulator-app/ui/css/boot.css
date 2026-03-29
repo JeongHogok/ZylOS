@@ -1,0 +1,84 @@
+/* ──────────────────────────────────────────────────────────
+   [Clean Architecture] Presentation Layer - Style
+   역할: 부팅 스플래시 화면 스타일
+   수행범위: 로고, 프로그레스 바, 부팅 로그 애니메이션
+   의존방향: index.html #boot-screen
+   SOLID: SRP — 부팅 화면 스타일만 담당
+   ────────────────────────────────────────────────────────── */
+
+#boot-screen {
+  position: fixed;
+  inset: 0;
+  background: #0a0a0f;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9000;
+}
+.boot-container {
+  text-align: center;
+  width: 400px;
+}
+
+/* ── Logo ── */
+.boot-logo {
+  margin-bottom: 48px;
+  animation: bootFadeIn 1s ease-out;
+}
+.boot-logo-text {
+  font-size: 48px;
+  font-weight: 800;
+  background: linear-gradient(135deg, #6366f1, #a78bfa, #c084fc);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: -1px;
+}
+.boot-version {
+  font-size: 14px;
+  color: #555;
+  margin-top: 4px;
+}
+
+/* ── Progress ── */
+.boot-progress {
+  height: 4px;
+  background: #1a1a2e;
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 32px;
+}
+.boot-progress-bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #6366f1, #8b5cf6);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+/* ── Boot Log ── */
+.boot-log {
+  text-align: left;
+  font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+  font-size: 11px;
+  color: #444;
+  max-height: 200px;
+  overflow: hidden;
+  line-height: 1.6;
+}
+.boot-log-line {
+  opacity: 0;
+  animation: logFadeIn 0.3s ease forwards;
+}
+.boot-log-line.ok { color: #22c55e; }
+.boot-log-line.info { color: #555; }
+.boot-log-line.warn { color: #eab308; }
+
+/* ── Animations ── */
+@keyframes bootFadeIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes logFadeIn {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}

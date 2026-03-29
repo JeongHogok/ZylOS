@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<!-- [Clean Architecture] Presentation Layer - Page
+     역할: Zyl OS 네이티브 에뮬레이터 SPA 엔트리포인트 -->
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zyl OS Emulator</title>
+  <link rel="stylesheet" href="css/config.css">
+  <link rel="stylesheet" href="css/boot.css">
+  <link rel="stylesheet" href="css/emulator.css">
+</head>
+<body>
+  <!-- ═══ Phase 1: 설정 화면 ═══ -->
+  <div id="config-screen">
+    <div class="config-header">
+      <h1 class="config-title">Zyl OS Emulator</h1>
+      <p class="config-subtitle">가상 디바이스를 설정하고 부팅하세요</p>
+    </div>
+
+    <!-- 저장된 디바이스 목록 -->
+    <div id="saved-devices-section" class="config-section hidden">
+      <h2 class="section-title">저장된 디바이스</h2>
+      <div id="saved-devices-list" class="device-cards"></div>
+    </div>
+
+    <!-- Step 1: 디바이스 프로필 선택 -->
+    <div id="config-step-1" class="config-step">
+      <h2 class="section-title">새 디바이스 만들기</h2>
+      <div id="profile-cards" class="device-cards"></div>
+    </div>
+
+    <!-- Step 2: 리소스 설정 -->
+    <div id="config-step-2" class="config-step hidden">
+      <h2 class="section-title">리소스 설정</h2>
+      <div class="config-form">
+        <div class="form-group">
+          <label>OS 이미지</label>
+          <div id="os-version-options"></div>
+        </div>
+        <div class="form-group">
+          <label>저장공간</label>
+          <div id="storage-options" class="option-row"></div>
+        </div>
+        <div class="form-group">
+          <label>RAM</label>
+          <div id="ram-options" class="option-row"></div>
+        </div>
+        <div class="host-info" id="host-info"></div>
+      </div>
+      <div class="step-actions">
+        <button id="btn-back-step1" class="btn btn-secondary">이전</button>
+        <button id="btn-next-step3" class="btn btn-primary">다음</button>
+      </div>
+    </div>
+
+    <!-- Step 3: 확인 -->
+    <div id="config-step-3" class="config-step hidden">
+      <h2 class="section-title">설정 확인</h2>
+      <div id="config-summary" class="summary-card"></div>
+      <div class="step-actions">
+        <button id="btn-back-step2" class="btn btn-secondary">이전</button>
+        <button id="btn-boot" class="btn btn-boot">부팅</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Phase 2: 부팅 스플래시 ═══ -->
+  <div id="boot-screen" class="hidden">
+    <div class="boot-container">
+      <div class="boot-logo">
+        <div class="boot-logo-text">Zyl OS</div>
+        <div class="boot-version" id="boot-version">v0.1.0</div>
+      </div>
+      <div class="boot-progress">
+        <div class="boot-progress-bar" id="boot-progress-bar"></div>
+      </div>
+      <div class="boot-log" id="boot-log"></div>
+    </div>
+  </div>
+
+  <!-- ═══ Phase 3: 디바이스 에뮬레이터 (기존 emulator 구조) ═══ -->
+  <div id="emulator-screen" class="hidden">
+    <div id="backdrop"></div>
+
+    <div id="device-frame">
+      <button id="side-power" class="side-btn side-btn-right" style="top:160px;height:50px" title="Power (P)"></button>
+      <button id="side-volup" class="side-btn side-btn-right" style="top:240px;height:40px" title="Vol+ (↑)">+</button>
+      <button id="side-voldown" class="side-btn side-btn-right" style="top:290px;height:40px" title="Vol- (↓)"></button>
+
+      <div id="device-notch"></div>
+      <div id="device-screen">
+        <div id="emu-statusbar">
+          <span id="emu-time">00:00</span>
+          <div class="emu-sb-right">
+            <svg class="sb-ico" viewBox="0 0 24 24"><path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"/></svg>
+            <svg class="sb-ico" viewBox="0 0 24 24"><path d="M15.67 4H14V2h-4v2H8.33C7.6 4 7 4.6 7 5.33v15.33C7 21.4 7.6 22 8.33 22h7.33c.74 0 1.34-.6 1.34-1.33V5.33C17 4.6 16.4 4 15.67 4z"/></svg>
+            <span id="notif-badge" class="hidden">0</span>
+            <span id="emu-battery">85%</span>
+          </div>
+        </div>
+
+        <div id="notif-toast" class="toast-hidden">
+          <div class="toast-icon"></div>
+          <div class="toast-text">
+            <div class="toast-app">App</div>
+            <div class="toast-title">Title</div>
+            <div class="toast-body">Body</div>
+          </div>
+        </div>
+
+        <div id="qs-backdrop"></div>
+        <div id="qs-panel" class="qs-hidden">
+          <div class="qs-handle"></div>
+          <div class="qs-time" id="qs-time">16:20</div>
+          <div class="qs-date" id="qs-date"></div>
+          <div class="qs-grid">
+            <button class="qs-tile active" data-qs="wifi"><svg viewBox="0 0 24 24"><path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"/></svg><span>Wi-Fi</span></button>
+            <button class="qs-tile" data-qs="bt"><svg viewBox="0 0 24 24"><path d="M17.71 7.71L12 2h-1v7.59L6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 11 14.41V22h1l5.71-5.71-4.3-4.29 4.3-4.29zM13 5.83l1.88 1.88L13 9.59V5.83zm1.88 10.46L13 18.17v-3.76l1.88 1.88z"/></svg><span>BT</span></button>
+            <button class="qs-tile" data-qs="airplane"><svg viewBox="0 0 24 24"><path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg><span>Airplane</span></button>
+            <button class="qs-tile" data-qs="silent"><svg viewBox="0 0 24 24"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71z"/></svg><span>Silent</span></button>
+            <button class="qs-tile" data-qs="rotate"><svg viewBox="0 0 24 24"><path d="M16.48 2.52c3.27 1.55 5.61 4.72 5.97 8.48h1.5C23.44 4.84 18.29 0 12 0l-.66.03 3.81 3.81 1.33-1.32z"/></svg><span>Rotate</span></button>
+            <button class="qs-tile" data-qs="flashlight"><svg viewBox="0 0 24 24"><path d="M6 14l3 3v5h6v-5l3-3V9H6v5zm5-12h2v3h-2V2z"/></svg><span>Light</span></button>
+          </div>
+          <div class="qs-brightness">
+            <svg class="qs-bright-ico" viewBox="0 0 24 24"><path d="M20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12 20 8.69z"/></svg>
+            <input type="range" id="qs-brightness" min="10" max="100" value="80">
+          </div>
+          <div id="qs-notif-section">
+            <div class="qs-notif-header">Notifications</div>
+            <div id="qs-notif-list"><div class="qs-notif-empty">No notifications</div></div>
+          </div>
+        </div>
+
+        <div id="app-viewport">
+          <iframe id="app-frame" src="" frameborder="0"></iframe>
+        </div>
+
+        <div id="recents-overlay" class="hidden">
+          <div id="recents-header">Recent Apps</div>
+          <div id="recents-cards"></div>
+          <div id="recents-empty">No running apps</div>
+        </div>
+
+        <div id="nav-softkeys" class="nav-bar hidden">
+          <button class="nav-sk-btn" id="sk-back"><svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg></button>
+          <button class="nav-sk-btn nav-sk-home" id="sk-home"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" fill="none" stroke="white" stroke-width="2"/></svg></button>
+          <button class="nav-sk-btn" id="sk-recents"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1" fill="none" stroke="white" stroke-width="2"/></svg></button>
+        </div>
+
+        <div id="nav-gesture" class="nav-bar hidden">
+          <div id="gesture-bar"></div>
+        </div>
+      </div>
+
+      <div id="nav-hardware" class="hidden">
+        <button class="hw-btn" id="hw-back">&#9665;</button>
+        <button class="hw-btn hw-home" id="hw-home">&#9711;</button>
+        <button class="hw-btn" id="hw-recents">&#9633;</button>
+      </div>
+    </div>
+
+    <div id="control-panel">
+      <div id="device-info-header"></div>
+      <div class="control-group">
+        <label>Actions</label>
+        <div class="btn-row">
+          <button id="btn-power" class="ctrl-btn" title="Power">Power</button>
+          <button id="btn-volup" class="ctrl-btn" title="Vol+">Vol+</button>
+          <button id="btn-voldown" class="ctrl-btn" title="Vol-">Vol-</button>
+          <button id="btn-reboot" class="ctrl-btn ctrl-wide" title="Reboot">Reboot</button>
+        </div>
+      </div>
+      <div class="control-group">
+        <label>Resources</label>
+        <div id="resource-info"></div>
+      </div>
+      <div class="control-group">
+        <label>Running Apps</label>
+        <div id="running-apps-list"></div>
+      </div>
+      <div class="control-group">
+        <label>System Log</label>
+        <div id="sys-log"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/hal-browser.js"></script>
+  <script src="js/hal-tauri.js"></script>
+  <script src="js/services.js"></script>
+  <script src="js/config-ui.js"></script>
+  <script src="js/boot-sequence.js"></script>
+  <script src="js/emulator.js"></script>
+</body>
+</html>

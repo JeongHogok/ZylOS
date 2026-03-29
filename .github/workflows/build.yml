@@ -25,6 +25,13 @@ jobs:
           done
           echo "All manifests valid"
 
+  lint-html:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check HTML DOCTYPE first line
+        run: bash tests/test_doctype.sh
+
   lint-js:
     runs-on: ubuntu-24.04
     steps:

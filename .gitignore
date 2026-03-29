@@ -29,6 +29,12 @@ meta-bpi-os/tmp/
 compositor/bpi-compositor
 runtime/wam/bpi-wam
 
+# Tauri / Rust
+emulator-app/target/
+emulator-app/ui/apps/
+emulator-app/assets/apps/
+emulator-app/ui/index.html.full
+
 # Package artifacts
 *.ospkg
 *.img
