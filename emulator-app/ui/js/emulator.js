@@ -48,31 +48,9 @@
     },
   ];
 
-  /* ═══ 앱 경로 해석 ═══
-     OS 이미지 마운트 포인트가 설정되면 마운트된 이미지에서 앱을 로드.
-     마운트 포인트 미설정 시 에뮬레이터 번들(ui/apps/) 폴백. */
-  var _mountPoint = '';
-
-  function appPath(relPath) {
-    if (_mountPoint && IS_TAURI) {
-      /* 마운트된 OS 이미지에서 로드
-         convertFileSrc()는 /를 %2F로 인코딩해서 상대 경로가 깨지므로
-         asset URL을 직접 조합한다 */
-      return 'https://asset.localhost/' + encodeURI(_mountPoint + '/' + relPath);
-    }
-    /* 폴백: 에뮬레이터 번들에서 로드 */
-    return relPath;
-  }
-
-  function rebuildAppPaths() {
-    APPS['com.zylos.lockscreen'].path = appPath('apps/lockscreen/index.html');
-    APPS['com.zylos.home'].path       = appPath('apps/home/index.html');
-    APPS['com.zylos.settings'].path   = appPath('apps/settings/index.html');
-    APPS['com.zylos.browser'].path    = appPath('apps/browser/index.html');
-    APPS['com.zylos.files'].path      = appPath('apps/files/index.html');
-    APPS['com.zylos.terminal'].path   = appPath('apps/terminal/index.html');
-    APPS['com.zylos.camera'].path     = appPath('apps/camera/index.html');
-  }
+  /* ═══ 앱 경로 ═══
+     부팅 시 Rust가 OS 이미지(.img)를 마운트 → apps/를 ui/apps/로 복사.
+     셧다운 시 정리. 따라서 앱은 항상 상대 경로로 접근. */
 
   var APPS = {
     'com.zylos.lockscreen': { name: 'Lock Screen', path: 'apps/lockscreen/index.html', system: true },
@@ -1035,14 +1013,9 @@
       hasNotch: config.has_notch !== false,
     };
 
-    /* OS 이미지 마운트 포인트에서 앱 로드 경로 설정 */
-    /* OS 이미지 마운트에서 앱 로드 (없으면 데이터 마운트, 그것도 없으면 번들 폴백) */
+    /* 부팅 정보 로그 (앱은 Rust에서 ui/apps/로 복사됨) */
     if (bootInfo && bootInfo.os_image_mount) {
-      _mountPoint = bootInfo.os_image_mount;
-      rebuildAppPaths();
-      syslog('Apps loading from OS image: ' + esc(_mountPoint), 'sys');
-    } else if (bootInfo && bootInfo.mount_point) {
-      syslog('OS image not mounted, using bundled apps', 'warn');
+      syslog('OS image: ' + esc(bootInfo.os_image_mount), 'sys');
     }
 
     /* 에뮬레이터 화면 표시 */

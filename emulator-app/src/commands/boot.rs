@@ -9,7 +9,8 @@
 
 use crate::commands::resource;
 use crate::state::{AppState, BootInfo, DeviceConfig};
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
 use tauri::State;
@@ -110,6 +111,78 @@ fn unmount_os_image(mount_point: &str) {
     log::info!("OS image unmounted: {}", mount_point);
 }
 
+/// OS 이미지의 앱을 WebView 서빙 디렉토리(ui/apps/)로 복사
+fn deploy_apps_from_image(os_mount: &str) -> Result<(), String> {
+    let src = PathBuf::from(os_mount).join("apps");
+    if !src.exists() {
+        return Err(format!("No apps/ directory in OS image at {:?}", src));
+    }
+
+    // ui/apps/ 경로 결정 (frontendDist 기준)
+    let dst = find_ui_apps_dir()?;
+
+    // 기존 앱 삭제 후 복사
+    if dst.exists() {
+        let _ = fs::remove_dir_all(&dst);
+    }
+
+    copy_dir_recursive(&src, &dst)
+        .map_err(|e| format!("Failed to deploy apps: {}", e))?;
+
+    log::info!("Apps deployed from {:?} to {:?}", src, dst);
+    Ok(())
+}
+
+/// WebView의 ui/apps/ 디렉토리 경로 결정
+fn find_ui_apps_dir() -> Result<PathBuf, String> {
+    // 개발 모드: emulator-app/ui/apps/
+    let dev_path = PathBuf::from("ui/apps");
+    if PathBuf::from("ui").exists() {
+        return Ok(dev_path);
+    }
+
+    // 프로덕션: 실행파일 기준 상대 경로
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            let prod_path = parent.join("../Resources/ui/apps");
+            if let Some(pp) = prod_path.parent() {
+                if pp.exists() {
+                    return Ok(prod_path);
+                }
+            }
+        }
+    }
+
+    // 폴백
+    Ok(PathBuf::from("ui/apps"))
+}
+
+/// 재귀 디렉토리 복사
+fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else {
+            fs::copy(&src_path, &dst_path)?;
+        }
+    }
+    Ok(())
+}
+
+/// 배포된 앱 정리
+fn cleanup_deployed_apps() {
+    if let Ok(dst) = find_ui_apps_dir() {
+        if dst.exists() {
+            let _ = fs::remove_dir_all(&dst);
+            log::info!("Deployed apps cleaned up: {:?}", dst);
+        }
+    }
+}
+
 /// 디바이스 부팅: OS 이미지 마운트 + 리소스 예약 → 부팅 정보 반환
 #[tauri::command]
 pub async fn boot_device(
@@ -158,7 +231,14 @@ pub async fn boot_device(
         String::new()
     };
 
-    // 3. 사용자 데이터 리소스 예약 (스토리지 이미지)
+    // 3. 마운트된 이미지에서 앱을 WebView 디렉토리로 배포
+    if !os_mount.is_empty() {
+        if let Err(e) = deploy_apps_from_image(&os_mount) {
+            log::warn!("App deployment failed: {}", e);
+        }
+    }
+
+    // 4. 사용자 데이터 리소스 예약 (스토리지 이미지)
     let resource_info = resource::reserve_resources(state.clone()).await?;
 
     // 4. 부팅 상태 전환
@@ -197,10 +277,13 @@ pub async fn shutdown_device(state: State<'_, Mutex<AppState>>) -> Result<(), St
         }
     }
 
-    // 2. 데이터 리소스 해제
+    // 2. 배포된 앱 정리
+    cleanup_deployed_apps();
+
+    // 3. 데이터 리소스 해제
     resource::release_resources(state.clone()).await?;
 
-    // 3. 상태 초기화
+    // 4. 상태 초기화
     {
         let mut app_state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
         app_state.booted = false;
