@@ -17,7 +17,23 @@
     'weather.forecast': '\uC608\uBCF4',
     'weather.loading': '\uBD88\uB7EC\uC624\uB294 \uC911...',
     'weather.error': '\uB0A0\uC528 \uC815\uBCF4\uB97C \uC0AC\uC6A9\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4',
-    'weather.refresh': '\uC0C8\uB85C\uACE0\uCE68'
+    'weather.refresh': '\uC0C8\uB85C\uACE0\uCE68',
+    'weather.clear': '\uB9D1\uC74C',
+    'weather.partly_cloudy': '\uAD6C\uB984 \uC870\uAE08',
+    'weather.foggy': '\uC548\uAC1C',
+    'weather.drizzle': '\uC774\uC2AC\uBE44',
+    'weather.rain': '\uBE44',
+    'weather.snow': '\uB208',
+    'weather.thunderstorm': '\uB1CC\uC6B0',
+    'weather.unknown': '\uC54C \uC218 \uC5C6\uC74C',
+    'weather.today': '\uC624\uB298',
+    'weather.day_sun': '\uC77C',
+    'weather.day_mon': '\uC6D4',
+    'weather.day_tue': '\uD654',
+    'weather.day_wed': '\uC218',
+    'weather.day_thu': '\uBAA9',
+    'weather.day_fri': '\uAE08',
+    'weather.day_sat': '\uD1A0'
   });
 
   zylI18n.addTranslations('en', {
@@ -28,7 +44,23 @@
     'weather.forecast': 'Forecast',
     'weather.loading': 'Loading...',
     'weather.error': 'Weather unavailable',
-    'weather.refresh': 'Refresh'
+    'weather.refresh': 'Refresh',
+    'weather.clear': 'Clear',
+    'weather.partly_cloudy': 'Partly Cloudy',
+    'weather.foggy': 'Foggy',
+    'weather.drizzle': 'Drizzle',
+    'weather.rain': 'Rain',
+    'weather.snow': 'Snow',
+    'weather.thunderstorm': 'Thunderstorm',
+    'weather.unknown': 'Unknown',
+    'weather.today': 'Today',
+    'weather.day_sun': 'Sun',
+    'weather.day_mon': 'Mon',
+    'weather.day_tue': 'Tue',
+    'weather.day_wed': 'Wed',
+    'weather.day_thu': 'Thu',
+    'weather.day_fri': 'Fri',
+    'weather.day_sat': 'Sat'
   });
 
   zylI18n.addTranslations('ja', {
@@ -39,7 +71,23 @@
     'weather.forecast': '\u4E88\u5831',
     'weather.loading': '\u8AAD\u307F\u8FBC\u307F\u4E2D...',
     'weather.error': '\u5929\u6C17\u60C5\u5831\u3092\u53D6\u5F97\u3067\u304D\u307E\u305B\u3093',
-    'weather.refresh': '\u66F4\u65B0'
+    'weather.refresh': '\u66F4\u65B0',
+    'weather.clear': '\u6674\u308C',
+    'weather.partly_cloudy': '\u304F\u3082\u308A',
+    'weather.foggy': '\u9727',
+    'weather.drizzle': '\u9727\u96E8',
+    'weather.rain': '\u96E8',
+    'weather.snow': '\u96EA',
+    'weather.thunderstorm': '\u96F7\u96E8',
+    'weather.unknown': '\u4E0D\u660E',
+    'weather.today': '\u4ECA\u65E5',
+    'weather.day_sun': '\u65E5',
+    'weather.day_mon': '\u6708',
+    'weather.day_tue': '\u706B',
+    'weather.day_wed': '\u6C34',
+    'weather.day_thu': '\u6728',
+    'weather.day_fri': '\u91D1',
+    'weather.day_sat': '\u571F'
   });
 
   zylI18n.addTranslations('zh', {
@@ -50,7 +98,23 @@
     'weather.forecast': '\u9884\u62A5',
     'weather.loading': '\u52A0\u8F7D\u4E2D...',
     'weather.error': '\u65E0\u6CD5\u83B7\u53D6\u5929\u6C14\u4FE1\u606F',
-    'weather.refresh': '\u5237\u65B0'
+    'weather.refresh': '\u5237\u65B0',
+    'weather.clear': '\u6674',
+    'weather.partly_cloudy': '\u591A\u4E91',
+    'weather.foggy': '\u96FE',
+    'weather.drizzle': '\u6BDB\u6BDB\u96E8',
+    'weather.rain': '\u96E8',
+    'weather.snow': '\u96EA',
+    'weather.thunderstorm': '\u96F7\u66B4',
+    'weather.unknown': '\u672A\u77E5',
+    'weather.today': '\u4ECA\u5929',
+    'weather.day_sun': '\u65E5',
+    'weather.day_mon': '\u4E00',
+    'weather.day_tue': '\u4E8C',
+    'weather.day_wed': '\u4E09',
+    'weather.day_thu': '\u56DB',
+    'weather.day_fri': '\u4E94',
+    'weather.day_sat': '\u516D'
   });
 
   zylI18n.addTranslations('es', {
@@ -61,6 +125,22 @@
     'weather.forecast': 'Pron\u00F3stico',
     'weather.loading': 'Cargando...',
     'weather.error': 'Clima no disponible',
-    'weather.refresh': 'Actualizar'
+    'weather.refresh': 'Actualizar',
+    'weather.clear': 'Despejado',
+    'weather.partly_cloudy': 'Parcialmente nublado',
+    'weather.foggy': 'Niebla',
+    'weather.drizzle': 'Llovizna',
+    'weather.rain': 'Lluvia',
+    'weather.snow': 'Nieve',
+    'weather.thunderstorm': 'Tormenta',
+    'weather.unknown': 'Desconocido',
+    'weather.today': 'Hoy',
+    'weather.day_sun': 'Dom',
+    'weather.day_mon': 'Lun',
+    'weather.day_tue': 'Mar',
+    'weather.day_wed': 'Mi\u00E9',
+    'weather.day_thu': 'Jue',
+    'weather.day_fri': 'Vie',
+    'weather.day_sat': 'S\u00E1b'
   });
 })();

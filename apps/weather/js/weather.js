@@ -129,11 +129,12 @@
     forecastEl.innerHTML = '';
     var days = data.daily;
     var count = Math.min(days.time.length, 7);
-    var weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    var t = (typeof zylI18n !== 'undefined') ? zylI18n.t.bind(zylI18n) : function (k) { return k; };
+    var weekDayKeys = ['weather.day_sun', 'weather.day_mon', 'weather.day_tue', 'weather.day_wed', 'weather.day_thu', 'weather.day_fri', 'weather.day_sat'];
 
     for (var i = 0; i < count; i++) {
       var date = new Date(days.time[i] + 'T12:00:00');
-      var dayName = (i === 0) ? 'Today' : weekDays[date.getDay()];
+      var dayName = (i === 0) ? t('weather.today') : t(weekDayKeys[date.getDay()]);
       var maxTemp = Math.round(days.temperature_2m_max[i]);
       var minTemp = Math.round(days.temperature_2m_min[i]);
       var icon = weatherCodeToEmoji(days.weather_code[i]);
@@ -152,16 +153,17 @@
     if (condition) condition.textContent = msg;
   }
 
-  /* ─── Weather code → text ─── */
+  /* ─── Weather code → text (i18n) ─── */
   function weatherCodeToText(code) {
-    if (code === 0) return 'Clear';
-    if (code <= 3) return 'Partly Cloudy';
-    if (code <= 49) return 'Foggy';
-    if (code <= 59) return 'Drizzle';
-    if (code <= 69) return 'Rain';
-    if (code <= 79) return 'Snow';
-    if (code <= 99) return 'Thunderstorm';
-    return 'Unknown';
+    var t = (typeof zylI18n !== 'undefined') ? zylI18n.t.bind(zylI18n) : function (k) { return k; };
+    if (code === 0) return t('weather.clear');
+    if (code <= 3) return t('weather.partly_cloudy');
+    if (code <= 49) return t('weather.foggy');
+    if (code <= 59) return t('weather.drizzle');
+    if (code <= 69) return t('weather.rain');
+    if (code <= 79) return t('weather.snow');
+    if (code <= 99) return t('weather.thunderstorm');
+    return t('weather.unknown');
   }
 
   /* ─── Weather code → emoji ─── */
