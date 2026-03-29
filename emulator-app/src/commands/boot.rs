@@ -163,7 +163,7 @@ pub async fn boot_device(
     };
 
     // 3. 사용자 데이터 리소스 예약 (스토리지 이미지)
-    // 참고: 앱 배포는 beforeDevCommand(dev) 또는 beforeBuildCommand(prod)에서 수행.
+    // 참고: 앱 배포는 scripts/deploy-apps.sh (beforeDevCommand)에서 수행.
     // 런타임에 ui/apps/로 복사하면 Tauri watcher가 재시작 루프를 발생시킴.
     let resource_info = resource::reserve_resources(state.clone()).await?;
 

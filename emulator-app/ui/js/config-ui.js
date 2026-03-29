@@ -19,7 +19,7 @@ var ZylConfigUI = (function () {
   var _selectedStorage = 8;
   var _selectedRam = 1024;
   var _selectedOsVersion = '0.1.0';
-  var _selectedOsPath = 'bundled';
+  var _selectedOsPath = ''; /* 선택된 OS 이미지 경로 (deploy-apps.sh에서 사용) */
   var _onBoot = null;
 
   function getInvoke() {
@@ -200,7 +200,7 @@ var ZylConfigUI = (function () {
 
         card.querySelector('.saved-card-delete').addEventListener('click', function (e) {
           e.stopPropagation();
-          invoke('delete_saved_device', { profileId: c.profile_id }).then(function () {
+          invoke('delete_saved_device', { profile_id: c.profile_id }).then(function () {
             card.remove();
             if (list.children.length === 0) section.classList.add('hidden');
           });

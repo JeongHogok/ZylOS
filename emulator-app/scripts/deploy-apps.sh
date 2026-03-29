@@ -9,7 +9,12 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 DST="$PROJECT_DIR/ui/apps"
-IMG_DIR="$HOME/Library/Application Support/zyl-emulator/os-images"
+
+# 플랫폼별 데이터 디렉토리
+case "$(uname)" in
+  Darwin) IMG_DIR="$HOME/Library/Application Support/zyl-emulator/os-images" ;;
+  *)      IMG_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/zyl-emulator/os-images" ;;
+esac
 
 # 이미 배포된 앱이 있으면 스킵
 if [ -d "$DST" ] && [ "$(ls -A "$DST" 2>/dev/null)" ]; then

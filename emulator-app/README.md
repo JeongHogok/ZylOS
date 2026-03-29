@@ -84,14 +84,16 @@ emulator-app/
 
 ### 저장 위치
 ```
-~/.local/share/zyl-emulator/
-├── os-images/              사용자 임포트 OS 이미지
-│   └── 0.2.0/
-│       ├── apps/           앱 파일
-│       └── version.json    이미지 메타데이터
-├── images/                 디스크 이미지 (.img)
-├── mnt/                    마운트 포인트
-├── vfs/                    폴백 가상 FS
+# macOS: ~/Library/Application Support/zyl-emulator/
+# Linux: ~/.local/share/zyl-emulator/
+
+zyl-emulator/
+├── os-images/              OS 이미지 (.img 파일)
+│   ├── 0.1.0.img           디스크 이미지 (HFS+/ext4)
+│   └── 0.1.0.json          이미지 메타데이터
+├── images/                 디바이스별 스토리지 이미지
+├── mnt/                    스토리지 마운트 포인트
+├── vfs/                    마운트 실패 시 폴백 디렉토리
 └── devices/                저장된 디바이스 설정 (.json)
 ```
 

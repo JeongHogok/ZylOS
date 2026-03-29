@@ -649,6 +649,7 @@
   /* ═══ Toast Banner ═══ */
   function showToast(notif) {
     var toast = document.getElementById('notif-toast');
+    if (!toast) return;
     toast.querySelector('.toast-icon').textContent = notif.icon;
     toast.querySelector('.toast-app').textContent = notif.appName;
     toast.querySelector('.toast-title').textContent = notif.title;
@@ -977,8 +978,9 @@
       state.locked = true;
       launchApp('com.zylos.lockscreen');
 
-      /* HAL에서 실제 배터리 정보 가져오기 */
-      if (HAL && HAL.battery) {
+      /* HAL에서 실제 배터리 정보 가져오기 (중복 init 방지) */
+      if (HAL && HAL.battery && !state._batteryStarted) {
+        state._batteryStarted = true;
         var batEl = document.getElementById('emu-battery');
         function updateBattery() {
           var s = HAL.battery.getState();
@@ -987,7 +989,7 @@
         if (HAL.battery.init) HAL.battery.init();
         updateBattery();
         if (HAL.battery.onChange) HAL.battery.onChange(updateBattery);
-        var _batteryInterval = setInterval(updateBattery, 30000);
+        setInterval(updateBattery, 30000);
         syslog('Battery: ' + (HAL.battery.getState().level || '?') + '%', 'sys');
       }
 
