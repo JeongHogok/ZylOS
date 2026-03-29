@@ -262,7 +262,7 @@
         '<div class="lock-notif-title">' + (n.title || '') + '</div>' +
         '<div class="lock-notif-body">' + (n.body || '') + '</div>' +
       '</div>' +
-      '<div class="lock-notif-time">방금</div>';
+      '<div class="lock-notif-time">now</div>';
 
     el.addEventListener('click', function () {
       if (el.classList.contains('swiping')) return;

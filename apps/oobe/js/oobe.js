@@ -87,7 +87,7 @@
     var msg = document.getElementById('pin-msg');
 
     if (pin.length !== 4) {
-      msg.textContent = '4자리 PIN을 입력하세요';
+      msg.textContent = 'PIN must be 4 digits';
       return;
     }
     if (pin !== confirm) {

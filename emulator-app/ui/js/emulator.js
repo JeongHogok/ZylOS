@@ -443,8 +443,7 @@
   function updateQsClock() {
     var now = new Date();
     if (qsTime) qsTime.textContent = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
-    var days = ['일요일','월요일','화요일','수요일','목요일','금요일','토요일'];
-    if (qsDate) qsDate.textContent = (now.getMonth()+1) + '월 ' + now.getDate() + '일 ' + days[now.getDay()];
+    if (qsDate) qsDate.textContent = now.toLocaleDateString('en', { month: 'long', day: 'numeric', weekday: 'long' });
   }
 
   var qsBackdrop = document.getElementById('qs-backdrop');
@@ -712,7 +711,7 @@
     var visible = notifications.filter(function(n) { return !n.read; });
 
     if (visible.length === 0) {
-      list.innerHTML = '<div class="qs-notif-empty">' + esc('알림이 없습니다') + '</div>';
+      list.innerHTML = '<div class="qs-notif-empty">' + esc('No notifications') + '</div>';
       return;
     }
 

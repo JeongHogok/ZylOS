@@ -370,7 +370,7 @@ var ZylConfigUI = (function () {
       window.__TAURI__.dialog.open({
         directory: true,
         multiple: false,
-        title: 'OS 이미지 폴더 선택',
+        title: 'Select OS Image Folder',
         defaultPath: _currentImageDir || undefined
       }).then(function (selected) {
         if (!selected) return;
@@ -414,7 +414,7 @@ var ZylConfigUI = (function () {
     var scanBtn = document.createElement('button');
     scanBtn.className = 'btn btn-primary';
     scanBtn.style.cssText = 'padding:8px 16px;font-size:13px';
-    scanBtn.textContent = '스캔';
+    scanBtn.textContent = 'Scan';
     scanBtn.addEventListener('click', function () {
       var path = input.value.trim();
       if (path) {
