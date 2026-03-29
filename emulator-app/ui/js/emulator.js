@@ -1030,7 +1030,7 @@
           '<div style="font-size:12px;color:#888;line-height:1.6">' +
           'Storage: ' + config.storage_gb + ' GB<br>' +
           'RAM: ' + (config.ram_mb >= 1024 ? (config.ram_mb / 1024) + ' GB' : config.ram_mb + ' MB') + '<br>' +
-          (bootInfo.mount_point ? 'Mount: ' + bootInfo.mount_point : 'Mode: fallback') +
+          (bootInfo.mount_point ? 'Mount: ' + esc(bootInfo.mount_point) : 'Mode: fallback') +
           '</div>';
       }
     }

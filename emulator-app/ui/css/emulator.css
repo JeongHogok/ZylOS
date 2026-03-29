@@ -345,6 +345,9 @@
   right: -4px;
   border-radius: 0 3px 3px 0;
 }
+.side-power { top: 160px; height: 50px; }
+.side-volup { top: 240px; height: 40px; }
+.side-voldown { top: 290px; height: 40px; }
 
 /* ── Screen off ── */
 #device-frame.screen-off #device-screen { background: #000 !important; }

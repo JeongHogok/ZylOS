@@ -18,7 +18,11 @@ var ZylHalBrowser = (function () {
     _battery: null,
     _callbacks: [],
 
+    _initialized: false,
+
     init: function () {
+      if (this._initialized) return; /* 중복 init 방지 */
+      this._initialized = true;
       var self = this;
       if (navigator.getBattery) {
         navigator.getBattery().then(function (b) {
@@ -179,7 +183,7 @@ var ZylHalBrowser = (function () {
       if (window.matchMedia) {
         this._state.darkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
       }
-      return Object.assign({}, this._state);
+      return JSON.parse(JSON.stringify(this._state));
     },
 
     setBrightness: function (percent) {
@@ -214,7 +218,7 @@ var ZylHalBrowser = (function () {
     },
 
     getState: function () {
-      return Object.assign({}, this._state);
+      return JSON.parse(JSON.stringify(this._state));
     },
 
     setVolume: function (stream, percent) {
