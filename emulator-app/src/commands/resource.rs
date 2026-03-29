@@ -5,6 +5,8 @@
 // 수행범위: 디스크 이미지 생성+마운트, 메모리 제한 적용/해제
 // 의존방향: resource/disk_image, resource/memory_limit, state
 // SOLID: SRP — 리소스 라이프사이클만 담당
+//
+// 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
 // ──────────────────────────────────────────────────────────
 
 use crate::resource::{disk_image, memory_limit};

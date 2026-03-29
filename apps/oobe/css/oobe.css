@@ -5,6 +5,8 @@
  * 수행범위: 환영 화면, 언어/WiFi/PIN 설정, 약관 동의 UI
  * 의존방향: oobe.html
  * SOLID: SRP — OOBE 시각적 표현만 담당
+
+   클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
  * ────────────────────────────────────────────────────────── */
 * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
 body { font-family: -apple-system, 'Noto Sans KR', sans-serif; background: #0a0a1a; color: white; width: 100vw; height: 100vh; overflow: hidden; }

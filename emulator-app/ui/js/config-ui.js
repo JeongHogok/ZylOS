@@ -5,6 +5,8 @@
 // 수행범위: 프로필 선택, 리소스 설정, 설정 확인, 부팅 트리거
 // 의존방향: Tauri invoke (config 커맨드), boot-sequence.js
 // SOLID: SRP — 설정 화면 로직만 담당, OCP — 프로필 추가 시 UI 자동 확장
+//
+// 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
 // ──────────────────────────────────────────────────────────
 
 /* global ZylConfigUI, ZylBootSequence */

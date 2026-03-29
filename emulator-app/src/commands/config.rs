@@ -5,6 +5,8 @@
 // 수행범위: 디바이스 프로필 목록, 리소스 옵션, 설정 검증/저장
 // 의존방향: state (DeviceConfig, DeviceProfile, SavedDevice)
 // SOLID: SRP — 설정 관리만 담당, ISP — 최소 인터페이스 노출
+//
+// 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
 // ──────────────────────────────────────────────────────────
 
 use crate::state::{AppState, DeviceConfig, DeviceProfile, NavMode, SavedDevice};

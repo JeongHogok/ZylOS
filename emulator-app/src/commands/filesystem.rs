@@ -5,6 +5,8 @@
 // 수행범위: 마운트 포인트 기준 디렉토리/파일 읽기, 쓰기, 사용량 조회
 // 의존방향: state (mount_point), resource/disk_image (get_usage)
 // SOLID: SRP — 파일시스템 I/O만 담당, LSP — 모든 커맨드 동일 에러 포맷
+//
+// 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
 // ──────────────────────────────────────────────────────────
 
 use crate::state::AppState;

@@ -5,6 +5,8 @@
 // 수행범위: 가상 디바이스의 settings.json 읽기/쓰기
 // 의존방향: state (mount_point 또는 data_dir)
 // SOLID: SRP — 설정 영속화만 담당
+//
+// 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
 // ──────────────────────────────────────────────────────────
 
 use crate::state::AppState;

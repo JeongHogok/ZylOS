@@ -5,6 +5,8 @@
 // 수행범위: 상태 초기화, 커맨드 등록, 종료 시 리소스 정리
 // 의존방향: state, commands/*, resource/*, platform/*
 // SOLID: DIP — 커맨드 모듈들을 조합만 함, 구현에 의존하지 않음
+//
+// 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
 // ──────────────────────────────────────────────────────────
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]

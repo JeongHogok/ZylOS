@@ -5,6 +5,8 @@
 // 수행범위: macOS airport/system_profiler, Linux nmcli/bluetoothctl
 // 의존방향: std::process::Command
 // SOLID: OCP — cfg 분기로 플랫폼 확장
+//
+// 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
 // ──────────────────────────────────────────────────────────
 
 use serde::Serialize;

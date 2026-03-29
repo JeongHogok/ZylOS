@@ -5,6 +5,8 @@
 // 수행범위: Linux cgroup v2 memory.max, macOS setrlimit
 // 의존방향: nix (rlimit), std::fs (cgroup sysfs)
 // SOLID: OCP — cfg 분기로 플랫폼 확장
+//
+// 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
 // ──────────────────────────────────────────────────────────
 
 #[cfg(target_os = "linux")]

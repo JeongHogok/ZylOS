@@ -5,6 +5,8 @@
    수행범위: 뷰파인더, 촬영 버튼, 모드 선택, 타이머 오버레이 스타일
    의존방향: camera.html 구조
    SOLID: SRP — 카메라 앱 시각적 표현만 담당
+
+   클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
    ────────────────────────────────────────────────────────── */
 * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none; }
 body { font-family:-apple-system,BlinkMacSystemFont,'Noto Sans KR',sans-serif; background:#000; color:#fff; width:100vw; height:100vh; overflow:hidden; }

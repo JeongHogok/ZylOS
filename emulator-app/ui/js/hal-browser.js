@@ -5,6 +5,8 @@
 // 수행범위: 호스트 기기의 실제 WiFi/Battery/Storage 정보를 브라우저 API로 조회
 // 의존방향: 브라우저 Web API (navigator.connection, getBattery, storage)
 // SOLID: DIP — HAL 인터페이스의 브라우저 구현. 실기기에서는 Linux HAL로 교체.
+//
+// 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
 // ──────────────────────────────────────────────────────────
 
 var ZylHalBrowser = (function () {

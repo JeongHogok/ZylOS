@@ -5,6 +5,8 @@
 // 수행범위: 로고 표시 → 프로그레스 바 → 커널 부팅 로그 → 에뮬레이터 전환
 // 의존방향: Tauri invoke (boot_device), config-ui.js (config 수신)
 // SOLID: SRP — 부팅 시퀀스 UI만 담당
+//
+// 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
 // ──────────────────────────────────────────────────────────
 
 /* global ZylBootSequence */

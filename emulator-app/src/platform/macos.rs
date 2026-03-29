@@ -5,6 +5,8 @@
 // 수행범위: pmset 기반 배터리 정보
 // 의존방향: std::process::Command (pmset)
 // SOLID: SRP — macOS 플랫폼 어댑터만 담당
+//
+// 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
 // ──────────────────────────────────────────────────────────
 
 use std::process::Command;

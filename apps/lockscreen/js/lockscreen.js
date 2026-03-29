@@ -5,6 +5,8 @@
 // 수행범위: 실시간 스와이프 피드백, PIN 인증, 알림 터치→앱 이동, 에뮬레이터 연동
 // 의존방향: ZylClock (clock.js), ZylGesture (gesture.js), ZylBridge (bridge.js)
 // SOLID: SRP — 잠금화면 UI와 인증 로직만 담당
+//
+// 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
 // ──────────────────────────────────────────────────────────
 
 (function () {

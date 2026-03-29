@@ -5,6 +5,8 @@
 // 수행범위: OS 이미지 마운트 + 리소스 예약 → 부팅 상태 전환 → BootInfo 반환
 // 의존방향: commands/resource, state, resource/disk_image
 // SOLID: SRP — 부팅 라이프사이클만 담당
+//
+// 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
 // ──────────────────────────────────────────────────────────
 
 use crate::commands::resource;

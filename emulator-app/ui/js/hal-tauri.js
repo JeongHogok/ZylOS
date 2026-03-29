@@ -5,6 +5,8 @@
 // 수행범위: 배터리, 스토리지, 디스플레이, 오디오, 네트워크, 디바이스 정보
 // 의존방향: Tauri IPC (window.__TAURI__.core.invoke)
 // SOLID: LSP — ZylHalBrowser와 동일 인터페이스, DIP — Tauri 백엔드에 의존
+//
+// 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
 // ──────────────────────────────────────────────────────────
 
 /* global ZylHalTauri */
