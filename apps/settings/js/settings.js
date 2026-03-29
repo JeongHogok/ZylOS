@@ -300,7 +300,7 @@
 
   function updateMainMenuWifi(data) {
     var el = document.getElementById('wifi-status');
-    if (el) el.textContent = data.enabled ? t('settings.connected') : t('common.off');
+    if (el) el.textContent = data.enabled ? t('settings.connected') : t('settings.off');
   }
 
   var wifiToggle = document.getElementById('wifi-toggle');
@@ -329,7 +329,7 @@
 
   function updateMainMenuBt(data) {
     var el = document.getElementById('bt-status');
-    if (el) el.textContent = data.enabled ? t('common.on') : t('common.off');
+    if (el) el.textContent = data.enabled ? t('settings.on') : t('settings.off');
   }
 
   var btToggle = document.getElementById('bt-toggle');
@@ -493,7 +493,7 @@
       /* Broadcast to lockscreen via parent */
       window.parent.postMessage(JSON.stringify({
         type: 'settings.pinChanged',
-        pin: newPin
+        data: { pin: newPin }
       }), '*');
 
       if (msgEl) { msgEl.textContent = t('settings.pin_changed') || 'PIN changed'; msgEl.style.color = '#22c55e'; }

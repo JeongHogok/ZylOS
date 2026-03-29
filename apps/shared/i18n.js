@@ -1,8 +1,9 @@
 // ──────────────────────────────────────────────────────────
 // [Clean Architecture] Shared Layer - Service
 //
-// 역할: 통합 국제화(i18n) 서비스 — 다국어 번역 및 DOM 자동 번역
+// 역할: 통합 국제화(i18n) 엔진 — 다국어 번역 및 DOM 자동 번역
 // 수행범위: ko/en/ja/zh/es 로케일 지원, 파라미터 치환, 날짜 포맷, data-i18n 속성 번역
+//          앱별 키는 각 앱의 i18n.js에서 addTranslations으로 등록
 // 의존방향: 없음 (다른 앱 모듈이 이 모듈에 의존)
 // SOLID: SRP — 국제화 로직만 담당
 //
@@ -13,10 +14,9 @@
 window.zylI18n = (function () {
   'use strict';
 
-  /* ─── Translation Data (merged from home + settings) ─── */
+  /* ─── Common OS-level Translation Data ─── */
   var translations = {
     ko: {
-      /* ── Home / common ── */
       'search': '\uAC80\uC0C9...',
       'app.browser': '\uBE0C\uB77C\uC6B0\uC800',
       'app.files': '\uD30C\uC77C',
@@ -33,44 +33,9 @@ window.zylI18n = (function () {
       'date.format': '{y}\uB144 {m}\uC6D4 {d}\uC77C {day}',
       'day.0': '\uC77C\uC694\uC77C', 'day.1': '\uC6D4\uC694\uC77C', 'day.2': '\uD654\uC694\uC77C',
       'day.3': '\uC218\uC694\uC77C', 'day.4': '\uBAA9\uC694\uC77C', 'day.5': '\uAE08\uC694\uC77C',
-      'day.6': '\uD1A0\uC694\uC77C',
-      /* ── Settings ── */
-      'settings.title': '\uC124\uC815',
-      'settings.wifi': 'Wi-Fi',
-      'settings.bluetooth': '\uBE14\uB8E8\uD22C\uC2A4',
-      'settings.display': '\uB514\uC2A4\uD50C\uB808\uC774',
-      'settings.sound': '\uC0AC\uC6B4\uB4DC',
-      'settings.language': '\uC5B8\uC5B4',
-      'settings.wallpaper': '\uBC30\uACBD\uD654\uBA74',
-      'settings.security': '\uBCF4\uC548',
-      'settings.storage': '\uC800\uC7A5\uACF5\uAC04',
-      'settings.about': '\uC774 \uAE30\uAE30 \uC815\uBCF4',
-      'settings.connected': '\uC5F0\uACB0\uB428',
-      'settings.on': '\uCF1C\uC9D0',
-      'settings.off': '\uAEBC\uC9D0',
-      'settings.brightness': '\uBC1D\uAE30',
-      'settings.dark_mode': '\uB2E4\uD06C \uBAA8\uB4DC',
-      'settings.auto_brightness': '\uC790\uB3D9 \uBC1D\uAE30',
-      'settings.font_size': '\uAE00\uAF34 \uD06C\uAE30',
-      'settings.device_name': '\uAE30\uAE30 \uC774\uB984',
-      'settings.os_version': 'OS \uBC84\uC804',
-      'settings.kernel': '\uCEE4\uB110',
-      'settings.build': '\uBE4C\uB4DC',
-      /* ── Lockscreen ── */
-      'lock.swipe': '\uC704\uB85C \uC2A4\uC640\uC774\uD504\uD558\uC5EC \uC7A0\uAE08 \uD574\uC81C',
-      'lock.enter_pin': 'PIN\uC744 \uC785\uB825\uD558\uC138\uC694',
-      'lock.wrong_pin': '\uC798\uBABB\uB41C PIN\uC785\uB2C8\uB2E4',
-      'lock.cancel': '\uCDE8\uC18C',
-      /* ── Statusbar / Quick Settings ── */
-      'qs.wifi': 'WiFi',
-      'qs.bluetooth': 'BT',
-      'qs.silent': '\uBB34\uC74C',
-      'qs.rotation': '\uD68C\uC804',
-      'qs.flashlight': '\uC190\uC804\uB4F1',
-      'notif.empty': '\uC54C\uB9BC\uC774 \uC5C6\uC2B5\uB2C8\uB2E4',
+      'day.6': '\uD1A0\uC694\uC77C'
     },
     en: {
-      /* ── Home / common ── */
       'search': 'Search...',
       'app.browser': 'Browser',
       'app.files': 'Files',
@@ -91,44 +56,9 @@ window.zylI18n = (function () {
       'month.1': 'January', 'month.2': 'February', 'month.3': 'March',
       'month.4': 'April', 'month.5': 'May', 'month.6': 'June',
       'month.7': 'July', 'month.8': 'August', 'month.9': 'September',
-      'month.10': 'October', 'month.11': 'November', 'month.12': 'December',
-      /* ── Settings ── */
-      'settings.title': 'Settings',
-      'settings.wifi': 'Wi-Fi',
-      'settings.bluetooth': 'Bluetooth',
-      'settings.display': 'Display',
-      'settings.sound': 'Sound',
-      'settings.language': 'Language',
-      'settings.wallpaper': 'Wallpaper',
-      'settings.security': 'Security',
-      'settings.storage': 'Storage',
-      'settings.about': 'About This Device',
-      'settings.connected': 'Connected',
-      'settings.on': 'On',
-      'settings.off': 'Off',
-      'settings.brightness': 'Brightness',
-      'settings.dark_mode': 'Dark Mode',
-      'settings.auto_brightness': 'Auto Brightness',
-      'settings.font_size': 'Font Size',
-      'settings.device_name': 'Device Name',
-      'settings.os_version': 'OS Version',
-      'settings.kernel': 'Kernel',
-      'settings.build': 'Build',
-      /* ── Lockscreen ── */
-      'lock.swipe': 'Swipe up to unlock',
-      'lock.enter_pin': 'Enter PIN',
-      'lock.wrong_pin': 'Wrong PIN',
-      'lock.cancel': 'Cancel',
-      /* ── Statusbar / Quick Settings ── */
-      'qs.wifi': 'WiFi',
-      'qs.bluetooth': 'BT',
-      'qs.silent': 'Silent',
-      'qs.rotation': 'Rotation',
-      'qs.flashlight': 'Flashlight',
-      'notif.empty': 'No notifications',
+      'month.10': 'October', 'month.11': 'November', 'month.12': 'December'
     },
     ja: {
-      /* ── Home / common ── */
       'search': '\u691C\u7D22...',
       'app.browser': '\u30D6\u30E9\u30A6\u30B6',
       'app.files': '\u30D5\u30A1\u30A4\u30EB',
@@ -145,44 +75,9 @@ window.zylI18n = (function () {
       'date.format': '{y}\u5E74{m}\u6708{d}\u65E5 {day}',
       'day.0': '\u65E5\u66DC\u65E5', 'day.1': '\u6708\u66DC\u65E5', 'day.2': '\u706B\u66DC\u65E5',
       'day.3': '\u6C34\u66DC\u65E5', 'day.4': '\u6728\u66DC\u65E5', 'day.5': '\u91D1\u66DC\u65E5',
-      'day.6': '\u571F\u66DC\u65E5',
-      /* ── Settings ── */
-      'settings.title': '\u8A2D\u5B9A',
-      'settings.wifi': 'Wi-Fi',
-      'settings.bluetooth': 'Bluetooth',
-      'settings.display': '\u30C7\u30A3\u30B9\u30D7\u30EC\u30A4',
-      'settings.sound': '\u30B5\u30A6\u30F3\u30C9',
-      'settings.language': '\u8A00\u8A9E',
-      'settings.wallpaper': '\u58C1\u7D19',
-      'settings.security': '\u30BB\u30AD\u30E5\u30EA\u30C6\u30A3',
-      'settings.storage': '\u30B9\u30C8\u30EC\u30FC\u30B8',
-      'settings.about': '\u3053\u306E\u30C7\u30D0\u30A4\u30B9\u306B\u3064\u3044\u3066',
-      'settings.connected': '\u63A5\u7D9A\u6E08\u307F',
-      'settings.on': '\u30AA\u30F3',
-      'settings.off': '\u30AA\u30D5',
-      'settings.brightness': '\u660E\u308B\u3055',
-      'settings.dark_mode': '\u30C0\u30FC\u30AF\u30E2\u30FC\u30C9',
-      'settings.auto_brightness': '\u81EA\u52D5\u660E\u308B\u3055',
-      'settings.font_size': '\u30D5\u30A9\u30F3\u30C8\u30B5\u30A4\u30BA',
-      'settings.device_name': '\u30C7\u30D0\u30A4\u30B9\u540D',
-      'settings.os_version': 'OS\u30D0\u30FC\u30B8\u30E7\u30F3',
-      'settings.kernel': '\u30AB\u30FC\u30CD\u30EB',
-      'settings.build': '\u30D3\u30EB\u30C9',
-      /* ── Lockscreen ── */
-      'lock.swipe': '\u4E0A\u306B\u30B9\u30EF\u30A4\u30D7\u3057\u3066\u30ED\u30C3\u30AF\u89E3\u9664',
-      'lock.enter_pin': 'PIN\u3092\u5165\u529B',
-      'lock.wrong_pin': 'PIN\u304C\u9055\u3044\u307E\u3059',
-      'lock.cancel': '\u30AD\u30E3\u30F3\u30BB\u30EB',
-      /* ── Statusbar / Quick Settings ── */
-      'qs.wifi': 'WiFi',
-      'qs.bluetooth': 'BT',
-      'qs.silent': '\u30DE\u30CA\u30FC',
-      'qs.rotation': '\u56DE\u8EE2',
-      'qs.flashlight': '\u30E9\u30A4\u30C8',
-      'notif.empty': '\u901A\u77E5\u306F\u3042\u308A\u307E\u305B\u3093',
+      'day.6': '\u571F\u66DC\u65E5'
     },
     zh: {
-      /* ── Home / common ── */
       'search': '\u641C\u7D22...',
       'app.browser': '\u6D4F\u89C8\u5668',
       'app.files': '\u6587\u4EF6',
@@ -199,44 +94,9 @@ window.zylI18n = (function () {
       'date.format': '{y}\u5E74{m}\u6708{d}\u65E5 {day}',
       'day.0': '\u661F\u671F\u65E5', 'day.1': '\u661F\u671F\u4E00', 'day.2': '\u661F\u671F\u4E8C',
       'day.3': '\u661F\u671F\u4E09', 'day.4': '\u661F\u671F\u56DB', 'day.5': '\u661F\u671F\u4E94',
-      'day.6': '\u661F\u671F\u516D',
-      /* ── Settings ── */
-      'settings.title': '\u8BBE\u7F6E',
-      'settings.wifi': 'Wi-Fi',
-      'settings.bluetooth': '\u84DD\u7259',
-      'settings.display': '\u663E\u793A',
-      'settings.sound': '\u58F0\u97F3',
-      'settings.language': '\u8BED\u8A00',
-      'settings.wallpaper': '\u58C1\u7EB8',
-      'settings.security': '\u5B89\u5168',
-      'settings.storage': '\u5B58\u50A8',
-      'settings.about': '\u5173\u4E8E\u672C\u673A',
-      'settings.connected': '\u5DF2\u8FDE\u63A5',
-      'settings.on': '\u5F00',
-      'settings.off': '\u5173',
-      'settings.brightness': '\u4EAE\u5EA6',
-      'settings.dark_mode': '\u6DF1\u8272\u6A21\u5F0F',
-      'settings.auto_brightness': '\u81EA\u52A8\u4EAE\u5EA6',
-      'settings.font_size': '\u5B57\u4F53\u5927\u5C0F',
-      'settings.device_name': '\u8BBE\u5907\u540D\u79F0',
-      'settings.os_version': '\u7CFB\u7EDF\u7248\u672C',
-      'settings.kernel': '\u5185\u6838',
-      'settings.build': '\u7248\u672C\u53F7',
-      /* ── Lockscreen ── */
-      'lock.swipe': '\u5411\u4E0A\u6ED1\u52A8\u89E3\u9501',
-      'lock.enter_pin': '\u8F93\u5165PIN',
-      'lock.wrong_pin': 'PIN\u9519\u8BEF',
-      'lock.cancel': '\u53D6\u6D88',
-      /* ── Statusbar / Quick Settings ── */
-      'qs.wifi': 'WiFi',
-      'qs.bluetooth': '\u84DD\u7259',
-      'qs.silent': '\u9759\u97F3',
-      'qs.rotation': '\u65CB\u8F6C',
-      'qs.flashlight': '\u624B\u7535\u7B52',
-      'notif.empty': '\u6CA1\u6709\u901A\u77E5',
+      'day.6': '\u661F\u671F\u516D'
     },
     es: {
-      /* ── Home / common ── */
       'search': 'Buscar...',
       'app.browser': 'Navegador',
       'app.files': 'Archivos',
@@ -257,42 +117,8 @@ window.zylI18n = (function () {
       'month.1': 'enero', 'month.2': 'febrero', 'month.3': 'marzo',
       'month.4': 'abril', 'month.5': 'mayo', 'month.6': 'junio',
       'month.7': 'julio', 'month.8': 'agosto', 'month.9': 'septiembre',
-      'month.10': 'octubre', 'month.11': 'noviembre', 'month.12': 'diciembre',
-      /* ── Settings ── */
-      'settings.title': 'Ajustes',
-      'settings.wifi': 'Wi-Fi',
-      'settings.bluetooth': 'Bluetooth',
-      'settings.display': 'Pantalla',
-      'settings.sound': 'Sonido',
-      'settings.language': 'Idioma',
-      'settings.wallpaper': 'Fondo de pantalla',
-      'settings.security': 'Seguridad',
-      'settings.storage': 'Almacenamiento',
-      'settings.about': 'Acerca del dispositivo',
-      'settings.connected': 'Conectado',
-      'settings.on': 'Activado',
-      'settings.off': 'Desactivado',
-      'settings.brightness': 'Brillo',
-      'settings.dark_mode': 'Modo oscuro',
-      'settings.auto_brightness': 'Brillo autom\u00E1tico',
-      'settings.font_size': 'Tama\u00F1o de fuente',
-      'settings.device_name': 'Nombre del dispositivo',
-      'settings.os_version': 'Versi\u00F3n del SO',
-      'settings.kernel': 'Kernel',
-      'settings.build': 'Compilaci\u00F3n',
-      /* ── Lockscreen ── */
-      'lock.swipe': 'Desliza hacia arriba para desbloquear',
-      'lock.enter_pin': 'Ingrese PIN',
-      'lock.wrong_pin': 'PIN incorrecto',
-      'lock.cancel': 'Cancelar',
-      /* ── Statusbar / Quick Settings ── */
-      'qs.wifi': 'WiFi',
-      'qs.bluetooth': 'BT',
-      'qs.silent': 'Silencio',
-      'qs.rotation': 'Rotaci\u00F3n',
-      'qs.flashlight': 'Linterna',
-      'notif.empty': 'Sin notificaciones',
-    },
+      'month.10': 'octubre', 'month.11': 'noviembre', 'month.12': 'diciembre'
+    }
   };
 
   var currentLocale = 'ko';
@@ -377,21 +203,77 @@ window.zylI18n = (function () {
   }
 
   /* ─── Register additional translation keys at runtime ─── */
+  var _pendingApply = false;
   function addTranslations(locale, keys) {
     if (!translations[locale]) translations[locale] = {};
     Object.keys(keys).forEach(function (k) {
       translations[locale][k] = keys[k];
     });
+    /* Auto-apply after all synchronous addTranslations calls complete */
+    if (!_pendingApply) {
+      _pendingApply = true;
+      setTimeout(function () {
+        _pendingApply = false;
+        applyTranslations();
+      }, 0);
+    }
   }
+
+  /* ─── Listen for locale injection from emulator (parent frame) ─── */
+  window.addEventListener('message', function (e) {
+    if (e.source !== window.parent && e.source !== window) return;
+    try {
+      var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+      if (!msg) return;
+      if (msg.type === 'system.setLocale') {
+        var loc = msg.locale || (msg.data && msg.data.locale);
+        if (loc) setLocale(loc);
+      }
+    } catch (err) { /* ignore */ }
+  });
 
   /* ─── Initialization ─── */
   currentLocale = detectLocale();
 
+  /* Defer applyTranslations to DOMContentLoaded so per-app i18n.js
+     files have time to register their keys via addTranslations() */
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', applyTranslations);
+    document.addEventListener('DOMContentLoaded', function () {
+      applyTranslations();
+      /* Request saved locale from emulator */
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage(JSON.stringify({
+          type: 'service.request',
+          service: 'settings',
+          method: 'get',
+          params: { category: 'language' }
+        }), '*');
+      }
+    });
   } else {
     applyTranslations();
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage(JSON.stringify({
+        type: 'service.request',
+        service: 'settings',
+        method: 'get',
+        params: { category: 'language' }
+      }), '*');
+    }
   }
+
+  /* Handle settings response for saved locale */
+  window.addEventListener('message', function (e) {
+    if (e.source !== window.parent && e.source !== window) return;
+    try {
+      var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+      if (msg && msg.type === 'service.response' && msg.service === 'settings' && msg.data) {
+        if (msg.data.locale && translations[msg.data.locale]) {
+          setLocale(msg.data.locale);
+        }
+      }
+    } catch (err) { /* ignore */ }
+  });
 
   return {
     t: t,

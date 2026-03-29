@@ -79,12 +79,59 @@
     setTimeout(function () { focusRing.classList.add('hidden'); }, 1500);
   });
 
+  /* ─── Video Recording (MediaRecorder) ─── */
+  var mediaRecorder = null;
+  var recordedChunks = [];
+
+  function startVideoRecording() {
+    if (!currentStream) return;
+    recordedChunks = [];
+    try {
+      mediaRecorder = new MediaRecorder(currentStream, { mimeType: 'video/webm' });
+    } catch (e) {
+      try {
+        mediaRecorder = new MediaRecorder(currentStream);
+      } catch (e2) { return; }
+    }
+    mediaRecorder.ondataavailable = function (e) {
+      if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+    };
+    mediaRecorder.onstop = function () {
+      var blob = new Blob(recordedChunks, { type: 'video/webm' });
+      var reader = new FileReader();
+      reader.onloadend = function () {
+        var base64 = reader.result.split(',')[1];
+        var filename = 'VID_' + new Date().toISOString().replace(/[:.]/g, '-') + '.webm';
+        window.parent.postMessage(JSON.stringify({
+          type: 'service.request',
+          service: 'fs',
+          method: 'writeFile',
+          params: { path: 'Pictures/' + filename, content: base64 }
+        }), '*');
+      };
+      reader.readAsDataURL(blob);
+    };
+    mediaRecorder.start(100);
+    state.recording = true;
+    document.body.classList.add('recording');
+  }
+
+  function stopVideoRecording() {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop();
+    }
+    state.recording = false;
+    document.body.classList.remove('recording');
+  }
+
   /* ─── Capture ─── */
   btnCapture.addEventListener('click', function () {
     if (state.mode === 'video') {
-      state.recording = !state.recording;
-      document.body.classList.toggle('recording', state.recording);
-      document.body.classList.toggle('video-mode', true);
+      if (state.recording) {
+        stopVideoRecording();
+      } else {
+        startVideoRecording();
+      }
     } else if (state.timer > 0) {
       startTimer(state.timer, doCapture);
     } else {
@@ -168,12 +215,16 @@
     });
   });
 
-  /* ─── Zoom ─── */
+  /* ─── Zoom — apply CSS transform to video element ─── */
   document.querySelectorAll('.zoom-btn').forEach(function (btn) {
     btn.addEventListener('click', function () {
       document.querySelectorAll('.zoom-btn').forEach(function (b) { b.classList.remove('active'); });
       btn.classList.add('active');
-      state.zoom = parseFloat(btn.dataset.zoom);
+      state.zoom = parseFloat(btn.dataset.zoom) || 1;
+      if (cameraVideo) {
+        cameraVideo.style.transform = 'scale(' + state.zoom + ')';
+        cameraVideo.style.transformOrigin = 'center center';
+      }
     });
   });
 

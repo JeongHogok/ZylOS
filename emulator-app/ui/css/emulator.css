@@ -82,9 +82,9 @@
 #app-viewport.launching #app-frame { animation: app-enter 0.25s ease-out; }
 
 /* ══════════════════════════════════════════
-   Quick Settings Panel (상태바 풀다운)
+   Quick Settings Panel (Status Bar Pull-down)
    ══════════════════════════════════════════ */
-/* QS 백드롭 — 패널 뒤를 어둡게 + 터치 차단 */
+/* QS backdrop — darkens behind panel + blocks touch */
 #qs-backdrop {
   position: absolute; inset: 0; z-index: 140;
   background: rgba(0,0,0,0.4);
@@ -150,7 +150,7 @@
 }
 
 /* ══════════════════════════════════════════
-   최근 앱 오버레이
+   Recents Overlay
    ══════════════════════════════════════════ */
 #recents-overlay {
   position: absolute; top: 0; left: 0; right: 0; bottom: 48px; z-index: 200;
@@ -264,7 +264,7 @@
 }
 
 /* ══════════════════════════════════════════
-   Control Panel (우측)
+   Control Panel (Right Side)
    ══════════════════════════════════════════ */
 #control-panel {
   width: 280px; max-height: 852px; overflow-y: auto;
@@ -329,7 +329,7 @@
 .log-sys { color: #22c55e; }
 
 /* ══════════════════════════════════════════
-   Side Physical Buttons (전원/볼륨)
+   Side Physical Buttons (Power/Volume)
    ══════════════════════════════════════════ */
 .side-btn {
   position: absolute; z-index: 300;

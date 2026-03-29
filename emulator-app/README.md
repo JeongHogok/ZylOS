@@ -38,6 +38,44 @@ cargo tauri build
 - Bluetooth: 호스트의 페어링된 디바이스 조회 (macOS: system_profiler, Linux: bluetoothctl)
 - Battery: 호스트 배터리 상태 반영 (macOS: pmset, Linux: sysfs)
 - Storage: 마운트된 디스크 이미지의 실제 사용량
+- Location: IP 기반 위치 서비스 (ipinfo.io, Rust 백엔드)
+- Camera: MediaRecorder 기반 비디오 녹화 (호스트 웹캠)
+
+### 24개 서비스 (모두 상태 유지, 스텁 없음)
+서비스 라우터 (`services.js`)가 24개 서비스를 모두 실제 데이터로 제공합니다:
+1. **FileSystem** — 마운트 디스크 이미지 I/O
+2. **Device** — 디바이스 메타데이터
+3. **Storage** — 디스크 사용량 (마운트 포인트)
+4. **Apps** — 설치된 앱 (OS 이미지에서 로드)
+5. **Settings** — 영속 설정 JSON
+6. **Terminal** — 셸 명령 실행 (22패턴 위험 명령 필터링)
+7. **WiFi** — 호스트 실제 네트워크 스캔
+8. **Bluetooth** — 호스트 페어링 디바이스 조회
+9. **Browser** — URL 로딩/탐색
+10. **Notification** — 알림 생성/조회/채널 관리
+11. **Power** — 밝기 동기화, 배터리 상태
+12. **Display** — 해상도/회전/DPI (상태 유지)
+13. **Input** — 키보드/IME 상태 (상태 유지)
+14. **Sensors** — 가속도/자이로/근접/조도 (동적 타임스탬프 + 마이크로 노이즈)
+15. **Location** — Rust 백엔드 IP 기반 geolocation
+16. **Telephony** — settings 기반 SIM/신호 정보
+17. **USB** — 가젯 모드 상태 (상태 유지)
+18. **User** — Rust 백엔드 사용자 정보
+19. **Credential** — Rust 백엔드 영속 저장소
+20. **App Store** — 실제 설치/제거 + 영속성
+21. **Updater** — 버전 비교
+22. **Sandbox** — 앱별 보안 정책
+23. **Logger** — 인메모리 로그 저장소
+24. **Accessibility** — settings 기반 접근성 설정
+
+### OOBE 완료 체크
+- 부팅 시 `settings.json`의 `oobe_completed` 플래그 확인
+- 미완료 시 OOBE 앱을 먼저 실행, 완료 후 홈 화면으로 진입
+
+### 에뮬레이터 i18n (`emu-i18n.js`)
+- 에뮬레이터 컴포지터 UI 전용 번역 (QS 패널, 알림 패널, 최근 앱)
+- `data-emu-i18n` DOM 바인딩
+- OS 앱과 별도 — 컴포지터가 렌더링하는 시스템 UI에 적용
 
 ### 설정 영속성
 - Settings 앱에서 변경한 설정은 마운트 포인트의 `settings.json`에 저장
@@ -71,7 +109,8 @@ emulator-app/
 │   │   ├── config-ui.js    프리부팅 설정 UI
 │   │   ├── boot-sequence.js 부팅 애니메이션
 │   │   ├── emulator.js     에뮬레이터 코어 (앱 라우팅, 네비게이션)
-│   │   ├── services.js     서비스 라우터 (Tauri invoke 연동)
+│   │   ├── services.js     서비스 라우터 — 24개 서비스 (Tauri invoke 연동)
+│   │   ├── emu-i18n.js     에뮬레이터 컴포지터 i18n (QS, 알림, 최근앱)
 │   │   ├── hal-tauri.js    Tauri HAL (invoke 기반)
 │   │   └── hal-browser.js  브라우저 HAL (Web API 폴백)
 │   └── apps/               번들된 시스템 앱 (apps/ 복사)

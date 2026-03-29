@@ -1,8 +1,8 @@
 # Zyl OS 프로덕션 준비 상태 감사 보고서
 
-**감사일**: 2026-03-28 (최종 업데이트: 2026-03-28)
-**코드베이스**: 21,000 LOC (C 11,725 + JS 5,070 + CSS 3,090 + HTML 1,100 + 기타 2,132)
-**소스 파일**: 117개 | **시스템 서비스**: 14개 | **앱**: 10개 | **커밋**: 42개
+**감사일**: 2026-03-28 (최종 업데이트: 2026-03-29)
+**코드베이스**: 21,000+ LOC (C 11,725 + JS 5,070+ + CSS 3,090+ + HTML 1,100+ + 기타 2,132)
+**소스 파일**: 117개+ | **시스템 서비스**: 24개 | **앱**: 16개 | **커밋**: 50+개
 **전체 평가**: 9.3/10 — 47/47 기술 항목 완료 + 상업적 릴리스 준비 완료
 **릴리스 상태**: Developer Preview v0.1.0 — 상업적 리뷰 14건 중 5건 CRITICAL 해결
 
@@ -228,6 +228,39 @@
 | ~~L1~~ | ~~코드 포맷~~ | ✅ .clang-format + .prettierrc |
 | ~~L2~~ | ~~OOBE~~ | ✅ 6단계 첫 실행 마법사 (apps/oobe/) |
 | ~~L3~~ | ~~D-Bus 레이트 리밋~~ | ✅ 슬라이딩 윈도우 + ring buffer 기반, per-sender 추적 |
+
+---
+
+## Phase 6: 대규모 리팩토링 (2026-03-29)
+
+### 서비스 확장 (14개 → 24개)
+- 기존 14개 C/D-Bus 서비스 + 에뮬레이터 서비스 라우터 8개 = **24개 완전 기능 서비스**
+- 모든 서비스 상태 유지 (stateful) — 스텁/하드코딩 제거
+- 에뮬레이터 추가 서비스: fs, device, storage, apps, settings, terminal, wifi, bluetooth
+
+### 시스템 앱 확장 (10개 → 16개)
+- 신규 앱: calc, clock, gallery, music, notes, weather, store, statusbar
+- 기존 앱 전면 재작성: home, settings, browser, files, terminal, camera
+- 모든 앱에 postMessage IPC + 서비스 연동 구현
+
+### i18n 아키텍처 리팩토링
+- 기존: 중앙 집중식 번역 파일 (locales/*.json)
+- 변경: 공유 엔진(shared/i18n.js) + 앱별 번역 데이터 (`addTranslations()`)
+- 에뮬레이터 컴포지터 i18n 분리 (emu-i18n.js)
+- 필수 5개 언어: ko, en, ja, zh, es
+
+### 보안 강화
+- PIN 입력 로직 수정 (잠금화면)
+- Statusbar IPC: postMessage 기반 상태바 ↔ 앱 통신
+- Terminal 위험 명령 필터링: 22개 패턴 (rm -rf, sudo, dd 등)
+- SYSTEM_APPS 보호 리스트: 16개 앱 삭제 차단
+
+### 에뮬레이터 기능 확장
+- IP 기반 위치 서비스 (ipinfo.io, Rust 백엔드)
+- 실제 WiFi/BT 호스트 연동
+- MediaRecorder 기반 카메라 비디오 녹화
+- OOBE 완료 여부 체크 (부팅 시 자동 분기)
+- Terminal 하드코딩 제거 → Tauri invoke 기반 실행
 
 ---
 

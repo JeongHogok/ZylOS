@@ -164,12 +164,14 @@
       }
     }
 
+    currentViewingFile = name;
     viewer.classList.remove('hidden');
   }
 
   var activeVideo = null;
 
   function showVideo(name) {
+    currentViewingFile = name;
     if (!viewer || !dataCache[name]) return;
     var video = document.createElement('video');
     video.src = dataCache[name];
@@ -225,31 +227,38 @@
     }
   }
 
-  /* 뷰어 이미지 업데이트 (비동기 로드 후) */
-  window.addEventListener('message', function (e) {
-    if (e.source !== window.parent) return;
-    try {
-      var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-      if (msg && msg.type === 'service.response' && msg.service === 'fs' && msg.method === 'readBinary' && msg.data && msg.params) {
-        var name = (msg.params.path || '').replace('Pictures/', '');
-        if (viewerImg && viewerImg.style.display === 'block' && !viewerImg.src && dataCache[name]) {
-          viewerImg.src = dataCache[name];
-        }
-      }
-    } catch (err) {}
-  });
-
+  /* ─── Viewer Close ─── */
   if (document.getElementById('viewer-close')) {
-    document.getElementById('viewer-close').addEventListener('click', function () {
-      if (viewer) {
-        viewer.classList.add('hidden');
-        var vid = viewer.querySelector('video');
-        if (vid) { vid.pause(); vid.remove(); }
-        activeVideo = null;
+    document.getElementById('viewer-close').addEventListener('click', closeViewer);
+  }
+
+  function closeViewer() {
+    if (viewer) {
+      viewer.classList.add('hidden');
+      var vid = viewer.querySelector('video');
+      if (vid) { vid.pause(); vid.remove(); }
+      activeVideo = null;
+    }
+    if (viewerImg) { viewerImg.src = ''; viewerImg.style.display = 'none'; }
+    var vc = document.getElementById('video-controls');
+    if (vc) vc.classList.add('hidden');
+    currentViewingFile = null;
+  }
+
+  /* ─── Viewer Delete ─── */
+  var currentViewingFile = null;
+  var viewerDeleteBtn = document.getElementById('viewer-delete');
+  if (viewerDeleteBtn) {
+    viewerDeleteBtn.addEventListener('click', function () {
+      if (!currentViewingFile) return;
+      if (confirm('Delete this file?')) {
+        requestService('fs', 'remove', { path: 'Pictures/' + currentViewingFile });
+        /* Remove from local list */
+        mediaFiles = mediaFiles.filter(function (f) { return f.name !== currentViewingFile; });
+        delete dataCache[currentViewingFile];
+        closeViewer();
+        renderMediaList(mediaFiles);
       }
-      if (viewerImg) { viewerImg.src = ''; viewerImg.style.display = 'none'; }
-      var vc = document.getElementById('video-controls');
-      if (vc) vc.classList.add('hidden');
     });
   }
 

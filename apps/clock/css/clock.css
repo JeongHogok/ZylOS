@@ -1,7 +1,7 @@
 /* ──────────────────────────────────────────────────────────
    [Clean Architecture] Presentation Layer - Style
    역할: 시계 앱 스타일
-   수행범위: clock 앱 레이아웃과 시각적 표현
+   수행범위: clock 앱 레이아웃과 시각적 표현 (시계, 알람, 타이머, 스톱워치)
    의존방향: clock/index.html
    SOLID: SRP — clock 앱 스타일만 담당
 
@@ -11,18 +11,89 @@
 * { margin:0; padding:0; box-sizing:border-box; }
 body { font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#0a0a1a; color:#e0e0e0; height:100vh; overflow:hidden; display:flex; flex-direction:column; }
 .hidden { display:none !important; }
-#header { padding:20px 16px 12px; }
-#header h1 { font-size:28px; font-weight:700; }
-#tabs { display:flex; border-bottom:1px solid #1a1a2e; }
-.tab { flex:1; padding:14px 0; text-align:center; background:none; border:none; color:#888; font-size:13px; cursor:pointer; }
+
+/* ── Tabs ── */
+#tabs { display:flex; border-bottom:1px solid #1a1a2e; flex-shrink:0; }
+.tab { flex:1; padding:14px 0; text-align:center; background:none; border:none; color:#888; font-size:13px; cursor:pointer; transition:color 0.2s; }
 .tab.active { color:#6366f1; border-bottom:2px solid #6366f1; }
-.tab-content { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:20px; }
+.tab-content { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:20px; overflow-y:auto; }
+
+/* ── Clock Tab ── */
 #clock-display { font-size:64px; font-weight:200; letter-spacing:-2px; }
 #clock-date { font-size:16px; opacity:0.5; margin-top:8px; }
-#timer-display, #sw-display { font-size:56px; font-weight:200; margin-bottom:20px; }
-#timer-controls, #sw-controls { display:flex; gap:12px; }
-#timer-controls button, #sw-controls button { padding:10px 24px; border-radius:24px; border:none; background:#252535; color:#fff; font-size:15px; cursor:pointer; }
-#sw-laps { margin-top:16px; width:100%; max-height:200px; overflow-y:auto; }
-.lap { padding:8px 0; border-bottom:1px solid #1a1a2e; font-size:14px; }
+
+/* ── Alarm Tab ── */
+#tab-alarm { justify-content:flex-start; padding-top:12px; }
 #alarm-list { width:100%; }
-#btn-add-alarm { margin-top:16px; padding:10px 24px; border-radius:24px; border:none; background:#6366f1; color:#fff; cursor:pointer; }
+.alarm-row { display:flex; align-items:center; padding:14px 0; border-bottom:1px solid #1a1a2e; gap:12px; }
+.alarm-time { font-size:36px; font-weight:200; min-width:100px; }
+.alarm-info { flex:1; display:flex; flex-direction:column; gap:2px; }
+.alarm-label-text { font-size:14px; color:#e0e0e0; }
+.alarm-days-text { font-size:12px; color:#888; }
+.alarm-controls { display:flex; align-items:center; gap:10px; }
+
+/* Toggle switch */
+.alarm-toggle { position:relative; display:inline-block; width:44px; height:24px; cursor:pointer; }
+.alarm-toggle input { opacity:0; width:0; height:0; }
+.toggle-slider { position:absolute; top:0; left:0; right:0; bottom:0; background:#333; border-radius:24px; transition:background 0.3s; }
+.toggle-slider::before { content:''; position:absolute; height:18px; width:18px; left:3px; bottom:3px; background:#fff; border-radius:50%; transition:transform 0.3s; }
+.alarm-toggle input:checked + .toggle-slider { background:#6366f1; }
+.alarm-toggle input:checked + .toggle-slider::before { transform:translateX(20px); }
+
+.alarm-delete { background:none; border:none; color:#f87171; font-size:22px; cursor:pointer; padding:4px 8px; line-height:1; }
+
+.empty-state { font-size:15px; color:#666; padding:40px 0; text-align:center; }
+
+#btn-add-alarm { margin-top:16px; padding:12px 28px; border-radius:24px; border:none; background:#6366f1; color:#fff; font-size:15px; cursor:pointer; align-self:center; }
+
+/* ── Alarm Form ── */
+#alarm-form { width:100%; background:#111125; border-radius:16px; padding:16px; margin-top:12px; }
+.alarm-form-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
+.alarm-form-title { font-size:16px; font-weight:600; }
+.alarm-form-btn { background:none; border:none; color:#888; font-size:14px; cursor:pointer; padding:4px 8px; }
+.alarm-form-btn.primary { color:#6366f1; font-weight:600; }
+
+.alarm-time-inputs { display:flex; align-items:center; justify-content:center; gap:4px; margin-bottom:20px; }
+.time-input { width:72px; height:64px; background:#1a1a2e; border:1px solid #2a2a4e; border-radius:12px; color:#e0e0e0; font-size:32px; text-align:center; font-weight:200; -moz-appearance:textfield; }
+.time-input::-webkit-inner-spin-button,
+.time-input::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
+.time-separator { font-size:32px; font-weight:200; color:#888; padding:0 4px; }
+
+.alarm-label-row { display:flex; align-items:center; gap:12px; margin-bottom:16px; }
+.alarm-label-row label { font-size:14px; color:#888; min-width:50px; }
+.alarm-label-row input[type="text"] { flex:1; background:#1a1a2e; border:1px solid #2a2a4e; border-radius:8px; color:#e0e0e0; font-size:14px; padding:10px 12px; }
+
+.alarm-repeat-row { margin-bottom:8px; }
+.repeat-title { font-size:14px; color:#888; display:block; margin-bottom:10px; }
+.day-buttons { display:flex; gap:6px; flex-wrap:wrap; }
+.day-btn { width:40px; height:40px; border-radius:50%; border:1px solid #2a2a4e; background:#1a1a2e; color:#888; font-size:11px; cursor:pointer; transition:all 0.2s; }
+.day-btn.active { background:#6366f1; color:#fff; border-color:#6366f1; }
+
+/* ── Timer Tab ── */
+#timer-display { font-size:56px; font-weight:200; margin-bottom:16px; }
+#timer-display.flash { color:#f87171; }
+
+.timer-set-area { width:100%; display:flex; flex-direction:column; align-items:center; gap:16px; margin-bottom:20px; }
+.timer-time-inputs { display:flex; align-items:center; justify-content:center; gap:4px; }
+.timer-input-group { display:flex; flex-direction:column; align-items:center; gap:2px; }
+.time-input-label { font-size:11px; color:#666; }
+
+.timer-presets { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }
+.preset-btn { padding:8px 16px; border-radius:20px; border:1px solid #2a2a4e; background:#1a1a2e; color:#e0e0e0; font-size:13px; cursor:pointer; transition:all 0.2s; }
+.preset-btn:active { background:#6366f1; border-color:#6366f1; }
+
+#timer-controls { display:flex; gap:12px; }
+#timer-controls button { padding:10px 24px; border-radius:24px; border:none; background:#252535; color:#fff; font-size:15px; cursor:pointer; }
+#timer-controls button:first-child { background:#6366f1; }
+
+/* ── Stopwatch Tab ── */
+#sw-display { font-size:56px; font-weight:200; margin-bottom:20px; }
+#sw-controls { display:flex; gap:12px; }
+#sw-controls button { padding:10px 24px; border-radius:24px; border:none; background:#252535; color:#fff; font-size:15px; cursor:pointer; }
+#sw-controls button:first-child { background:#6366f1; }
+
+#sw-laps { margin-top:16px; width:100%; max-height:200px; overflow-y:auto; }
+.lap { display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid #1a1a2e; font-size:14px; }
+.lap-number { color:#888; min-width:60px; }
+.lap-split { color:#6366f1; min-width:80px; text-align:center; }
+.lap-total { min-width:80px; text-align:right; }

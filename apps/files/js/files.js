@@ -332,18 +332,38 @@
         if (contextTarget.type === 'folder') {
           var newPath = currentPath === '/' ? '/' + contextTarget.name : currentPath + '/' + contextTarget.name;
           navigateTo(newPath);
+        } else {
+          openFileWithApp(contextTarget);
         }
       } else if (action === 'delete') {
-        var files = fileSystem[currentPath];
-        if (files) {
-          var idx = files.findIndex(function (f) { return f.name === contextTarget.name; });
-          if (idx !== -1) {
-            files.splice(idx, 1);
-            renderFiles();
+        var filePath = currentPath === '/' ? '/' + contextTarget.name : currentPath + '/' + contextTarget.name;
+        if (confirm('Delete "' + contextTarget.name + '"?')) {
+          requestService('fs', 'remove', { path: filePath });
+          var files = fileSystem[currentPath];
+          if (files) {
+            var idx = -1;
+            for (var di = 0; di < files.length; di++) {
+              if (files[di].name === contextTarget.name) { idx = di; break; }
+            }
+            if (idx !== -1) {
+              files.splice(idx, 1);
+              renderFiles();
+            }
           }
         }
       } else if (action === 'rename') {
-        /* In a real app, show rename dialog */
+        var oldName = contextTarget.name;
+        var newName = prompt('Rename:', oldName);
+        if (newName && newName !== oldName) {
+          var oldPath = currentPath === '/' ? '/' + oldName : currentPath + '/' + oldName;
+          var newPath = currentPath === '/' ? '/' + newName : currentPath + '/' + newName;
+          requestService('fs', 'rename', { oldPath: oldPath, newPath: newPath });
+          contextTarget.name = newName;
+          renderFiles();
+        }
+      } else if (action === 'share') {
+        /* In emulator, show a toast-like message */
+        alert('Share: ' + contextTarget.name);
       }
 
       hideContextMenu();
@@ -381,6 +401,62 @@
       sortMenu.classList.add('hidden');
     }
   });
+
+  /* ─── FAB: New Folder ─── */
+  var fabBtn = document.getElementById('fab');
+  if (fabBtn) {
+    fabBtn.addEventListener('click', function () {
+      var folderName = prompt('New folder name:');
+      if (folderName && folderName.trim()) {
+        var newPath = currentPath === '/' ? '/' + folderName.trim() : currentPath + '/' + folderName.trim();
+        requestService('fs', 'mkdir', { path: newPath });
+        /* Optimistic update */
+        var files = fileSystem[currentPath] || [];
+        files.push({ name: folderName.trim(), type: 'folder', size: 0 });
+        fileSystem[currentPath] = files;
+        renderFiles();
+      }
+    });
+  }
+
+  /* ─── View Toggle ─── */
+  var viewToggle = document.getElementById('btn-view');
+  var isGridView = false;
+  if (viewToggle) {
+    viewToggle.addEventListener('click', function () {
+      isGridView = !isGridView;
+      var list = document.getElementById('file-list');
+      if (list) {
+        list.classList.toggle('grid-view', isGridView);
+      }
+    });
+  }
+
+  /* ─── Open file with corresponding app ─── */
+  function openFileWithApp(file) {
+    if (!file || !file.name) return;
+    var ext = file.name.split('.').pop().toLowerCase();
+    var imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
+    var audioExts = ['mp3', 'ogg', 'wav', 'flac', 'aac'];
+    var videoExts = ['mp4', 'mov', 'webm', 'mkv', 'avi'];
+    var textExts  = ['txt', 'md', 'log', 'json', 'xml', 'csv'];
+
+    var appId = null;
+    if (imageExts.indexOf(ext) !== -1 || videoExts.indexOf(ext) !== -1) {
+      appId = 'com.zylos.gallery';
+    } else if (audioExts.indexOf(ext) !== -1) {
+      appId = 'com.zylos.music';
+    } else if (textExts.indexOf(ext) !== -1) {
+      appId = 'com.zylos.notes';
+    }
+
+    if (appId) {
+      window.parent.postMessage(JSON.stringify({
+        type: 'app.launch',
+        appId: appId
+      }), '*');
+    }
+  }
 
   /* ─── Init ─── */
   navigateTo('/');

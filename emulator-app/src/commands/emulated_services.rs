@@ -101,7 +101,48 @@ pub fn power_set_brightness(percent: u32) -> serde_json::Value {
 
 #[tauri::command]
 pub fn location_get_last_known() -> serde_json::Value {
-    // 가상 위치 (서울 시청)
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+
+    // Try IP-based geolocation from ipinfo.io (free, no API key)
+    if let Ok(output) = std::process::Command::new("curl")
+        .args(["-s", "-m", "3", "https://ipinfo.io/json"])
+        .output()
+    {
+        if output.status.success() {
+            if let Ok(text) = String::from_utf8(output.stdout) {
+                if let Ok(data) = serde_json::from_str::<serde_json::Value>(&text) {
+                    if let Some(loc_str) = data["loc"].as_str() {
+                        let parts: Vec<&str> = loc_str.split(',').collect();
+                        if parts.len() == 2 {
+                            if let (Ok(lat), Ok(lon)) = (parts[0].parse::<f64>(), parts[1].parse::<f64>()) {
+                                let city = data["city"].as_str().unwrap_or("");
+                                let region = data["region"].as_str().unwrap_or("");
+                                let country = data["country"].as_str().unwrap_or("");
+                                return serde_json::json!({
+                                    "latitude": lat,
+                                    "longitude": lon,
+                                    "altitude": 0.0,
+                                    "accuracy": 5000.0,
+                                    "speed": 0.0,
+                                    "bearing": 0.0,
+                                    "timestamp": ts,
+                                    "provider": "ip-geolocation",
+                                    "city": city,
+                                    "region": region,
+                                    "country": country
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Fallback: default coordinates (Seoul City Hall)
     serde_json::json!({
         "latitude": 37.5665,
         "longitude": 126.9780,
@@ -109,11 +150,11 @@ pub fn location_get_last_known() -> serde_json::Value {
         "accuracy": 100.0,
         "speed": 0.0,
         "bearing": 0.0,
-        "timestamp": std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64,
-        "provider": "emulator"
+        "timestamp": ts,
+        "provider": "fallback",
+        "city": "Seoul",
+        "region": "Seoul",
+        "country": "KR"
     })
 }
 
@@ -122,10 +163,25 @@ pub fn location_get_last_known() -> serde_json::Value {
 // ════════════════════════════════════════════
 
 #[tauri::command]
-pub fn user_get_current() -> serde_json::Value {
+pub fn user_get_current(state: State<'_, Mutex<AppState>>) -> serde_json::Value {
+    // Read user name from settings if available
+    let mut user_name = "user".to_string();
+    if let Ok(app_state) = state.lock() {
+        let base = app_state.mount_point.as_ref().unwrap_or(&app_state.data_dir);
+        let settings_path = base.join("settings.json");
+        if let Ok(content) = fs::read_to_string(&settings_path) {
+            if let Ok(data) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(name) = data["user"]["name"].as_str() {
+                    if !name.is_empty() {
+                        user_name = name.to_string();
+                    }
+                }
+            }
+        }
+    }
     serde_json::json!({
         "uid": 1000,
-        "name": "user",
+        "name": user_name,
         "type": "OWNER",
         "avatar": "",
         "dataDir": "/data/users/1000"
@@ -133,11 +189,12 @@ pub fn user_get_current() -> serde_json::Value {
 }
 
 #[tauri::command]
-pub fn user_list() -> Vec<serde_json::Value> {
+pub fn user_list(state: State<'_, Mutex<AppState>>) -> Vec<serde_json::Value> {
+    let current = user_get_current(state);
     vec![serde_json::json!({
-        "uid": 1000,
-        "name": "user",
-        "type": "OWNER",
+        "uid": current["uid"],
+        "name": current["name"],
+        "type": current["type"],
         "isActive": true
     })]
 }

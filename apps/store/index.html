@@ -8,11 +8,33 @@
   <link rel="stylesheet" href="css/store.css">
 </head>
 <body>
-  <div id="header"><h1>App Store</h1></div>
-  <div id="search-bar">
-    <input type="text" id="search-input" placeholder="Search apps...">
+  <div id="header">
+    <h1 data-i18n="store.title">App Store</h1>
   </div>
+
+  <div id="search-bar">
+    <input type="text" id="search-input" data-i18n-placeholder="store.search_placeholder" placeholder="Search apps...">
+  </div>
+
+  <div id="tabs">
+    <button class="tab active" id="tab-all" data-tab="all" data-i18n="store.tab_all">All</button>
+    <button class="tab" id="tab-installed" data-tab="installed" data-i18n="store.tab_installed">Installed</button>
+  </div>
+
   <div id="app-list"></div>
+
+  <div id="empty-state" class="hidden">
+    <div class="empty-icon">&#128230;</div>
+    <div class="empty-text" data-i18n="store.empty">No apps found</div>
+  </div>
+
+  <div id="loading-state">
+    <div class="loading-text" data-i18n="store.loading">Loading...</div>
+  </div>
+
+  <script src="../shared/i18n.js"></script>
+  <script src="i18n.js"></script>
   <script src="../shared/bridge.js"></script>
   <script src="js/store.js"></script>
-</body></html>
+</body>
+</html>

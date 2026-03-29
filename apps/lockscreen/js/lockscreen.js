@@ -22,8 +22,20 @@
 
   /* ─── State ─── */
   var enteredPin   = '';
-  var correctPin   = '0000';
-  var pendingAppId = null;   /* 알림에서 앱 이동 시 사용 */
+  var correctPin   = '';  /* Empty = no PIN set, swipe-only unlock */
+  var pendingAppId = null;
+  var failCount    = 0;
+  var lockoutUntil = 0;
+
+  /* Fetch current PIN from settings service */
+  if (window.parent && window.parent !== window) {
+    window.parent.postMessage(JSON.stringify({
+      type: 'service.request',
+      service: 'settings',
+      method: 'get',
+      params: { category: 'security' }
+    }), '*');
+  }
 
   /* ─── 파티클 생성 ─── */
   (function createParticles() {
@@ -112,11 +124,27 @@
     var dy = dragState.startY - dragState.currentY;
 
     if (dy > SWIPE_THRESHOLD) {
-      /* 임계값 초과 → 슬라이드 아웃 → PIN 표시 */
+      /* Threshold exceeded → check if PIN is set */
       lockMain.classList.add('sliding-out');
-      setTimeout(function () {
-        showPinScreen();
-      }, 350);
+      if (!correctPin) {
+        /* No PIN set → swipe-only unlock */
+        document.body.classList.add('unlocking');
+        unlockFlash.classList.add('flash');
+        setTimeout(function () {
+          if (window.parent && window.parent !== window) {
+            if (pendingAppId) {
+              window.parent.postMessage(JSON.stringify({ type: 'app.launch', appId: pendingAppId }), '*');
+            } else {
+              window.parent.postMessage(JSON.stringify({ type: 'unlock' }), '*');
+            }
+          }
+        }, 500);
+      } else {
+        /* PIN set → show PIN screen */
+        setTimeout(function () {
+          showPinScreen();
+        }, 350);
+      }
     } else {
       /* 임계값 미달 → 스냅백 (스프링 효과) */
       lockMain.classList.add('snapping');
@@ -191,8 +219,19 @@
    *  PIN 검증 + 잠금해제
    * ════════════════════════════════════════════ */
   function verifyPin() {
+    /* Lockout check: 5 failed attempts → 30 second wait */
+    if (Date.now() < lockoutUntil) {
+      var remaining = Math.ceil((lockoutUntil - Date.now()) / 1000);
+      pinError.textContent = 'Try again in ' + remaining + 's';
+      pinError.classList.add('show');
+      enteredPin = '';
+      updateDots();
+      return;
+    }
+
     if (enteredPin === correctPin) {
-      /* 성공: 줌아웃 + 플래시 효과 */
+      failCount = 0;
+      /* Success: zoom-out + flash effect */
       document.body.classList.add('unlocking');
       unlockFlash.classList.add('flash');
 
@@ -216,7 +255,13 @@
         }
       }, 500);
     } else {
-      /* 실패: 흔들기 + 에러 표시 */
+      /* Failure: shake + error + lockout after 5 attempts */
+      failCount++;
+      if (failCount >= 5) {
+        lockoutUntil = Date.now() + 30000;
+        failCount = 0;
+      }
+      pinError.textContent = (typeof zylI18n !== 'undefined') ? zylI18n.t('lock.wrong_pin') : 'Wrong PIN';
       pinError.classList.add('show');
       var dots = document.getElementById('pin-dots');
       dots.classList.add('shake');
@@ -240,13 +285,19 @@
     try {
       var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
       if (!msg) return;
-      /* 알림 */
+      /* Notification */
       if (msg.type === 'notification.push') {
         addLockNotification(msg.data);
       }
-      /* PIN 변경 (설정에서 변경된 PIN 수신) */
+      /* PIN changed from settings */
       if (msg.type === 'settings.pinChanged' && msg.data && msg.data.pin) {
         correctPin = msg.data.pin;
+      }
+      /* Settings response — initial PIN load */
+      if (msg.type === 'service.response' && msg.service === 'settings' && msg.data) {
+        if (msg.data.pin) {
+          correctPin = String(msg.data.pin);
+        }
       }
     } catch (err) { /* ignore */ }
   });

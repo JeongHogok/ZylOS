@@ -1,13 +1,13 @@
 // ──────────────────────────────────────────────────────────
 // [Clean Architecture] Presentation Layer - Page
 //
-// 역할: OOBE (첫 실행 설정 마법사) 로직
-// 수행범위: 언어 선택, WiFi 연결, PIN 설정, 약관 동의, 설정 완료
-// 의존방향: ZylBridge (shared/bridge.js)
-// SOLID: SRP — OOBE 흐름 관리만 담당
+// Role: OOBE (Out-of-Box Experience) wizard logic
+// Scope: Language selection, WiFi connection, PIN setup, terms acceptance, completion flag
+// Dependency: ZylBridge (shared/bridge.js), zylI18n (shared/i18n.js)
+// SOLID: SRP — OOBE flow management only
 //
-// 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
-// 실제 디바이스 구동 기준이며, mock/demo 등 하드코딩 데이터가 있어서는 안 된다
+// Clean Architecture, SOLID principles, i18n rules strictly followed
+// Built for real device runtime; no mock/demo or hardcoded data allowed
 // ──────────────────────────────────────────────────────────
 
 (function () {
@@ -16,7 +16,7 @@
   var steps = ['step-welcome', 'step-language', 'step-wifi', 'step-pin', 'step-terms', 'step-complete'];
   var currentStep = 0;
 
-  /* 다음 단계 */
+  /* ─── Navigation ─── */
   window.nextStep = function () {
     if (currentStep >= steps.length - 1) return;
     var current = document.getElementById(steps[currentStep]);
@@ -27,7 +27,16 @@
     updateDots();
   };
 
-  /* 진행 도트 업데이트 */
+  window.prevStep = function () {
+    if (currentStep <= 0) return;
+    var current = document.getElementById(steps[currentStep]);
+    current.classList.remove('active');
+    currentStep--;
+    var prev = document.getElementById(steps[currentStep]);
+    prev.classList.add('active');
+    updateDots();
+  };
+
   function updateDots() {
     var dots = document.querySelectorAll('#progress-dots .dot');
     dots.forEach(function (dot, i) {
@@ -35,7 +44,7 @@
     });
   }
 
-  /* 언어 선택 */
+  /* ─── Language Selection ─── */
   document.querySelectorAll('.oobe-option[data-lang]').forEach(function (opt) {
     opt.addEventListener('click', function () {
       document.querySelectorAll('.oobe-option[data-lang]').forEach(function (o) {
@@ -43,13 +52,31 @@
       });
       opt.classList.add('selected');
       var lang = opt.dataset.lang;
+
+      /* Apply locale via i18n */
+      if (typeof zylI18n !== 'undefined') {
+        zylI18n.setLocale(lang);
+      }
+      /* Save locale to settings */
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage(JSON.stringify({
+          type: 'service.request',
+          service: 'settings',
+          method: 'update',
+          params: { category: 'language', key: 'locale', value: lang }
+        }), '*');
+        /* Also notify emulator directly */
+        window.parent.postMessage(JSON.stringify({
+          type: 'system.setLocale', locale: lang
+        }), '*');
+      }
       if (typeof ZylBridge !== 'undefined') {
         ZylBridge.setLocale(lang);
       }
     });
   });
 
-  /* WiFi 목록 요청 */
+  /* ─── WiFi List ─── */
   if (window.parent && window.parent !== window) {
     window.parent.postMessage(JSON.stringify({
       type: 'service.request',
@@ -74,29 +101,35 @@
           var el = document.createElement('div');
           el.className = 'oobe-option' + (net.connected ? ' selected' : '');
           el.textContent = net.ssid + (net.connected ? ' (Connected)' : '');
+          el.addEventListener('click', function () {
+            list.querySelectorAll('.oobe-option').forEach(function (o) { o.classList.remove('selected'); });
+            el.classList.add('selected');
+          });
           list.appendChild(el);
         });
       }
     } catch (err) { /* ignore */ }
   });
 
-  /* PIN 설정 */
+  /* ─── PIN Setup ─── */
   window.setupPin = function () {
     var pin = document.getElementById('pin-input').value;
-    var confirm = document.getElementById('pin-confirm').value;
+    var confirmPin = document.getElementById('pin-confirm').value;
     var msg = document.getElementById('pin-msg');
 
-    if (pin.length !== 4) {
+    if (pin.length !== 4 || !/^\d{4}$/.test(pin)) {
       msg.textContent = 'PIN must be 4 digits';
+      msg.style.color = '#ef4444';
       return;
     }
-    if (pin !== confirm) {
+    if (pin !== confirmPin) {
       msg.textContent = 'PINs do not match';
+      msg.style.color = '#ef4444';
       return;
     }
 
     msg.textContent = '';
-    /* PIN을 시스템에 저장 */
+    /* Save PIN to system settings */
     if (window.parent && window.parent !== window) {
       window.parent.postMessage(JSON.stringify({
         type: 'service.request',
@@ -108,20 +141,40 @@
     nextStep();
   };
 
-  /* 약관 동의 */
+  /* ─── Terms Agreement ─── */
   window.acceptTerms = function () {
     var agreed = document.getElementById('terms-agree').checked;
-    if (!agreed) {
-      return;
-    }
+    if (!agreed) return;
     nextStep();
   };
 
-  /* 설정 완료 → 홈으로 */
+  /* ─── Setup Complete → save flag + go home ─── */
   window.finishSetup = function () {
+    /* Save OOBE completion flag so it doesn't show again */
     if (window.parent && window.parent !== window) {
-      window.parent.postMessage(JSON.stringify({ type: 'app.launch', appId: 'com.zylos.home' }), '*');
+      window.parent.postMessage(JSON.stringify({
+        type: 'service.request',
+        service: 'settings',
+        method: 'update',
+        params: { category: 'system', key: 'oobe_completed', value: true }
+      }), '*');
+      /* Launch home */
+      window.parent.postMessage(JSON.stringify({
+        type: 'app.launch', appId: 'com.zylos.home'
+      }), '*');
     }
   };
+
+  /* Select default language based on browser locale */
+  var detectedLang = (navigator.language || 'en').split('-')[0];
+  var langOption = document.querySelector('.oobe-option[data-lang="' + detectedLang + '"]');
+  if (langOption) {
+    document.querySelectorAll('.oobe-option[data-lang]').forEach(function (o) { o.classList.remove('selected'); });
+    langOption.classList.add('selected');
+  } else {
+    /* Default to English */
+    var enOpt = document.querySelector('.oobe-option[data-lang="en"]');
+    if (enOpt) enOpt.classList.add('selected');
+  }
 
 })();

@@ -74,9 +74,20 @@
     var title = titleEl ? titleEl.value.trim() : '';
     var body = bodyEl ? bodyEl.value : '';
     if (!title) return;
+
+    var newFileName = title + '.txt';
+
+    /* If title changed, rename old file first */
+    if (currentNote && currentNote !== newFileName) {
+      window.parent.postMessage(JSON.stringify({
+        type: 'service.request', service: 'fs', method: 'rename',
+        params: { oldPath: 'Documents/Notes/' + currentNote, newPath: 'Documents/Notes/' + newFileName }
+      }), '*');
+    }
+
     window.parent.postMessage(JSON.stringify({
       type: 'service.request', service: 'fs', method: 'writeFile',
-      params: { path: 'Documents/Notes/' + title + '.txt', content: body }
+      params: { path: 'Documents/Notes/' + newFileName, content: body }
     }), '*');
     closeEditor();
   });

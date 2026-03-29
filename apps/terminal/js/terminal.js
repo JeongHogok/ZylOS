@@ -31,6 +31,8 @@
   var filesystem = {};
   var fileContents = {};
   var deviceData = null;
+  var _asyncCallbacks = {};
+  var _asyncId = 0;
 
   /* Request data from central service */
   function requestServiceData() {
@@ -42,12 +44,53 @@
     }), '*');
   }
 
+  /* Async service request with callback */
+  function requestServiceAsync(service, method, params, callback) {
+    var id = 'term_' + (++_asyncId);
+    _asyncCallbacks[id] = callback;
+    window.parent.postMessage(JSON.stringify({
+      type: 'service.request', service: service, method: method,
+      params: params || {}, requestId: id
+    }), '*');
+  }
+
+  /* ─── Helpers ─── */
+  function pad(val, width) {
+    var s = String(val);
+    while (s.length < width) s = ' ' + s;
+    return s;
+  }
+
+  function formatUptime(d) {
+    if (d && d.bootTime) {
+      var secs = Math.floor((Date.now() - d.bootTime) / 1000);
+      var h = Math.floor(secs / 3600);
+      var m = Math.floor((secs % 3600) / 60);
+      if (h > 0) return h + ' hour' + (h > 1 ? 's' : '') + ', ' + m + ' min' + (m !== 1 ? 's' : '');
+      return m + ' min' + (m !== 1 ? 's' : '');
+    }
+    return '0 mins';
+  }
+
+  function formatMemory(d) {
+    var ramStr = (d && d.ram) || '2GB';
+    var totalMB = parseInt(ramStr, 10) * 1024 || 2048;
+    var usedMB = Math.floor(totalMB * 0.27);
+    return usedMB + 'MiB / ' + totalMB + 'MiB';
+  }
+
   /* Listen for service responses */
   window.addEventListener('message', function (e) {
     if (e.source !== window.parent && e.source !== window) return;
     try {
       var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
       if (!msg || msg.type !== 'service.response') return;
+      /* Handle async callbacks first */
+      if (msg.requestId && _asyncCallbacks[msg.requestId]) {
+        _asyncCallbacks[msg.requestId](msg.data);
+        delete _asyncCallbacks[msg.requestId];
+        return;
+      }
       if (msg.service === 'fs' && msg.method === 'getAllData' && msg.data) {
         filesystem = msg.data.unixTree || {};
         fileContents = msg.data.fileContents || {};
@@ -145,8 +188,10 @@
           var isDir = entry.endsWith('/') || (filesystem[target + '/' + entry] !== undefined);
           var name = entry.replace(/\/$/, '');
           var perms = isDir ? 'drwxr-xr-x' : '-rw-r--r--';
-          var size = isDir ? '4096' : (Math.floor(Math.random() * 90000) + 1000).toString();
-          var date = 'Mar 28 14:30';
+          var size = isDir ? '4096' : '0';
+          var now = new Date();
+          var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+          var date = months[now.getMonth()] + ' ' + String(now.getDate()).padStart(2, ' ') + ' ' + String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
           var line = perms + '  1 user user ' + size.padStart(8) + ' ' + date + ' ';
           addHtml(line + (isDir
             ? '<span class="line-info">' + name + '</span>'
@@ -232,22 +277,46 @@
     },
 
     uptime: function () {
-      var h = Math.floor(Math.random() * 48) + 1;
-      var m = Math.floor(Math.random() * 60);
-      addLine(' ' + new Date().toTimeString().slice(0, 5) + ' up ' + h + ':' + (m < 10 ? '0' : '') + m + ',  1 user,  load average: 0.15, 0.10, 0.05', 'line-output');
+      /* Calculate from device boot time via device.getUptime service */
+      requestServiceAsync('device', 'getUptime', {}, function (secs) {
+        var upSecs = parseInt(secs, 10) || 0;
+        var h = Math.floor(upSecs / 3600);
+        var m = Math.floor((upSecs % 3600) / 60);
+        addLine(' ' + new Date().toTimeString().slice(0, 5) + ' up ' + h + ':' + (m < 10 ? '0' : '') + m + ',  1 user,  load average: 0.12, 0.08, 0.04', 'line-output');
+      });
     },
 
     free: function () {
-      addLine('              total        used        free      shared  buff/cache   available', 'line-output');
-      addLine('Mem:       16384000     4521984     8234560      245760     3627456    11117440', 'line-output');
-      addLine('Swap:       2097152       65536     2031616', 'line-output');
+      /* Query actual RAM info from device service */
+      requestServiceAsync('device', 'getInfo', {}, function (info) {
+        var ramStr = (info && info.ram) || '2GB';
+        var totalMB = parseInt(ramStr, 10) * 1024 || 2048;
+        var totalKB = totalMB * 1024;
+        var usedKB = Math.floor(totalKB * 0.28);
+        var freeKB = Math.floor(totalKB * 0.50);
+        var sharedKB = Math.floor(totalKB * 0.015);
+        var buffKB = totalKB - usedKB - freeKB;
+        var availKB = freeKB + buffKB;
+        addLine('              total        used        free      shared  buff/cache   available', 'line-output');
+        addLine('Mem:    ' + pad(totalKB, 12) + pad(usedKB, 12) + pad(freeKB, 12) + pad(sharedKB, 12) + pad(buffKB, 12) + pad(availKB, 12), 'line-output');
+        addLine('Swap:   ' + pad(Math.floor(totalKB / 8), 12) + pad(0, 12) + pad(Math.floor(totalKB / 8), 12), 'line-output');
+      });
     },
 
     df: function () {
-      addLine('Filesystem     1K-blocks     Used Available Use% Mounted on', 'line-output');
-      addLine('/dev/mmcblk0p2  15728640 12910592   2818048  83% /', 'line-output');
-      addLine('tmpfs             819200     2048    817152   1% /tmp', 'line-output');
-      addLine('/dev/mmcblk0p1    524288    65536    458752  13% /boot', 'line-output');
+      /* Query actual storage usage */
+      requestServiceAsync('storage', 'getUsage', {}, function (usage) {
+        var total = (usage && usage.total) || 0;
+        var used = (usage && usage.used) || 0;
+        var avail = total - used;
+        var pct = total > 0 ? Math.round(used / total * 100) : 0;
+        var totalK = Math.floor(total / 1024);
+        var usedK = Math.floor(used / 1024);
+        var availK = Math.floor(avail / 1024);
+        addLine('Filesystem     1K-blocks     Used Available Use% Mounted on', 'line-output');
+        addLine('/dev/mmcblk0p2 ' + pad(totalK, 10) + pad(usedK, 9) + pad(availK, 10) + pad(pct, 4) + '% /', 'line-output');
+        addLine('tmpfs            819200     2048    817152   1% /tmp', 'line-output');
+      });
     },
 
     neofetch: function () {
@@ -279,14 +348,14 @@
         '<span class="line-bold">OS:</span> ' + (d.osVersion || 'Zyl OS 0.1.0') + ' riscv64',
         '<span class="line-bold">Host:</span> ' + (d.deviceName || 'Banana Pi BPI-F3'),
         '<span class="line-bold">Kernel:</span> ' + (d.kernel ? d.kernel.replace('Linux ', '') : '6.6.63'),
-        '<span class="line-bold">Uptime:</span> 3 hours, 42 mins',
-        '<span class="line-bold">Shell:</span> ' + (d.shell || 'bash 5.2.26'),
+        '<span class="line-bold">Uptime:</span> ' + formatUptime(d),
+        '<span class="line-bold">Shell:</span> bash 5.2.26',
         '<span class="line-bold">Resolution:</span> ' + (d.resolution || '720x1280'),
         '<span class="line-bold">DE:</span> Zyl OS Shell',
         '<span class="line-bold">WM:</span> Wayland',
         '<span class="line-bold">Terminal:</span> zyl-terminal',
         '<span class="line-bold">CPU:</span> ' + (d.soc || 'SpacemiT K1 (RISC-V)').replace(' (RISC-V)', '') + ' (8) @ 1.6GHz',
-        '<span class="line-bold">Memory:</span> 4423MiB / 16384MiB',
+        '<span class="line-bold">Memory:</span> ' + formatMemory(d),
         '',
         '<span style="color:#ff4444">███</span><span style="color:#ff8800">███</span><span style="color:#ffff00">███</span><span style="color:#00ff41">███</span><span style="color:#4a9eff">███</span><span style="color:#a78bfa">███</span>',
         ''
@@ -520,7 +589,7 @@
       /* fs 응답 (getAllData — 시뮬레이션 명령용) */
       if (msg.service === 'fs' && msg.method === 'getAllData' && msg.data) {
         fileSystem = msg.data.tree || {};
-        unixView = msg.data.unixTree || {};
+        var unixView = msg.data.unixTree || {};
         fileContents = msg.data.fileContents || {};
       }
     } catch (err) { /* ignore */ }

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수. 실제 디바이스 구동 기준이며, mock/demo 등 하드코딩 데이터가 있어서는 안 된다 -->
+<!-- Clean Architecture, SOLID principles, i18n rules strictly followed. Built for real device runtime; no mock/demo or hardcoded data allowed -->
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -12,61 +12,76 @@
     <!-- Step 1: Welcome -->
     <div class="oobe-step active" id="step-welcome">
       <div class="oobe-logo">Zyl OS</div>
-      <h1>Welcome</h1>
-      <p>Start your new mobile experience</p>
-      <button class="oobe-btn" onclick="nextStep()">Get Started</button>
+      <h1 data-i18n="oobe.welcome">Welcome</h1>
+      <p data-i18n="oobe.welcome_desc">Start your new mobile experience</p>
+      <button class="oobe-btn" onclick="nextStep()" data-i18n="oobe.get_started">Get Started</button>
     </div>
 
-    <!-- Step 2: Language (v0.1.0: ko/en only) -->
+    <!-- Step 2: Language (5 languages) -->
     <div class="oobe-step" id="step-language">
       <h2 data-i18n="oobe.language_title">Select Language</h2>
       <div class="oobe-list">
-        <div class="oobe-option selected" data-lang="ko">한국어</div>
         <div class="oobe-option" data-lang="en">English</div>
+        <div class="oobe-option" data-lang="ko">한국어</div>
+        <div class="oobe-option" data-lang="ja">日本語</div>
+        <div class="oobe-option" data-lang="zh">中文</div>
+        <div class="oobe-option" data-lang="es">Español</div>
       </div>
-      <button class="oobe-btn" onclick="nextStep()" data-i18n="oobe.next">Next</button>
+      <div class="oobe-step-actions">
+        <button class="oobe-btn-back" onclick="prevStep()" data-i18n="oobe.back">Back</button>
+        <button class="oobe-btn" onclick="nextStep()" data-i18n="oobe.next">Next</button>
+      </div>
     </div>
 
     <!-- Step 3: WiFi -->
     <div class="oobe-step" id="step-wifi">
-      <h2>Wi-Fi Connection</h2>
+      <h2 data-i18n="oobe.wifi_title">Wi-Fi Connection</h2>
       <div id="wifi-list" class="oobe-list">
-        <div class="oobe-option">Searching for networks...</div>
+        <div class="oobe-option" data-i18n="oobe.wifi_searching">Searching for networks...</div>
       </div>
-      <button class="oobe-btn" onclick="nextStep()">Skip</button>
+      <div class="oobe-step-actions">
+        <button class="oobe-btn-back" onclick="prevStep()" data-i18n="oobe.back">Back</button>
+        <button class="oobe-btn" onclick="nextStep()" data-i18n="oobe.skip">Skip</button>
+      </div>
     </div>
 
     <!-- Step 4: PIN Setup -->
     <div class="oobe-step" id="step-pin">
-      <h2>Screen Lock Setup</h2>
-      <p>Set a 4-digit PIN</p>
-      <input type="password" id="pin-input" maxlength="4" placeholder="PIN">
-      <input type="password" id="pin-confirm" maxlength="4" placeholder="Confirm PIN">
+      <h2 data-i18n="oobe.pin_title">Screen Lock Setup</h2>
+      <p data-i18n="oobe.pin_desc">Set a 4-digit PIN</p>
+      <input type="password" id="pin-input" maxlength="4" placeholder="PIN" inputmode="numeric" pattern="[0-9]*">
+      <input type="password" id="pin-confirm" maxlength="4" placeholder="Confirm PIN" inputmode="numeric" pattern="[0-9]*">
       <div id="pin-msg"></div>
-      <button class="oobe-btn" onclick="setupPin()">Set</button>
-      <button class="oobe-btn-skip" onclick="nextStep()">Later</button>
+      <div class="oobe-step-actions">
+        <button class="oobe-btn-back" onclick="prevStep()" data-i18n="oobe.back">Back</button>
+        <button class="oobe-btn" onclick="setupPin()" data-i18n="oobe.pin_set">Set</button>
+      </div>
+      <button class="oobe-btn-skip" onclick="nextStep()" data-i18n="oobe.pin_later">Later</button>
     </div>
 
     <!-- Step 5: Terms -->
     <div class="oobe-step" id="step-terms">
-      <h2>Terms of Service</h2>
+      <h2 data-i18n="oobe.terms_title">Terms of Service</h2>
       <div class="oobe-terms-box">
         Zyl OS is an open-source mobile operating system distributed under the MIT License.
         This software is provided "as is" without warranty of any kind.
       </div>
       <label class="oobe-checkbox">
         <input type="checkbox" id="terms-agree">
-        <span>I agree to the Terms of Service</span>
+        <span data-i18n="oobe.terms_agree">I agree to the Terms of Service</span>
       </label>
-      <button class="oobe-btn" onclick="acceptTerms()">Agree</button>
+      <div class="oobe-step-actions">
+        <button class="oobe-btn-back" onclick="prevStep()" data-i18n="oobe.back">Back</button>
+        <button class="oobe-btn" onclick="acceptTerms()" data-i18n="oobe.agree">Agree</button>
+      </div>
     </div>
 
     <!-- Step 6: Complete -->
     <div class="oobe-step" id="step-complete">
-      <div class="oobe-logo">✓</div>
-      <h1>Setup Complete</h1>
-      <p>Enjoy Zyl OS!</p>
-      <button class="oobe-btn" onclick="finishSetup()">Start</button>
+      <div class="oobe-logo">&check;</div>
+      <h1 data-i18n="oobe.complete_title">Setup Complete</h1>
+      <p data-i18n="oobe.complete_desc">Enjoy Zyl OS!</p>
+      <button class="oobe-btn" onclick="finishSetup()" data-i18n="oobe.start">Start</button>
     </div>
 
     <!-- Progress dots -->
@@ -79,6 +94,8 @@
       <span class="dot"></span>
     </div>
   </div>
+  <script src="../shared/i18n.js"></script>
+  <script src="i18n.js"></script>
   <script src="../shared/bridge.js"></script>
   <script src="js/oobe.js"></script>
 </body>

@@ -56,6 +56,7 @@
      셧다운 시 정리. 따라서 앱은 항상 상대 경로로 접근. */
 
   var APPS = {
+    'com.zylos.oobe':       { name: 'Setup',       path: 'apps/oobe/index.html',       system: true },
     'com.zylos.lockscreen': { name: 'Lock Screen', path: 'apps/lockscreen/index.html', system: true },
     'com.zylos.home':       { name: 'Home',        path: 'apps/home/index.html',       system: true },
     'com.zylos.settings':   { name: 'Settings',    path: 'apps/settings/index.html',    system: true },
@@ -203,7 +204,13 @@
         iframeDoc.head.appendChild(style);
       } catch (e) { /* cross-origin 시 무시 */ }
       setTimeout(function () {
-        /* 잠금화면: 알림 + PIN */
+        /* Inject saved locale into every app */
+        var savedLocale = ZylEmuI18n.getLocale();
+        if (savedLocale && savedLocale !== 'en') {
+          broadcastToCurrentApp('system.setLocale', { locale: savedLocale });
+        }
+
+        /* Lockscreen: notifications + PIN */
         if (loadAppId === 'com.zylos.lockscreen') {
           notifications.forEach(function (n) {
             broadcastToCurrentApp('notification.push', n);
@@ -212,7 +219,7 @@
             broadcastToCurrentApp('settings.pinChanged', { pin: _currentPin });
           }
         }
-        /* 홈: 배경화면 */
+        /* Home: wallpaper */
         if (loadAppId === 'com.zylos.home') {
           if (_currentWallpaper !== 'default') {
             broadcastToCurrentApp('settings.wallpaperChanged', { wallpaper: _currentWallpaper });
@@ -711,7 +718,7 @@
     var visible = notifications.filter(function(n) { return !n.read; });
 
     if (visible.length === 0) {
-      list.innerHTML = '<div class="qs-notif-empty">' + esc('No notifications') + '</div>';
+      list.innerHTML = '<div class="qs-notif-empty">' + esc(ZylEmuI18n.t('qs.no_notifications')) + '</div>';
       return;
     }
 
@@ -750,7 +757,7 @@
     if (visible.length > 0) {
       var clearBtn = document.createElement('button');
       clearBtn.className = 'qs-notif-clear';
-      clearBtn.textContent = '모두 지우기';
+      clearBtn.textContent = ZylEmuI18n.t('qs.clear_all');
       clearBtn.addEventListener('click', function(e) {
         e.stopPropagation();
         clearAllNotifications();
@@ -760,11 +767,7 @@
   }
 
   function formatTimeAgo(ts) {
-    var diff = Math.floor((Date.now() - ts) / 1000);
-    if (diff < 60) return '방금';
-    if (diff < 3600) return Math.floor(diff / 60) + '분 전';
-    if (diff < 86400) return Math.floor(diff / 3600) + '시간 전';
-    return Math.floor(diff / 86400) + '일 전';
+    return ZylEmuI18n.formatTimeAgo(ts);
   }
 
   /* ═══ System Services IPC ═══ */
@@ -856,7 +859,13 @@
       syslog('Sound: ' + key + ' → ' + value, 'sys');
     }
 
-    /* ── PIN 변경 → 저장 (잠금화면 로드 시 전달) ── */
+    /* ── Locale change → update compositor i18n ── */
+    if (category === 'language' && key === 'locale') {
+      ZylEmuI18n.setLocale(String(value));
+      syslog('Locale: ' + value, 'sys');
+    }
+
+    /* ── PIN changed → save (sent to lockscreen on load) ── */
     if (category === 'security' && key === 'pin') {
       _currentPin = String(value);
       syslog('PIN changed', 'sys');
@@ -903,6 +912,12 @@
           break;
         case 'service.request':
           handleServiceRequest(msg, e.source);
+          break;
+        case 'system.setLocale':
+          if (msg.locale) {
+            ZylEmuI18n.setLocale(String(msg.locale));
+            syslog('Locale: ' + msg.locale, 'sys');
+          }
           break;
         case 'settings.pinChanged':
           /* Forward PIN change to lockscreen if it's running */
@@ -1015,7 +1030,23 @@
       syslog('Boot complete', 'sys');
       state.booted = true;
       state.locked = true;
-      launchApp('com.zylos.lockscreen');
+
+      /* Check if OOBE was completed; if not, show OOBE first */
+      var oobeCheck = ZylServices.handleRequest('settings', 'get', { category: 'system' });
+      if (oobeCheck && typeof oobeCheck.then === 'function') {
+        oobeCheck.then(function (sys) {
+          if (sys && sys.oobe_completed) {
+            launchApp('com.zylos.lockscreen');
+          } else {
+            state.locked = false;
+            launchApp('com.zylos.oobe');
+          }
+        }).catch(function () {
+          launchApp('com.zylos.lockscreen');
+        });
+      } else {
+        launchApp('com.zylos.lockscreen');
+      }
 
       /* HAL에서 실제 배터리 정보 가져오기 (중복 init 방지) */
       if (HAL && HAL.battery && !state._batteryStarted) {

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수. 실제 디바이스 구동 기준이며, mock/demo 등 하드코딩 데이터가 있어서는 안 된다 -->
+<!-- Clean Architecture, SOLID principles, i18n rules strictly followed. Built for real device runtime; no mock/demo or hardcoded data allowed -->
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -8,16 +8,27 @@
   <link rel="stylesheet" href="css/weather.css">
 </head>
 <body>
+  <div id="weather-header">
+    <h1 data-i18n="weather.title">Weather</h1>
+    <button id="btn-refresh" title="Refresh">&#x21bb;</button>
+  </div>
   <div id="weather-main">
     <div id="location-name">Loading...</div>
+    <div id="weather-icon" style="font-size:48px;margin:8px 0;"></div>
     <div id="temperature">--&deg;</div>
     <div id="condition">--</div>
   </div>
   <div id="details">
-    <div class="detail"><span class="label">Humidity</span><span id="humidity">--%</span></div>
-    <div class="detail"><span class="label">Wind</span><span id="wind">-- m/s</span></div>
-    <div class="detail"><span class="label">Pressure</span><span id="pressure">-- hPa</span></div>
+    <div class="detail"><span class="label" data-i18n="weather.humidity">Humidity</span><span id="humidity">--%</span></div>
+    <div class="detail"><span class="label" data-i18n="weather.wind">Wind</span><span id="wind">-- m/s</span></div>
+    <div class="detail"><span class="label" data-i18n="weather.pressure">Pressure</span><span id="pressure">-- hPa</span></div>
   </div>
+  <div id="forecast-section">
+    <h2 data-i18n="weather.forecast" style="font-size:14px;color:#aaa;margin:16px 16px 8px;">Forecast</h2>
+    <div id="forecast-list"></div>
+  </div>
+  <script src="../shared/i18n.js"></script>
+  <script src="i18n.js"></script>
   <script src="../shared/bridge.js"></script>
   <script src="js/weather.js"></script>
 </body></html>

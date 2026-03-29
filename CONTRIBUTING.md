@@ -43,6 +43,13 @@ ninja -C builddir
 - `===` 사용 (`==` 금지)
 - `postMessage` 수신 시 `e.source` 검증 필수
 
+### i18n (다국어)
+- **모든 앱은 `js/i18n.js` 파일을 반드시 포함해야 합니다**
+- `addTranslations(locale, keys)`로 앱별 번역 데이터 등록
+- 5개 언어 필수: ko(한국어), en(English), ja(日本語), zh(中文), es(Español)
+- 번역 키는 앱 ID 접두사 사용 권장 (예: `'myapp.title'`)
+- 에뮬레이터 컴포지터 UI는 `emu-i18n.js`에서 별도 관리
+
 ### 파일 헤더
 모든 소스 파일에 아래 형식의 헤더를 추가해야 합니다:
 
@@ -85,6 +92,7 @@ Co-Authored-By: {이름} <{이메일}>
 - [ ] `malloc`/`strdup` NULL 체크
 - [ ] `system()` 미사용
 - [ ] D-Bus 이름 `org.zylos.*` 규칙 준수
+- [ ] 앱에 `js/i18n.js` 포함 (5개 언어 번역)
 - [ ] 관련 문서 업데이트 (해당 시)
 
 ## 디렉토리 구조
@@ -93,7 +101,7 @@ Co-Authored-By: {이름} <{이메일}>
 compositor/        Wayland 컴포지터
 runtime/wam/       Web Application Manager
 runtime/hal/       Hardware Abstraction Layer
-runtime/services/  시스템 서비스 (14개)
+runtime/services/  시스템 서비스 (16개 C/D-Bus + 에뮬레이터 8개 = 24개)
 apps/              시스템 앱 (HTML/CSS/JS)
 system/            systemd, plymouth, DTS, AppArmor
 tools/             빌드/개발 도구

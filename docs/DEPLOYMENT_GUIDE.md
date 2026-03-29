@@ -72,7 +72,9 @@ builddir-riscv/
 │   ├── input/zyl-input
 │   ├── usb/zyl-usb
 │   ├── user/zyl-user
-│   └── credential/zyl-credential
+│   ├── credential/zyl-credential
+│   ├── accessibility/zyl-accessibility
+│   └── logger/zyl-logger
 ```
 
 ---

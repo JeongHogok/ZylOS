@@ -95,9 +95,9 @@ myapp/
 ├── assets/
 │   ├── icon.png      # 앱 아이콘
 │   └── ...           # 이미지, 폰트, 기타 에셋
-└── locales/          # 다국어 파일 (선택)
-    ├── ko.json
-    └── en.json
+└── js/
+    ├── app.js        # 애플리케이션 로직
+    └── i18n.js       # 앱별 번역 데이터 (필수, 5개 언어)
 ```
 
 ### 파일 크기 제한
@@ -366,29 +366,74 @@ main {
 
 ## 6. 다국어 지원 (i18n)
 
-### 6.1 HTML에서 사용
+Zyl OS는 **공유 엔진 + 앱별 번역 데이터** 아키텍처를 사용합니다.
+각 앱은 반드시 자체 `i18n.js` 파일에서 번역 데이터를 등록해야 합니다.
+
+### 6.1 아키텍처 개요
+
+```
+shared/i18n.js          ← 번역 엔진 (t(), formatDate(), DOM 자동 번역)
+  ↑
+앱별 js/i18n.js          ← 앱이 addTranslations()로 자체 키 등록
+  ↑
+앱 HTML (data-i18n)      ← DOM 자동 번역
+```
+
+### 6.2 앱별 i18n.js 작성 (필수)
+
+**모든 앱은 `js/i18n.js` 파일을 포함해야 합니다.** 5개 언어(ko/en/ja/zh/es) 번역 필수.
+
+```javascript
+// myapp/js/i18n.js
+(function () {
+  'use strict';
+  if (!window.zylI18n || !window.zylI18n.addTranslations) return;
+
+  zylI18n.addTranslations('ko', {
+    'myapp.title': '내 앱',
+    'myapp.welcome': '{name}님 환영합니다'
+  });
+  zylI18n.addTranslations('en', {
+    'myapp.title': 'My App',
+    'myapp.welcome': 'Welcome, {name}'
+  });
+  zylI18n.addTranslations('ja', {
+    'myapp.title': 'マイアプリ',
+    'myapp.welcome': '{name}さん、ようこそ'
+  });
+  zylI18n.addTranslations('zh', {
+    'myapp.title': '我的应用',
+    'myapp.welcome': '欢迎，{name}'
+  });
+  zylI18n.addTranslations('es', {
+    'myapp.title': 'Mi App',
+    'myapp.welcome': 'Bienvenido, {name}'
+  });
+})();
+```
+
+### 6.3 HTML에서 사용
 
 ```html
+<!-- 공유 엔진 먼저 로드, 앱 i18n.js 이후 로드 -->
+<script src="../../shared/i18n.js"></script>
+<script src="js/i18n.js"></script>
+
 <!-- 텍스트 번역 -->
-<span data-i18n="greeting">안녕하세요</span>
+<span data-i18n="myapp.title">내 앱</span>
 
 <!-- placeholder 번역 -->
 <input data-i18n-placeholder="search.hint" placeholder="검색...">
 ```
 
-### 6.2 JavaScript에서 사용
+### 6.4 JavaScript에서 사용
 
 ```javascript
-// 공유 모듈 로드
-// <script src="../../shared/i18n.js"></script>
-
 // 번역
-var text = zylI18n.t('greeting');
+var text = zylI18n.t('myapp.title');
 
 // 파라미터 치환
-var msg = zylI18n.t('welcome', { name: '사용자' });
-// → "사용자님 환영합니다" (ko)
-// → "Welcome, 사용자" (en)
+var msg = zylI18n.t('myapp.welcome', { name: '사용자' });
 
 // 날짜 포맷
 var dateStr = zylI18n.formatDate(new Date());
@@ -399,31 +444,13 @@ zylI18n.onLocaleChange(function(newLocale) {
 });
 ```
 
-### 6.3 앱 전용 번역 파일
+### 6.5 지원 언어
 
-`locales/ko.json`:
-```json
-{
-  "greeting": "안녕하세요",
-  "welcome": "{name}님 환영합니다",
-  "items_count": "{count}개 항목"
-}
-```
-
-`locales/en.json`:
-```json
-{
-  "greeting": "Hello",
-  "welcome": "Welcome, {name}",
-  "items_count": "{count} items"
-}
-```
-
-### 6.4 지원 언어
-
-현재 시스템 지원 언어: 한국어(ko), English(en), 日本語(ja), 中文(zh), Español(es)
+시스템 필수 5개 언어: 한국어(ko), English(en), 日本語(ja), 中文(zh), Español(es)
 
 앱에서 추가 언어를 지원할 수 있으며, 시스템에 없는 언어도 앱 단위로 추가 가능합니다.
+
+> **규칙**: 모든 앱은 반드시 5개 언어 번역을 포함한 `js/i18n.js`를 가져야 합니다.
 
 ---
 
@@ -612,6 +639,39 @@ export WEBKIT_INSPECTOR_SERVER=0.0.0.0:8090
 | `getLocale()` | string | 현재 로케일 |
 | `getSupportedLocales()` | string[] | 지원 로케일 |
 | `onLocaleChange(callback)` | void | 변경 리스너 |
+| `addTranslations(locale, keys)` | void | 앱별 번역 키 등록 |
+| `applyTranslations()` | void | DOM data-i18n 재적용 |
+
+### 시스템 서비스 (24개)
+
+앱에서 `postMessage` IPC로 접근 가능한 서비스 목록:
+
+| # | 서비스 | 주요 메서드 |
+|---|--------|-----------|
+| 1 | fs | getDirectory, getFileContent, writeFile, mkdir, remove |
+| 2 | device | getInfo |
+| 3 | storage | getUsage |
+| 4 | apps | getInstalled, install, uninstall, getAppInfo |
+| 5 | settings | get, set, getAll |
+| 6 | terminal | exec |
+| 7 | wifi | scan, getConnected |
+| 8 | bluetooth | getDevices, getConnected |
+| 9 | browser | navigate, getHistory |
+| 10 | notification | create, list, dismiss, clearAll |
+| 11 | power | getState, setBrightness, getBattery |
+| 12 | display | getInfo, setRotation, getDPI |
+| 13 | input | getKeyboardState, setIME |
+| 14 | sensors | getAccelerometer, getGyroscope, getProximity, getLight |
+| 15 | location | getPosition |
+| 16 | telephony | getSignal, getSIMInfo, call, sendSMS |
+| 17 | usb | getState, setMode |
+| 18 | user | getCurrentUser, listUsers, switchUser |
+| 19 | credential | store, lookup, delete |
+| 20 | appstore | search, install, uninstall, listInstalled |
+| 21 | updater | checkUpdate, getVersion |
+| 22 | sandbox | getPolicy |
+| 23 | logger | getLogs, clearLogs |
+| 24 | accessibility | getSettings, setFontScale, setHighContrast |
 
 ---
 

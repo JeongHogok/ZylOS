@@ -283,7 +283,7 @@
       return 'https://' + trimmed;
     }
     /* Treat as search query */
-    return 'https://search.zylos.dev/?q=' + encodeURIComponent(trimmed);
+    return 'https://duckduckgo.com/?q=' + encodeURIComponent(trimmed);
   }
 
   /* X-Frame-Options 차단 시 안내 페이지 표시 */

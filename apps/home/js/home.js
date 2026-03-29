@@ -234,8 +234,15 @@
       delBtn.textContent = '\u00d7';
       delBtn.addEventListener('click', function (e) {
         e.stopPropagation();
-        /* 이중 가드: UNDELETABLE 앱은 삭제 불가 */
+        /* Double guard: UNDELETABLE apps cannot be removed */
         if (UNDELETABLE.indexOf(appId) !== -1) return;
+        /* Call appstore.uninstall service */
+        window.parent.postMessage(JSON.stringify({
+          type: 'service.request',
+          service: 'appstore',
+          method: 'uninstall',
+          params: { appId: appId }
+        }), '*');
         defaultApps = defaultApps.filter(function (a) { return a.id !== appId; });
         el.remove();
       });

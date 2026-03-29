@@ -1,13 +1,15 @@
 // ──────────────────────────────────────────────────────────
 // [Clean Architecture] Infrastructure Layer - Service
 //
-// 역할: Zyl OS 시스템 서비스 — Tauri 백엔드를 통해 앱에 데이터 제공
-// 수행범위: 파일시스템, 디바이스정보, 저장공간, 앱목록, 설정
-// 의존방향: Tauri invoke (백엔드 커맨드), emulator.js (postMessage 라우팅)
-// SOLID: SRP — 서비스 라우팅만 담당, DIP — 백엔드에 의존
+// Role: Zyl OS system service router — provides data to apps via Tauri backend
+// Scope: 24 services: fs, device, storage, apps, settings, terminal, wifi, bluetooth,
+//        browser, notification, power, display, input, sensors, location, telephony,
+//        usb, user, credential, appstore, updater, sandbox, logger, accessibility
+// Dependency: Tauri invoke (backend commands), emulator.js (postMessage routing)
+// SOLID: SRP — service routing only, DIP — depends on backend abstraction
 //
-// 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
-// 에뮬레이터는 실제 디바이스 구동 환경 제공이 목적이며, OS 이미지 영역의 콘텐츠를 포함하지 않는다
+// Clean Architecture, SOLID principles, i18n rules strictly followed
+// The emulator provides a real device runtime environment and must not contain OS image content
 // ──────────────────────────────────────────────────────────
 
 var ZylServices = (function () {
@@ -25,7 +27,7 @@ var ZylServices = (function () {
   }
 
   /* ═══════════════════════════════════════════════════════
-     1. FileSystemService — 마운트된 디스크 이미지 I/O
+     1. FileSystemService — mounted disk image I/O
      ═══════════════════════════════════════════════════════ */
   var fs = {
     getDirectory: function (path) {
@@ -69,7 +71,7 @@ var ZylServices = (function () {
 
 
   /* ═══════════════════════════════════════════════════════
-     2. DeviceInfoService — 디바이스 정보
+     2. DeviceInfoService — device metadata
      ═══════════════════════════════════════════════════════ */
   var deviceInfo = {
     deviceName: 'Zyl OS Device',
@@ -81,6 +83,7 @@ var ZylServices = (function () {
     resolution: '1080x2400',
     hostname: 'zylos',
     username: 'user',
+    bootTime: Date.now(),
 
     getInfo: function () {
       return deviceInfo;
@@ -95,12 +98,16 @@ var ZylServices = (function () {
       if (profile.id) {
         deviceInfo.hostname = profile.id.replace(/^zyl-/, '').replace(/-/g, '_');
       }
+    },
+
+    getUptime: function () {
+      return Math.floor((Date.now() - deviceInfo.bootTime) / 1000);
     }
   };
 
 
   /* ═══════════════════════════════════════════════════════
-     3. StorageService — 디스크 사용량 (마운트 포인트)
+     3. StorageService — disk usage (mount point)
      ═══════════════════════════════════════════════════════ */
   var storage = {
     _cache: null,
@@ -118,46 +125,49 @@ var ZylServices = (function () {
 
     getUsage: function () {
       if (storage._cache && Date.now() - storage._cacheTime < 30000) {
-        return storage._cache;
+        return Promise.resolve(storage._cache);
       }
-      storage._fetchFromBackend();
-      return storage._cache || { total: 0, used: 0, available: 0, percent: 0 };
+      return storage._fetchFromBackend();
     },
 
     prefetch: function () {
-      storage._fetchFromBackend();
+      return storage._fetchFromBackend();
     },
 
     getFormatted: function () {
-      var s = storage.getUsage();
-      return {
-        total: formatBytes(s.total),
-        used: formatBytes(s.used),
-        available: formatBytes(s.available),
-        percent: Math.round(s.percent || 0)
-      };
+      return storage.getUsage().then(function (s) {
+        return {
+          total: formatBytes(s.total),
+          used: formatBytes(s.used),
+          available: formatBytes(s.available),
+          percent: Math.round(s.percent || 0)
+        };
+      });
     }
   };
 
 
   /* ═══════════════════════════════════════════════════════
-     4. AppRegistryService — 설치된 앱 (OS 이미지에서 조회)
+     4. AppRegistryService — installed apps (from OS image)
      ═══════════════════════════════════════════════════════ */
   var apps = {
     _cache: null,
 
     getInstalled: function () {
-      if (apps._cache) return apps._cache;
+      if (apps._cache) return Promise.resolve(apps._cache);
       return tauriInvoke('list_installed_apps').then(function (list) {
         if (list && list.length > 0) {
           apps._cache = list.map(function (m) {
             var appName = (m.id || '').split('.').pop();
             return {
               id: m.id,
+              name: m.name || appName,
               nameKey: 'app.' + appName,
               icon: m.iconKey || appName,
               color: m.color || 'icon-blue',
-              version: m.version || '1.0.0'
+              version: m.version || '1.0.0',
+              description: m.description || '',
+              system: m.system || false
             };
           });
         }
@@ -173,27 +183,32 @@ var ZylServices = (function () {
 
 
   /* ═══════════════════════════════════════════════════════
-     5. SettingsService — 영속화 설정 (마운트 포인트 JSON)
+     5. SettingsService — persistent settings (mount point JSON)
      ═══════════════════════════════════════════════════════ */
   var settings = {
     state: {},
     _loaded: false,
 
     _loadFromBackend: function () {
-      if (settings._loaded) return;
-      tauriInvoke('load_settings').then(function (data) {
+      if (settings._loaded) return Promise.resolve(settings.state);
+      return tauriInvoke('load_settings').then(function (data) {
         if (data) {
           Object.keys(data).forEach(function (cat) {
             settings.state[cat] = data[cat];
           });
           settings._loaded = true;
         }
-      }).catch(function () {});
+        return settings.state;
+      }).catch(function () { return settings.state; });
     },
 
     getSetting: function (category) {
-      settings._loadFromBackend();
-      return settings.state[category] || null;
+      if (settings._loaded) {
+        return Promise.resolve(settings.state[category] || null);
+      }
+      return settings._loadFromBackend().then(function () {
+        return settings.state[category] || null;
+      });
     },
 
     updateSetting: function (category, key, value) {
@@ -212,39 +227,105 @@ var ZylServices = (function () {
 
 
   /* ═══════════════════════════════════════════════════════
+     6-8. Network Services — real host data
+     ═══════════════════════════════════════════════════════ */
+  /* (wifi, bluetooth, terminal — all backed by Rust) */
+
+
+  /* ═══════════════════════════════════════════════════════
+     Stateful Emulated Services
+     ═══════════════════════════════════════════════════════ */
+
+  /* ── Display Service ── */
+  var displayState = {
+    width: 1080, height: 2400, refresh: 60,
+    rotation: 0, scale: 1.0
+  };
+
+  /* ── Input Service ── */
+  var inputState = {
+    visible: false, layout: 'en'
+  };
+
+  /* ── USB Service ── */
+  var usbState = {
+    mode: 'charging', connected: true
+  };
+
+  /* ── Power Service — brightness sync ── */
+  var powerState = {
+    brightness: 80
+  };
+
+  /* ── Logger Service ── */
+  var logBuffer = [];
+  var logLevel = 'INFO';
+  var LOG_LEVELS = { 'VERBOSE': 0, 'DEBUG': 1, 'INFO': 2, 'WARN': 3, 'ERROR': 4 };
+  var MAX_LOG_LINES = 1000;
+
+  /* ── Accessibility Service ── */
+  var a11yState = {
+    highContrast: false, fontScale: 1.0, screenReader: false
+  };
+
+
+  /* ═══════════════════════════════════════════════════════
      Service Router
      ═══════════════════════════════════════════════════════ */
+  var SYSTEM_APPS = [
+    'com.zylos.home', 'com.zylos.lockscreen', 'com.zylos.statusbar',
+    'com.zylos.oobe', 'com.zylos.settings', 'com.zylos.browser',
+    'com.zylos.files', 'com.zylos.terminal', 'com.zylos.camera',
+    'com.zylos.gallery', 'com.zylos.music', 'com.zylos.clock',
+    'com.zylos.calc', 'com.zylos.notes', 'com.zylos.weather',
+    'com.zylos.store'
+  ];
+
   var serviceMap = {
+    /* ── 1. FileSystem ── */
     fs: {
       getDirectory:     function (p) { return fs.getDirectory(p.path); },
       getUnixDirectory: function (p) { return fs.getUnixDirectory(p.path); },
       getFileContent:   function (p) { return fs.getFileContent(p.path); },
-      readBinary:       function (p) { return fs.readBinary(p); },
-      getAllData:        function ()  { return fs.getAllData(); },
       readBinary:       function (p) { return tauriInvoke('fs_read_binary', { path: p.path }); },
+      getAllData:        function ()  { return fs.getAllData(); },
       writeFile:        function (p) { return fs.writeFile(p); },
       mkdir:            function (p) { return fs.mkdir(p); },
       remove:           function (p) { return fs.remove(p); },
       rename:           function (p) { return fs.rename(p); }
     },
+
+    /* ── 2. Device ── */
     device: {
-      getInfo: function () { return deviceInfo.getInfo(); }
+      getInfo:   function () { return deviceInfo.getInfo(); },
+      getUptime: function () { return Promise.resolve(deviceInfo.getUptime()); }
     },
+
+    /* ── 3. Storage ── */
     storage: {
       getUsage:     function () { return storage.getUsage(); },
-      getFormatted: function () { return storage.getFormatted(); }
+      getFormatted: function () { return storage.getFormatted(); },
+      prefetch:     function () { return storage.prefetch(); }
     },
+
+    /* ── 4. Apps ── */
     apps: {
       getInstalled: function () { return apps.getInstalled(); },
       getById:      function (p) { return apps.getById(p.id); }
     },
+
+    /* ── 5. Settings ── */
     settings: {
       get:    function (p) { return settings.getSetting(p.category); },
       update: function (p) { return settings.updateSetting(p.category, p.key, p.value); }
     },
+
+    /* ── 6. Terminal ── */
     terminal: {
       exec: function (p) { return tauriInvoke('exec_command', { command: p.command }); }
     },
+
+    /* ── 7. WiFi ── */
     wifi: {
       getNetworks:  function () { return tauriInvoke('get_wifi_networks'); },
       getConnected: function () {
@@ -253,6 +334,8 @@ var ZylServices = (function () {
         });
       }
     },
+
+    /* ── 8. Bluetooth ── */
     bluetooth: {
       getDevices:   function () { return tauriInvoke('get_bluetooth_devices'); },
       getPaired:    function () { return tauriInvoke('get_bluetooth_devices'); },
@@ -262,115 +345,298 @@ var ZylServices = (function () {
         });
       }
     },
-    /* browser: 앱 자체가 기본 데이터를 보유. 에뮬레이터는 라우팅만 제공 */
+
+    /* ── 9. Browser (app owns its data, emulator routes only) ── */
     browser: {
-      getBookmarks: function () { return Promise.resolve(null); },
+      getBookmarks:  function () { return Promise.resolve(null); },
       getQuickLinks: function () { return Promise.resolve(null); }
     },
-    /* ── 에뮬레이션 시스템 서비스 (실기기 D-Bus 서비스 대응) ── */
+
+    /* ── 10. Notification ── */
     notification: {
-      post:     function (p) { return tauriInvoke('notif_post', { app_id: p.appId || '', title: p.title || '', body: p.body || '', icon: p.icon || '', priority: p.priority || 1 }); },
-      cancel:   function (p) { return tauriInvoke('notif_cancel', { id: p.id }); },
-      getActive: function () { return tauriInvoke('notif_get_active'); },
-      clearAll: function () { return tauriInvoke('notif_clear_all'); }
+      post: function (p) {
+        return tauriInvoke('notif_post', {
+          app_id: p.appId || '', title: p.title || '',
+          body: p.body || '', icon: p.icon || '', priority: p.priority || 1
+        });
+      },
+      cancel:    function (p) { return tauriInvoke('notif_cancel', { id: p.id }); },
+      getActive: function ()  { return tauriInvoke('notif_get_active'); },
+      clearAll:  function ()  { return tauriInvoke('notif_clear_all'); }
     },
+
+    /* ── 11. Power — stateful brightness sync ── */
     power: {
-      getState:      function () { return tauriInvoke('power_get_state'); },
-      setBrightness: function (p) { return tauriInvoke('power_set_brightness', { percent: p.percent || 80 }); }
+      getState: function () {
+        return tauriInvoke('power_get_state').then(function (state) {
+          if (state) {
+            state.brightness = powerState.brightness;
+          }
+          return state || { state: 'ACTIVE', brightness: powerState.brightness, screenOn: true, batteryLevel: 85, charging: false };
+        });
+      },
+      setBrightness: function (p) {
+        var pct = Math.max(0, Math.min(100, parseInt(p.percent, 10) || 80));
+        powerState.brightness = pct;
+        return Promise.resolve({ brightness: pct });
+      }
     },
+
+    /* ── 12. Display — stateful ── */
     display: {
-      getMode:     function () { return Promise.resolve({ width: 1080, height: 2400, refresh: 60 }); },
-      getRotation: function () { return Promise.resolve(0); },
-      setRotation: function (p) { return Promise.resolve(p.rotation || 0); },
-      getScale:    function () { return Promise.resolve(1.0); },
-      setScale:    function (p) { return Promise.resolve(p.scale || 1.0); }
+      getMode: function () {
+        return Promise.resolve({
+          width: displayState.width, height: displayState.height,
+          refresh: displayState.refresh
+        });
+      },
+      getRotation: function () { return Promise.resolve(displayState.rotation); },
+      setRotation: function (p) {
+        displayState.rotation = parseInt(p.rotation, 10) || 0;
+        return Promise.resolve(displayState.rotation);
+      },
+      getScale: function () { return Promise.resolve(displayState.scale); },
+      setScale: function (p) {
+        displayState.scale = parseFloat(p.scale) || 1.0;
+        return Promise.resolve(displayState.scale);
+      }
     },
+
+    /* ── 13. Input — stateful ── */
     input: {
-      showKeyboard: function (p) { return Promise.resolve({ visible: true, layout: p.layout || 'en' }); },
-      hideKeyboard: function () { return Promise.resolve({ visible: false }); },
-      getState:     function () { return Promise.resolve({ visible: false, layout: 'en' }); }
+      showKeyboard: function (p) {
+        inputState.visible = true;
+        inputState.layout = p.layout || inputState.layout;
+        return Promise.resolve({ visible: true, layout: inputState.layout });
+      },
+      hideKeyboard: function () {
+        inputState.visible = false;
+        return Promise.resolve({ visible: false });
+      },
+      getState: function () {
+        return Promise.resolve({ visible: inputState.visible, layout: inputState.layout });
+      }
     },
+
+    /* ── 14. Sensors — dynamic timestamp + micro-noise ── */
     sensors: {
       getLatest: function (p) {
         var type = (p && p.type) || 'accelerometer';
+        var noise = function () { return (Math.random() - 0.5) * 0.02; };
+        var now = Date.now();
         var defaults = {
-          accelerometer: { type: 'accelerometer', values: [0, 0, -9.8], timestamp: Date.now() },
-          gyroscope:     { type: 'gyroscope', values: [0, 0, 0], timestamp: Date.now() },
-          proximity:     { type: 'proximity', values: [0, 5.0], timestamp: Date.now() },
-          light:         { type: 'light', values: [300], timestamp: Date.now() },
-          magnetometer:  { type: 'magnetometer', values: [0, 25, -45], timestamp: Date.now() }
+          accelerometer: { type: 'accelerometer', values: [noise(), noise(), -9.8 + noise()], timestamp: now },
+          gyroscope:     { type: 'gyroscope', values: [noise(), noise(), noise()], timestamp: now },
+          proximity:     { type: 'proximity', values: [0, 5.0], timestamp: now },
+          light:         { type: 'light', values: [300 + Math.random() * 10 - 5], timestamp: now },
+          magnetometer:  { type: 'magnetometer', values: [noise() * 10, 25 + noise() * 5, -45 + noise() * 5], timestamp: now }
         };
         return Promise.resolve(defaults[type] || defaults.accelerometer);
       }
     },
+
+    /* ── 15. Location — Rust backend with IP-based lookup ── */
     location: {
       getLastKnown:   function () { return tauriInvoke('location_get_last_known'); },
       requestUpdates: function () { return Promise.resolve(true); },
       stopUpdates:    function () { return Promise.resolve(true); }
     },
+
+    /* ── 16. Telephony — reads from settings ── */
     telephony: {
       getState: function () {
-        return Promise.resolve({
-          simPresent: true, operator: 'Zyl Mobile', networkType: 'LTE',
-          signal: 3, imei: '000000000000000', phoneNumber: '+82-10-0000-0000'
+        return settings.getSetting('telephony').then(function (tel) {
+          return {
+            simPresent:  (tel && tel.simPresent !== undefined) ? tel.simPresent : true,
+            operator:    (tel && tel.operator) || 'Zyl Mobile',
+            networkType: (tel && tel.networkType) || 'LTE',
+            signal:      (tel && tel.signal !== undefined) ? tel.signal : 3,
+            imei:        (tel && tel.imei) || '000000000000000',
+            phoneNumber: (tel && tel.phoneNumber) || ''
+          };
         });
       },
       getCallState: function () { return Promise.resolve({ state: 'IDLE', number: '' }); }
     },
+
+    /* ── 17. USB — stateful ── */
     usb: {
-      getMode:     function () { return Promise.resolve('charging'); },
-      setMode:     function (p) { return Promise.resolve(p.mode || 'charging'); },
-      isConnected: function () { return Promise.resolve(true); }
+      getMode: function () { return Promise.resolve(usbState.mode); },
+      setMode: function (p) {
+        usbState.mode = p.mode || 'charging';
+        return Promise.resolve(usbState.mode);
+      },
+      isConnected: function () { return Promise.resolve(usbState.connected); }
     },
+
+    /* ── 18. User — Rust backend reads from settings ── */
     user: {
       getCurrent: function () { return tauriInvoke('user_get_current'); },
       listUsers:  function () { return tauriInvoke('user_list'); }
     },
+
+    /* ── 19. Credential — Rust backend persistent store ── */
     credential: {
       store:  function (p) { return tauriInvoke('credential_store', { service: p.service, account: p.account, secret: p.secret }); },
       lookup: function (p) { return tauriInvoke('credential_lookup', { service: p.service, account: p.account }); },
       delete: function (p) { return tauriInvoke('credential_delete', { service: p.service, account: p.account }); }
     },
+
+    /* ── 20. App Store — real install/uninstall with persistence ── */
     appstore: {
-      install:   function (p) { return Promise.resolve({ success: true, appId: p.appId }); },
+      install: function (p) {
+        /* Mark app as installed in settings */
+        return settings.getSetting('appstore').then(function (store) {
+          var installed = (store && store.installed) ? store.installed.split(',') : [];
+          if (installed.indexOf(p.appId) === -1) {
+            installed.push(p.appId);
+          }
+          settings.updateSetting('appstore', 'installed', installed.join(','));
+          apps._cache = null; /* invalidate cache */
+          return { success: true, appId: p.appId };
+        });
+      },
       uninstall: function (p) {
-        var SYSTEM_APPS = [
-          'com.zylos.home', 'com.zylos.lockscreen', 'com.zylos.statusbar',
-          'com.zylos.oobe', 'com.zylos.settings', 'com.zylos.browser',
-          'com.zylos.files', 'com.zylos.terminal', 'com.zylos.camera',
-          'com.zylos.gallery', 'com.zylos.music', 'com.zylos.clock',
-          'com.zylos.calc', 'com.zylos.notes', 'com.zylos.weather',
-          'com.zylos.store'
-        ];
         if (SYSTEM_APPS.indexOf(p.appId) !== -1) {
           return Promise.resolve({ success: false, error: 'System app cannot be uninstalled' });
         }
-        return Promise.resolve({ success: true, appId: p.appId });
+        return settings.getSetting('appstore').then(function (store) {
+          var uninstalled = (store && store.uninstalled) ? store.uninstalled.split(',') : [];
+          if (uninstalled.indexOf(p.appId) === -1) {
+            uninstalled.push(p.appId);
+          }
+          settings.updateSetting('appstore', 'uninstalled', uninstalled.join(','));
+          apps._cache = null; /* invalidate cache */
+          return { success: true, appId: p.appId };
+        });
       },
-      verify:    function (p) { return Promise.resolve({ valid: true, appId: p.appId }); },
-      getAvailable: function () { return Promise.resolve([]); }
+      verify: function (p) {
+        return apps.getInstalled().then(function (list) {
+          var found = list.some(function (a) { return a.id === p.appId; });
+          return { valid: found, appId: p.appId };
+        });
+      },
+      getAvailable: function () {
+        return apps.getInstalled().then(function (list) {
+          return settings.getSetting('appstore').then(function (store) {
+            var uninstalled = (store && store.uninstalled) ? store.uninstalled.split(',') : [];
+            return list.map(function (app) {
+              return {
+                id: app.id,
+                name: app.name,
+                version: app.version,
+                description: app.description,
+                system: SYSTEM_APPS.indexOf(app.id) !== -1,
+                installed: uninstalled.indexOf(app.id) === -1
+              };
+            });
+          });
+        });
+      }
     },
+
+    /* ── 21. Updater — version comparison ── */
     updater: {
-      checkForUpdate: function () { return Promise.resolve({ available: false, currentVersion: '0.1.0' }); },
-      getState:       function () { return Promise.resolve({ state: 'UP_TO_DATE', version: '0.1.0' }); },
-      applyUpdate:    function () { return Promise.resolve({ success: false, message: 'No update available' }); }
+      checkForUpdate: function () {
+        return Promise.resolve({
+          available: false,
+          currentVersion: deviceInfo.osVersion,
+          message: 'Replace the OS image file manually to update.'
+        });
+      },
+      getState: function () {
+        return Promise.resolve({ state: 'UP_TO_DATE', version: deviceInfo.osVersion });
+      },
+      applyUpdate: function () {
+        return Promise.resolve({
+          success: false,
+          message: 'In emulator mode, update the OS image file manually.'
+        });
+      }
     },
+
+    /* ── 22. Sandbox — per-app policy ── */
     sandbox: {
-      getPolicy: function (p) { return Promise.resolve({ appId: p.appId || '', permissions: 0, seccompProfile: 'DEFAULT' }); },
-      apply:     function ()  { return Promise.resolve(true); }
+      getPolicy: function (p) {
+        return apps.getInstalled().then(function (list) {
+          var app = list.find(function (a) { return a.id === (p.appId || ''); });
+          return {
+            appId: p.appId || '',
+            system: app ? (SYSTEM_APPS.indexOf(app.id) !== -1) : false,
+            permissions: 0,
+            seccompProfile: 'DEFAULT'
+          };
+        });
+      },
+      apply: function (p) {
+        logBuffer.push({ level: 'INFO', tag: 'sandbox', message: 'Policy applied for ' + (p.appId || 'unknown'), timestamp: Date.now() });
+        return Promise.resolve(true);
+      }
     },
+
+    /* ── 23. Logger — real in-memory log storage ── */
     logger: {
-      log:      function (p) { return Promise.resolve(true); },
-      getLevel: function ()  { return Promise.resolve('INFO'); },
-      setLevel: function (p) { return Promise.resolve(p.level || 'INFO'); }
+      log: function (p) {
+        var level = (p.level || 'INFO').toUpperCase();
+        var entry = {
+          level: level,
+          tag: p.tag || 'app',
+          message: p.message || '',
+          timestamp: Date.now()
+        };
+        if ((LOG_LEVELS[level] || 0) >= (LOG_LEVELS[logLevel] || 0)) {
+          logBuffer.push(entry);
+          if (logBuffer.length > MAX_LOG_LINES) {
+            logBuffer = logBuffer.slice(-MAX_LOG_LINES);
+          }
+        }
+        return Promise.resolve(true);
+      },
+      getLevel: function () { return Promise.resolve(logLevel); },
+      setLevel: function (p) {
+        var lv = (p.level || 'INFO').toUpperCase();
+        if (LOG_LEVELS[lv] !== undefined) logLevel = lv;
+        return Promise.resolve(logLevel);
+      },
+      getRecent: function (p) {
+        var count = parseInt(p.count, 10) || 50;
+        return Promise.resolve(logBuffer.slice(-count));
+      }
     },
+
+    /* ── 24. Accessibility — persisted via settings ── */
     accessibility: {
-      getState:        function () { return Promise.resolve({ highContrast: false, fontScale: 1.0, screenReader: false }); },
-      setHighContrast: function (p) { return Promise.resolve(p.enabled || false); },
-      setFontScale:    function (p) { return Promise.resolve(p.scale || 1.0); }
+      getState: function () {
+        return settings.getSetting('accessibility').then(function (a11y) {
+          if (a11y) {
+            a11yState.highContrast = !!a11y.highContrast;
+            a11yState.fontScale = parseFloat(a11y.fontScale) || 1.0;
+            a11yState.screenReader = !!a11y.screenReader;
+          }
+          return {
+            highContrast: a11yState.highContrast,
+            fontScale: a11yState.fontScale,
+            screenReader: a11yState.screenReader
+          };
+        });
+      },
+      setHighContrast: function (p) {
+        a11yState.highContrast = !!p.enabled;
+        settings.updateSetting('accessibility', 'highContrast', a11yState.highContrast);
+        return Promise.resolve(a11yState.highContrast);
+      },
+      setFontScale: function (p) {
+        a11yState.fontScale = parseFloat(p.scale) || 1.0;
+        settings.updateSetting('accessibility', 'fontScale', a11yState.fontScale);
+        return Promise.resolve(a11yState.fontScale);
+      }
     }
   };
 
+
+  /* ═══════════════════════════════════════════════════════
+     Request Handler
+     ═══════════════════════════════════════════════════════ */
   function handleRequest(service, method, params) {
     var svc = serviceMap[service];
     if (!svc) return null;
@@ -379,6 +645,10 @@ var ZylServices = (function () {
     return fn(params || {});
   }
 
+
+  /* ═══════════════════════════════════════════════════════
+     Utilities
+     ═══════════════════════════════════════════════════════ */
   function formatBytes(bytes) {
     if (!bytes) return '0 B';
     var units = ['B', 'KB', 'MB', 'GB'];
@@ -387,12 +657,24 @@ var ZylServices = (function () {
     return (bytes / Math.pow(1024, i)).toFixed(1) + ' ' + units[i];
   }
 
+
+  /* ═══════════════════════════════════════════════════════
+     Display Profile Initialization
+     ═══════════════════════════════════════════════════════ */
+  function applyDisplayProfile(profile) {
+    if (!profile) return;
+    displayState.width = profile.width || displayState.width;
+    displayState.height = profile.height || displayState.height;
+  }
+
+
   return {
     handleRequest: handleRequest,
     device: deviceInfo,
     storage: storage,
     fs: fs,
     apps: apps,
-    settings: settings
+    settings: settings,
+    applyDisplayProfile: applyDisplayProfile
   };
 })();

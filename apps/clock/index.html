@@ -9,35 +9,104 @@
 </head>
 <body>
   <div id="tabs">
-    <button class="tab active" data-tab="clock">Clock</button>
-    <button class="tab" data-tab="alarm">Alarm</button>
-    <button class="tab" data-tab="timer">Timer</button>
-    <button class="tab" data-tab="stopwatch">Stopwatch</button>
+    <button class="tab active" data-tab="clock" data-i18n="clock.tab_clock">Clock</button>
+    <button class="tab" data-tab="alarm" data-i18n="clock.tab_alarm">Alarm</button>
+    <button class="tab" data-tab="timer" data-i18n="clock.tab_timer">Timer</button>
+    <button class="tab" data-tab="stopwatch" data-i18n="clock.tab_stopwatch">Stopwatch</button>
   </div>
+
+  <!-- ── Clock Tab ── -->
   <div id="tab-clock" class="tab-content active">
     <div id="clock-display">00:00:00</div>
     <div id="clock-date"></div>
   </div>
+
+  <!-- ── Alarm Tab ── -->
   <div id="tab-alarm" class="tab-content hidden">
     <div id="alarm-list"></div>
-    <button id="btn-add-alarm">+ Add Alarm</button>
-  </div>
-  <div id="tab-timer" class="tab-content hidden">
-    <div id="timer-display">00:00</div>
-    <div id="timer-controls">
-      <button id="btn-timer-start">Start</button>
-      <button id="btn-timer-reset">Reset</button>
+    <div id="alarm-empty" class="empty-state" data-i18n="clock.no_alarms">No alarms set</div>
+    <button id="btn-add-alarm" data-i18n="clock.add_alarm">+ Add Alarm</button>
+
+    <!-- Alarm Creation Form (hidden by default) -->
+    <div id="alarm-form" class="hidden">
+      <div class="alarm-form-header">
+        <button id="alarm-form-cancel" class="alarm-form-btn" data-i18n="clock.cancel">Cancel</button>
+        <span class="alarm-form-title" data-i18n="clock.new_alarm">New Alarm</span>
+        <button id="alarm-form-save" class="alarm-form-btn primary" data-i18n="clock.save">Save</button>
+      </div>
+      <div class="alarm-time-inputs">
+        <input type="number" id="alarm-hour" min="0" max="23" value="8" class="time-input" aria-label="Hour">
+        <span class="time-separator">:</span>
+        <input type="number" id="alarm-minute" min="0" max="59" value="0" class="time-input" aria-label="Minute">
+      </div>
+      <div class="alarm-label-row">
+        <label for="alarm-label" data-i18n="clock.label">Label</label>
+        <input type="text" id="alarm-label" placeholder="Alarm" maxlength="40" data-i18n-placeholder="clock.alarm">
+      </div>
+      <div class="alarm-repeat-row">
+        <span class="repeat-title" data-i18n="clock.repeat">Repeat</span>
+        <div id="alarm-days" class="day-buttons">
+          <button class="day-btn" data-day="0" data-i18n="clock.day_sun">Sun</button>
+          <button class="day-btn" data-day="1" data-i18n="clock.day_mon">Mon</button>
+          <button class="day-btn" data-day="2" data-i18n="clock.day_tue">Tue</button>
+          <button class="day-btn" data-day="3" data-i18n="clock.day_wed">Wed</button>
+          <button class="day-btn" data-day="4" data-i18n="clock.day_thu">Thu</button>
+          <button class="day-btn" data-day="5" data-i18n="clock.day_fri">Fri</button>
+          <button class="day-btn" data-day="6" data-i18n="clock.day_sat">Sat</button>
+        </div>
+      </div>
     </div>
   </div>
+
+  <!-- ── Timer Tab ── -->
+  <div id="tab-timer" class="tab-content hidden">
+    <div id="timer-display">00:00:00</div>
+    <div id="timer-set" class="timer-set-area">
+      <div class="timer-time-inputs">
+        <div class="timer-input-group">
+          <input type="number" id="timer-hours" min="0" max="23" value="0" class="time-input" aria-label="Hours">
+          <span class="time-input-label" data-i18n="clock.hours">h</span>
+        </div>
+        <span class="time-separator">:</span>
+        <div class="timer-input-group">
+          <input type="number" id="timer-minutes" min="0" max="59" value="5" class="time-input" aria-label="Minutes">
+          <span class="time-input-label" data-i18n="clock.minutes">m</span>
+        </div>
+        <span class="time-separator">:</span>
+        <div class="timer-input-group">
+          <input type="number" id="timer-seconds" min="0" max="59" value="0" class="time-input" aria-label="Seconds">
+          <span class="time-input-label" data-i18n="clock.seconds">s</span>
+        </div>
+      </div>
+      <div id="timer-presets" class="timer-presets">
+        <button class="preset-btn" data-seconds="60">1m</button>
+        <button class="preset-btn" data-seconds="180">3m</button>
+        <button class="preset-btn" data-seconds="300">5m</button>
+        <button class="preset-btn" data-seconds="600">10m</button>
+        <button class="preset-btn" data-seconds="900">15m</button>
+        <button class="preset-btn" data-seconds="1800">30m</button>
+      </div>
+    </div>
+    <div id="timer-controls">
+      <button id="btn-timer-start" data-i18n="clock.start">Start</button>
+      <button id="btn-timer-reset" data-i18n="clock.reset">Reset</button>
+    </div>
+  </div>
+
+  <!-- ── Stopwatch Tab ── -->
   <div id="tab-stopwatch" class="tab-content hidden">
     <div id="sw-display">00:00.00</div>
     <div id="sw-controls">
-      <button id="btn-sw-start">Start</button>
-      <button id="btn-sw-lap">Lap</button>
-      <button id="btn-sw-reset">Reset</button>
+      <button id="btn-sw-start" data-i18n="clock.start">Start</button>
+      <button id="btn-sw-lap" data-i18n="clock.lap">Lap</button>
+      <button id="btn-sw-reset" data-i18n="clock.reset">Reset</button>
     </div>
     <div id="sw-laps"></div>
   </div>
+
+  <script src="../shared/i18n.js"></script>
+  <script src="i18n.js"></script>
   <script src="../shared/clock.js"></script>
+  <script src="../shared/bridge.js"></script>
   <script src="js/clock.js"></script>
 </body></html>
