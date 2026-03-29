@@ -472,6 +472,8 @@
     qsPanel.style.opacity = '1';
     qsPanel.style.pointerEvents = '';
     if (qsBackdrop) { qsBackdrop.classList.add('qs-backdrop-show'); qsBackdrop.style.opacity = ''; }
+    /* Block iframe from receiving ANY events while QS is open */
+    if (appFrame) appFrame.style.pointerEvents = 'none';
   }
 
   function closeQsPanel() {
@@ -481,6 +483,8 @@
     qsPanel.style.opacity = '';
     qsPanel.classList.add('qs-hidden');
     if (qsBackdrop) { qsBackdrop.classList.remove('qs-backdrop-show'); qsBackdrop.style.opacity = ''; }
+    /* Restore iframe events */
+    if (appFrame) appFrame.style.pointerEvents = '';
   }
 
   /* ═══ QS Panel Drag — delegated to ZylTouch.createPanelDrag ═══ */
