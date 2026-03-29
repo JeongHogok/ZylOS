@@ -27,6 +27,31 @@
   var timerCount   = document.getElementById('timer-count');
   var captureFlash = document.getElementById('capture-flash');
   var photoPreview = document.getElementById('photo-preview');
+  var cameraVideo  = document.getElementById('camera-video');
+  var captureCanvas = document.getElementById('capture-canvas');
+  var _stream      = null;
+
+  /* ─── Camera Stream ─── */
+  function startCamera() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+    var constraints = {
+      video: { facingMode: state.frontCamera ? 'user' : 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+      audio: false
+    };
+    navigator.mediaDevices.getUserMedia(constraints).then(function (stream) {
+      _stream = stream;
+      if (cameraVideo) { cameraVideo.srcObject = stream; }
+    }).catch(function () { /* 카메라 접근 실패 — UI만 표시 */ });
+  }
+
+  function stopCamera() {
+    if (_stream) {
+      _stream.getTracks().forEach(function (t) { t.stop(); });
+      _stream = null;
+    }
+  }
+
+  startCamera();
 
   /* ─── Focus on tap ─── */
   viewfinder.addEventListener('click', function (e) {
@@ -55,6 +80,20 @@
   function doCapture() {
     captureFlash.classList.remove('hidden');
     setTimeout(function () { captureFlash.classList.add('hidden'); }, 300);
+
+    /* 실제 프레임 캡처 */
+    if (cameraVideo && captureCanvas && cameraVideo.videoWidth > 0) {
+      captureCanvas.width = cameraVideo.videoWidth;
+      captureCanvas.height = cameraVideo.videoHeight;
+      var ctx = captureCanvas.getContext('2d');
+      ctx.drawImage(cameraVideo, 0, 0);
+      var previewImg = document.getElementById('preview-image');
+      if (previewImg) {
+        previewImg.style.backgroundImage = 'url(' + captureCanvas.toDataURL('image/jpeg', 0.9) + ')';
+        previewImg.style.backgroundSize = 'cover';
+      }
+    }
+
     setTimeout(function () { photoPreview.classList.remove('hidden'); }, 400);
   }
 
@@ -126,6 +165,8 @@
   /* ─── Switch / Gallery ─── */
   document.getElementById('btn-switch').addEventListener('click', function () {
     state.frontCamera = !state.frontCamera;
+    stopCamera();
+    startCamera();
   });
   document.getElementById('btn-gallery').addEventListener('click', function () {
     if (typeof ZylBridge !== 'undefined') ZylBridge.launch('com.zylos.gallery');

@@ -37,16 +37,12 @@
   var pageContent = document.getElementById('page-content');
   var ntpSearchInput = document.getElementById('ntp-search-input');
 
-  /* ─── Simulated Pages (loaded from service) ─── */
-  var simulatedPages = {};
   var bookmarksData = [];
   var quickLinksData = [];
+  var pageFrame = document.getElementById('page-frame');
 
   /* Request browser data from central service */
   function requestBrowserData() {
-    window.parent.postMessage(JSON.stringify({
-      type: 'service.request', service: 'browser', method: 'getSimulatedPages'
-    }), '*');
     window.parent.postMessage(JSON.stringify({
       type: 'service.request', service: 'browser', method: 'getBookmarks'
     }), '*');
@@ -62,9 +58,7 @@
       var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
       if (!msg || msg.type !== 'service.response') return;
       if (msg.service === 'browser') {
-        if (msg.method === 'getSimulatedPages' && msg.data) {
-          simulatedPages = msg.data;
-        } else if (msg.method === 'getBookmarks' && msg.data) {
+        if (msg.method === 'getBookmarks' && msg.data) {
           bookmarksData = msg.data;
           renderBookmarks();
         } else if (msg.method === 'getQuickLinks' && msg.data) {
@@ -163,12 +157,12 @@
     pageLoading.classList.remove('active');
   }
 
-  /* ─── Show Web Page ─── */
+  /* ─── Show Web Page (real iframe rendering) ─── */
   function showWebPage(url, skipHistory) {
     newTabPage.classList.remove('active');
     webPage.classList.remove('hidden');
     pageLoading.classList.add('active');
-    pageContent.innerHTML = '';
+    if (pageFrame) pageFrame.style.display = 'none';
 
     var tab = getActiveTab();
     var domain = extractDomain(url);
@@ -176,7 +170,6 @@
     tab.title = domain || 'Loading...';
 
     if (!skipHistory) {
-      /* Trim forward history */
       tab.history = tab.history.slice(0, tab.historyIndex + 1);
       tab.history.push(url);
       tab.historyIndex = tab.history.length - 1;
@@ -185,26 +178,37 @@
     renderTabs();
     updateNavButtons();
 
-    /* Simulate loading delay */
-    setTimeout(function () {
-      pageLoading.classList.remove('active');
-      var page = simulatedPages[domain];
-      if (page) {
-        tab.title = page.title;
-        pageContent.innerHTML = page.html;
-      } else {
-        /* H9: In emulator (no native WebView), inform user about real loading */
-        showToast('Real URL loading available on device');
-        tab.title = domain || url;
-        pageContent.innerHTML =
-          '<div class="sim-header"><h1>' + escapeHtml(domain || url) + '</h1>' +
-          '<p>Real URL loading available on device only.</p>' +
-          '<p style="opacity:0.5;font-size:13px;">On real hardware, this page loads via WebKitWebView.</p></div>' +
-          '<div class="sim-block"></div><div class="sim-block"></div>' +
-          '<div class="sim-block"></div><div class="sim-block"></div>';
-      }
-      renderTabs();
-    }, 600 + Math.random() * 400);
+    /* 실제 URL을 iframe에 로드 */
+    if (pageFrame) {
+      pageFrame.onload = function () {
+        pageLoading.classList.remove('active');
+        pageFrame.style.display = 'block';
+        try {
+          tab.title = pageFrame.contentDocument.title || domain || url;
+        } catch (e) {
+          tab.title = domain || url;
+        }
+        renderTabs();
+        pageFrame.onload = null;
+      };
+      pageFrame.onerror = function () {
+        pageLoading.classList.remove('active');
+        pageFrame.style.display = 'none';
+        showToast('Failed to load page');
+        pageFrame.onerror = null;
+      };
+      pageFrame.src = url;
+
+      /* 10초 타임아웃 — 로딩이 너무 오래 걸리면 표시 */
+      setTimeout(function () {
+        if (pageLoading.classList.contains('active')) {
+          pageLoading.classList.remove('active');
+          pageFrame.style.display = 'block';
+          tab.title = domain || url;
+          renderTabs();
+        }
+      }, 10000);
+    }
   }
 
   /* ─── Navigation ─── */

@@ -117,8 +117,62 @@
     });
   }
 
+  /* ─── 편집 모드 ─── */
+  var editMode = false;
+  var longPressTimer = null;
+
+  appGrid.addEventListener('mousedown', function (e) {
+    var appItem = e.target.closest('.app-item');
+    if (!appItem) return;
+    longPressTimer = setTimeout(function () {
+      enterEditMode();
+      longPressTimer = null;
+    }, 800);
+  });
+
+  appGrid.addEventListener('mouseup', function () {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+  });
+
+  appGrid.addEventListener('mouseleave', function () {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+  });
+
+  function enterEditMode() {
+    editMode = true;
+    appGrid.classList.add('edit-mode');
+    /* 모든 앱 아이콘에 삭제 버튼 추가 */
+    appGrid.querySelectorAll('.app-item').forEach(function (el) {
+      if (el.querySelector('.app-delete')) return;
+      var delBtn = document.createElement('div');
+      delBtn.className = 'app-delete';
+      delBtn.textContent = '\u00d7';
+      delBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var appId = el.dataset.appId;
+        defaultApps = defaultApps.filter(function (a) { return a.id !== appId; });
+        el.remove();
+      });
+      el.appendChild(delBtn);
+    });
+  }
+
+  function exitEditMode() {
+    editMode = false;
+    appGrid.classList.remove('edit-mode');
+    appGrid.querySelectorAll('.app-delete').forEach(function (el) { el.remove(); });
+  }
+
+  /* 빈 영역 클릭 시 편집 모드 종료 */
+  document.addEventListener('click', function (e) {
+    if (editMode && !e.target.closest('.app-item') && !e.target.closest('.app-delete')) {
+      exitEditMode();
+    }
+  });
+
   /* Event delegation: single click handler on the grid container */
   appGrid.addEventListener('click', function (e) {
+    if (editMode) return;
     var appItem = e.target.closest('.app-item');
     if (!appItem) return;
     var appId = appItem.dataset.appId;

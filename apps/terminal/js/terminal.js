@@ -337,10 +337,13 @@
     var cmd = parts[0];
     var args = parts.slice(1);
 
-    if (commands[cmd]) {
+    if (cmd === 'clear') {
+      commands.clear(args);
+    } else if (commands[cmd]) {
       commands[cmd](args);
     } else {
-      addLine(cmd + ': command not found. Type \'help\' for available commands.', 'line-error');
+      /* 알 수 없는 명령: Tauri 백엔드에서 실제 쉘 실행 시도 */
+      execOnBackend(trimmed);
     }
 
     scrollToBottom();
@@ -478,6 +481,28 @@
     addLine('Type \'help\' for available commands.', 'line-output');
     addLine('');
     scrollToBottom();
+  }
+
+  /* ─── Backend Execution (Tauri invoke via parent postMessage) ─── */
+  function execOnBackend(command) {
+    /* Tauri invoke를 부모 프레임을 통해 호출 */
+    if (typeof window.__TAURI__ !== 'undefined' && window.__TAURI__.core) {
+      window.__TAURI__.core.invoke('exec_command', { command: command }).then(function (result) {
+        if (result.stdout) addLine(result.stdout.replace(/\n$/, ''), 'line-output');
+        if (result.stderr) addLine(result.stderr.replace(/\n$/, ''), 'line-error');
+        if (result.exit_code !== 0 && !result.stdout && !result.stderr) {
+          addLine('Exit code: ' + result.exit_code, 'line-error');
+        }
+        scrollToBottom();
+      }).catch(function (err) {
+        addLine('Error: ' + (err || 'execution failed'), 'line-error');
+        scrollToBottom();
+      });
+    } else {
+      /* Tauri 미사용 시 (브라우저 에뮬레이터) */
+      addLine(command.split(' ')[0] + ': command not found', 'line-error');
+      scrollToBottom();
+    }
   }
 
   /* ─── Init ─── */

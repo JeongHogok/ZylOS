@@ -62,7 +62,10 @@ fn main() {
             commands::filesystem::fs_write_file,
             commands::filesystem::fs_mkdir,
             commands::filesystem::fs_remove,
+            commands::filesystem::fs_rename,
             commands::filesystem::fs_get_usage,
+            // Terminal command
+            commands::terminal::exec_command,
             // OS image commands
             commands::os_image::list_os_images,
             commands::os_image::scan_os_images_dir,

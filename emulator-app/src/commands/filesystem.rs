@@ -226,6 +226,25 @@ pub fn fs_remove(
     }
 }
 
+/// 파일/디렉토리 이름 변경
+#[tauri::command]
+pub fn fs_rename(
+    old_path: String,
+    new_path: String,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<(), String> {
+    let app_state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
+    let mount_point = app_state
+        .mount_point
+        .as_ref()
+        .ok_or("No filesystem mounted")?;
+
+    let old_full = safe_path(mount_point, &old_path)?;
+    let new_full = safe_path(mount_point, &new_path)?;
+
+    fs::rename(&old_full, &new_full).map_err(|e| format!("Rename error: {}", e))
+}
+
 /// 저장공간 사용량 조회
 #[tauri::command]
 pub fn fs_get_usage(state: State<'_, Mutex<AppState>>) -> Result<StorageUsage, String> {

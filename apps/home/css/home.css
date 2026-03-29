@@ -292,3 +292,14 @@ html, body {
 .app-item.launching .app-icon-wrap {
   animation: app-launch 0.4s ease-in-out forwards;
 }
+
+/* ─── 편집 모드 ─── */
+.edit-mode .app-item { animation: wiggle 0.3s ease-in-out infinite alternate; position: relative; }
+.edit-mode .app-item:nth-child(even) { animation-delay: 0.15s; }
+@keyframes wiggle { 0% { transform: rotate(-1.5deg); } 100% { transform: rotate(1.5deg); } }
+.app-delete {
+  position: absolute; top: -6px; left: -6px; width: 22px; height: 22px;
+  background: #ef4444; color: #fff; border-radius: 50%;
+  font-size: 14px; line-height: 22px; text-align: center; font-weight: 700;
+  cursor: pointer; z-index: 10;
+}

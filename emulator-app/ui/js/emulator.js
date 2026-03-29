@@ -541,13 +541,15 @@
     state.screenOn = !state.screenOn;
     frameEl.classList.toggle('screen-off', !state.screenOn);
     syslog('Screen ' + (state.screenOn ? 'ON' : 'OFF'), 'sys');
-    /* 화면 끌 때 열린 패널 모두 닫기 */
+    /* 화면 끌 때: 패널 닫기 + 잠금 활성화 */
     if (!state.screenOn) {
       if (qsOpen) closeQsPanel();
       if (state.recentsOpen) hideRecents();
       hideToast();
+      state.locked = true;
     }
-    if (state.screenOn && isLocked()) launchApp('com.zylos.lockscreen');
+    /* 화면 켤 때: 잠금 상태이면 잠금화면 표시 */
+    if (state.screenOn) launchApp('com.zylos.lockscreen');
   }
   var sidePower = document.getElementById('side-power');
   var sideVolUp = document.getElementById('side-volup');
