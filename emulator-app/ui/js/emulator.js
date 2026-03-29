@@ -657,8 +657,8 @@
 
   /* ═══ 제어 패널 ═══ */
   document.getElementById('btn-power').addEventListener('click', powerToggle);
-  document.getElementById('btn-volup').addEventListener('click', function () { syslog('Vol+', 'sys'); });
-  document.getElementById('btn-voldown').addEventListener('click', function () { syslog('Vol-', 'sys'); });
+  document.getElementById('btn-volup').addEventListener('click', function () { adjustVolume(5); });
+  document.getElementById('btn-voldown').addEventListener('click', function () { adjustVolume(-5); });
 
   /* 측면 물리 버튼 (디바이스 프레임 옆) */
   function powerToggle() {
@@ -679,8 +679,8 @@
   var sideVolUp = document.getElementById('side-volup');
   var sideVolDown = document.getElementById('side-voldown');
   if (sidePower) sidePower.addEventListener('click', powerToggle);
-  if (sideVolUp) sideVolUp.addEventListener('click', function () { syslog('Vol+', 'sys'); });
-  if (sideVolDown) sideVolDown.addEventListener('click', function () { syslog('Vol-', 'sys'); });
+  if (sideVolUp) sideVolUp.addEventListener('click', function () { adjustVolume(5); });
+  if (sideVolDown) sideVolDown.addEventListener('click', function () { adjustVolume(-5); });
   document.getElementById('btn-reboot').addEventListener('click', function () {
     syslog('Rebooting...', 'warn');
     state.locked = true;
@@ -710,12 +710,16 @@
     updateNotifBadge();
     renderQsNotifications();
 
-    // Show toast banner if screen is on and not locked
+    /* Play notification sound + vibrate */
+    playNotifSound();
+    triggerVibrate();
+
+    /* Show toast banner if screen is on and not locked */
     if (state.screenOn && !isLocked()) {
       showToast(notif);
     }
 
-    // If on lockscreen, push to lockscreen iframe
+    /* If on lockscreen, push to lockscreen iframe */
     if (state.currentApp === 'com.zylos.lockscreen') {
       broadcastToCurrentApp('notification.push', notif);
     }
@@ -1023,6 +1027,45 @@
     } catch (err) { /* ignore */ }
   });
 
+  /* ═══ Volume Control + OSD ═══ */
+  var volumeOsd = document.getElementById('volume-osd');
+  var volumeOsdBar = document.getElementById('volume-osd-bar');
+  var volumeOsdValue = document.getElementById('volume-osd-value');
+  var volumeOsdIcon = document.getElementById('volume-osd-icon');
+  var _volumeOsdTimer = null;
+
+  function adjustVolume(delta) {
+    var result = ZylServices.handleRequest('audio', 'adjustVolume', { stream: 'media', delta: delta });
+    if (result && typeof result.then === 'function') {
+      result.then(function (r) {
+        if (r) showVolumeOsd(r.value);
+        broadcastToCurrentApp('audio.volumeChanged', { stream: 'media', value: r ? r.value : 0 });
+      });
+    }
+    syslog('Vol ' + (delta > 0 ? '+' : '') + delta, 'sys');
+  }
+
+  function showVolumeOsd(value) {
+    if (!volumeOsd) return;
+    volumeOsd.classList.add('visible');
+    if (volumeOsdBar) volumeOsdBar.style.height = value + '%';
+    if (volumeOsdValue) volumeOsdValue.textContent = value;
+    if (volumeOsdIcon) volumeOsdIcon.textContent = value === 0 ? '\uD83D\uDD07' : value < 50 ? '\uD83D\uDD09' : '\uD83D\uDD0A';
+    clearTimeout(_volumeOsdTimer);
+    _volumeOsdTimer = setTimeout(function () {
+      volumeOsd.classList.remove('visible');
+    }, 2000);
+  }
+
+  /* Play notification sound on toast */
+  function playNotifSound() {
+    ZylServices.handleRequest('audio', 'playNotificationSound', {});
+  }
+
+  function triggerVibrate() {
+    ZylServices.handleRequest('audio', 'vibrate', { pattern: [200] });
+  }
+
   /* ═══ 키보드 ═══ */
   document.addEventListener('keydown', function (e) {
     if (!state.booted || document.activeElement !== document.body) return;
@@ -1035,6 +1078,8 @@
       syslog('Locked', 'sys');
     }
     else if (e.key === 'p' && !e.ctrlKey) powerToggle();
+    else if (e.key === 'ArrowUp') { e.preventDefault(); adjustVolume(5); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); adjustVolume(-5); }
   });
 
   /* ═══════════════════════════════════════════════════════

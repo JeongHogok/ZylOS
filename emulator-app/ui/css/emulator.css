@@ -375,6 +375,27 @@
   box-shadow: 0 4px 20px rgba(0,0,0,0.4);
   border: 1px solid rgba(255,255,255,0.06);
 }
+/* ── Volume OSD ── */
+#volume-osd {
+  position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
+  z-index: 160; display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 12px 8px; border-radius: 20px;
+  background: rgba(0,0,0,0.7); backdrop-filter: blur(20px);
+  opacity: 0; pointer-events: none; transition: opacity 0.25s;
+}
+#volume-osd.visible { opacity: 1; }
+#volume-osd-icon { font-size: 18px; }
+#volume-osd-track {
+  width: 6px; height: 100px; border-radius: 3px;
+  background: rgba(255,255,255,0.15); position: relative; overflow: hidden;
+}
+#volume-osd-bar {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  background: #4a9eff; border-radius: 3px; height: 70%;
+  transition: height 0.15s;
+}
+#volume-osd-value { font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.8); }
+
 .toast-hidden { transform: translateY(-120%); opacity: 0; pointer-events: none; }
 .toast-show { transform: translateY(0); opacity: 1; pointer-events: auto; }
 .toast-icon { font-size: 24px; flex-shrink: 0; }

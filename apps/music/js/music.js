@@ -101,6 +101,18 @@
       if (msg.service === 'fs' && msg.method === 'readBinary' && msg.data && msg.params) {
         handleBinaryResponse(msg.params, msg.data);
       }
+
+      if (msg.service === 'audio' && msg.method === 'getVolume' && msg.data != null) {
+        var vol = typeof msg.data === 'object' ? msg.data.value : msg.data;
+        if (volumeSlider) volumeSlider.value = vol;
+        if (audio) audio.volume = vol / 100;
+      }
+
+      if (msg.type === 'audio.volumeChanged' && msg.data) {
+        var vol = msg.data.value;
+        if (volumeSlider) volumeSlider.value = vol;
+        if (audio) audio.volume = vol / 100;
+      }
     } catch (err) {
       console.error('[Music] message parse error:', err);
     }
@@ -410,9 +422,11 @@
     volumeSlider.addEventListener('input', function () {
       var vol = parseInt(volumeSlider.value, 10) / 100;
       if (audio) audio.volume = vol;
+      requestService('audio', 'setVolume', { stream: 'media', value: parseInt(volumeSlider.value, 10) });
     });
   }
 
   /* ─── Init ─── */
   requestTrackList();
+  requestService('audio', 'getVolume', { stream: 'media' });
 })();

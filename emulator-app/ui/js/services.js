@@ -630,8 +630,108 @@ var ZylServices = (function () {
         settings.updateSetting('accessibility', 'fontScale', a11yState.fontScale);
         return Promise.resolve(a11yState.fontScale);
       }
+    },
+
+    /* ── 25. Audio — system volume, notification sound, vibration ── */
+    audio: {
+      getVolume: function (p) {
+        var stream = p.stream || 'media';
+        return Promise.resolve(audioState[stream + 'Volume'] !== undefined ? audioState[stream + 'Volume'] : 70);
+      },
+      setVolume: function (p) {
+        var stream = p.stream || 'media';
+        var key = stream + 'Volume';
+        var val = Math.max(0, Math.min(100, parseInt(p.value, 10) || 0));
+        audioState[key] = val;
+        settings.updateSetting('sound', key, val);
+        return Promise.resolve({ stream: stream, value: val });
+      },
+      adjustVolume: function (p) {
+        var stream = p.stream || 'media';
+        var key = stream + 'Volume';
+        var current = audioState[key] !== undefined ? audioState[key] : 70;
+        var delta = parseInt(p.delta, 10) || 5;
+        var val = Math.max(0, Math.min(100, current + delta));
+        audioState[key] = val;
+        settings.updateSetting('sound', key, val);
+        return Promise.resolve({ stream: stream, value: val });
+      },
+      getState: function () {
+        return Promise.resolve({
+          mediaVolume: audioState.mediaVolume,
+          notifVolume: audioState.notifVolume,
+          alarmVolume: audioState.alarmVolume,
+          ringtoneVolume: audioState.ringtoneVolume,
+          vibration: audioState.vibration,
+          silentMode: audioState.silentMode
+        });
+      },
+      getSilentMode: function () { return Promise.resolve(audioState.silentMode); },
+      setSilentMode: function (p) {
+        audioState.silentMode = !!p.enabled;
+        settings.updateSetting('sound', 'silentMode', audioState.silentMode);
+        return Promise.resolve(audioState.silentMode);
+      },
+      getVibration: function () { return Promise.resolve(audioState.vibration); },
+      setVibration: function (p) {
+        audioState.vibration = !!p.enabled;
+        settings.updateSetting('sound', 'vibration', audioState.vibration);
+        return Promise.resolve(audioState.vibration);
+      },
+      playNotificationSound: function () {
+        if (audioState.silentMode) return Promise.resolve(false);
+        try {
+          var ctx = new (window.AudioContext || window.webkitAudioContext)();
+          var osc = ctx.createOscillator();
+          var gain = ctx.createGain();
+          gain.gain.value = (audioState.notifVolume / 100) * 0.5;
+          osc.type = 'sine';
+          osc.frequency.value = 880;
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start();
+          osc.stop(ctx.currentTime + 0.15);
+          setTimeout(function () {
+            var osc2 = ctx.createOscillator();
+            var gain2 = ctx.createGain();
+            gain2.gain.value = (audioState.notifVolume / 100) * 0.5;
+            osc2.type = 'sine';
+            osc2.frequency.value = 1100;
+            osc2.connect(gain2);
+            gain2.connect(ctx.destination);
+            osc2.start();
+            osc2.stop(ctx.currentTime + 0.12);
+          }, 180);
+        } catch (e) { /* Web Audio unavailable */ }
+        return Promise.resolve(true);
+      },
+      vibrate: function (p) {
+        if (!audioState.vibration) return Promise.resolve(false);
+        var pattern = p.pattern || [200];
+        if (navigator.vibrate) navigator.vibrate(pattern);
+        return Promise.resolve(true);
+      }
     }
   };
+
+  /* ── Audio State — loaded from settings on boot ── */
+  var audioState = {
+    mediaVolume: 70, notifVolume: 80, alarmVolume: 90,
+    ringtoneVolume: 80, vibration: true, silentMode: false
+  };
+
+  /* Load audio state from persisted settings */
+  settings._loadFromBackend().then(function () {
+    var s = settings.state.sound;
+    if (s) {
+      if (s.mediaVolume !== undefined) audioState.mediaVolume = parseInt(s.mediaVolume, 10);
+      if (s.notifVolume !== undefined) audioState.notifVolume = parseInt(s.notifVolume, 10);
+      if (s.alarmVolume !== undefined) audioState.alarmVolume = parseInt(s.alarmVolume, 10);
+      if (s.ringtoneVolume !== undefined) audioState.ringtoneVolume = parseInt(s.ringtoneVolume, 10);
+      if (s.vibration !== undefined) audioState.vibration = !!s.vibration;
+      if (s.silentMode !== undefined) audioState.silentMode = !!s.silentMode;
+    }
+  });
 
 
   /* ═══════════════════════════════════════════════════════

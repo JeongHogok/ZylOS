@@ -427,6 +427,7 @@
       if (isNaN(val)) return;
       val = Math.max(0, Math.min(100, val));
       updateSetting('sound', 'mediaVolume', val);
+      requestService('audio', 'setVolume', { stream: 'media', value: val });
     });
   }
 
@@ -437,6 +438,7 @@
       if (isNaN(val)) return;
       val = Math.max(0, Math.min(100, val));
       updateSetting('sound', 'notifVolume', val);
+      requestService('audio', 'setVolume', { stream: 'notif', value: val });
     });
   }
 
@@ -447,6 +449,7 @@
       if (isNaN(val)) return;
       val = Math.max(0, Math.min(100, val));
       updateSetting('sound', 'alarmVolume', val);
+      requestService('audio', 'setVolume', { stream: 'alarm', value: val });
     });
   }
 
@@ -454,6 +457,7 @@
   if (vibrationToggle) {
     vibrationToggle.addEventListener('change', function () {
       updateSetting('sound', 'vibration', vibrationToggle.checked);
+      requestService('audio', 'setVibration', { enabled: vibrationToggle.checked });
     });
   }
 

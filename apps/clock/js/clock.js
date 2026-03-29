@@ -54,7 +54,18 @@
         return;
       }
 
+      if (msg.type === 'audio.volumeChanged' && msg.data && msg.data.stream === 'alarm') {
+        systemAlarmVolume = msg.data.value;
+        return;
+      }
+
       if (msg.type !== 'service.response') return;
+
+      if (msg.service === 'audio' && msg.method === 'getVolume' && msg.data != null) {
+        systemAlarmVolume = typeof msg.data === 'object' ? msg.data.value : msg.data;
+        return;
+      }
+
       var key = msg.service + '.' + msg.method;
       if (serviceCallbacks[key]) {
         serviceCallbacks[key](msg.params, msg.data);
@@ -67,6 +78,7 @@
      ═══════════════════════════════════════════════════════════ */
 
   var audioCtx = null;
+  var systemAlarmVolume = 90;
 
   function getAudioContext() {
     if (!audioCtx) {
@@ -89,7 +101,7 @@
       var gain = ctx.createGain();
       osc.type = 'sine';
       osc.frequency.value = frequency || 880;
-      gain.gain.value = 0.3;
+      gain.gain.value = (systemAlarmVolume / 100) * 0.5;
       osc.connect(gain);
       gain.connect(ctx.destination);
       osc.start(ctx.currentTime);
@@ -460,6 +472,9 @@
 
   /* Load alarms from settings on startup */
   loadAlarms();
+
+  /* Request system alarm volume */
+  requestService('audio', 'getVolume', { stream: 'alarm' });
 
   /* ═══════════════════════════════════════════════════════════
      Timer Tab
