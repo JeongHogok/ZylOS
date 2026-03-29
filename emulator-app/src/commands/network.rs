@@ -59,6 +59,8 @@ pub fn get_bluetooth_devices() -> Result<Vec<BluetoothDevice>, String> {
 
 #[cfg(target_os = "macos")]
 fn get_wifi_macos() -> Result<Vec<WifiNetwork>, String> {
+    let mut networks = Vec::new();
+
     // 현재 연결된 네트워크
     let current_ssid = Command::new("networksetup")
         .args(["-getairportnetwork", "en0"])
@@ -70,50 +72,28 @@ fn get_wifi_macos() -> Result<Vec<WifiNetwork>, String> {
         })
         .unwrap_or_default();
 
-    // 주변 네트워크 스캔
-    let output = Command::new("/System/Library/PrivateFrameworks/Apple80211.framework/Resources/airport")
-        .args(["-s"])
+    // 저장된 네트워크 목록 (networksetup)
+    let output = Command::new("networksetup")
+        .args(["-listpreferredwirelessnetworks", "en0"])
         .output()
-        .map_err(|e| format!("airport scan failed: {}", e))?;
+        .map_err(|e| format!("networksetup failed: {}", e))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut networks = Vec::new();
-
     for line in stdout.lines().skip(1) {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
+        let ssid = line.trim().to_string();
+        if ssid.is_empty() {
             continue;
         }
-
-        // airport -s 출력 파싱: SSID BSSID RSSI CHANNEL HT CC SECURITY
-        // RSSI(음수 정수) 위치로 SSID 영역을 추출
-        let fields: Vec<&str> = trimmed.split_whitespace().collect();
-        if fields.len() < 7 {
-            log::debug!("WiFi scan: skipping short line: {}", trimmed);
-            continue;
-        }
-
-        let rssi_idx = fields.iter().position(|f| {
-            f.starts_with('-') && f[1..].parse::<i32>().is_ok()
+        let is_connected = ssid == current_ssid;
+        networks.push(WifiNetwork {
+            connected: is_connected,
+            ssid,
+            signal: if is_connected { -30 } else { -65 },
+            security: "WPA2".into(),
         });
-
-        if let Some(ri) = rssi_idx {
-            let ssid = fields[..ri].join(" ");
-            let rssi: i32 = fields[ri].parse().unwrap_or(-80);
-            let security = fields.last().unwrap_or(&"Open").to_string();
-
-            if !ssid.is_empty() {
-                networks.push(WifiNetwork {
-                    connected: ssid == current_ssid,
-                    ssid,
-                    signal: rssi,
-                    security,
-                });
-            }
-        }
     }
 
-    // 연결된 네트워크가 스캔 결과에 없으면 추가
+    // 연결된 네트워크가 목록에 없으면 맨 앞에 추가
     if !current_ssid.is_empty() && !networks.iter().any(|n| n.ssid == current_ssid) {
         networks.insert(0, WifiNetwork {
             ssid: current_ssid,
@@ -123,8 +103,8 @@ fn get_wifi_macos() -> Result<Vec<WifiNetwork>, String> {
         });
     }
 
-    // 신호 강도 내림차순 정렬
-    networks.sort_by(|a, b| b.signal.cmp(&a.signal));
+    // 연결된 것 먼저, 나머지 신호 강도순
+    networks.sort_by(|a, b| b.connected.cmp(&a.connected).then(b.signal.cmp(&a.signal)));
     Ok(networks)
 }
 

@@ -207,8 +207,8 @@
     list.innerHTML = '';
     var items = [
       { label: t('settings.storage'), value: data.total },
-      { label: '사용 중',             value: data.used },
-      { label: '사용 가능',           value: data.available }
+      { label: t('settings.storage_used') || 'Used',         value: data.used },
+      { label: t('settings.storage_available') || 'Available', value: data.available }
     ];
     items.forEach(function (item) {
       var el = document.createElement('div');
@@ -226,7 +226,7 @@
 
   /* Font size cycle map */
   var FONT_SIZES = ['small', 'medium', 'large'];
-  var FONT_SIZE_LABELS = { small: '작게', medium: '보통', large: '크게' };
+  var FONT_SIZE_LABELS = { small: 'Small', medium: 'Medium', large: 'Large' };
 
   /* Wallpaper color map for swatches */
   var WALLPAPER_COLORS = {
@@ -294,7 +294,7 @@
 
   function updateMainMenuWifi(data) {
     var el = document.getElementById('wifi-status');
-    if (el) el.textContent = data.enabled ? t('settings.connected') : '꺼짐';
+    if (el) el.textContent = data.enabled ? t('settings.connected') : t('common.off');
   }
 
   var wifiToggle = document.getElementById('wifi-toggle');
@@ -323,7 +323,7 @@
 
   function updateMainMenuBt(data) {
     var el = document.getElementById('bt-status');
-    if (el) el.textContent = data.enabled ? '켜짐' : '꺼짐';
+    if (el) el.textContent = data.enabled ? t('common.on') : t('common.off');
   }
 
   var btToggle = document.getElementById('bt-toggle');
@@ -345,7 +345,7 @@
     if (brightnessSlider) brightnessSlider.value = data.brightness;
     if (darkToggle) darkToggle.checked = data.darkMode;
     if (autoToggle) autoToggle.checked = data.autoBrightness;
-    if (fontVal) fontVal.textContent = FONT_SIZE_LABELS[data.fontSize] || '보통';
+    if (fontVal) fontVal.textContent = FONT_SIZE_LABELS[data.fontSize] || 'Medium';
   }
 
   var brightnessSlider = document.getElementById('brightness-slider');
@@ -473,11 +473,11 @@
       /* Validate */
       var storedPin = settingsCache.security ? settingsCache.security.pin : '0000';
       if (currentPin !== storedPin) {
-        if (msgEl) { msgEl.textContent = '현재 PIN이 올바르지 않습니다'; msgEl.style.color = '#ef4444'; }
+        if (msgEl) { msgEl.textContent = t('settings.wrong_pin') || 'Incorrect current PIN'; msgEl.style.color = '#ef4444'; }
         return;
       }
       if (newPin.length !== 4 || !/^\d{4}$/.test(newPin)) {
-        if (msgEl) { msgEl.textContent = 'PIN은 숫자 4자리여야 합니다'; msgEl.style.color = '#ef4444'; }
+        if (msgEl) { msgEl.textContent = t('settings.pin_format') || 'PIN must be 4 digits'; msgEl.style.color = '#ef4444'; }
         return;
       }
 
@@ -490,7 +490,7 @@
         pin: newPin
       }), '*');
 
-      if (msgEl) { msgEl.textContent = 'PIN이 변경되었습니다'; msgEl.style.color = '#22c55e'; }
+      if (msgEl) { msgEl.textContent = t('settings.pin_changed') || 'PIN changed'; msgEl.style.color = '#22c55e'; }
       if (curInput) curInput.value = '';
       if (newInput) newInput.value = '';
 
