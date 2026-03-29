@@ -971,9 +971,31 @@
       syslog('Font size: ' + value, 'sys');
     }
 
-    /* ── 사운드 ── */
+    /* ── Sound ── */
     if (category === 'sound') {
-      syslog('Sound: ' + key + ' → ' + value, 'sys');
+      syslog('Sound: ' + key + ' \u2192 ' + value, 'sys');
+    }
+
+    /* ── Keyboard settings → forward to ZylKeyboard ── */
+    if (category === 'keyboard' && typeof ZylKeyboard !== 'undefined') {
+      if (key === 'languages') {
+        var langs = String(value).split(',').filter(Boolean);
+        ZylKeyboard.setEnabledLanguages(langs);
+        if (langs.length > 0 && langs.indexOf(ZylKeyboard.getLanguage()) === -1) {
+          ZylKeyboard.setLanguage(langs[0]);
+        }
+        syslog('Keyboard languages: ' + value, 'sys');
+      }
+      if (key === 'keyHeight') {
+        ZylKeyboard.setKeyHeight(parseInt(value, 10) || 36);
+        syslog('Key height: ' + value + 'px', 'sys');
+      }
+      if (key === 'soundEnabled') {
+        ZylKeyboard.setSoundEnabled(!!value);
+      }
+      if (key === 'vibrationEnabled') {
+        ZylKeyboard.setVibrationEnabled(!!value);
+      }
     }
 
     /* ── Locale change → update compositor i18n ── */
@@ -1232,6 +1254,24 @@
         localeLoad.then(function (lang) {
           if (lang && lang.locale) ZylEmuI18n.setLocale(String(lang.locale));
         });
+      }
+
+      /* Load persisted keyboard settings */
+      if (typeof ZylKeyboard !== 'undefined') {
+        var kbLoad = ZylServices.handleRequest('settings', 'get', { category: 'keyboard' });
+        if (kbLoad && typeof kbLoad.then === 'function') {
+          kbLoad.then(function (kb) {
+            if (!kb) return;
+            if (kb.languages) {
+              var langs = String(kb.languages).split(',').filter(Boolean);
+              ZylKeyboard.setEnabledLanguages(langs);
+              if (langs.length > 0) ZylKeyboard.setLanguage(langs[0]);
+            }
+            if (kb.keyHeight) ZylKeyboard.setKeyHeight(parseInt(kb.keyHeight, 10) || 36);
+            if (kb.soundEnabled !== undefined) ZylKeyboard.setSoundEnabled(kb.soundEnabled !== false);
+            if (kb.vibrationEnabled !== undefined) ZylKeyboard.setVibrationEnabled(kb.vibrationEnabled !== false);
+          });
+        }
       }
 
       /* Check if OOBE was completed; if not, show OOBE first */

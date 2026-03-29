@@ -56,6 +56,17 @@
         <svg class="chevron" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
       </div>
 
+      <div class="setting-item" data-page="keyboard">
+        <div class="setting-icon icon-indigo">
+          <svg viewBox="0 0 24 24"><path d="M20 5H4c-1.1 0-1.99.9-1.99 2L2 17c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z"/></svg>
+        </div>
+        <div class="setting-text">
+          <span class="setting-label" data-i18n="settings.keyboard">Keyboard</span>
+          <span class="setting-value" id="keyboard-status">English</span>
+        </div>
+        <svg class="chevron" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+      </div>
+
       <div class="setting-item" data-page="sound">
         <div class="setting-icon icon-pink">
           <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
@@ -308,6 +319,58 @@
         <button id="pin-change-btn" data-i18n="settings.change" style="width:100%;padding:10px;border:none;border-radius:8px;background:#4a9eff;color:#fff;font-size:14px;font-weight:600;cursor:pointer;">Change</button>
         <button id="pin-remove-btn" data-i18n="settings.remove_pin" style="width:100%;padding:10px;border:1px solid rgba(239,68,68,0.4);border-radius:8px;background:transparent;color:#ef4444;font-size:14px;cursor:pointer;">Remove PIN</button>
         <div id="pin-change-msg" style="margin-top:4px;font-size:12px;text-align:center;min-height:16px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 키보드 서브 페이지 -->
+  <div id="page-keyboard" class="sub-page hidden">
+    <div class="settings-group">
+      <div class="setting-item no-tap">
+        <span class="setting-label" data-i18n="settings.keyboard_language">Input Language</span>
+      </div>
+      <!-- Language list with checkboxes for multi-select -->
+      <div id="keyboard-lang-list">
+        <div class="setting-item no-tap kb-lang-option" data-lang="en">
+          <span class="setting-label">English</span>
+          <label class="toggle"><input type="checkbox" class="kb-lang-check" value="en" checked><span class="toggle-slider"></span></label>
+        </div>
+        <div class="setting-item no-tap kb-lang-option" data-lang="ko">
+          <span class="setting-label">한국어</span>
+          <label class="toggle"><input type="checkbox" class="kb-lang-check" value="ko"><span class="toggle-slider"></span></label>
+        </div>
+        <div class="setting-item no-tap kb-lang-option" data-lang="ja">
+          <span class="setting-label">日本語</span>
+          <label class="toggle"><input type="checkbox" class="kb-lang-check" value="ja"><span class="toggle-slider"></span></label>
+        </div>
+        <div class="setting-item no-tap kb-lang-option" data-lang="zh">
+          <span class="setting-label">中文</span>
+          <label class="toggle"><input type="checkbox" class="kb-lang-check" value="zh"><span class="toggle-slider"></span></label>
+        </div>
+        <div class="setting-item no-tap kb-lang-option" data-lang="es">
+          <span class="setting-label">Español</span>
+          <label class="toggle"><input type="checkbox" class="kb-lang-check" value="es"><span class="toggle-slider"></span></label>
+        </div>
+      </div>
+    </div>
+    <div class="settings-group">
+      <div class="setting-item no-tap">
+        <span class="setting-label" data-i18n="settings.key_height">Key Height</span>
+        <input type="range" class="slider" id="key-height-slider" min="30" max="50" value="36">
+      </div>
+    </div>
+    <div class="settings-group">
+      <div class="setting-item no-tap">
+        <span class="setting-label" data-i18n="settings.keyboard_sound">Sound on Keypress</span>
+        <label class="toggle"><input type="checkbox" id="kb-sound-toggle" checked><span class="toggle-slider"></span></label>
+      </div>
+      <div class="setting-item no-tap">
+        <span class="setting-label" data-i18n="settings.keyboard_vibration">Vibration on Keypress</span>
+        <label class="toggle"><input type="checkbox" id="kb-vibration-toggle" checked><span class="toggle-slider"></span></label>
+      </div>
+      <div class="setting-item no-tap">
+        <span class="setting-label" data-i18n="settings.auto_capitalize">Auto Capitalize</span>
+        <label class="toggle"><input type="checkbox" id="kb-autocap-toggle" checked><span class="toggle-slider"></span></label>
       </div>
     </div>
   </div>

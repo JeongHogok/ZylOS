@@ -60,7 +60,13 @@
     'settings.remove_pin': 'PIN \uC81C\uAC70',
     'settings.pin_removed': 'PIN\uC774 \uC81C\uAC70\uB418\uC5C8\uC2B5\uB2C8\uB2E4',
     'settings.no_pin_set': 'PIN\uC774 \uC124\uC815\uB418\uC5B4 \uC788\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4',
-    'settings.swipe': '\uC2A4\uC640\uC774\uD504'
+    'settings.swipe': '\uC2A4\uC640\uC774\uD504',
+    'settings.keyboard': '\uD0A4\uBCF4\uB4DC',
+    'settings.keyboard_language': '\uC785\uB825 \uC5B8\uC5B4',
+    'settings.key_height': '\uD0A4 \uB192\uC774',
+    'settings.keyboard_sound': '\uD0A4 \uC785\uB825 \uC18C\uB9AC',
+    'settings.keyboard_vibration': '\uD0A4 \uC785\uB825 \uC9C4\uB3D9',
+    'settings.auto_capitalize': '\uC790\uB3D9 \uB300\uBB38\uC790'
   });
 
   zylI18n.addTranslations('en', {
@@ -114,7 +120,13 @@
     'settings.remove_pin': 'Remove PIN',
     'settings.pin_removed': 'PIN removed',
     'settings.no_pin_set': 'No PIN is set',
-    'settings.swipe': 'Swipe'
+    'settings.swipe': 'Swipe',
+    'settings.keyboard': 'Keyboard',
+    'settings.keyboard_language': 'Input Language',
+    'settings.key_height': 'Key Height',
+    'settings.keyboard_sound': 'Sound on Keypress',
+    'settings.keyboard_vibration': 'Vibration on Keypress',
+    'settings.auto_capitalize': 'Auto Capitalize'
   });
 
   zylI18n.addTranslations('ja', {
@@ -168,7 +180,13 @@
     'settings.remove_pin': 'PIN\u524A\u9664',
     'settings.pin_removed': 'PIN\u304C\u524A\u9664\u3055\u308C\u307E\u3057\u305F',
     'settings.no_pin_set': 'PIN\u304C\u8A2D\u5B9A\u3055\u308C\u3066\u3044\u307E\u305B\u3093',
-    'settings.swipe': '\u30B9\u30EF\u30A4\u30D7'
+    'settings.swipe': '\u30B9\u30EF\u30A4\u30D7',
+    'settings.keyboard': '\u30AD\u30FC\u30DC\u30FC\u30C9',
+    'settings.keyboard_language': '\u5165\u529B\u8A00\u8A9E',
+    'settings.key_height': '\u30AD\u30FC\u306E\u9AD8\u3055',
+    'settings.keyboard_sound': '\u30AD\u30FC\u5165\u529B\u97F3',
+    'settings.keyboard_vibration': '\u30AD\u30FC\u5165\u529B\u632F\u52D5',
+    'settings.auto_capitalize': '\u81EA\u52D5\u5927\u6587\u5B57'
   });
 
   zylI18n.addTranslations('zh', {
@@ -222,7 +240,13 @@
     'settings.remove_pin': '\u5220\u9664PIN',
     'settings.pin_removed': 'PIN\u5DF2\u5220\u9664',
     'settings.no_pin_set': '\u672A\u8BBE\u7F6EPIN',
-    'settings.swipe': '\u6ED1\u52A8'
+    'settings.swipe': '\u6ED1\u52A8',
+    'settings.keyboard': '\u952E\u76D8',
+    'settings.keyboard_language': '\u8F93\u5165\u8BED\u8A00',
+    'settings.key_height': '\u6309\u952E\u9AD8\u5EA6',
+    'settings.keyboard_sound': '\u6309\u952E\u97F3',
+    'settings.keyboard_vibration': '\u6309\u952E\u632F\u52A8',
+    'settings.auto_capitalize': '\u81EA\u52A8\u5927\u5199'
   });
 
   zylI18n.addTranslations('es', {
@@ -276,6 +300,12 @@
     'settings.remove_pin': 'Eliminar PIN',
     'settings.pin_removed': 'PIN eliminado',
     'settings.no_pin_set': 'No hay PIN configurado',
-    'settings.swipe': 'Deslizar'
+    'settings.swipe': 'Deslizar',
+    'settings.keyboard': 'Teclado',
+    'settings.keyboard_language': 'Idioma de entrada',
+    'settings.key_height': 'Altura de tecla',
+    'settings.keyboard_sound': 'Sonido al pulsar',
+    'settings.keyboard_vibration': 'Vibraci\u00F3n al pulsar',
+    'settings.auto_capitalize': 'May\u00FAsculas autom\u00E1ticas'
   });
 })();

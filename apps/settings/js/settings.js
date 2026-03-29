@@ -36,6 +36,7 @@
     wifi: 'settings.wifi',
     bluetooth: 'settings.bluetooth',
     display: 'settings.display',
+    keyboard: 'settings.keyboard',
     sound: 'settings.sound',
     language: 'settings.language',
     wallpaper: 'settings.wallpaper',
@@ -277,6 +278,8 @@
       applySoundState(data);
     } else if (cat === 'security') {
       applySecurityState(data);
+    } else if (cat === 'keyboard') {
+      applyKeyboardState(data);
     } else if (cat === 'wallpaper') {
       renderWallpaperGrid(data);
     }
@@ -617,6 +620,77 @@
     });
   }
 
+  /* ═══ Keyboard Wiring ═══ */
+  function applyKeyboardState(data) {
+    /* Set language checkboxes */
+    var langs = (data.languages || 'en').split(',');
+    document.querySelectorAll('.kb-lang-check').forEach(function (cb) {
+      cb.checked = langs.indexOf(cb.value) !== -1;
+    });
+    /* Key height */
+    var heightSlider = document.getElementById('key-height-slider');
+    if (heightSlider && data.keyHeight) heightSlider.value = data.keyHeight;
+    /* Toggles */
+    var soundT = document.getElementById('kb-sound-toggle');
+    var vibT = document.getElementById('kb-vibration-toggle');
+    var capT = document.getElementById('kb-autocap-toggle');
+    if (soundT) soundT.checked = data.soundEnabled !== false;
+    if (vibT) vibT.checked = data.vibrationEnabled !== false;
+    if (capT) capT.checked = data.autoCapitalize !== false;
+    /* Update main menu status */
+    var statusEl = document.getElementById('keyboard-status');
+    if (statusEl) {
+      var LANG_LABELS = {en:'English',ko:'\uD55C\uAD6D\uC5B4',ja:'\u65E5\u672C\u8A9E',zh:'\u4E2D\u6587',es:'Espa\u00F1ol'};
+      statusEl.textContent = langs.map(function(l){return LANG_LABELS[l]||l;}).join(', ');
+    }
+  }
+
+  /* Language toggles */
+  document.querySelectorAll('.kb-lang-check').forEach(function (cb) {
+    cb.addEventListener('change', function () {
+      var enabled = [];
+      document.querySelectorAll('.kb-lang-check:checked').forEach(function (c) { enabled.push(c.value); });
+      if (enabled.length === 0) { cb.checked = true; return; } /* at least 1 */
+      updateSetting('keyboard', 'languages', enabled.join(','));
+      /* Update main menu status */
+      var LANG_LABELS = {en:'English',ko:'\uD55C\uAD6D\uC5B4',ja:'\u65E5\u672C\u8A9E',zh:'\u4E2D\u6587',es:'Espa\u00F1ol'};
+      var statusEl = document.getElementById('keyboard-status');
+      if (statusEl) statusEl.textContent = enabled.map(function(l){return LANG_LABELS[l]||l;}).join(', ');
+    });
+  });
+
+  /* Key height slider */
+  var keyHeightSlider = document.getElementById('key-height-slider');
+  if (keyHeightSlider) {
+    keyHeightSlider.addEventListener('input', function () {
+      updateSetting('keyboard', 'keyHeight', parseInt(keyHeightSlider.value, 10));
+    });
+  }
+
+  /* Sound toggle */
+  var kbSoundToggle = document.getElementById('kb-sound-toggle');
+  if (kbSoundToggle) {
+    kbSoundToggle.addEventListener('change', function () {
+      updateSetting('keyboard', 'soundEnabled', kbSoundToggle.checked);
+    });
+  }
+
+  /* Vibration toggle */
+  var kbVibToggle = document.getElementById('kb-vibration-toggle');
+  if (kbVibToggle) {
+    kbVibToggle.addEventListener('change', function () {
+      updateSetting('keyboard', 'vibrationEnabled', kbVibToggle.checked);
+    });
+  }
+
+  /* Auto-capitalize toggle */
+  var kbAutoCapToggle = document.getElementById('kb-autocap-toggle');
+  if (kbAutoCapToggle) {
+    kbAutoCapToggle.addEventListener('change', function () {
+      updateSetting('keyboard', 'autoCapitalize', kbAutoCapToggle.checked);
+    });
+  }
+
   /* ═══ Scan buttons ═══ */
   var wifiScanBtn = document.getElementById('wifi-scan-btn');
   var btScanBtn = document.getElementById('bt-scan-btn');
@@ -653,6 +727,7 @@
   requestService('settings', 'get', { category: 'display' });
   requestService('settings', 'get', { category: 'sound' });
   requestService('settings', 'get', { category: 'security' });
+  requestService('settings', 'get', { category: 'keyboard' });
   requestService('settings', 'get', { category: 'wallpaper' });
 
   /* ─── 초기화 ─── */

@@ -1,18 +1,22 @@
 /* ──────────────────────────────────────────────────────────
    [Clean Architecture] Presentation Layer - Style
-   Role: Zyl Keyboard virtual keyboard styles
-   Scope: Keyboard layout, key sizing, animations, dark theme
-   Dependency: keyboard/js/keyboard.js
-   SOLID: SRP — keyboard styles only
 
-   Clean Architecture, SOLID principles, i18n rules strictly followed
-   Built for real device runtime; no mock/demo or hardcoded data allowed
+   역할: Zyl 가상 키보드 스타일 — 다국어 레이아웃 지원
+   수행범위: 키보드 컨테이너, 키 크기(CSS 변수), 특수키,
+            글로브 키, 스페이스바 언어 라벨, 다크 테마
+   의존방향: keyboard/js/keyboard.js 가 --kb-key-height 설정
+   SOLID: SRP — 키보드 스타일만 담당
+
+   클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
+   실제 디바이스 구동 기준이며, mock/demo 등 하드코딩 데이터가 있어서는 안 된다
    ────────────────────────────────────────────────────────── */
 
 /* ─── Container ───
    Positioned inside #device-screen by emulator compositor.
    bottom offset varies by nav mode (set via JS data attribute). */
 .zyl-keyboard {
+  --kb-key-height: 36px;
+
   position: absolute;
   left: 0;
   right: 0;
@@ -55,7 +59,7 @@
 
 /* ─── Key Base ─── */
 .kb-key {
-  height: 36px;
+  height: var(--kb-key-height);
   min-width: 28px;
   padding: 0 6px;
   border: none;
@@ -99,12 +103,29 @@
   color: #fff;
 }
 
+/* ─── Globe Key (Language Switcher) ─── */
+.kb-lang {
+  font-size: 16px;
+  min-width: 36px;
+  max-width: 40px;
+  flex: 1;
+}
+
+.kb-lang:active {
+  background: #333350;
+  transform: scale(0.92);
+}
+
 /* ─── Space Bar ─── */
 .kb-space {
   flex: 5;
   max-width: none;
   min-width: 120px;
   background: #2a2a40;
+  font-size: 12px;
+  color: #8888a8;
+  letter-spacing: 1px;
+  font-weight: 500;
 }
 
 .kb-space:active {
