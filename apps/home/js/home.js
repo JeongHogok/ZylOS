@@ -1,9 +1,11 @@
 // ──────────────────────────────────────────────────────────
 // [Clean Architecture] Presentation Layer - Page
 //
-// Role: Home screen UI — app grid with page swipe, dock, search, clock
-// Scope: App icon rendering, multi-page swipe with drag feedback, search filtering,
-//        edit mode (long press) with app deletion, app launch
+// Role: Home screen UI — app grid with page swipe, dynamic dock,
+//       search, clock, drag-and-drop between dock and grid
+// Scope: App icon rendering, multi-page swipe with drag feedback,
+//        search filtering, edit mode (long press) with app deletion,
+//        dock ↔ grid drag-and-drop reordering, settings persistence
 // Dependency: zylI18n (i18n.js), ZylClock (clock.js), ZylBridge (bridge.js)
 // SOLID: SRP — home screen UI rendering and interaction only
 //
@@ -30,15 +32,21 @@
     store:    '<svg viewBox="0 0 24 24"><path d="M18.36 9l.6 3H5.04l.6-3h12.72M20 4H4v2h16V4zm0 3H4l-1 5v2h1v6h10v-6h4v6h2v-6h1v-2l-1-5zM6 18v-4h6v4H6z"/></svg>',
   };
 
-  /* ─── App data (loaded from service) ─── */
+  /* ─── Data Model ─── */
+  var DEFAULT_DOCK = ['com.zylos.browser', 'com.zylos.files', 'com.zylos.terminal', 'com.zylos.settings'];
+  var dockApps = DEFAULT_DOCK.slice();
   var defaultApps = [];
   var appListReceived = false;
+  var dockSettingsLoaded = false;
 
-  function requestAppList() {
-    window.parent.postMessage(JSON.stringify({
-      type: 'service.request', service: 'apps', method: 'getInstalled'
-    }), '*');
-  }
+  var SYSTEM_ONLY = ['com.zylos.lockscreen', 'com.zylos.statusbar', 'com.zylos.oobe', 'com.zylos.home', 'com.zylos.keyboard'];
+
+  var UNDELETABLE = [
+    'com.zylos.settings', 'com.zylos.browser', 'com.zylos.files',
+    'com.zylos.terminal', 'com.zylos.camera', 'com.zylos.gallery',
+    'com.zylos.music', 'com.zylos.clock', 'com.zylos.calc',
+    'com.zylos.notes', 'com.zylos.weather', 'com.zylos.store'
+  ];
 
   /* Wallpaper gradients */
   var wallpaperGradients = {
@@ -49,14 +57,93 @@
     'gradient-sunset': 'linear-gradient(135deg, #2d1b3d 0%, #b44a2a 50%, #1a0a2e 100%)',
   };
 
-  /* ─── Message handler ─── */
+  /* ─── Helpers ─── */
+  function findApp(appId) {
+    for (var i = 0; i < defaultApps.length; i++) {
+      if (defaultApps[i].id === appId) return defaultApps[i];
+    }
+    return null;
+  }
+
+  function getGridApps() {
+    return defaultApps.filter(function (app) {
+      return dockApps.indexOf(app.id) === -1;
+    });
+  }
+
+  /* ─── Service Requests ─── */
+  function requestAppList() {
+    window.parent.postMessage(JSON.stringify({
+      type: 'service.request', service: 'apps', method: 'getInstalled'
+    }), '*');
+  }
+
+  function requestDockSettings() {
+    window.parent.postMessage(JSON.stringify({
+      type: 'service.request', service: 'settings', method: 'get', params: { category: 'home' }
+    }), '*');
+  }
+
+  function saveDockSettings() {
+    window.parent.postMessage(JSON.stringify({
+      type: 'service.request', service: 'settings', method: 'update',
+      params: { category: 'home', key: 'dock', value: dockApps.join(',') }
+    }), '*');
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     Dock — dynamic rendering
+     ═══════════════════════════════════════════════════════ */
+  function createDockItem(app) {
+    var el = document.createElement('div');
+    el.className = 'dock-app';
+    el.dataset.app = app.id;
+
+    var iconSvg = ICONS[app.icon] || ICONS.browser;
+
+    var iconWrap = document.createElement('div');
+    iconWrap.className = 'dock-icon ' + app.color;
+    iconWrap.innerHTML = iconSvg;
+
+    var nameEl = document.createElement('span');
+    nameEl.setAttribute('data-i18n', app.nameKey);
+    nameEl.textContent = zylI18n.t(app.nameKey);
+
+    el.appendChild(iconWrap);
+    el.appendChild(nameEl);
+
+    el.addEventListener('click', function () {
+      if (editMode || appDrag.active) return;
+      launchApp(app.id, el);
+    });
+
+    return el;
+  }
+
+  function renderDock() {
+    var dock = document.getElementById('dock');
+    dock.innerHTML = '';
+    dockApps.forEach(function (appId) {
+      var app = findApp(appId);
+      if (!app) return;
+      var el = createDockItem(app);
+      dock.appendChild(el);
+    });
+    if (editMode) {
+      dock.classList.add('edit-mode');
+    }
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     Message Handler
+     ═══════════════════════════════════════════════════════ */
   window.addEventListener('message', function (e) {
     if (e.source !== window.parent && e.source !== window) return;
     try {
       var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
       if (!msg) return;
 
-      /* Navigation back → home is root, always exit */
+      /* Navigation back -> home is root, always exit */
       if (msg.type === 'navigation.back') {
         window.parent.postMessage(JSON.stringify({ type: 'navigation.exit' }), '*');
         return;
@@ -65,11 +152,24 @@
       /* App list response */
       if (msg.type === 'service.response' && msg.service === 'apps' && msg.method === 'getInstalled' && msg.data) {
         appListReceived = true;
-        var SYSTEM_ONLY = ['com.zylos.lockscreen', 'com.zylos.statusbar', 'com.zylos.oobe', 'com.zylos.home', 'com.zylos.keyboard'];
         defaultApps = msg.data.filter(function (app) {
           return SYSTEM_ONLY.indexOf(app.id) === -1;
         });
-        renderAppGrid(defaultApps);
+        renderDock();
+        renderAppGrid(getGridApps());
+      }
+
+      /* Settings response — dock config */
+      if (msg.type === 'service.response' && msg.service === 'settings' && msg.data && msg.data.dock) {
+        var saved = msg.data.dock.split(',').filter(Boolean);
+        if (saved.length > 0) {
+          dockApps = saved;
+        }
+        dockSettingsLoaded = true;
+        if (appListReceived) {
+          renderDock();
+          renderAppGrid(getGridApps());
+        }
       }
 
       /* Wallpaper change */
@@ -81,6 +181,7 @@
     } catch (err) { /* ignore */ }
   });
 
+  requestDockSettings();
   requestAppList();
 
   /* ─── Clock (shared ZylClock) ─── */
@@ -132,6 +233,10 @@
         page.appendChild(el);
       }
       pagesTrack.appendChild(page);
+    }
+
+    if (editMode) {
+      applyEditModeToGrid();
     }
 
     updatePageIndicator();
@@ -222,81 +327,44 @@
   if (viewport) {
     /* Touch events */
     viewport.addEventListener('touchstart', function (e) {
+      if (appDrag.active) return;
       onDragStart(e.touches[0].clientX);
     }, { passive: true });
 
     viewport.addEventListener('touchmove', function (e) {
+      if (appDrag.active) return;
       onDragMove(e.touches[0].clientX);
     }, { passive: true });
 
     viewport.addEventListener('touchend', function (e) {
+      if (appDrag.active) return;
       onDragEnd(e.changedTouches[0].clientX);
     });
 
     /* Mouse events */
     viewport.addEventListener('mousedown', function (e) {
+      if (appDrag.active) return;
       onDragStart(e.clientX);
     });
 
     document.addEventListener('mousemove', function (e) {
-      if (drag.active) onDragMove(e.clientX);
+      if (drag.active && !appDrag.active) onDragMove(e.clientX);
     });
 
     document.addEventListener('mouseup', function (e) {
-      if (drag.active) onDragEnd(e.clientX);
+      if (drag.active && !appDrag.active) onDragEnd(e.clientX);
     });
   }
 
   /* ═══════════════════════════════════════════════════════
-     Edit Mode — long press to delete
+     Edit Mode — long press to enter, with delete + drag
      ═══════════════════════════════════════════════════════ */
   var editMode = false;
   var longPressTimer = null;
+  var longPressTarget = null;
+  var longPressStartPos = { x: 0, y: 0 };
 
-  var UNDELETABLE = [
-    'com.zylos.settings', 'com.zylos.browser', 'com.zylos.files',
-    'com.zylos.terminal', 'com.zylos.camera', 'com.zylos.gallery',
-    'com.zylos.music', 'com.zylos.clock', 'com.zylos.calc',
-    'com.zylos.notes', 'com.zylos.weather', 'com.zylos.store'
-  ];
-
-  pagesTrack.addEventListener('mousedown', function (e) {
-    var appItem = e.target.closest('.app-item');
-    if (!appItem) return;
-    longPressTimer = setTimeout(function () {
-      enterEditMode();
-      longPressTimer = null;
-    }, 800);
-  });
-
-  pagesTrack.addEventListener('mouseup', function () {
-    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-  });
-
-  pagesTrack.addEventListener('mouseleave', function () {
-    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-  });
-
-  /* Touch long press */
-  pagesTrack.addEventListener('touchstart', function (e) {
-    var appItem = e.target.closest('.app-item');
-    if (!appItem) return;
-    longPressTimer = setTimeout(function () {
-      enterEditMode();
-      longPressTimer = null;
-    }, 800);
-  }, { passive: true });
-
-  pagesTrack.addEventListener('touchmove', function () {
-    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-  }, { passive: true });
-
-  pagesTrack.addEventListener('touchend', function () {
-    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-  });
-
-  function enterEditMode() {
-    editMode = true;
+  function applyEditModeToGrid() {
     pagesTrack.classList.add('edit-mode');
     pagesTrack.querySelectorAll('.app-item').forEach(function (el) {
       if (el.querySelector('.app-delete')) return;
@@ -313,21 +381,259 @@
           method: 'uninstall', params: { appId: appId }
         }), '*');
         defaultApps = defaultApps.filter(function (a) { return a.id !== appId; });
-        el.remove();
+        renderAppGrid(getGridApps());
       });
       el.appendChild(delBtn);
     });
   }
 
+  function enterEditMode() {
+    editMode = true;
+    var dock = document.getElementById('dock');
+    dock.classList.add('edit-mode');
+    applyEditModeToGrid();
+  }
+
   function exitEditMode() {
     editMode = false;
+    var dock = document.getElementById('dock');
+    dock.classList.remove('edit-mode');
     pagesTrack.classList.remove('edit-mode');
     pagesTrack.querySelectorAll('.app-delete').forEach(function (el) { el.remove(); });
   }
 
+  /* Long press detection — unified for grid and dock */
+  function startLongPress(target, x, y) {
+    longPressTarget = target;
+    longPressStartPos = { x: x, y: y };
+    longPressTimer = setTimeout(function () {
+      longPressTimer = null;
+      if (!editMode) {
+        enterEditMode();
+      }
+      /* Start drag on the long-pressed element */
+      startAppDrag(longPressTarget, longPressStartPos.x, longPressStartPos.y);
+    }, 800);
+  }
+
+  function cancelLongPress() {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+  }
+
+  /* Grid long press: mouse */
+  pagesTrack.addEventListener('mousedown', function (e) {
+    var appItem = e.target.closest('.app-item');
+    if (!appItem) return;
+    startLongPress(appItem, e.clientX, e.clientY);
+  });
+  pagesTrack.addEventListener('mouseup', cancelLongPress);
+  pagesTrack.addEventListener('mouseleave', cancelLongPress);
+
+  /* Grid long press: touch */
+  pagesTrack.addEventListener('touchstart', function (e) {
+    var appItem = e.target.closest('.app-item');
+    if (!appItem) return;
+    startLongPress(appItem, e.touches[0].clientX, e.touches[0].clientY);
+  }, { passive: true });
+  pagesTrack.addEventListener('touchmove', function (e) {
+    if (longPressTimer && e.touches.length > 0) {
+      var dx = Math.abs(e.touches[0].clientX - longPressStartPos.x);
+      var dy = Math.abs(e.touches[0].clientY - longPressStartPos.y);
+      if (dx > 10 || dy > 10) cancelLongPress();
+    }
+  }, { passive: true });
+  pagesTrack.addEventListener('touchend', cancelLongPress);
+
+  /* Dock long press: mouse */
+  var dockEl = document.getElementById('dock');
+  dockEl.addEventListener('mousedown', function (e) {
+    var dockApp = e.target.closest('.dock-app');
+    if (!dockApp) return;
+    startLongPress(dockApp, e.clientX, e.clientY);
+  });
+  dockEl.addEventListener('mouseup', cancelLongPress);
+  dockEl.addEventListener('mouseleave', cancelLongPress);
+
+  /* Dock long press: touch */
+  dockEl.addEventListener('touchstart', function (e) {
+    var dockApp = e.target.closest('.dock-app');
+    if (!dockApp) return;
+    startLongPress(dockApp, e.touches[0].clientX, e.touches[0].clientY);
+  }, { passive: true });
+  dockEl.addEventListener('touchmove', function (e) {
+    if (longPressTimer && e.touches.length > 0) {
+      var dx = Math.abs(e.touches[0].clientX - longPressStartPos.x);
+      var dy = Math.abs(e.touches[0].clientY - longPressStartPos.y);
+      if (dx > 10 || dy > 10) cancelLongPress();
+    }
+  }, { passive: true });
+  dockEl.addEventListener('touchend', cancelLongPress);
+
+  /* Exit edit mode on background tap */
   document.addEventListener('click', function (e) {
-    if (editMode && !e.target.closest('.app-item') && !e.target.closest('.app-delete')) {
+    if (editMode && !appDrag.active &&
+        !e.target.closest('.app-item') && !e.target.closest('.dock-app') &&
+        !e.target.closest('.app-delete')) {
       exitEditMode();
+    }
+  });
+
+  /* ═══════════════════════════════════════════════════════
+     App Drag — drag apps between dock and grid
+     ═══════════════════════════════════════════════════════ */
+  var appDrag = {
+    active: false,
+    appId: null,
+    source: null,       /* 'grid' or 'dock' */
+    clone: null,
+    origEl: null,
+    offsetX: 0,
+    offsetY: 0
+  };
+
+  function startAppDrag(targetEl, x, y) {
+    var appId = targetEl.dataset.appId || targetEl.dataset.app;
+    if (!appId) return;
+
+    var isDock = !!targetEl.closest('#dock');
+    appDrag.active = true;
+    appDrag.appId = appId;
+    appDrag.source = isDock ? 'dock' : 'grid';
+    appDrag.origEl = targetEl;
+
+    /* Cancel any page swipe in progress */
+    drag.active = false;
+
+    /* Dim original */
+    targetEl.classList.add('app-drag-placeholder');
+
+    /* Create clone */
+    var rect = targetEl.getBoundingClientRect();
+    var clone = targetEl.cloneNode(true);
+    clone.className = (isDock ? 'dock-app' : 'app-item') + ' app-drag-clone';
+    clone.style.width = rect.width + 'px';
+    clone.style.left = rect.left + 'px';
+    clone.style.top = rect.top + 'px';
+
+    appDrag.offsetX = x - rect.left;
+    appDrag.offsetY = y - rect.top;
+
+    document.body.appendChild(clone);
+    appDrag.clone = clone;
+
+    /* Remove delete buttons from clone */
+    var delInClone = clone.querySelector('.app-delete');
+    if (delInClone) delInClone.remove();
+  }
+
+  function moveAppDrag(x, y) {
+    if (!appDrag.active || !appDrag.clone) return;
+    appDrag.clone.style.left = (x - appDrag.offsetX) + 'px';
+    appDrag.clone.style.top = (y - appDrag.offsetY) + 'px';
+
+    /* Check if over dock */
+    var dock = document.getElementById('dock');
+    var dockRect = dock.getBoundingClientRect();
+    var overDock = (x >= dockRect.left && x <= dockRect.right &&
+                   y >= dockRect.top && y <= dockRect.bottom);
+
+    if (overDock) {
+      dock.classList.add('drag-over');
+    } else {
+      dock.classList.remove('drag-over');
+    }
+  }
+
+  function endAppDrag(x, y) {
+    if (!appDrag.active) return;
+
+    var dock = document.getElementById('dock');
+    dock.classList.remove('drag-over');
+
+    var dockRect = dock.getBoundingClientRect();
+    var overDock = (x >= dockRect.left && x <= dockRect.right &&
+                   y >= dockRect.top && y <= dockRect.bottom);
+
+    var changed = false;
+
+    if (appDrag.source === 'grid' && overDock) {
+      /* Grid -> Dock: add to dock if under limit */
+      if (dockApps.length < 5) {
+        dockApps.push(appDrag.appId);
+        saveDockSettings();
+        changed = true;
+      }
+    } else if (appDrag.source === 'dock' && !overDock) {
+      /* Dock -> Grid: remove from dock if above minimum */
+      if (dockApps.length > 1) {
+        dockApps = dockApps.filter(function (id) { return id !== appDrag.appId; });
+        saveDockSettings();
+        changed = true;
+      }
+    }
+
+    /* Clean up */
+    if (appDrag.clone) {
+      if (changed) {
+        appDrag.clone.remove();
+      } else {
+        /* Animate back to original position */
+        var origRect = appDrag.origEl.getBoundingClientRect();
+        appDrag.clone.style.transition = 'left 0.25s ease, top 0.25s ease, transform 0.25s ease';
+        appDrag.clone.style.left = origRect.left + 'px';
+        appDrag.clone.style.top = origRect.top + 'px';
+        appDrag.clone.style.transform = 'scale(1)';
+        var cloneRef = appDrag.clone;
+        setTimeout(function () {
+          cloneRef.remove();
+        }, 260);
+      }
+    }
+
+    if (appDrag.origEl) {
+      appDrag.origEl.classList.remove('app-drag-placeholder');
+    }
+
+    appDrag.active = false;
+    appDrag.appId = null;
+    appDrag.source = null;
+    appDrag.clone = null;
+    appDrag.origEl = null;
+
+    if (changed) {
+      renderDock();
+      renderAppGrid(getGridApps());
+    }
+  }
+
+  /* Global mouse/touch move & end for drag */
+  document.addEventListener('mousemove', function (e) {
+    if (appDrag.active) {
+      e.preventDefault();
+      moveAppDrag(e.clientX, e.clientY);
+    }
+  });
+
+  document.addEventListener('mouseup', function (e) {
+    if (appDrag.active) {
+      endAppDrag(e.clientX, e.clientY);
+    }
+  });
+
+  document.addEventListener('touchmove', function (e) {
+    if (appDrag.active) {
+      e.preventDefault();
+      moveAppDrag(e.touches[0].clientX, e.touches[0].clientY);
+    }
+  }, { passive: false });
+
+  document.addEventListener('touchend', function (e) {
+    if (appDrag.active) {
+      var touch = e.changedTouches[0];
+      endAppDrag(touch.clientX, touch.clientY);
     }
   });
 
@@ -349,21 +655,13 @@
     ZylBridge.launch(appId);
   }
 
-  /* ─── Dock ─── */
-  document.querySelectorAll('.dock-app').forEach(function (el) {
-    el.addEventListener('click', function () {
-      var appId = el.dataset.app;
-      if (appId) launchApp(appId, el);
-    });
-  });
-
   /* ─── Search ─── */
   var searchInput = document.getElementById('search-input');
   if (searchInput) {
     searchInput.addEventListener('input', function () {
       var query = searchInput.value.toLowerCase().trim();
-      if (!query) { renderAppGrid(defaultApps); return; }
-      var filtered = defaultApps.filter(function (app) {
+      if (!query) { renderAppGrid(getGridApps()); return; }
+      var filtered = getGridApps().filter(function (app) {
         var name = zylI18n.t(app.nameKey).toLowerCase();
         return name.indexOf(query) !== -1 || app.id.toLowerCase().indexOf(query) !== -1;
       });
@@ -373,7 +671,8 @@
 
   /* ─── Re-render on locale change ─── */
   zylI18n.onLocaleChange(function () {
-    renderAppGrid(defaultApps);
+    renderDock();
+    renderAppGrid(getGridApps());
   });
 
   /* ─── Initial loading state ─── */

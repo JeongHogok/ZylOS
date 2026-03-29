@@ -1,13 +1,15 @@
 /* ──────────────────────────────────────────────────────────
  * [Clean Architecture] Presentation Layer - Style
  *
- * 역할: 홈스크린 스타일 — 앱 그리드, 독, 검색바, 페이지 인디케이터
- * 수행범위: 홈스크린 레이아웃, 아이콘 그리드, 독 바, 검색 UI 스타일링
- * 의존방향: home.js
- * SOLID: SRP — 홈스크린 시각적 표현만 담당
-
-   클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
-   실제 디바이스 구동 기준이며, mock/demo 등 하드코딩 데이터가 있어서는 안 된다
+ * Role: Home screen styles — app grid, dock, search bar, page indicator,
+ *       drag-and-drop visuals for dock/grid reordering
+ * Scope: Home screen layout, icon grid, dock bar, search UI, edit mode,
+ *        drag clone/placeholder/highlight styling
+ * Dependency: home.js
+ * SOLID: SRP — home screen visual presentation only
+ *
+ * Clean Architecture, SOLID principles, i18n rules strictly followed
+ * Built for real device runtime; no mock/demo or hardcoded data allowed
  * ────────────────────────────────────────────────────────── */
 
 * {
@@ -149,6 +151,7 @@ body {
   gap: 8px;
   cursor: pointer;
   transition: transform 0.12s ease-out, opacity 0.12s;
+  position: relative;
 }
 
 .app-item:active {
@@ -228,6 +231,7 @@ body {
   border-radius: 32px;
   border: 1px solid rgba(255, 255, 255, 0.06);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  transition: border-color 0.2s, background 0.2s;
 }
 
 .dock-app {
@@ -277,7 +281,7 @@ body {
   opacity: 0.6;
 }
 
-/* ─── 페이지 인디케이터 ─── */
+/* ─── 페이지 인디케이터 (fixed position) ─── */
 #page-indicator {
   position: fixed;
   bottom: calc(var(--safe-bottom) + var(--dock-height) + 4px);
@@ -321,13 +325,43 @@ body {
   animation: app-launch 0.4s ease-in-out forwards;
 }
 
+.dock-app.launching .dock-icon {
+  animation: app-launch 0.4s ease-in-out forwards;
+}
+
 /* ─── 편집 모드 ─── */
-.edit-mode .app-item { animation: wiggle 0.3s ease-in-out infinite alternate; position: relative; }
+.edit-mode .app-item { animation: wiggle 0.3s ease-in-out infinite alternate; }
 .edit-mode .app-item:nth-child(even) { animation-delay: 0.15s; }
+
+.edit-mode .dock-app { animation: wiggle 0.3s ease-in-out infinite alternate; }
+.edit-mode .dock-app:nth-child(even) { animation-delay: 0.15s; }
+
 @keyframes wiggle { 0% { transform: rotate(-1.5deg); } 100% { transform: rotate(1.5deg); } }
+
 .app-delete {
   position: absolute; top: -6px; left: -6px; width: 22px; height: 22px;
   background: #ef4444; color: #fff; border-radius: 50%;
   font-size: 14px; line-height: 22px; text-align: center; font-weight: 700;
   cursor: pointer; z-index: 10;
+}
+
+/* ─── Drag clone ─── */
+.app-drag-clone {
+  position: fixed;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0.85;
+  transform: scale(1.15);
+  transition: transform 0.1s;
+}
+
+/* ─── Drag placeholder ─── */
+.app-drag-placeholder {
+  opacity: 0.2;
+}
+
+/* ─── Dock highlight during drag ─── */
+#dock.drag-over {
+  border: 2px dashed #4a9eff;
+  background: rgba(74, 158, 255, 0.1);
 }
