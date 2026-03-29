@@ -497,81 +497,131 @@
     updateQsClock();
     renderQsNotifications();
     qsPanel.classList.remove('qs-hidden');
-    if (qsBackdrop) qsBackdrop.classList.add('qs-backdrop-show');
+    qsPanel.style.transform = 'translateY(0)';
+    qsPanel.style.opacity = '1';
+    qsPanel.style.pointerEvents = '';
+    if (qsBackdrop) { qsBackdrop.classList.add('qs-backdrop-show'); qsBackdrop.style.opacity = ''; }
   }
 
   function closeQsPanel() {
     if (!qsOpen) return;
     qsOpen = false;
+    qsPanel.style.transform = '';
+    qsPanel.style.opacity = '';
     qsPanel.classList.add('qs-hidden');
-    if (qsBackdrop) qsBackdrop.classList.remove('qs-backdrop-show');
+    if (qsBackdrop) { qsBackdrop.classList.remove('qs-backdrop-show'); qsBackdrop.style.opacity = ''; }
   }
 
-  /* 상태바/패널 드래그 — 아래로 열기, 위로 닫기 */
-  var qsDrag = { active: false, startY: 0, source: null, moved: false };
+  /* ═══ QS Panel Drag — real-time feedback (same pattern as lockscreen) ═══ */
+  var qsDrag = { active: false, startY: 0, currentY: 0, source: null };
+  var QS_DRAG_THRESHOLD = 40;
+  var panelHeight = 0;
 
-  function qsDragStart(y, source) {
+  function getQsClientY(e) {
+    if (e.touches) return e.touches[0].clientY;
+    if (e.changedTouches) return e.changedTouches[0].clientY;
+    return e.clientY || 0;
+  }
+
+  function qsStartDrag(y, source) {
+    if (isLocked()) return;
     qsDrag.active = true;
     qsDrag.startY = y;
+    qsDrag.currentY = y;
     qsDrag.source = source;
-    qsDrag.moved = false;
+    panelHeight = qsPanel.offsetHeight || 400;
+    qsPanel.style.transition = 'none';
+    if (qsBackdrop) qsBackdrop.style.transition = 'none';
   }
 
-  function qsDragEnd(y) {
+  function qsMoveDrag(y) {
+    if (!qsDrag.active) return;
+    qsDrag.currentY = y;
+    var dy = y - qsDrag.startY;
+
+    if (qsDrag.source === 'statusbar' && !qsOpen) {
+      /* Pulling down from statusbar → reveal panel */
+      var progress = Math.max(0, Math.min(dy / panelHeight, 1));
+      var translateY = -panelHeight + (panelHeight * progress);
+      qsPanel.classList.remove('qs-hidden');
+      qsPanel.style.transform = 'translateY(' + translateY + 'px)';
+      qsPanel.style.opacity = String(progress);
+      qsPanel.style.pointerEvents = progress > 0.5 ? 'auto' : 'none';
+      if (qsBackdrop) {
+        qsBackdrop.style.opacity = String(progress * 0.6);
+        qsBackdrop.style.pointerEvents = progress > 0.3 ? 'auto' : 'none';
+      }
+    } else if (qsDrag.source === 'panel' || (qsDrag.source === 'statusbar' && qsOpen)) {
+      /* Dragging up from open panel → close */
+      var upDy = Math.min(0, dy);
+      var closeProgress = Math.min(Math.abs(upDy) / panelHeight, 1);
+      qsPanel.style.transform = 'translateY(' + upDy + 'px)';
+      qsPanel.style.opacity = String(1 - closeProgress);
+      if (qsBackdrop) {
+        qsBackdrop.style.opacity = String((1 - closeProgress) * 0.6);
+      }
+    }
+  }
+
+  function qsEndDrag() {
     if (!qsDrag.active) return;
     qsDrag.active = false;
-    var dy = y - qsDrag.startY;
-    var source = qsDrag.source;
+    var dy = qsDrag.currentY - qsDrag.startY;
 
-    /* source 초기화 — click 핸들러 이전에 처리됨 */
-    /* 주의: click은 mouseup 직후 동기적으로 발생하므로 source를 click에서 참조 후 초기화 */
+    /* Restore CSS transitions for snap animation */
+    qsPanel.style.transition = '';
+    if (qsBackdrop) qsBackdrop.style.transition = '';
+    qsPanel.style.pointerEvents = '';
+    if (qsBackdrop) qsBackdrop.style.pointerEvents = '';
 
-    if (source === 'statusbar' && dy > 25) {
-      openQsPanel();
-      qsDrag.source = null; /* click 토글 방지 */
-    } else if (source === 'panel' && dy < -25) {
-      closeQsPanel();
-    } else if (source === 'statusbar' && dy < -25 && qsOpen) {
-      closeQsPanel();
-      qsDrag.source = null;
+    if (qsDrag.source === 'statusbar' && !qsOpen) {
+      if (dy > QS_DRAG_THRESHOLD) {
+        openQsPanel();
+      } else {
+        /* Snap back closed */
+        qsPanel.style.transform = '';
+        qsPanel.style.opacity = '';
+        qsPanel.classList.add('qs-hidden');
+        if (qsBackdrop) { qsBackdrop.style.opacity = ''; qsBackdrop.classList.remove('qs-backdrop-show'); }
+      }
+    } else if (qsDrag.source === 'panel' || (qsDrag.source === 'statusbar' && qsOpen)) {
+      if (dy < -QS_DRAG_THRESHOLD) {
+        closeQsPanel();
+      } else {
+        /* Snap back open */
+        qsPanel.style.transform = 'translateY(0)';
+        qsPanel.style.opacity = '1';
+      }
     }
   }
 
-  /* 상태바: 클릭으로 토글 + 드래그도 지원 */
-  statusbar.addEventListener('mousedown', function (e) { qsDragStart(e.clientY, 'statusbar'); });
-  statusbar.addEventListener('touchstart', function (e) { qsDragStart(e.touches[0].clientY, 'statusbar'); }, { passive: true });
-  statusbar.addEventListener('click', function (e) {
-    /* 드래그로 이미 열었으면 무시, 아니면 토글 */
-    if (!qsDrag.moved) {
+  /* Statusbar: drag down to open, click to toggle */
+  statusbar.addEventListener('mousedown', function (e) { qsStartDrag(e.clientY, 'statusbar'); });
+  statusbar.addEventListener('touchstart', function (e) { qsStartDrag(getQsClientY(e), 'statusbar'); }, { passive: true });
+
+  statusbar.addEventListener('click', function () {
+    /* Only toggle if drag distance was negligible */
+    var dragDist = Math.abs(qsDrag.currentY - qsDrag.startY);
+    if (dragDist < 5) {
       if (qsOpen) closeQsPanel(); else openQsPanel();
     }
-    qsDrag.moved = false;
-    qsDrag.source = null;
   });
 
-  /* 패널 자체 드래그 (위로 올려서 닫기) */
+  /* Panel: drag up to close */
   qsPanel.addEventListener('mousedown', function (e) {
-    if (e.target.closest('button, input, .qs-tile')) return;
-    qsDragStart(e.clientY, 'panel');
+    if (e.target.closest('button, input, .qs-tile, .qs-notif-card')) return;
+    qsStartDrag(e.clientY, 'panel');
   });
   qsPanel.addEventListener('touchstart', function (e) {
-    if (e.target.closest('button, input, .qs-tile')) return;
-    qsDragStart(e.touches[0].clientY, 'panel');
+    if (e.target.closest('button, input, .qs-tile, .qs-notif-card')) return;
+    qsStartDrag(getQsClientY(e), 'panel');
   }, { passive: true });
 
-  /* 드래그 이동 감지 */
-  document.addEventListener('mousemove', function (e) {
-    if (qsDrag.active) qsDrag.moved = true;
-  });
-  document.addEventListener('touchmove', function () {
-    if (qsDrag.active) qsDrag.moved = true;
-  });
-
-  /* 공통 드래그 종료 */
-  document.addEventListener('mouseup', function (e) { qsDragEnd(e.clientY || 0); });
-  document.addEventListener('touchend', function (e) {
-    qsDragEnd(e.changedTouches ? e.changedTouches[0].clientY : 0);
-  });
+  /* Global move/end listeners */
+  document.addEventListener('mousemove', function (e) { qsMoveDrag(e.clientY); });
+  document.addEventListener('touchmove', function (e) { qsMoveDrag(getQsClientY(e)); }, { passive: true });
+  document.addEventListener('mouseup', function () { qsEndDrag(); });
+  document.addEventListener('touchend', function () { qsEndDrag(); });
 
   /* 퀵설정 타일 토글 + 서비스 호출 */
   document.querySelectorAll('.qs-tile').forEach(function (tile) {
