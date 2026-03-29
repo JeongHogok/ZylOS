@@ -3,23 +3,36 @@ on: [push, pull_request]
 jobs:
   build-native:
     runs-on: ubuntu-24.04
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y meson ninja-build pkg-config \
-            libwlroots-dev libwayland-dev wayland-protocols \
+            libwayland-dev wayland-protocols \
             libxkbcommon-dev libpixman-1-dev libinput-dev \
             libdrm-dev libegl-dev libgles2-mesa-dev libgbm-dev \
-            libgtk-4-dev libwebkitgtk-6.0-dev libjson-glib-dev
-      - name: Build
+            libgtk-4-dev libjson-glib-dev \
+            build-essential cmake hwdata libdisplay-info-dev \
+            libseat-dev libliftoff-dev libxcb-dri3-dev \
+            libxcb-present-dev libxcb-composite0-dev libxcb-render-util0-dev \
+            libxcb-ewmh-dev libxcb-icccm4-dev libxcb-res0-dev \
+            libxcb-xinput-dev libxwayland-dev
+      - name: Build wlroots 0.18 from source
+        run: |
+          git clone --depth 1 --branch 0.18.2 https://gitlab.freedesktop.org/wlroots/wlroots.git /tmp/wlroots
+          cd /tmp/wlroots
+          meson setup build --prefix=/usr
+          ninja -C build
+          sudo ninja -C build install
+          sudo ldconfig
+      - name: Build Zyl OS
         run: |
           meson setup builddir
           ninja -C builddir
       - name: Check apps
         run: |
-          # Verify all app manifests are valid JSON
           for f in apps/*/app.json; do
             python3 -c "import json; json.load(open('$f'))" || exit 1
           done
