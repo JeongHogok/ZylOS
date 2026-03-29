@@ -1,9 +1,14 @@
 #!/bin/bash
 # ──────────────────────────────────────────────────────────
-# 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
-# 에뮬레이터는 실제 디바이스 구동 환경 제공이 목적이며, OS 이미지 영역의 콘텐츠를 포함하지 않는다
-# OS 이미지에서 앱을 ui/apps/로 배포 (dev mode 전용)
-# cargo tauri dev의 beforeDevCommand로 실행됨
+# [Clean Architecture] Infrastructure Layer - Script
+#
+# Role: Deploy OS image apps to ui/apps/ for dev mode
+# Scope: Mount OS image or fallback to project apps/, sync to ui/apps/
+# Dependency: hdiutil (macOS) or udisksctl (Linux)
+# SOLID: SRP — app deployment only
+#
+# Clean Architecture, SOLID principles, i18n rules strictly followed
+# The emulator provides a real device runtime environment and must not contain OS image content
 # ──────────────────────────────────────────────────────────
 
 set -e
@@ -11,20 +16,46 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 DST="$PROJECT_DIR/ui/apps"
+SRC_APPS="$PROJECT_DIR/../apps"
 
-# 플랫폼별 데이터 디렉토리
+# Platform-specific data directory
 case "$(uname)" in
   Darwin) IMG_DIR="$HOME/Library/Application Support/zyl-emulator/os-images" ;;
   *)      IMG_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/zyl-emulator/os-images" ;;
 esac
 
-# 이미 배포된 앱이 있으면 스킵
-if [ -d "$DST" ] && [ "$(ls -A "$DST" 2>/dev/null)" ]; then
-    echo "[deploy-apps] Apps already deployed, skipping"
+# Always sync from source to ensure latest files are deployed.
+# In dev mode, project apps/ is the authoritative source.
+# In production, the OS image is mounted at boot by the Rust backend.
+
+sync_from_source() {
+    local src="$1"
+    if [ ! -d "$src" ]; then
+        echo "[deploy-apps] Source not found: $src"
+        return 1
+    fi
+    mkdir -p "$DST"
+    # Use rsync if available (preserves timestamps, handles deletes)
+    if command -v rsync &>/dev/null; then
+        rsync -a --delete "$src/" "$DST/"
+        echo "[deploy-apps] Synced via rsync from $src"
+    else
+        # Fallback: remove stale, copy fresh
+        rm -rf "$DST"
+        cp -r "$src" "$DST"
+        echo "[deploy-apps] Copied from $src"
+    fi
+    return 0
+}
+
+# Strategy 1: Use project source apps/ directly (fastest for dev)
+if [ -d "$SRC_APPS" ]; then
+    sync_from_source "$SRC_APPS"
+    echo "[deploy-apps] Done (from project source)"
     exit 0
 fi
 
-# 기본 OS 이미지 찾기
+# Strategy 2: Mount OS image and extract apps/
 IMG=""
 for f in "$IMG_DIR"/*.img; do
     if [ -f "$f" ]; then
@@ -34,12 +65,7 @@ for f in "$IMG_DIR"/*.img; do
 done
 
 if [ -z "$IMG" ]; then
-    echo "[deploy-apps] No OS image found in $IMG_DIR"
-    # 폴백: 프로젝트 루트의 apps/ 에서 복사
-    if [ -d "$PROJECT_DIR/../apps" ]; then
-        cp -r "$PROJECT_DIR/../apps" "$DST"
-        echo "[deploy-apps] Fallback: copied from project apps/"
-    fi
+    echo "[deploy-apps] No OS image found in $IMG_DIR and no project apps/"
     exit 0
 fi
 
@@ -51,9 +77,7 @@ if command -v hdiutil &>/dev/null; then
     MOUNT_POINT=$(echo "$MOUNT_OUTPUT" | grep "/Volumes/" | awk -F'\t' '{print $NF}' | head -1 | xargs)
 
     if [ -d "$MOUNT_POINT/apps" ]; then
-        mkdir -p "$DST"
-        cp -r "$MOUNT_POINT/apps/"* "$DST/"
-        echo "[deploy-apps] Deployed from $MOUNT_POINT/apps/"
+        sync_from_source "$MOUNT_POINT/apps"
     fi
 
     hdiutil detach "$MOUNT_POINT" 2>/dev/null
@@ -67,9 +91,7 @@ elif command -v udisksctl &>/dev/null; then
         MOUNT_POINT=$(echo "$MOUNT_OUTPUT" | grep -o '/media/[^ ]*')
 
         if [ -d "$MOUNT_POINT/apps" ]; then
-            mkdir -p "$DST"
-            cp -r "$MOUNT_POINT/apps/"* "$DST/"
-            echo "[deploy-apps] Deployed from $MOUNT_POINT/apps/"
+            sync_from_source "$MOUNT_POINT/apps"
         fi
 
         udisksctl unmount -b "$LOOP_DEV" --no-user-interaction 2>/dev/null
