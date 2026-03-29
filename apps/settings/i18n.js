@@ -45,7 +45,18 @@
     'settings.bt_off': '\uBE14\uB8E8\uD22C\uC2A4\uAC00 \uAEBC\uC838 \uC788\uC2B5\uB2C8\uB2E4',
     'settings.scanning': '\uAC80\uC0C9 \uC911...',
     'settings.wifi_scan': 'Wi-Fi \uAC80\uC0C9',
-    'settings.bt_scan': '\uBE14\uB8E8\uD22C\uC2A4 \uAC80\uC0C9'
+    'settings.bt_scan': '\uBE14\uB8E8\uD22C\uC2A4 \uAC80\uC0C9',
+    'settings.font_small': '\uC791\uAC8C',
+    'settings.font_medium': '\uBCF4\uD1B5',
+    'settings.font_large': '\uD06C\uAC8C',
+    'settings.paired': '\uD398\uC5B4\uB9C1\uB428',
+    'settings.pin_changed': 'PIN\uC774 \uBCC0\uACBD\uB418\uC5C8\uC2B5\uB2C8\uB2E4',
+    'settings.pin_format': 'PIN\uC740 4\uC790\uB9AC \uC22B\uC790\uC5EC\uC57C \uD569\uB2C8\uB2E4',
+    'settings.wrong_pin': '\uC798\uBABB\uB41C PIN',
+    'settings.ram': 'RAM',
+    'settings.soc': '\uD504\uB85C\uC138\uC11C',
+    'settings.storage_used': '\uC0AC\uC6A9 \uC911',
+    'settings.storage_available': '\uC0AC\uC6A9 \uAC00\uB2A5'
   });
 
   zylI18n.addTranslations('en', {
@@ -84,7 +95,18 @@
     'settings.bt_off': 'Bluetooth is off',
     'settings.scanning': 'Scanning...',
     'settings.wifi_scan': 'Scan Wi-Fi',
-    'settings.bt_scan': 'Scan Bluetooth'
+    'settings.bt_scan': 'Scan Bluetooth',
+    'settings.font_small': 'Small',
+    'settings.font_medium': 'Medium',
+    'settings.font_large': 'Large',
+    'settings.paired': 'Paired',
+    'settings.pin_changed': 'PIN changed',
+    'settings.pin_format': 'PIN must be 4 digits',
+    'settings.wrong_pin': 'Wrong PIN',
+    'settings.ram': 'RAM',
+    'settings.soc': 'Processor',
+    'settings.storage_used': 'Used',
+    'settings.storage_available': 'Available'
   });
 
   zylI18n.addTranslations('ja', {
@@ -123,7 +145,18 @@
     'settings.bt_off': 'Bluetooth\u304C\u30AA\u30D5\u3067\u3059',
     'settings.scanning': '\u30B9\u30AD\u30E3\u30F3\u4E2D...',
     'settings.wifi_scan': 'Wi-Fi\u30B9\u30AD\u30E3\u30F3',
-    'settings.bt_scan': 'Bluetooth\u30B9\u30AD\u30E3\u30F3'
+    'settings.bt_scan': 'Bluetooth\u30B9\u30AD\u30E3\u30F3',
+    'settings.font_small': '\u5C0F',
+    'settings.font_medium': '\u4E2D',
+    'settings.font_large': '\u5927',
+    'settings.paired': '\u30DA\u30A2\u30EA\u30F3\u30B0\u6E08\u307F',
+    'settings.pin_changed': 'PIN\u304C\u5909\u66F4\u3055\u308C\u307E\u3057\u305F',
+    'settings.pin_format': 'PIN\u306F4\u6841\u306E\u6570\u5B57\u3067\u3059',
+    'settings.wrong_pin': 'PIN\u304C\u9055\u3044\u307E\u3059',
+    'settings.ram': 'RAM',
+    'settings.soc': '\u30D7\u30ED\u30BB\u30C3\u30B5',
+    'settings.storage_used': '\u4F7F\u7528\u6E08\u307F',
+    'settings.storage_available': '\u5229\u7528\u53EF\u80FD'
   });
 
   zylI18n.addTranslations('zh', {
@@ -162,7 +195,18 @@
     'settings.bt_off': '\u84DD\u7259\u5DF2\u5173\u95ED',
     'settings.scanning': '\u626B\u63CF\u4E2D...',
     'settings.wifi_scan': '\u626B\u63CFWi-Fi',
-    'settings.bt_scan': '\u626B\u63CF\u84DD\u7259'
+    'settings.bt_scan': '\u626B\u63CF\u84DD\u7259',
+    'settings.font_small': '\u5C0F',
+    'settings.font_medium': '\u4E2D',
+    'settings.font_large': '\u5927',
+    'settings.paired': '\u5DF2\u914D\u5BF9',
+    'settings.pin_changed': 'PIN\u5DF2\u66F4\u6539',
+    'settings.pin_format': 'PIN\u5FC5\u987B\u662F4\u4F4D\u6570\u5B57',
+    'settings.wrong_pin': 'PIN\u9519\u8BEF',
+    'settings.ram': 'RAM',
+    'settings.soc': '\u5904\u7406\u5668',
+    'settings.storage_used': '\u5DF2\u4F7F\u7528',
+    'settings.storage_available': '\u53EF\u7528'
   });
 
   zylI18n.addTranslations('es', {
@@ -201,6 +245,17 @@
     'settings.bt_off': 'Bluetooth desactivado',
     'settings.scanning': 'Escaneando...',
     'settings.wifi_scan': 'Buscar Wi-Fi',
-    'settings.bt_scan': 'Buscar Bluetooth'
+    'settings.bt_scan': 'Buscar Bluetooth',
+    'settings.font_small': 'Peque\u00F1o',
+    'settings.font_medium': 'Mediano',
+    'settings.font_large': 'Grande',
+    'settings.paired': 'Emparejado',
+    'settings.pin_changed': 'PIN cambiado',
+    'settings.pin_format': 'El PIN debe ser de 4 d\u00EDgitos',
+    'settings.wrong_pin': 'PIN incorrecto',
+    'settings.ram': 'RAM',
+    'settings.soc': 'Procesador',
+    'settings.storage_used': 'Usado',
+    'settings.storage_available': 'Disponible'
   });
 })();

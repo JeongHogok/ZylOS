@@ -449,7 +449,8 @@
   function updateQsClock() {
     var now = new Date();
     if (qsTime) qsTime.textContent = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
-    if (qsDate) qsDate.textContent = now.toLocaleDateString('en', { month: 'long', day: 'numeric', weekday: 'long' });
+    var emuLocale = (typeof ZylEmuI18n !== 'undefined') ? ZylEmuI18n.getLocale() : 'en';
+    if (qsDate) qsDate.textContent = now.toLocaleDateString(emuLocale, { month: 'long', day: 'numeric', weekday: 'long' });
   }
 
   var qsBackdrop = document.getElementById('qs-backdrop');
