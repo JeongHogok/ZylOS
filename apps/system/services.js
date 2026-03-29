@@ -736,6 +736,22 @@ window.ZylSystemServices = (function () {
         } catch (e) { /* Web Audio unavailable */ }
         return Promise.resolve(true);
       },
+      playKeyClick: function () {
+        if (audioState.silentMode) return Promise.resolve(false);
+        try {
+          var ctx = new (window.AudioContext || window.webkitAudioContext)();
+          var osc = ctx.createOscillator();
+          var g = ctx.createGain();
+          g.gain.value = 0.05;
+          osc.type = 'sine';
+          osc.frequency.value = 800;
+          osc.connect(g);
+          g.connect(ctx.destination);
+          osc.start();
+          osc.stop(ctx.currentTime + 0.03);
+        } catch (e) { /* Web Audio unavailable */ }
+        return Promise.resolve(true);
+      },
       vibrate: function (p) {
         if (!audioState.vibration) return Promise.resolve(false);
         var pattern = p.pattern || [200];

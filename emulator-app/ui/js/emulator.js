@@ -204,9 +204,9 @@
         iframeDoc.head.appendChild(style);
       } catch (e) { /* cross-origin 시 무시 */ }
       setTimeout(function () {
-        /* Inject saved locale into every app */
+        /* Inject saved locale into every app — always send, even if 'en' */
         var savedLocale = ZylEmuI18n.getLocale();
-        if (savedLocale && savedLocale !== 'en') {
+        if (savedLocale) {
           broadcastToCurrentApp('system.setLocale', { locale: savedLocale });
         }
 
@@ -1150,28 +1150,16 @@
     ZylKeyboard.init(kbContainer, function (key) {
       /* Forward key to current app iframe */
       broadcastToCurrentApp('input.key', { key: key });
-      /* Keypress feedback — respects keyboard settings AND system silent mode */
-      try {
-        var kbSoundOn = ZylKeyboard.getSoundEnabled ? ZylKeyboard.getSoundEnabled() : true;
-        var kbVibOn = ZylKeyboard.getVibrationEnabled ? ZylKeyboard.getVibrationEnabled() : true;
-        /* System silent mode overrides keyboard sound */
-        if (_systemSilentMode) kbSoundOn = false;
-        if (kbSoundOn) {
-          var ctx = new (window.AudioContext || window.webkitAudioContext)();
-          var osc = ctx.createOscillator();
-          var g = ctx.createGain();
-          g.gain.value = 0.05;
-          osc.type = 'sine';
-          osc.frequency.value = 800;
-          osc.connect(g);
-          g.connect(ctx.destination);
-          osc.start();
-          osc.stop(ctx.currentTime + 0.03);
-        }
-        if (kbVibOn && navigator.vibrate) {
-          navigator.vibrate(8);
-        }
-      } catch (e) { /* Web Audio unavailable */ }
+      /* Keypress feedback — ALL through audio service (clean architecture).
+         The service handles silentMode check internally. */
+      var kbSoundOn = ZylKeyboard.getSoundEnabled ? ZylKeyboard.getSoundEnabled() : true;
+      var kbVibOn = ZylKeyboard.getVibrationEnabled ? ZylKeyboard.getVibrationEnabled() : true;
+      if (kbSoundOn) {
+        ZylServices.handleRequest('audio', 'playKeyClick', {});
+      }
+      if (kbVibOn) {
+        ZylServices.handleRequest('audio', 'vibrate', { pattern: [8] });
+      }
     });
 
     /* Detect input focus inside app iframe */
