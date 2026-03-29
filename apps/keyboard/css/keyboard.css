@@ -14,18 +14,20 @@
    bottom offset varies by nav mode (set via JS data attribute). */
 .zyl-keyboard {
   position: absolute;
-  bottom: 0;
   left: 0;
   right: 0;
   z-index: 130;
   background: #1a1a2e;
   padding: 6px 4px 8px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
-  transform: translateY(100%);
-  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s 0.25s;
   will-change: transform;
   -webkit-user-select: none;
   user-select: none;
+  /* Hidden by default: pushed fully below screen */
+  bottom: 0;
+  transform: translateY(100%);
+  visibility: hidden;
 }
 
 /* Nav-mode offsets: keyboard sits above the navigation bar */
@@ -35,6 +37,8 @@
 
 .zyl-keyboard.visible {
   transform: translateY(0);
+  visibility: visible;
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s 0s;
 }
 
 /* ─── Row Layout ─── */
