@@ -21,7 +21,7 @@
 :root {
   --safe-top: 36px;
   --safe-bottom: 24px;
-  --grid-cols: 3;
+  --grid-cols: 4;
   --grid-gap: 20px;
   --icon-size: 60px;
   --icon-radius: 16px;

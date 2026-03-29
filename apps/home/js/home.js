@@ -94,7 +94,7 @@
   var pagesTrack = document.getElementById('app-pages-track');
   var pageIndicator = document.getElementById('page-indicator');
   var viewport = document.getElementById('app-pages-viewport');
-  var APPS_PER_PAGE = 6; /* 3 columns x 2 rows — enables multi-page with 12 apps */
+  var APPS_PER_PAGE = 16; /* 4 columns x 4 rows */
   var currentPage = 0;
   var totalPages = 1;
 
