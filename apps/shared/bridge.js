@@ -251,6 +251,17 @@ var ZylBridge = (function () {
         focused.dispatchEvent(new Event('input', { bubbles: true }));
       }
     }
+
+    /* Keyboard inset management: OS adjusts layout when keyboard shows/hides */
+    if (msg.type === 'keyboard.show' && msg.data) {
+      var kbHeight = parseInt(msg.data.height, 10) || 0;
+      document.documentElement.style.setProperty('--keyboard-height', kbHeight + 'px');
+      document.body.classList.add('keyboard-visible');
+    }
+    if (msg.type === 'keyboard.hide') {
+      document.documentElement.style.setProperty('--keyboard-height', '0px');
+      document.body.classList.remove('keyboard-visible');
+    }
   });
 
   /* ─── Public API ─── */

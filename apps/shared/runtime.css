@@ -50,3 +50,16 @@ html, body {
 * {
   -webkit-tap-highlight-color: transparent;
 }
+
+/* ─── Keyboard inset — OS adjusts body padding when keyboard is visible ─── */
+:root {
+  --keyboard-height: 0px;
+}
+body.keyboard-visible {
+  padding-bottom: var(--keyboard-height) !important;
+}
+/* Elements pinned to bottom should respect keyboard inset */
+body.keyboard-visible [style*="position: fixed"][style*="bottom"],
+body.keyboard-visible [style*="position:fixed"][style*="bottom"] {
+  bottom: var(--keyboard-height) !important;
+}

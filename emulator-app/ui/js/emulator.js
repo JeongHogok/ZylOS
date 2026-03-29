@@ -1125,9 +1125,16 @@
         var inputType = active ? (active.type || '').toLowerCase() : '';
         var excludeTypes = ['checkbox', 'radio', 'range', 'file', 'color', 'hidden'];
         if (isInput && excludeTypes.indexOf(inputType) === -1) {
-          if (!ZylKeyboard.isVisible()) ZylKeyboard.show();
+          if (!ZylKeyboard.isVisible()) {
+            ZylKeyboard.show();
+            var kbH = kbContainer.offsetHeight || 0;
+            broadcastToCurrentApp('keyboard.show', { height: kbH });
+          }
         } else {
-          if (ZylKeyboard.isVisible()) ZylKeyboard.hide();
+          if (ZylKeyboard.isVisible()) {
+            ZylKeyboard.hide();
+            broadcastToCurrentApp('keyboard.hide', {});
+          }
         }
       } catch (e) {
         if (ZylKeyboard.isVisible()) ZylKeyboard.hide();
