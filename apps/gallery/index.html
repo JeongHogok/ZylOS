@@ -11,6 +11,27 @@
   <div id="photo-grid"></div>
   <div id="viewer" class="hidden">
     <img id="viewer-img" src="">
+    <!-- 비디오 플레이어 (동적 생성 시 컨트롤 영역) -->
+    <div id="video-controls" class="hidden">
+      <div id="vc-progress-bar">
+        <div id="vc-progress-fill"></div>
+        <input type="range" id="vc-seek" min="0" max="100" value="0">
+      </div>
+      <div id="vc-buttons">
+        <button id="vc-skip-back" title="-10s">⏪</button>
+        <button id="vc-play">▶</button>
+        <button id="vc-skip-fwd" title="+10s">⏩</button>
+        <span id="vc-time">0:00 / 0:00</span>
+        <select id="vc-speed">
+          <option value="0.5">0.5x</option>
+          <option value="0.75">0.75x</option>
+          <option value="1" selected>1x</option>
+          <option value="1.25">1.25x</option>
+          <option value="1.5">1.5x</option>
+          <option value="2">2x</option>
+        </select>
+      </div>
+    </div>
     <button id="viewer-close">&times;</button>
   </div>
   <script src="../shared/bridge.js"></script>

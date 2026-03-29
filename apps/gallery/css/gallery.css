@@ -18,4 +18,16 @@ body { font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#0a0a
 .photo-thumb:hover { background:#252540; }
 #viewer { position:fixed; inset:0; background:rgba(0,0,0,0.95); display:flex; align-items:center; justify-content:center; z-index:100; }
 #viewer-img { max-width:90%; max-height:90%; object-fit:contain; }
-#viewer-close { position:absolute; top:16px; right:16px; background:none; border:none; color:#fff; font-size:32px; cursor:pointer; }
+#viewer-close { position:absolute; top:16px; right:16px; background:none; border:none; color:#fff; font-size:32px; cursor:pointer; z-index:10; }
+.video-badge { position:absolute; width:32px; height:32px; background:rgba(0,0,0,0.6); border-radius:50%; display:flex; align-items:center; justify-content:center; color:#fff; font-size:14px; z-index:2; }
+.thumb-label { position:absolute; bottom:4px; left:4px; right:4px; font-size:9px; color:#aaa; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* ── 비디오 플레이어 컨트롤 ── */
+#video-controls { position:absolute; bottom:0; left:0; right:0; background:linear-gradient(transparent,rgba(0,0,0,0.85)); padding:12px 16px 16px; }
+#vc-progress-bar { position:relative; height:4px; background:rgba(255,255,255,0.2); border-radius:2px; margin-bottom:10px; }
+#vc-progress-fill { height:100%; background:#6366f1; border-radius:2px; width:0%; transition:width 0.1s; }
+#vc-seek { position:absolute; inset:0; width:100%; opacity:0; cursor:pointer; margin:0; height:20px; top:-8px; }
+#vc-buttons { display:flex; align-items:center; gap:12px; }
+#vc-buttons button { background:none; border:none; color:#fff; font-size:18px; cursor:pointer; padding:4px; }
+#vc-play { font-size:24px; }
+#vc-time { flex:1; font-size:12px; color:#aaa; }
+#vc-speed { background:#252535; border:1px solid #333; color:#fff; border-radius:6px; padding:4px 8px; font-size:12px; cursor:pointer; }
