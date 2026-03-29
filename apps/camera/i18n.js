@@ -17,6 +17,8 @@
     'camera.portrait': '\uC778\uBB3C',
     'camera.pano': '\uD30C\uB178\uB77C\uB9C8',
     'camera.flash_off': '\uD50C\uB798\uC2DC \uB044\uAE30',
+    'camera.flash_on': '\uCF1C\uAE30',
+    'camera.flash_auto': '\uC790\uB3D9',
     'camera.timer_off': '\uD0C0\uC774\uBA38 \uB044\uAE30',
     'camera.retake': '\uB2E4\uC2DC \uCC0D\uAE30',
     'camera.save': '\uC800\uC7A5'
@@ -30,6 +32,8 @@
     'camera.portrait': 'Portrait',
     'camera.pano': 'Pano',
     'camera.flash_off': 'Flash Off',
+    'camera.flash_on': 'On',
+    'camera.flash_auto': 'Auto',
     'camera.timer_off': 'Timer Off',
     'camera.retake': 'Retake',
     'camera.save': 'Save'
@@ -43,6 +47,8 @@
     'camera.portrait': '\u30DD\u30FC\u30C8\u30EC\u30FC\u30C8',
     'camera.pano': '\u30D1\u30CE\u30E9\u30DE',
     'camera.flash_off': '\u30D5\u30E9\u30C3\u30B7\u30E5\u30AA\u30D5',
+    'camera.flash_on': '\u30AA\u30F3',
+    'camera.flash_auto': '\u81EA\u52D5',
     'camera.timer_off': '\u30BF\u30A4\u30DE\u30FC\u30AA\u30D5',
     'camera.retake': '\u64AE\u308A\u76F4\u3057',
     'camera.save': '\u4FDD\u5B58'
@@ -56,6 +62,8 @@
     'camera.portrait': '\u4EBA\u50CF',
     'camera.pano': '\u5168\u666F',
     'camera.flash_off': '\u5173\u95ED\u95EA\u5149\u706F',
+    'camera.flash_on': '\u5F00',
+    'camera.flash_auto': '\u81EA\u52A8',
     'camera.timer_off': '\u5173\u95ED\u5B9A\u65F6\u5668',
     'camera.retake': '\u91CD\u62CD',
     'camera.save': '\u4FDD\u5B58'
@@ -69,6 +77,8 @@
     'camera.portrait': 'Retrato',
     'camera.pano': 'Panor\u00E1mica',
     'camera.flash_off': 'Flash apagado',
+    'camera.flash_on': 'Encendido',
+    'camera.flash_auto': 'Auto',
     'camera.timer_off': 'Temporizador apagado',
     'camera.retake': 'Repetir',
     'camera.save': 'Guardar'

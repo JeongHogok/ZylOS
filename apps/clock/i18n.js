@@ -40,6 +40,9 @@
     'clock.day_thu': '\uBAA9',
     'clock.day_fri': '\uAE08',
     'clock.day_sat': '\uD1A0',
+    'clock.every_day': '\uB9E4\uC77C',
+    'clock.once': '\uD55C \uBC88',
+    'clock.pause': '\uC77C\uC2DC\uC815\uC9C0',
     'clock.hours': '\uC2DC',
     'clock.minutes': '\uBD84',
     'clock.seconds': '\uCD08'
@@ -76,6 +79,9 @@
     'clock.day_thu': 'Thu',
     'clock.day_fri': 'Fri',
     'clock.day_sat': 'Sat',
+    'clock.every_day': 'Every day',
+    'clock.once': 'Once',
+    'clock.pause': 'Pause',
     'clock.hours': 'h',
     'clock.minutes': 'm',
     'clock.seconds': 's'
@@ -112,6 +118,9 @@
     'clock.day_thu': '\u6728',
     'clock.day_fri': '\u91D1',
     'clock.day_sat': '\u571F',
+    'clock.every_day': '\u6BCE\u65E5',
+    'clock.once': '\u4E00\u56DE',
+    'clock.pause': '\u4E00\u6642\u505C\u6B62',
     'clock.hours': '\u6642',
     'clock.minutes': '\u5206',
     'clock.seconds': '\u79D2'
@@ -148,6 +157,9 @@
     'clock.day_thu': '\u56DB',
     'clock.day_fri': '\u4E94',
     'clock.day_sat': '\u516D',
+    'clock.every_day': '\u6BCF\u5929',
+    'clock.once': '\u4E00\u6B21',
+    'clock.pause': '\u6682\u505C',
     'clock.hours': '\u65F6',
     'clock.minutes': '\u5206',
     'clock.seconds': '\u79D2'
@@ -184,6 +196,9 @@
     'clock.day_thu': 'Jue',
     'clock.day_fri': 'Vie',
     'clock.day_sat': 'S\u00E1b',
+    'clock.every_day': 'Todos los d\u00EDas',
+    'clock.once': 'Una vez',
+    'clock.pause': 'Pausa',
     'clock.hours': 'h',
     'clock.minutes': 'm',
     'clock.seconds': 's'

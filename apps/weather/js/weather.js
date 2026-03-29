@@ -31,15 +31,15 @@
 
   /* ─── Request location ─── */
   function requestLocation() {
-    if (locationName) locationName.textContent = 'Loading...';
+    if (locationName) locationName.textContent = zylI18n.t('weather.loading');
     window.parent.postMessage(JSON.stringify({
       type: 'service.request', service: 'location', method: 'getLastKnown'
     }), '*');
 
     /* Timeout: if no response in 8 seconds */
     locationTimeout = setTimeout(function () {
-      if (locationName && locationName.textContent === 'Loading...') {
-        locationName.textContent = 'Location unavailable';
+      if (locationName && locationName.textContent === zylI18n.t('weather.loading')) {
+        locationName.textContent = zylI18n.t('weather.location_unavailable');
       }
     }, 8000);
   }

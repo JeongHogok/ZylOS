@@ -177,7 +177,7 @@
   btnFlash.addEventListener('click', function () {
     var i = flashModes.indexOf(state.flash);
     state.flash = flashModes[(i + 1) % 3];
-    btnFlash.querySelector('.btn-label').textContent = state.flash === 'off' ? 'Off' : state.flash === 'on' ? 'On' : 'Auto';
+    btnFlash.querySelector('.btn-label').textContent = state.flash === 'off' ? zylI18n.t('camera.flash_off') : state.flash === 'on' ? zylI18n.t('camera.flash_on') : zylI18n.t('camera.flash_auto');
     btnFlash.classList.toggle('active', state.flash !== 'off');
   });
 
@@ -186,7 +186,7 @@
   btnTimer.addEventListener('click', function () {
     var i = timerModes.indexOf(state.timer);
     state.timer = timerModes[(i + 1) % 3];
-    btnTimer.querySelector('.btn-label').textContent = state.timer === 0 ? 'Off' : state.timer + 's';
+    btnTimer.querySelector('.btn-label').textContent = state.timer === 0 ? zylI18n.t('camera.timer_off') : state.timer + 's';
     btnTimer.classList.toggle('active', state.timer > 0);
   });
 

@@ -195,7 +195,7 @@
       var badge = document.createElement('span');
       badge.className = 'badge-system';
       badge.setAttribute('data-i18n', 'store.system');
-      badge.textContent = 'System';
+      badge.textContent = zylI18n.t('store.system_app');
       nameRow.appendChild(badge);
     }
 
@@ -225,12 +225,12 @@
       if (isSystem) {
         btnEl.className += ' btn-system';
         btnEl.setAttribute('data-i18n', 'store.installed');
-        btnEl.textContent = 'Installed';
+        btnEl.textContent = zylI18n.t('store.installed');
         btnEl.disabled = true;
       } else {
         btnEl.className += ' btn-uninstall';
         btnEl.setAttribute('data-i18n', 'store.uninstall');
-        btnEl.textContent = 'Uninstall';
+        btnEl.textContent = zylI18n.t('store.uninstall');
         btnEl.addEventListener('click', (function (appId) {
           return function () {
             sendRequest('appstore', 'uninstall', { appId: appId });
@@ -240,7 +240,7 @@
     } else {
       btnEl.className += ' btn-install';
       btnEl.setAttribute('data-i18n', 'store.install');
-      btnEl.textContent = 'Install';
+      btnEl.textContent = zylI18n.t('store.install');
       btnEl.addEventListener('click', (function (appId) {
         return function () {
           sendRequest('appstore', 'install', { appId: appId });

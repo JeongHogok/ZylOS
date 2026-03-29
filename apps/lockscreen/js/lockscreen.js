@@ -222,7 +222,7 @@
     /* Lockout check: 5 failed attempts → 30 second wait */
     if (Date.now() < lockoutUntil) {
       var remaining = Math.ceil((lockoutUntil - Date.now()) / 1000);
-      pinError.textContent = 'Try again in ' + remaining + 's';
+      pinError.textContent = zylI18n.t('lock.try_again', { s: remaining }) || ('Try again in ' + remaining + 's');
       pinError.classList.add('show');
       enteredPin = '';
       updateDots();

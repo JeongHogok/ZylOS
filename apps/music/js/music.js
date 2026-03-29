@@ -233,7 +233,7 @@
       var empty = document.createElement('div');
       empty.className = 'empty-state';
       empty.setAttribute('data-i18n', 'music.noTracks');
-      empty.textContent = 'No music files found in Music/';
+      empty.textContent = zylI18n.t('music.no_tracks');
       trackListEl.appendChild(empty);
       return;
     }

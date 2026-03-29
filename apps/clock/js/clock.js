@@ -171,7 +171,7 @@
       if (window.zylI18n && typeof window.zylI18n.formatDate === 'function') {
         clockDate.textContent = window.zylI18n.formatDate(now);
       } else {
-        clockDate.textContent = now.toLocaleDateString('en', {
+        clockDate.textContent = now.toLocaleDateString(zylI18n.getLocale(), {
           weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
         });
       }
@@ -256,7 +256,7 @@
 
         var labelEl = document.createElement('span');
         labelEl.className = 'alarm-label-text';
-        labelEl.textContent = alarm.label || 'Alarm';
+        labelEl.textContent = alarm.label || zylI18n.t('clock.alarm');
 
         var daysEl = document.createElement('span');
         daysEl.className = 'alarm-days-text';
@@ -267,9 +267,9 @@
           }
           daysEl.textContent = dayLabels.join(', ');
         } else if (alarm.days && alarm.days.length === 7) {
-          daysEl.textContent = 'Every day';
+          daysEl.textContent = zylI18n.t('clock.every_day');
         } else {
-          daysEl.textContent = 'Once';
+          daysEl.textContent = zylI18n.t('clock.once');
         }
 
         infoEl.appendChild(labelEl);
@@ -510,7 +510,7 @@
   function onTimerComplete() {
     timerRunning = false;
     timerRemaining = 0;
-    if (btnTimerStart) btnTimerStart.textContent = 'Start';
+    if (btnTimerStart) btnTimerStart.textContent = zylI18n.t('clock.start');
 
     /* Notification */
     requestService('notification', 'post', {
@@ -560,7 +560,7 @@
         /* Pause */
         clearInterval(timerInterval);
         timerRunning = false;
-        btnTimerStart.textContent = 'Start';
+        btnTimerStart.textContent = zylI18n.t('clock.start');
         if (timerSetArea) timerSetArea.classList.remove('hidden');
         return;
       }
@@ -573,7 +573,7 @@
       }
 
       timerRunning = true;
-      btnTimerStart.textContent = 'Pause';
+      btnTimerStart.textContent = zylI18n.t('clock.pause');
       if (timerSetArea) timerSetArea.classList.add('hidden');
 
       timerInterval = setInterval(function () {
@@ -598,7 +598,7 @@
       timerRemaining = 0;
       stopTimerFlash();
       renderTimerDisplay(0);
-      if (btnTimerStart) btnTimerStart.textContent = 'Start';
+      if (btnTimerStart) btnTimerStart.textContent = zylI18n.t('clock.start');
       if (timerSetArea) timerSetArea.classList.remove('hidden');
     });
   }
@@ -633,11 +633,11 @@
         /* Stop */
         clearInterval(swInterval);
         swRunning = false;
-        btnSwStart.textContent = 'Start';
+        btnSwStart.textContent = zylI18n.t('clock.start');
       } else {
         /* Start */
         swRunning = true;
-        btnSwStart.textContent = 'Stop';
+        btnSwStart.textContent = zylI18n.t('clock.stop');
         swInterval = setInterval(function () {
           swMs += 10;
           if (swDisplay) swDisplay.textContent = formatSw(swMs);
@@ -656,7 +656,7 @@
         el.className = 'lap';
         var numSpan = document.createElement('span');
         numSpan.className = 'lap-number';
-        numSpan.textContent = 'Lap ' + lapCount;
+        numSpan.textContent = zylI18n.t('clock.lap') + ' ' + lapCount;
         var lapTimeSpan = document.createElement('span');
         lapTimeSpan.className = 'lap-split';
         lapTimeSpan.textContent = formatSw(lapMs);
@@ -680,7 +680,7 @@
       lastLapMs = 0;
       if (swDisplay) swDisplay.textContent = '00:00.00';
       if (swLaps) swLaps.innerHTML = '';
-      if (btnSwStart) btnSwStart.textContent = 'Start';
+      if (btnSwStart) btnSwStart.textContent = zylI18n.t('clock.start');
     });
   }
 
