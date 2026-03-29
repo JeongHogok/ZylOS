@@ -46,7 +46,7 @@ cargo tauri build
 ### IPC 라우터 (에뮬레이터) + OS 서비스 (27개)
 
 에뮬레이터는 순수 IPC 릴레이로서 앱↔OS 서비스 간 postMessage를 전달하며, OS 로직은 일절 포함하지 않습니다.
-27개 서비스의 비즈니스 로직은 OS 이미지의 `apps/system/services.js`가 소유합니다.
+28개 서비스의 비즈니스 로직은 OS 이미지의 `apps/system/services.js`가 소유합니다.
 앱은 ZylAppRegistry를 통해 동적으로 로딩되며, 각 앱의 `app.json` 메타데이터를 기반으로 등록됩니다.
 
 **OS 서비스 목록** (apps/system/services.js):

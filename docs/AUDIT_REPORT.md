@@ -235,7 +235,7 @@
 
 ### 서비스 확장 (14개 → 27개) + 아키텍처 변경
 - 기존 14개 C/D-Bus 서비스 + OS 이미지 서비스 9개(fs, device, storage, apps, settings, terminal, wifi, bluetooth, audio) + contacts, messaging = **27개 완전 기능 서비스**
-- **아키텍처 변경**: 25개 서비스 비즈니스 로직이 에뮬레이터(`emulator-app/ui/js/services.js`)에서 OS 이미지(`apps/system/services.js`)로 이동
+- **아키텍처 변경**: 28개 서비스 비즈니스 로직이 에뮬레이터(`emulator-app/ui/js/services.js`)에서 OS 이미지(`apps/system/services.js`)로 이동
 - 에뮬레이터는 순수 IPC 라우터로 역할 축소, OS 이미지가 서비스 로직 소유
 - 모든 서비스 상태 유지 (stateful) — 스텁/하드코딩 제거
 - 25번째 서비스: audio (볼륨 키, OSD, 알림 사운드, 진동)
@@ -257,13 +257,13 @@
 - PIN 입력 로직 수정 (잠금화면)
 - Statusbar IPC: postMessage 기반 상태바 ↔ 앱 통신
 - Terminal 위험 명령 필터링: 22개 패턴 (rm -rf, sudo, dd 등)
-- SYSTEM_APPS 보호 리스트: 19개 앱 삭제 차단
+- SYSTEM_APPS 보호 리스트: 20개 앱 삭제 차단
 - **파일시스템 보호** (Rust 백엔드): settings.json, .credentials/, .system/ 접근 차단
 - **앱 권한 시행**: ZylPermissions — 서비스 호출 시 app.json 권한 실시간 검증, 미선언 권한 차단
 - **OOBE 격리**: 최근 앱 제외, 네비게이션 차단, 전원 토글 시 잠금 없음
 
 ### OS 시스템 컴포넌트 추가
-- `apps/system/services.js`: 27개 서비스 비즈니스 로직 (에뮬레이터에서 이동)
+- `apps/system/services.js`: 28개 서비스 비즈니스 로직 (에뮬레이터에서 이동)
 - `apps/system/permissions.js`: 앱 권한 시행 (ZylPermissions)
 - `apps/system/security.js`: 파일시스템 보호, 자격증명 격리
 - `apps/keyboard/`: 가상 키보드 시스템 앱 (에뮬레이터 컴포지터가 마운트, postMessage 키 전달)

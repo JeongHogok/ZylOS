@@ -291,7 +291,7 @@
           if (viewfinder) {
             var overlay = document.createElement('div');
             overlay.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:14px;text-align:center;padding:20px;z-index:5';
-            overlay.textContent = 'Camera access denied';
+            overlay.textContent = (typeof zylI18n !== 'undefined') ? zylI18n.t('camera.access_denied') : 'Camera access denied';
             viewfinder.appendChild(overlay);
           }
         }

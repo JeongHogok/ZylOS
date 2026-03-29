@@ -29,7 +29,9 @@
     'oobe.agree': '\uB3D9\uC758',
     'oobe.complete_title': '\uC124\uC815 \uC644\uB8CC',
     'oobe.complete_desc': 'Zyl OS\uB97C \uC990\uACA8\uBCF4\uC138\uC694!',
-    'oobe.start': '\uC2DC\uC791'
+    'oobe.start': '\uC2DC\uC791',
+    'oobe.pin_format': 'PIN\uC740 4\uC790\uB9AC \uC22B\uC790\uC5EC\uC57C \uD569\uB2C8\uB2E4',
+    'oobe.pin_mismatch': 'PIN\uC774 \uC77C\uCE58\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4'
   });
 
   zylI18n.addTranslations('en', {
@@ -52,7 +54,9 @@
     'oobe.agree': 'Agree',
     'oobe.complete_title': 'Setup Complete',
     'oobe.complete_desc': 'Enjoy Zyl OS!',
-    'oobe.start': 'Start'
+    'oobe.start': 'Start',
+    'oobe.pin_format': 'PIN must be 4 digits',
+    'oobe.pin_mismatch': 'PINs do not match'
   });
 
   zylI18n.addTranslations('ja', {
@@ -75,7 +79,9 @@
     'oobe.agree': '\u540C\u610F',
     'oobe.complete_title': '\u30BB\u30C3\u30C8\u30A2\u30C3\u30D7\u5B8C\u4E86',
     'oobe.complete_desc': 'Zyl OS\u3092\u304A\u697D\u3057\u307F\u304F\u3060\u3055\u3044\uFF01',
-    'oobe.start': '\u958B\u59CB'
+    'oobe.start': '\u958B\u59CB',
+    'oobe.pin_format': 'PIN\u306F4\u6841\u306E\u6570\u5B57\u3067\u3059',
+    'oobe.pin_mismatch': 'PIN\u304C\u4E00\u81F4\u3057\u307E\u305B\u3093'
   });
 
   zylI18n.addTranslations('zh', {
@@ -98,7 +104,9 @@
     'oobe.agree': '\u540C\u610F',
     'oobe.complete_title': '\u8BBE\u7F6E\u5B8C\u6210',
     'oobe.complete_desc': '\u5C3D\u60C5\u4EAB\u53D7Zyl OS\uFF01',
-    'oobe.start': '\u5F00\u59CB'
+    'oobe.start': '\u5F00\u59CB',
+    'oobe.pin_format': 'PIN\u5FC5\u987B\u662F4\u4F4D\u6570\u5B57',
+    'oobe.pin_mismatch': 'PIN\u4E0D\u4E00\u81F4'
   });
 
   zylI18n.addTranslations('es', {
@@ -121,6 +129,8 @@
     'oobe.agree': 'Aceptar',
     'oobe.complete_title': 'Configuraci\u00F3n completa',
     'oobe.complete_desc': '\u00A1Disfruta de Zyl OS!',
-    'oobe.start': 'Iniciar'
+    'oobe.start': 'Iniciar',
+    'oobe.pin_format': 'El PIN debe ser de 4 d\u00EDgitos',
+    'oobe.pin_mismatch': 'Los PIN no coinciden'
   });
 })();

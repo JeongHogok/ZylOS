@@ -38,6 +38,8 @@ window.ZylPermissions = (function () {
     'appstore':     ['app.manage'],
     'contacts':     ['contacts'],
     'messaging':    ['messaging'],
+    'network':      ['network'],
+    'telephony':    ['telephony'],
     'location':     ['location'],
     /* Services with no special permission required */
     'device':        [],

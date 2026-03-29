@@ -23,6 +23,8 @@ window.ZylAppRegistry = (function () {
   var OS_CONFIG = {
     defaultDock: ['com.zylos.phone', 'com.zylos.contacts', 'com.zylos.messages', 'com.zylos.settings'],
     hiddenFromGrid: ['com.zylos.lockscreen', 'com.zylos.statusbar', 'com.zylos.oobe', 'com.zylos.home', 'com.zylos.keyboard'],
+    /* Apps excluded from recents/multitasking — system UI components */
+    excludeFromRecents: ['com.zylos.lockscreen', 'com.zylos.statusbar', 'com.zylos.oobe'],
     /* undeletable is dynamically derived from app.system flag */
   };
 
@@ -82,6 +84,10 @@ window.ZylAppRegistry = (function () {
     return OS_CONFIG.defaultDock.slice();
   }
 
+  function isExcludedFromRecents(appId) {
+    return OS_CONFIG.excludeFromRecents.indexOf(appId) !== -1;
+  }
+
   return {
     register: register,
     getApp: getApp,
@@ -89,6 +95,7 @@ window.ZylAppRegistry = (function () {
     getAllIds: getAllIds,
     isHiddenFromGrid: isHiddenFromGrid,
     isUndeletable: isUndeletable,
-    getDefaultDock: getDefaultDock
+    getDefaultDock: getDefaultDock,
+    isExcludedFromRecents: isExcludedFromRecents
   };
 })();

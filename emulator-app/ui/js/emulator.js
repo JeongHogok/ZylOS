@@ -216,9 +216,10 @@
       appFrame.onload = null;
     };
 
-    /* System-only apps never appear in recents */
-    var RECENTS_EXCLUDE = ['com.zylos.lockscreen', 'com.zylos.statusbar', 'com.zylos.oobe'];
-    if (RECENTS_EXCLUDE.indexOf(appId) === -1) {
+    /* System-only apps never appear in recents — policy from OS */
+    var excludeFromRecents = (typeof ZylAppRegistry !== 'undefined' && ZylAppRegistry.isExcludedFromRecents)
+      ? ZylAppRegistry.isExcludedFromRecents(appId) : false;
+    if (!excludeFromRecents) {
       if (!state.runningApps.find(function (a) { return a.id === appId; })) {
         state.runningApps.push({ id: appId, name: app.name });
       }

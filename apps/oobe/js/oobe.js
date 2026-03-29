@@ -111,12 +111,12 @@
     var msg = document.getElementById('pin-msg');
 
     if (pin.length !== 4 || !/^\d{4}$/.test(pin)) {
-      msg.textContent = 'PIN must be 4 digits';
+      msg.textContent = (typeof zylI18n !== 'undefined') ? zylI18n.t('oobe.pin_format') : 'PIN must be 4 digits';
       msg.style.color = '#ef4444';
       return;
     }
     if (pin !== confirmPin) {
-      msg.textContent = 'PINs do not match';
+      msg.textContent = (typeof zylI18n !== 'undefined') ? zylI18n.t('oobe.pin_mismatch') : 'PINs do not match';
       msg.style.color = '#ef4444';
       return;
     }
