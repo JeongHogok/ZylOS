@@ -82,6 +82,7 @@ pub struct ResourceInfo {
 pub struct BootInfo {
     pub profile_id: String,
     pub mount_point: String,
+    pub os_image_mount: String,
     pub ram_limit_mb: u32,
     pub nav_mode: String,
     pub screen_width: u32,
@@ -94,6 +95,7 @@ pub struct AppState {
     pub booted: bool,
     pub disk_image_path: Option<PathBuf>,
     pub mount_point: Option<PathBuf>,
+    pub os_image_mount: Option<PathBuf>,
     pub resource_reserved: bool,
     pub data_dir: PathBuf,
 }
@@ -109,6 +111,7 @@ impl AppState {
             booted: false,
             disk_image_path: None,
             mount_point: None,
+            os_image_mount: None,
             resource_reserved: false,
             data_dir,
         }

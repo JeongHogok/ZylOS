@@ -1034,10 +1034,13 @@
     };
 
     /* OS 이미지 마운트 포인트에서 앱 로드 경로 설정 */
-    if (bootInfo && bootInfo.mount_point) {
-      _mountPoint = bootInfo.mount_point;
+    /* OS 이미지 마운트에서 앱 로드 (없으면 데이터 마운트, 그것도 없으면 번들 폴백) */
+    if (bootInfo && bootInfo.os_image_mount) {
+      _mountPoint = bootInfo.os_image_mount;
       rebuildAppPaths();
-      syslog('Apps loading from: ' + esc(_mountPoint), 'sys');
+      syslog('Apps loading from OS image: ' + esc(_mountPoint), 'sys');
+    } else if (bootInfo && bootInfo.mount_point) {
+      syslog('OS image not mounted, using bundled apps', 'warn');
     }
 
     /* 에뮬레이터 화면 표시 */
@@ -1056,7 +1059,8 @@
           '<div style="font-size:12px;color:#888;line-height:1.6">' +
           'Storage: ' + config.storage_gb + ' GB<br>' +
           'RAM: ' + (config.ram_mb >= 1024 ? (config.ram_mb / 1024) + ' GB' : config.ram_mb + ' MB') + '<br>' +
-          (bootInfo.mount_point ? 'Mount: ' + esc(bootInfo.mount_point) : 'Mode: fallback') +
+          'OS: ' + esc(bootInfo.os_image_mount || 'bundled') + '<br>' +
+          'Data: ' + esc(bootInfo.mount_point || 'fallback') +
           '</div>';
       }
     }

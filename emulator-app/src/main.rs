@@ -90,6 +90,14 @@ fn main() {
                 // 마운트된 디스크 이미지 해제
                 if let Some(state) = window.try_state::<Mutex<AppState>>() {
                     if let Ok(mut app_state) = state.lock() {
+                        // OS 이미지 언마운트
+                        if let Some(os_mp) = app_state.os_image_mount.take() {
+                            #[cfg(target_os = "macos")]
+                            { let _ = std::process::Command::new("hdiutil").args(["detach", &os_mp.to_string_lossy()]).output(); }
+                            #[cfg(target_os = "linux")]
+                            { let _ = std::process::Command::new("udisksctl").args(["unmount", "-p", &os_mp.to_string_lossy()]).output(); }
+                        }
+                        // 데이터 이미지 언마운트
                         if let Some(mp) = app_state.mount_point.take() {
                             let _ = resource::disk_image::unmount_image(&mp);
                         }
