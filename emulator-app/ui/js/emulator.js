@@ -289,11 +289,11 @@
       var name = document.createElement('span');
       name.className = 'recents-card-name';
       name.textContent = app.name;
-      name.onclick = function () { launchApp(app.id); };
+      name.onclick = function () { hideRecents(); launchApp(app.id); };
       var close = document.createElement('button');
       close.className = 'recents-card-close';
       close.textContent = '×';
-      close.onclick = function (e) { e.stopPropagation(); closeApp(app.id); renderRecentsCards(); };
+      close.onclick = function (e) { e.stopPropagation(); closeApp(app.id); renderRecentsCards(); if (state.runningApps.length === 0) hideRecents(); };
       card.appendChild(name);
       if (app.id !== 'com.zylos.home') card.appendChild(close);
       recentsCards.appendChild(card);
