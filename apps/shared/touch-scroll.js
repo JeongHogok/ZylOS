@@ -54,6 +54,7 @@ window.ZylTouch = (function () {
     var doc = root || document;
     var active = null;
     var momId = null;
+    var _scrolled = false; /* true if scroll moved significantly */
 
     function stopMomentum() {
       if (momId) { cancelAnimationFrame(momId); momId = null; }
@@ -71,9 +72,10 @@ window.ZylTouch = (function () {
 
     doc.addEventListener('touchstart', function (e) {
       stopMomentum();
+      _scrolled = false;
       var sp = findScrollParent(e.target);
       if (!sp) { active = null; return; }
-      active = { el: sp, lastY: getY(e), lastT: Date.now(), vel: 0 };
+      active = { el: sp, startY: getY(e), lastY: getY(e), lastT: Date.now(), vel: 0 };
     }, { passive: true });
 
     doc.addEventListener('touchmove', function (e) {
@@ -84,6 +86,8 @@ window.ZylTouch = (function () {
       active.el.scrollTop -= (y - active.lastY);
       active.lastY = y;
       active.lastT = Date.now();
+      /* Mark as scrolled if moved more than 8px */
+      if (Math.abs(y - active.startY) > 8) _scrolled = true;
     }, { passive: true });
 
     doc.addEventListener('touchend', function () {
@@ -92,16 +96,27 @@ window.ZylTouch = (function () {
       active = null;
     }, { passive: true });
 
+    /* Block click events that follow a scroll gesture.
+       Capture phase so it fires before any element's click handler. */
+    doc.addEventListener('click', function (e) {
+      if (_scrolled) {
+        e.stopPropagation();
+        e.preventDefault();
+        _scrolled = false;
+      }
+    }, true); /* true = capture phase */
+
     /* Mouse fallback for desktop */
     var mDrag = null;
     doc.addEventListener('mousedown', function (e) {
       stopMomentum();
+      _scrolled = false;
       var sp = findScrollParent(e.target);
       if (!sp) return;
       var tag = e.target.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'BUTTON' || tag === 'SELECT') return;
       if (e.target.closest('button, a, label, .toggle, .app-item, .dock-app, .kb-key')) return;
-      mDrag = { el: sp, lastY: e.clientY, lastT: Date.now(), vel: 0, moved: false };
+      mDrag = { el: sp, startY: e.clientY, lastY: e.clientY, lastT: Date.now(), vel: 0 };
     });
     doc.addEventListener('mousemove', function (e) {
       if (!mDrag) return;
@@ -111,7 +126,7 @@ window.ZylTouch = (function () {
       mDrag.el.scrollTop -= dy;
       mDrag.lastY = e.clientY;
       mDrag.lastT = Date.now();
-      if (Math.abs(dy) > 3) mDrag.moved = true;
+      if (Math.abs(e.clientY - mDrag.startY) > 8) _scrolled = true;
     });
     doc.addEventListener('mouseup', function () {
       if (!mDrag) return;
