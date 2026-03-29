@@ -434,7 +434,7 @@
 
 /* ── Responsive ── */
 @media (max-width: 800px) {
-  body { flex-direction: column; align-items: center; }
+  #emulator-screen { flex-direction: column; align-items: center; }
   #control-panel { width: 100%; max-width: 393px; max-height: none; flex-direction: row; flex-wrap: wrap; gap: 12px; }
   #control-panel h1 { width: 100%; }
   .subtitle { width: 100%; }
