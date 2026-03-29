@@ -673,15 +673,21 @@
     state.screenOn = !state.screenOn;
     frameEl.classList.toggle('screen-off', !state.screenOn);
     syslog('Screen ' + (state.screenOn ? 'ON' : 'OFF'), 'sys');
-    /* 화면 끌 때: 패널 닫기 + 잠금 활성화 */
+    /* Screen off: close panels + lock (skip lock during OOBE) */
     if (!state.screenOn) {
       if (qsOpen) closeQsPanel();
       if (state.recentsOpen) hideRecents();
       hideToast();
-      state.locked = true;
+      if (!isInOobe()) state.locked = true;
     }
-    /* 화면 켤 때: 잠금 상태이면 잠금화면 표시 */
-    if (state.screenOn) launchApp('com.zylos.lockscreen');
+    /* Screen on: show lockscreen (or resume OOBE if in setup) */
+    if (state.screenOn) {
+      if (isInOobe()) {
+        launchApp('com.zylos.oobe');
+      } else {
+        launchApp('com.zylos.lockscreen');
+      }
+    }
   }
   var sidePower = document.getElementById('side-power');
   var sideVolUp = document.getElementById('side-volup');
