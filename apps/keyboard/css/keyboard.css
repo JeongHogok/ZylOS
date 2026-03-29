@@ -1,23 +1,25 @@
 /* ──────────────────────────────────────────────────────────
    [Clean Architecture] Presentation Layer - Style
-   역할: Zyl Keyboard 가상 키보드 스타일
-   수행범위: 키보드 레이아웃, 키 크기, 애니메이션, 다크 테마
-   의존방향: keyboard/js/keyboard.js
-   SOLID: SRP — 키보드 스타일만 담당
+   Role: Zyl Keyboard virtual keyboard styles
+   Scope: Keyboard layout, key sizing, animations, dark theme
+   Dependency: keyboard/js/keyboard.js
+   SOLID: SRP — keyboard styles only
 
-   클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
-   실제 디바이스 구동 기준이며, mock/demo 등 하드코딩 데이터가 있어서는 안 된다
+   Clean Architecture, SOLID principles, i18n rules strictly followed
+   Built for real device runtime; no mock/demo or hardcoded data allowed
    ────────────────────────────────────────────────────────── */
 
-/* ─── Container ─── */
+/* ─── Container ───
+   Positioned inside #device-screen by emulator compositor.
+   bottom offset varies by nav mode (set via JS data attribute). */
 .zyl-keyboard {
-  position: fixed;
+  position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
-  z-index: 9000;
+  z-index: 130;
   background: #1a1a2e;
-  padding: 6px 4px 12px;
+  padding: 6px 4px 8px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
   transform: translateY(100%);
   transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
@@ -25,6 +27,11 @@
   -webkit-user-select: none;
   user-select: none;
 }
+
+/* Nav-mode offsets: keyboard sits above the navigation bar */
+.zyl-keyboard[data-nav="softkeys"] { bottom: 48px; }
+.zyl-keyboard[data-nav="gesture"]  { bottom: 34px; }
+.zyl-keyboard[data-nav="hardware"] { bottom: 0; }
 
 .zyl-keyboard.visible {
   transform: translateY(0);

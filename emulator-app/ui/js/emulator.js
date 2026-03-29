@@ -405,6 +405,10 @@
     if (mode === 'softkeys')  navSoftkeys.classList.remove('hidden');
     if (mode === 'gesture')   navGesture.classList.remove('hidden');
     if (mode === 'hardware')  { navHardware.classList.remove('hidden'); frameEl.classList.add('nav-hw'); }
+
+    /* Set keyboard position based on nav mode */
+    var kb = document.getElementById('keyboard-container');
+    if (kb) kb.setAttribute('data-nav', mode || 'gesture');
   }
 
   /* ── 소프트키 ── */
