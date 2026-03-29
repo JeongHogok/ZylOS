@@ -5,7 +5,8 @@
 //       search, clock, drag-and-drop between dock and grid
 // Scope: App icon rendering, multi-page swipe with drag feedback,
 //        search filtering, edit mode (long press) with app deletion,
-//        dock ↔ grid drag-and-drop reordering, settings persistence
+//        position-aware dock ↔ grid drag-and-drop with insert indicators,
+//        dock reorder, grid reorder with order persistence, settings persistence
 // Dependency: zylI18n (i18n.js), ZylClock (clock.js), ZylBridge (bridge.js)
 // SOLID: SRP — home screen UI rendering and interaction only
 //
@@ -36,6 +37,7 @@
   var DEFAULT_DOCK = ['com.zylos.browser', 'com.zylos.files', 'com.zylos.terminal', 'com.zylos.settings'];
   var dockApps = DEFAULT_DOCK.slice();
   var defaultApps = [];
+  var gridOrder = []; // saved order of grid app IDs
   var appListReceived = false;
   var dockSettingsLoaded = false;
 
@@ -66,9 +68,31 @@
   }
 
   function getGridApps() {
-    return defaultApps.filter(function (app) {
+    var grid = defaultApps.filter(function (app) {
       return dockApps.indexOf(app.id) === -1;
     });
+    if (gridOrder.length > 0) {
+      grid.sort(function (a, b) {
+        var ia = gridOrder.indexOf(a.id);
+        var ib = gridOrder.indexOf(b.id);
+        if (ia === -1) ia = 9999;
+        if (ib === -1) ib = 9999;
+        return ia - ib;
+      });
+    }
+    return grid;
+  }
+
+  function updateGridOrder() {
+    gridOrder = getGridApps().map(function (a) { return a.id; });
+    saveGridSettings();
+  }
+
+  function saveGridSettings() {
+    window.parent.postMessage(JSON.stringify({
+      type: 'service.request', service: 'settings', method: 'update',
+      params: { category: 'home', key: 'gridOrder', value: gridOrder.join(',') }
+    }), '*');
   }
 
   /* ─── Service Requests ─── */
@@ -159,11 +183,19 @@
         renderAppGrid(getGridApps());
       }
 
-      /* Settings response — dock config */
-      if (msg.type === 'service.response' && msg.service === 'settings' && msg.data && msg.data.dock) {
-        var saved = msg.data.dock.split(',').filter(Boolean);
-        if (saved.length > 0) {
-          dockApps = saved;
+      /* Settings response — dock + grid order config */
+      if (msg.type === 'service.response' && msg.service === 'settings' && msg.data) {
+        if (msg.data.dock) {
+          var saved = msg.data.dock.split(',').filter(Boolean);
+          if (saved.length > 0) {
+            dockApps = saved;
+          }
+        }
+        if (msg.data.gridOrder) {
+          var savedGrid = msg.data.gridOrder.split(',').filter(Boolean);
+          if (savedGrid.length > 0) {
+            gridOrder = savedGrid;
+          }
         }
         dockSettingsLoaded = true;
         if (appListReceived) {
@@ -529,6 +561,60 @@
     if (delInClone) delInClone.remove();
   }
 
+  /* ─── Insert line indicator ─── */
+  var insertLine = document.createElement('div');
+  insertLine.id = 'drag-insert-line';
+  insertLine.style.cssText = 'position:fixed;width:3px;background:#4a9eff;border-radius:2px;z-index:10000;pointer-events:none;display:none;transition:left 0.1s,top 0.1s';
+  document.body.appendChild(insertLine);
+
+  function getDockInsertIndex(x) {
+    var dockItems = document.querySelectorAll('#dock .dock-app:not(.app-drag-placeholder)');
+    for (var i = 0; i < dockItems.length; i++) {
+      var rect = dockItems[i].getBoundingClientRect();
+      var midX = rect.left + rect.width / 2;
+      if (x < midX) return i;
+    }
+    return dockItems.length;
+  }
+
+  function getGridInsertIndex(x, y) {
+    var gridItems = pagesTrack.querySelectorAll('.app-item:not(.app-drag-placeholder)');
+    for (var i = 0; i < gridItems.length; i++) {
+      var rect = gridItems[i].getBoundingClientRect();
+      var midX = rect.left + rect.width / 2;
+      var midY = rect.top + rect.height / 2;
+      if (y < midY + rect.height / 2 && x < midX) return i;
+    }
+    return gridItems.length;
+  }
+
+  function showDockInsertLine(x) {
+    var dockItems = document.querySelectorAll('#dock .dock-app:not(.app-drag-placeholder)');
+    var dockEl = document.getElementById('dock');
+    var dockRect = dockEl.getBoundingClientRect();
+    var lineX;
+    var idx = getDockInsertIndex(x);
+
+    if (dockItems.length === 0) {
+      lineX = dockRect.left + dockRect.width / 2;
+    } else if (idx >= dockItems.length) {
+      var lastRect = dockItems[dockItems.length - 1].getBoundingClientRect();
+      lineX = lastRect.right + 2;
+    } else {
+      var itemRect = dockItems[idx].getBoundingClientRect();
+      lineX = itemRect.left - 2;
+    }
+
+    insertLine.style.display = 'block';
+    insertLine.style.left = (lineX - 1) + 'px';
+    insertLine.style.top = dockRect.top + 4 + 'px';
+    insertLine.style.height = (dockRect.height - 8) + 'px';
+  }
+
+  function hideInsertLine() {
+    insertLine.style.display = 'none';
+  }
+
   function moveAppDrag(x, y) {
     if (!appDrag.active || !appDrag.clone) return;
     appDrag.clone.style.left = (x - appDrag.offsetX) + 'px';
@@ -542,8 +628,10 @@
 
     if (overDock) {
       dock.classList.add('drag-over');
+      showDockInsertLine(x);
     } else {
       dock.classList.remove('drag-over');
+      hideInsertLine();
     }
   }
 
@@ -552,6 +640,7 @@
 
     var dock = document.getElementById('dock');
     dock.classList.remove('drag-over');
+    hideInsertLine();
 
     var dockRect = dock.getBoundingClientRect();
     var overDock = (x >= dockRect.left && x <= dockRect.right &&
@@ -560,17 +649,49 @@
     var changed = false;
 
     if (appDrag.source === 'grid' && overDock) {
-      /* Grid -> Dock: add to dock if under limit */
+      /* Grid -> Dock: insert at position if under limit */
       if (dockApps.length < 5) {
-        dockApps.push(appDrag.appId);
+        var dockIdx = getDockInsertIndex(x);
+        dockApps.splice(dockIdx, 0, appDrag.appId);
+        saveDockSettings();
+        updateGridOrder();
+        changed = true;
+      }
+    } else if (appDrag.source === 'dock' && overDock) {
+      /* Dock -> Dock: reorder within dock */
+      var oldIdx = dockApps.indexOf(appDrag.appId);
+      if (oldIdx !== -1) {
+        dockApps.splice(oldIdx, 1);
+        var newIdx = getDockInsertIndex(x);
+        dockApps.splice(newIdx, 0, appDrag.appId);
         saveDockSettings();
         changed = true;
       }
     } else if (appDrag.source === 'dock' && !overDock) {
-      /* Dock -> Grid: remove from dock if above minimum */
+      /* Dock -> Grid: remove from dock, insert at grid position */
       if (dockApps.length > 1) {
         dockApps = dockApps.filter(function (id) { return id !== appDrag.appId; });
         saveDockSettings();
+        var gridIdx = getGridInsertIndex(x, y);
+        /* Insert into gridOrder at position */
+        var currentGrid = getGridApps().map(function (a) { return a.id; });
+        if (gridIdx > currentGrid.length) gridIdx = currentGrid.length;
+        currentGrid.splice(gridIdx, 0, appDrag.appId);
+        gridOrder = currentGrid;
+        saveGridSettings();
+        changed = true;
+      }
+    } else if (appDrag.source === 'grid' && !overDock) {
+      /* Grid -> Grid: reorder within grid */
+      var currentGridApps = getGridApps().map(function (a) { return a.id; });
+      var fromIdx = currentGridApps.indexOf(appDrag.appId);
+      if (fromIdx !== -1) {
+        currentGridApps.splice(fromIdx, 1);
+        var toIdx = getGridInsertIndex(x, y);
+        if (toIdx > currentGridApps.length) toIdx = currentGridApps.length;
+        currentGridApps.splice(toIdx, 0, appDrag.appId);
+        gridOrder = currentGridApps;
+        saveGridSettings();
         changed = true;
       }
     }
