@@ -22,7 +22,7 @@ pub fn get_device_profiles() -> Vec<DeviceProfile> {
         DeviceProfile {
             id: "zyl-f3-gesture".into(),
             name: "BPI-F3 Gesture".into(),
-            description: "iOS 스타일 제스처 네비게이션".into(),
+            description: "iOS-style gesture navigation".into(),
             soc: "SpacemiT K1 (8x X60)".into(),
             ram_options: vec![512, 1024, 2048, 4096],
             screen_width: 1080,
@@ -37,7 +37,7 @@ pub fn get_device_profiles() -> Vec<DeviceProfile> {
         DeviceProfile {
             id: "zyl-f3-softkeys".into(),
             name: "BPI-F3 Lite".into(),
-            description: "3버튼 소프트키 네비게이션".into(),
+            description: "3-button software navigation".into(),
             soc: "SpacemiT K1 (8x X60)".into(),
             ram_options: vec![512, 1024, 2048],
             screen_width: 1080,
@@ -52,7 +52,7 @@ pub fn get_device_profiles() -> Vec<DeviceProfile> {
         DeviceProfile {
             id: "zyl-f3-hardware".into(),
             name: "BPI-F3 Classic".into(),
-            description: "하드웨어 버튼 네비게이션".into(),
+            description: "Physical hardware buttons".into(),
             soc: "SpacemiT K1 (8x X60)".into(),
             ram_options: vec![512, 1024],
             screen_width: 720,
@@ -71,10 +71,10 @@ pub fn get_device_profiles() -> Vec<DeviceProfile> {
 #[tauri::command]
 pub fn get_storage_options() -> Vec<serde_json::Value> {
     vec![
-        serde_json::json!({"value": 4, "label": "4 GB", "description": "최소 (앱 몇 개)"}),
-        serde_json::json!({"value": 8, "label": "8 GB", "description": "표준"}),
-        serde_json::json!({"value": 16, "label": "16 GB", "description": "권장"}),
-        serde_json::json!({"value": 32, "label": "32 GB", "description": "대용량"}),
+        serde_json::json!({"value": 4, "label": "4 GB", "description": "Minimum"}),
+        serde_json::json!({"value": 8, "label": "8 GB", "description": "Standard"}),
+        serde_json::json!({"value": 16, "label": "16 GB", "description": "Recommended"}),
+        serde_json::json!({"value": 32, "label": "32 GB", "description": "Large"}),
     ]
 }
 
@@ -82,10 +82,10 @@ pub fn get_storage_options() -> Vec<serde_json::Value> {
 #[tauri::command]
 pub fn get_ram_options() -> Vec<serde_json::Value> {
     vec![
-        serde_json::json!({"value": 512, "label": "512 MB", "description": "최소 (테스트용)"}),
-        serde_json::json!({"value": 1024, "label": "1 GB", "description": "기본"}),
-        serde_json::json!({"value": 2048, "label": "2 GB", "description": "권장"}),
-        serde_json::json!({"value": 4096, "label": "4 GB", "description": "고성능"}),
+        serde_json::json!({"value": 512, "label": "512 MB", "description": "Minimum (testing)"}),
+        serde_json::json!({"value": 1024, "label": "1 GB", "description": "Default"}),
+        serde_json::json!({"value": 2048, "label": "2 GB", "description": "Recommended"}),
+        serde_json::json!({"value": 4096, "label": "4 GB", "description": "High performance"}),
     ]
 }
 
@@ -148,16 +148,16 @@ pub fn get_host_resources() -> Result<serde_json::Value, String> {
 #[tauri::command]
 pub fn validate_config(config: DeviceConfig) -> Result<(), String> {
     if config.storage_gb < 4 || config.storage_gb > 64 {
-        return Err("저장공간은 4~64GB 범위여야 합니다".into());
+        return Err("Storage must be 4-64 GB".into());
     }
     if config.ram_mb < 256 || config.ram_mb > 8192 {
-        return Err("RAM은 256MB~8GB 범위여야 합니다".into());
+        return Err("RAM must be 256 MB - 8 GB".into());
     }
     if config.screen_width == 0 || config.screen_height == 0 {
-        return Err("화면 해상도가 유효하지 않습니다".into());
+        return Err("Invalid screen resolution".into());
     }
     if config.profile_id.is_empty() {
-        return Err("프로필 ID가 비어있습니다".into());
+        return Err("Profile ID is empty".into());
     }
     Ok(())
 }
