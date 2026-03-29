@@ -12,61 +12,61 @@
     <!-- Step 1: Welcome -->
     <div class="oobe-step active" id="step-welcome">
       <div class="oobe-logo">Zyl OS</div>
-      <h1>환영합니다</h1>
-      <p>새로운 모바일 경험을 시작합니다</p>
-      <button class="oobe-btn" onclick="nextStep()">시작하기</button>
+      <h1>Welcome</h1>
+      <p>Start your new mobile experience</p>
+      <button class="oobe-btn" onclick="nextStep()">Get Started</button>
     </div>
 
     <!-- Step 2: Language (v0.1.0: ko/en only) -->
     <div class="oobe-step" id="step-language">
-      <h2 data-i18n="oobe.language_title">언어 선택 / Select Language</h2>
+      <h2 data-i18n="oobe.language_title">Select Language</h2>
       <div class="oobe-list">
         <div class="oobe-option selected" data-lang="ko">한국어</div>
         <div class="oobe-option" data-lang="en">English</div>
       </div>
-      <button class="oobe-btn" onclick="nextStep()" data-i18n="oobe.next">다음 / Next</button>
+      <button class="oobe-btn" onclick="nextStep()" data-i18n="oobe.next">Next</button>
     </div>
 
     <!-- Step 3: WiFi -->
     <div class="oobe-step" id="step-wifi">
-      <h2>Wi-Fi 연결</h2>
+      <h2>Wi-Fi Connection</h2>
       <div id="wifi-list" class="oobe-list">
-        <div class="oobe-option">네트워크 검색 중...</div>
+        <div class="oobe-option">Searching for networks...</div>
       </div>
-      <button class="oobe-btn" onclick="nextStep()">건너뛰기</button>
+      <button class="oobe-btn" onclick="nextStep()">Skip</button>
     </div>
 
     <!-- Step 4: PIN Setup -->
     <div class="oobe-step" id="step-pin">
-      <h2>화면 잠금 설정</h2>
-      <p>4자리 PIN을 설정하세요</p>
+      <h2>Screen Lock Setup</h2>
+      <p>Set a 4-digit PIN</p>
       <input type="password" id="pin-input" maxlength="4" placeholder="PIN">
-      <input type="password" id="pin-confirm" maxlength="4" placeholder="PIN 확인">
+      <input type="password" id="pin-confirm" maxlength="4" placeholder="Confirm PIN">
       <div id="pin-msg"></div>
-      <button class="oobe-btn" onclick="setupPin()">설정</button>
-      <button class="oobe-btn-skip" onclick="nextStep()">나중에</button>
+      <button class="oobe-btn" onclick="setupPin()">Set</button>
+      <button class="oobe-btn-skip" onclick="nextStep()">Later</button>
     </div>
 
     <!-- Step 5: Terms -->
     <div class="oobe-step" id="step-terms">
-      <h2>이용 약관</h2>
+      <h2>Terms of Service</h2>
       <div class="oobe-terms-box">
-        Zyl OS는 MIT 라이선스 하에 배포되는 오픈소스 모바일 운영체제입니다.
-        이 소프트웨어는 "있는 그대로" 제공되며, 어떠한 종류의 보증도 하지 않습니다.
+        Zyl OS is an open-source mobile operating system distributed under the MIT License.
+        This software is provided "as is" without warranty of any kind.
       </div>
       <label class="oobe-checkbox">
         <input type="checkbox" id="terms-agree">
-        <span>이용 약관에 동의합니다</span>
+        <span>I agree to the Terms of Service</span>
       </label>
-      <button class="oobe-btn" onclick="acceptTerms()">동의</button>
+      <button class="oobe-btn" onclick="acceptTerms()">Agree</button>
     </div>
 
     <!-- Step 6: Complete -->
     <div class="oobe-step" id="step-complete">
       <div class="oobe-logo">✓</div>
-      <h1>설정 완료</h1>
-      <p>Zyl OS를 즐기세요!</p>
-      <button class="oobe-btn" onclick="finishSetup()">시작</button>
+      <h1>Setup Complete</h1>
+      <p>Enjoy Zyl OS!</p>
+      <button class="oobe-btn" onclick="finishSetup()">Start</button>
     </div>
 
     <!-- Progress dots -->
