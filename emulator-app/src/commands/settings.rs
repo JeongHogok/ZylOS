@@ -107,8 +107,8 @@ fn default_settings() -> serde_json::Value {
             "vibration": true
         },
         "security": {
-            "lockType": "PIN",
-            "pin": "0000",
+            "lockType": "swipe",
+            "pin": "",
             "fingerprint": false
         },
         "wallpaper": {
