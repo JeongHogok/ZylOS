@@ -62,6 +62,7 @@ fn main() {
             // Filesystem commands
             commands::filesystem::fs_read_dir,
             commands::filesystem::fs_read_file,
+            commands::filesystem::fs_read_binary,
             commands::filesystem::fs_write_file,
             commands::filesystem::fs_mkdir,
             commands::filesystem::fs_remove,

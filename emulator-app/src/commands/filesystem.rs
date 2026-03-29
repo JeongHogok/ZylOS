@@ -168,6 +168,42 @@ pub fn fs_read_file(
     fs::read_to_string(&full_path).map_err(|e| format!("Read error: {}", e))
 }
 
+/// 바이너리 파일을 base64로 읽기 (이미지 등)
+#[tauri::command]
+pub fn fs_read_binary(
+    path: String,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<String, String> {
+    let app_state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
+    let mount_point = app_state
+        .mount_point
+        .as_ref()
+        .ok_or("No filesystem mounted")?;
+
+    let full_path = safe_path(mount_point, &path)?;
+    let bytes = fs::read(&full_path).map_err(|e| format!("Read error: {}", e))?;
+
+    // base64 인코딩
+    Ok(base64_encode(&bytes))
+}
+
+fn base64_encode(data: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut result = String::new();
+    let chunks = data.chunks(3);
+    for chunk in chunks {
+        let b0 = chunk[0] as u32;
+        let b1 = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
+        let b2 = if chunk.len() > 2 { chunk[2] as u32 } else { 0 };
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        result.push(TABLE[((n >> 18) & 63) as usize] as char);
+        result.push(TABLE[((n >> 12) & 63) as usize] as char);
+        if chunk.len() > 1 { result.push(TABLE[((n >> 6) & 63) as usize] as char); } else { result.push('='); }
+        if chunk.len() > 2 { result.push(TABLE[(n & 63) as usize] as char); } else { result.push('='); }
+    }
+    result
+}
+
 /// 파일 쓰기
 #[tauri::command]
 pub fn fs_write_file(
