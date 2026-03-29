@@ -508,6 +508,46 @@
     });
   }
 
+  /* PIN remove button */
+  var pinRemoveBtn = document.getElementById('pin-remove-btn');
+  if (pinRemoveBtn) {
+    pinRemoveBtn.addEventListener('click', function () {
+      var curInput = document.getElementById('current-pin-input');
+      var msgEl = document.getElementById('pin-change-msg');
+      var currentPin = curInput ? curInput.value : '';
+      var storedPin = settingsCache.security ? settingsCache.security.pin : '';
+
+      /* Must verify current PIN to remove */
+      if (!storedPin) {
+        if (msgEl) { msgEl.textContent = t('settings.no_pin_set') || 'No PIN is set'; msgEl.style.color = '#f59e0b'; }
+        return;
+      }
+      if (currentPin !== storedPin) {
+        if (msgEl) { msgEl.textContent = t('settings.wrong_pin') || 'Incorrect current PIN'; msgEl.style.color = '#ef4444'; }
+        return;
+      }
+
+      /* Remove PIN — set to empty string */
+      updateSetting('security', 'pin', '');
+      if (settingsCache.security) settingsCache.security.pin = '';
+
+      window.parent.postMessage(JSON.stringify({
+        type: 'settings.pinChanged',
+        data: { pin: '' }
+      }), '*');
+
+      if (msgEl) { msgEl.textContent = t('settings.pin_removed') || 'PIN removed'; msgEl.style.color = '#22c55e'; }
+      if (curInput) curInput.value = '';
+      var lockVal = document.getElementById('lock-type-value');
+      if (lockVal) lockVal.textContent = t('settings.swipe') || 'Swipe';
+
+      setTimeout(function () {
+        if (pinDialog) pinDialog.classList.add('hidden');
+        if (msgEl) msgEl.textContent = '';
+      }, 1500);
+    });
+  }
+
   /* Fingerprint toggle */
   var fpToggle = document.getElementById('fingerprint-toggle');
   if (fpToggle) {

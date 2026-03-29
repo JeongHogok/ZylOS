@@ -56,7 +56,11 @@
     'settings.ram': 'RAM',
     'settings.soc': '\uD504\uB85C\uC138\uC11C',
     'settings.storage_used': '\uC0AC\uC6A9 \uC911',
-    'settings.storage_available': '\uC0AC\uC6A9 \uAC00\uB2A5'
+    'settings.storage_available': '\uC0AC\uC6A9 \uAC00\uB2A5',
+    'settings.remove_pin': 'PIN \uC81C\uAC70',
+    'settings.pin_removed': 'PIN\uC774 \uC81C\uAC70\uB418\uC5C8\uC2B5\uB2C8\uB2E4',
+    'settings.no_pin_set': 'PIN\uC774 \uC124\uC815\uB418\uC5B4 \uC788\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4',
+    'settings.swipe': '\uC2A4\uC640\uC774\uD504'
   });
 
   zylI18n.addTranslations('en', {
@@ -106,7 +110,11 @@
     'settings.ram': 'RAM',
     'settings.soc': 'Processor',
     'settings.storage_used': 'Used',
-    'settings.storage_available': 'Available'
+    'settings.storage_available': 'Available',
+    'settings.remove_pin': 'Remove PIN',
+    'settings.pin_removed': 'PIN removed',
+    'settings.no_pin_set': 'No PIN is set',
+    'settings.swipe': 'Swipe'
   });
 
   zylI18n.addTranslations('ja', {
@@ -156,7 +164,11 @@
     'settings.ram': 'RAM',
     'settings.soc': '\u30D7\u30ED\u30BB\u30C3\u30B5',
     'settings.storage_used': '\u4F7F\u7528\u6E08\u307F',
-    'settings.storage_available': '\u5229\u7528\u53EF\u80FD'
+    'settings.storage_available': '\u5229\u7528\u53EF\u80FD',
+    'settings.remove_pin': 'PIN\u524A\u9664',
+    'settings.pin_removed': 'PIN\u304C\u524A\u9664\u3055\u308C\u307E\u3057\u305F',
+    'settings.no_pin_set': 'PIN\u304C\u8A2D\u5B9A\u3055\u308C\u3066\u3044\u307E\u305B\u3093',
+    'settings.swipe': '\u30B9\u30EF\u30A4\u30D7'
   });
 
   zylI18n.addTranslations('zh', {
@@ -206,7 +218,11 @@
     'settings.ram': 'RAM',
     'settings.soc': '\u5904\u7406\u5668',
     'settings.storage_used': '\u5DF2\u4F7F\u7528',
-    'settings.storage_available': '\u53EF\u7528'
+    'settings.storage_available': '\u53EF\u7528',
+    'settings.remove_pin': '\u5220\u9664PIN',
+    'settings.pin_removed': 'PIN\u5DF2\u5220\u9664',
+    'settings.no_pin_set': '\u672A\u8BBE\u7F6EPIN',
+    'settings.swipe': '\u6ED1\u52A8'
   });
 
   zylI18n.addTranslations('es', {
@@ -256,6 +272,10 @@
     'settings.ram': 'RAM',
     'settings.soc': 'Procesador',
     'settings.storage_used': 'Usado',
-    'settings.storage_available': 'Disponible'
+    'settings.storage_available': 'Disponible',
+    'settings.remove_pin': 'Eliminar PIN',
+    'settings.pin_removed': 'PIN eliminado',
+    'settings.no_pin_set': 'No hay PIN configurado',
+    'settings.swipe': 'Deslizar'
   });
 })();
