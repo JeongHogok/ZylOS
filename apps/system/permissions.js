@@ -60,24 +60,44 @@ window.ZylPermissions = (function () {
   /* User overrides from settings (revoked permissions) */
   var _userOverrides = {};
 
+  /* All known permission strings — system apps get all of these */
+  var ALL_PERMISSIONS = [
+    'storage', 'files.read', 'files.write', 'files.delete',
+    'shell', 'credential', 'system', 'wifi', 'bluetooth',
+    'notification', 'notification.read', 'camera', 'microphone',
+    'audio', 'app.manage', 'app.list', 'app.launch',
+    'location', 'network', 'webview', 'downloads', 'bookmarks',
+    'input', 'i18n', 'battery', 'time', 'auth', 'wallpaper', 'gallery'
+  ];
+
   /**
    * Register an app's declared permissions (from app.json).
-   * Called during app list loading.
+   * System apps receive ALL permissions automatically.
    */
   function registerApp(appId, permissions) {
-    _appPermissions[appId] = (permissions || []).slice();
+    if (SYSTEM_APPS.indexOf(appId) !== -1) {
+      _appPermissions[appId] = ALL_PERMISSIONS.slice();
+    } else {
+      _appPermissions[appId] = (permissions || []).slice();
+    }
   }
 
   /**
    * Bulk register from apps.getInstalled() response.
    * Each item should have { id, permissions: [...] }.
+   * Also auto-registers all system apps with full permissions.
    */
   function registerFromAppList(appList) {
+    /* Register system apps first (they may not appear in appList) */
+    for (var s = 0; s < SYSTEM_APPS.length; s++) {
+      _appPermissions[SYSTEM_APPS[s]] = ALL_PERMISSIONS.slice();
+    }
+    /* Register user apps from list */
     if (!appList || !appList.length) return;
     for (var i = 0; i < appList.length; i++) {
       var app = appList[i];
-      if (app.id && app.permissions) {
-        registerApp(app.id, app.permissions);
+      if (app.id) {
+        registerApp(app.id, app.permissions || []);
       }
     }
   }
@@ -121,14 +141,12 @@ window.ZylPermissions = (function () {
    * Check if an app has permission to access a service.
    */
   function checkPermission(appId, service, method) {
-    /* System apps bypass all permission checks */
-    if (SYSTEM_APPS.indexOf(appId) !== -1) return true;
-
     var required = SERVICE_PERMISSIONS[service];
     /* Unknown service or no permission required */
     if (!required || required.length === 0) return true;
 
-    /* Get effective permissions (declared - user revoked) */
+    /* All apps — including system — go through the same permission path.
+       System apps have ALL_PERMISSIONS registered, so they pass naturally. */
     var appPerms = getEffectivePermissions(appId);
     for (var i = 0; i < required.length; i++) {
       if (appPerms.indexOf(required[i]) !== -1) return true;
@@ -140,7 +158,6 @@ window.ZylPermissions = (function () {
    * Check if a specific permission is granted for an app.
    */
   function hasPermission(appId, permission) {
-    if (SYSTEM_APPS.indexOf(appId) !== -1) return true;
     var effective = getEffectivePermissions(appId);
     return effective.indexOf(permission) !== -1;
   }
