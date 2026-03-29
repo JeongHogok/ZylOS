@@ -96,30 +96,99 @@
   var clockDate = document.getElementById('clock-date');
   var clock = ZylClock.create(clockTime, clockDate, { showDate: true, dateFormat: 'long' });
 
-  /* ─── 앱 그리드 렌더링 ─── */
-  var appGrid = document.getElementById('app-grid');
+  /* ─── 앱 그리드 렌더링 (페이지 분할) ─── */
+  var pagesTrack = document.getElementById('app-pages-track');
+  var pageIndicator = document.getElementById('page-indicator');
+  var APPS_PER_PAGE = 8; /* 4열 × 2행 */
+  var currentPage = 0;
+  var totalPages = 1;
 
   function renderAppGrid(apps) {
-    appGrid.innerHTML = '';
-    apps.forEach(function (app) {
-      var el = document.createElement('div');
-      el.className = 'app-item';
-      el.dataset.appId = app.id;
+    if (!pagesTrack) return;
+    pagesTrack.innerHTML = '';
+    totalPages = Math.max(1, Math.ceil(apps.length / APPS_PER_PAGE));
+    currentPage = Math.min(currentPage, totalPages - 1);
 
-      var iconSvg = ICONS[app.icon] || ICONS.browser;
-      var name = zylI18n.t(app.nameKey);
+    for (var p = 0; p < totalPages; p++) {
+      var page = document.createElement('div');
+      page.className = 'app-page';
+      var start = p * APPS_PER_PAGE;
+      var end = Math.min(start + APPS_PER_PAGE, apps.length);
 
-      var iconWrap = document.createElement('div');
-      iconWrap.className = 'app-icon-wrap ' + app.color;
-      iconWrap.innerHTML = iconSvg;
+      for (var i = start; i < end; i++) {
+        var app = apps[i];
+        var el = document.createElement('div');
+        el.className = 'app-item';
+        el.dataset.appId = app.id;
 
-      var nameEl = document.createElement('div');
-      nameEl.className = 'app-name';
-      nameEl.textContent = name;
+        var iconSvg = ICONS[app.icon] || ICONS.browser;
+        var name = zylI18n.t(app.nameKey);
 
-      el.appendChild(iconWrap);
-      el.appendChild(nameEl);
-      appGrid.appendChild(el);
+        var iconWrap = document.createElement('div');
+        iconWrap.className = 'app-icon-wrap ' + app.color;
+        iconWrap.innerHTML = iconSvg;
+
+        var nameEl = document.createElement('div');
+        nameEl.className = 'app-name';
+        nameEl.textContent = name;
+
+        el.appendChild(iconWrap);
+        el.appendChild(nameEl);
+        page.appendChild(el);
+      }
+      pagesTrack.appendChild(page);
+    }
+    updatePageIndicator();
+    goToPage(currentPage);
+  }
+
+  function goToPage(idx) {
+    currentPage = Math.max(0, Math.min(idx, totalPages - 1));
+    if (pagesTrack) pagesTrack.style.transform = 'translateX(-' + (currentPage * 100) + '%)';
+    updatePageIndicator();
+  }
+
+  function updatePageIndicator() {
+    if (!pageIndicator) return;
+    pageIndicator.innerHTML = '';
+    for (var i = 0; i < totalPages; i++) {
+      var dot = document.createElement('span');
+      dot.className = 'dot' + (i === currentPage ? ' active' : '');
+      pageIndicator.appendChild(dot);
+    }
+  }
+
+  /* ─── 좌우 스와이프 ─── */
+  var swipe = { active: false, startX: 0 };
+  var viewport = document.getElementById('app-pages-viewport');
+
+  if (viewport) {
+    viewport.addEventListener('touchstart', function (e) {
+      swipe.active = true;
+      swipe.startX = e.touches[0].clientX;
+    }, { passive: true });
+
+    viewport.addEventListener('touchend', function (e) {
+      if (!swipe.active) return;
+      swipe.active = false;
+      var dx = e.changedTouches[0].clientX - swipe.startX;
+      if (Math.abs(dx) > 50) {
+        goToPage(currentPage + (dx < 0 ? 1 : -1));
+      }
+    });
+
+    viewport.addEventListener('mousedown', function (e) {
+      swipe.active = true;
+      swipe.startX = e.clientX;
+    });
+
+    viewport.addEventListener('mouseup', function (e) {
+      if (!swipe.active) return;
+      swipe.active = false;
+      var dx = e.clientX - swipe.startX;
+      if (Math.abs(dx) > 50) {
+        goToPage(currentPage + (dx < 0 ? 1 : -1));
+      }
     });
   }
 
@@ -127,7 +196,7 @@
   var editMode = false;
   var longPressTimer = null;
 
-  appGrid.addEventListener('mousedown', function (e) {
+  pagesTrack.addEventListener('mousedown', function (e) {
     var appItem = e.target.closest('.app-item');
     if (!appItem) return;
     longPressTimer = setTimeout(function () {
@@ -136,26 +205,35 @@
     }, 800);
   });
 
-  appGrid.addEventListener('mouseup', function () {
+  pagesTrack.addEventListener('mouseup', function () {
     if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
   });
 
-  appGrid.addEventListener('mouseleave', function () {
+  pagesTrack.addEventListener('mouseleave', function () {
     if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
   });
+
+  /* 삭제 불가 앱 (기본 앱 + 시스템 서비스) */
+  var UNDELETABLE = [
+    'com.zylos.settings', 'com.zylos.browser', 'com.zylos.files',
+    'com.zylos.terminal', 'com.zylos.camera'
+  ];
 
   function enterEditMode() {
     editMode = true;
-    appGrid.classList.add('edit-mode');
-    /* 모든 앱 아이콘에 삭제 버튼 추가 */
-    appGrid.querySelectorAll('.app-item').forEach(function (el) {
+    pagesTrack.classList.add('edit-mode');
+    pagesTrack.querySelectorAll('.app-item').forEach(function (el) {
       if (el.querySelector('.app-delete')) return;
+      var appId = el.dataset.appId;
+      /* 시스템/기본 앱은 삭제 버튼 없음 */
+      if (UNDELETABLE.indexOf(appId) !== -1) return;
       var delBtn = document.createElement('div');
       delBtn.className = 'app-delete';
       delBtn.textContent = '\u00d7';
       delBtn.addEventListener('click', function (e) {
         e.stopPropagation();
-        var appId = el.dataset.appId;
+        /* 이중 가드: UNDELETABLE 앱은 삭제 불가 */
+        if (UNDELETABLE.indexOf(appId) !== -1) return;
         defaultApps = defaultApps.filter(function (a) { return a.id !== appId; });
         el.remove();
       });
@@ -165,8 +243,8 @@
 
   function exitEditMode() {
     editMode = false;
-    appGrid.classList.remove('edit-mode');
-    appGrid.querySelectorAll('.app-delete').forEach(function (el) { el.remove(); });
+    pagesTrack.classList.remove('edit-mode');
+    pagesTrack.querySelectorAll('.app-delete').forEach(function (el) { el.remove(); });
   }
 
   /* 빈 영역 클릭 시 편집 모드 종료 */
@@ -176,8 +254,8 @@
     }
   });
 
-  /* Event delegation: single click handler on the grid container */
-  appGrid.addEventListener('click', function (e) {
+  /* Event delegation: single click handler on the pages track */
+  pagesTrack.addEventListener('click', function (e) {
     if (editMode) return;
     var appItem = e.target.closest('.app-item');
     if (!appItem) return;

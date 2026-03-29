@@ -106,15 +106,36 @@ html, body {
   border-color: rgba(255, 255, 255, 0.15);
 }
 
-/* ─── 앱 그리드 ─── */
-#app-grid {
+/* ─── 앱 페이지 스와이프 ─── */
+#app-pages-viewport {
+  overflow: hidden;
+  flex: 1;
+  position: relative;
+}
+#app-pages-track {
+  display: flex;
+  transition: transform 0.3s ease;
+  height: 100%;
+}
+.app-page {
+  min-width: 100%;
   display: grid;
   grid-template-columns: repeat(var(--grid-cols), 1fr);
   gap: var(--grid-gap) 0;
   padding: 16px 12px;
-  overflow-y: auto;
-  max-height: calc(100vh - 360px);
-  -webkit-overflow-scrolling: touch;
+  align-content: start;
+}
+
+/* ─── 페이지 인디케이터 ─── */
+#page-indicator {
+  display: flex; justify-content: center; gap: 6px; padding: 8px 0;
+}
+#page-indicator .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: rgba(255,255,255,0.25); transition: all 0.2s;
+}
+#page-indicator .dot.active {
+  width: 20px; border-radius: 4px; background: rgba(255,255,255,0.7);
 }
 
 .app-item {

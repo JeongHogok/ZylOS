@@ -20,14 +20,15 @@
     <input type="text" id="search-input" data-i18n-placeholder="search">
   </div>
 
-  <!-- 앱 그리드 -->
-  <div id="app-grid"></div>
+  <!-- 앱 페이지 컨테이너 (좌우 스와이프) -->
+  <div id="app-pages-viewport">
+    <div id="app-pages-track">
+      <div class="app-page" id="app-grid"></div>
+    </div>
+  </div>
 
   <!-- 페이지 인디케이터 -->
-  <div id="page-indicator">
-    <span class="dot active"></span>
-    <span class="dot"></span>
-  </div>
+  <div id="page-indicator"></div>
 
   <!-- 하단 독 -->
   <div id="dock">
