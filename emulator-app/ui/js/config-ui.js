@@ -312,11 +312,11 @@ var ZylConfigUI = (function () {
 
     var pathTitle = document.createElement('span');
     pathTitle.style.cssText = 'font-size:11px;color:#666;text-transform:uppercase;letter-spacing:0.5px';
-    pathTitle.textContent = '스캔 경로';
+    pathTitle.textContent = 'SCAN PATH';
 
     var changeBtn = document.createElement('button');
     changeBtn.style.cssText = 'background:#252535;border:1px solid #333;color:#a0a0f0;padding:4px 12px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer';
-    changeBtn.textContent = '변경';
+    changeBtn.textContent = 'Change';
     changeBtn.addEventListener('click', function () {
       changeScanDirectory(container);
     });
@@ -327,7 +327,7 @@ var ZylConfigUI = (function () {
 
     var pathValue = document.createElement('div');
     pathValue.style.cssText = 'font-size:12px;color:#999;word-break:break-all;line-height:1.4';
-    pathValue.textContent = _currentImageDir || '경로를 설정하세요';
+    pathValue.textContent = _currentImageDir || 'Set image directory path';
     pathBar.appendChild(pathValue);
 
     container.appendChild(pathBar);
@@ -357,7 +357,7 @@ var ZylConfigUI = (function () {
     } else {
       var empty = document.createElement('div');
       empty.style.cssText = 'color:#555;font-size:13px;padding:12px 0';
-      empty.textContent = '이 경로에 OS 이미지가 없습니다';
+      empty.textContent = 'No OS images found in this directory';
       container.appendChild(empty);
     }
   }
@@ -388,7 +388,7 @@ var ZylConfigUI = (function () {
       renderOsImagePanel(container, []);
       var errEl = document.createElement('div');
       errEl.style.cssText = 'color:#ef4444;font-size:12px;padding:6px 0';
-      errEl.textContent = '스캔 실패: ' + (err || '알 수 없는 오류');
+      errEl.textContent = 'Scan failed: ' + (err || 'unknown error');
       container.appendChild(errEl);
       setTimeout(function () { if (errEl.parentNode) errEl.remove(); }, 4000);
     });

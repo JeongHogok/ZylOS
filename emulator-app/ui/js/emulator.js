@@ -48,19 +48,38 @@
     },
   ];
 
-  /* 앱 경로 해석: frontendDist 기준 상대 경로 */
+  /* ═══ 앱 경로 해석 ═══
+     OS 이미지 마운트 포인트가 설정되면 마운트된 이미지에서 앱을 로드.
+     마운트 포인트 미설정 시 에뮬레이터 번들(ui/apps/) 폴백. */
+  var _mountPoint = '';
+
   function appPath(relPath) {
+    if (_mountPoint && IS_TAURI && window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.convertFileSrc) {
+      /* 마운트된 OS 이미지에서 로드: /Volumes/ZylOS-0.1.0/apps/home/index.html → asset URL */
+      return window.__TAURI__.core.convertFileSrc(_mountPoint + '/' + relPath);
+    }
+    /* 폴백: 에뮬레이터 번들에서 로드 */
     return relPath;
   }
 
+  function rebuildAppPaths() {
+    APPS['com.zylos.lockscreen'].path = appPath('apps/lockscreen/index.html');
+    APPS['com.zylos.home'].path       = appPath('apps/home/index.html');
+    APPS['com.zylos.settings'].path   = appPath('apps/settings/index.html');
+    APPS['com.zylos.browser'].path    = appPath('apps/browser/index.html');
+    APPS['com.zylos.files'].path      = appPath('apps/files/index.html');
+    APPS['com.zylos.terminal'].path   = appPath('apps/terminal/index.html');
+    APPS['com.zylos.camera'].path     = appPath('apps/camera/index.html');
+  }
+
   var APPS = {
-    'com.zylos.lockscreen': { name: 'Lock Screen', path: appPath('apps/lockscreen/index.html'), system: true },
-    'com.zylos.home':       { name: 'Home',        path: appPath('apps/home/index.html'),       system: true },
-    'com.zylos.settings':   { name: 'Settings',    path: appPath('apps/settings/index.html'),    system: true },
-    'com.zylos.browser':    { name: 'Browser',     path: appPath('apps/browser/index.html'),     system: true },
-    'com.zylos.files':      { name: 'Files',       path: appPath('apps/files/index.html'),       system: true },
-    'com.zylos.terminal':   { name: 'Terminal',    path: appPath('apps/terminal/index.html'),    system: true },
-    'com.zylos.camera':     { name: 'Camera',      path: appPath('apps/camera/index.html'),      system: true },
+    'com.zylos.lockscreen': { name: 'Lock Screen', path: 'apps/lockscreen/index.html', system: true },
+    'com.zylos.home':       { name: 'Home',        path: 'apps/home/index.html',       system: true },
+    'com.zylos.settings':   { name: 'Settings',    path: 'apps/settings/index.html',    system: true },
+    'com.zylos.browser':    { name: 'Browser',     path: 'apps/browser/index.html',     system: true },
+    'com.zylos.files':      { name: 'Files',       path: 'apps/files/index.html',       system: true },
+    'com.zylos.terminal':   { name: 'Terminal',    path: 'apps/terminal/index.html',    system: true },
+    'com.zylos.camera':     { name: 'Camera',      path: 'apps/camera/index.html',      system: true },
   };
 
   /* ═══ State ═══ */
@@ -1013,6 +1032,13 @@
       navMode: navMode,
       hasNotch: config.has_notch !== false,
     };
+
+    /* OS 이미지 마운트 포인트에서 앱 로드 경로 설정 */
+    if (bootInfo && bootInfo.mount_point) {
+      _mountPoint = bootInfo.mount_point;
+      rebuildAppPaths();
+      syslog('Apps loading from: ' + esc(_mountPoint), 'sys');
+    }
 
     /* 에뮬레이터 화면 표시 */
     if (emulatorScreen) emulatorScreen.classList.remove('hidden');
