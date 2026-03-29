@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "identifier": "com.zylos.emulator",
   "build": {
-    "frontendDist": "./ui"
+    "frontendDist": "./ui",
+    "beforeDevCommand": "bash scripts/deploy-apps.sh"
   },
   "app": {
     "withGlobalTauri": true,
