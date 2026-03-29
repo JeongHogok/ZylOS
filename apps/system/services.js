@@ -298,6 +298,9 @@ window.ZylSystemServices = (function () {
     mode: 'charging', connected: true
   };
 
+  /* -- Call State -- */
+  var _callState = { state: 'IDLE', number: '', startTime: 0 };
+
   /* -- Power Service — brightness sync -- */
   var powerState = {
     brightness: 80
@@ -519,7 +522,123 @@ window.ZylSystemServices = (function () {
           };
         });
       },
-      getCallState: function () { return Promise.resolve({ state: 'IDLE', number: '' }); }
+      getCallState: function () { return Promise.resolve(_callState); },
+      dial: function (p) {
+        _callState = { state: 'DIALING', number: p.number || '', startTime: Date.now() };
+        setTimeout(function () {
+          if (_callState.state === 'DIALING') _callState.state = 'ACTIVE';
+        }, 2000);
+        return Promise.resolve(_callState);
+      },
+      answer: function () {
+        _callState.state = 'ACTIVE';
+        _callState.startTime = Date.now();
+        return Promise.resolve(_callState);
+      },
+      hangup: function () {
+        var ended = { number: _callState.number, state: _callState.state, duration: _callState.startTime ? Math.floor((Date.now() - _callState.startTime) / 1000) : 0 };
+        _callState = { state: 'IDLE', number: '', startTime: 0 };
+        return Promise.resolve(ended);
+      },
+      getCallLog: function () {
+        return settings.getSetting('callLog').then(function (log) {
+          return (log && log.entries) ? JSON.parse(log.entries) : [];
+        });
+      },
+      addCallLog: function (p) {
+        return settings.getSetting('callLog').then(function (log) {
+          var entries = (log && log.entries) ? JSON.parse(log.entries) : [];
+          entries.unshift({ number: p.number, type: p.type || 'outgoing', time: Date.now(), duration: p.duration || 0, name: p.name || '' });
+          if (entries.length > 100) entries = entries.slice(0, 100);
+          settings.updateSetting('callLog', 'entries', JSON.stringify(entries));
+          return entries;
+        });
+      }
+    },
+
+    /* -- Contacts Service -- */
+    contacts: {
+      getAll: function () {
+        return _invoke('fs_read_dir', { path: 'Documents/Contacts' }).then(function (entries) {
+          if (!entries || entries.length === 0) return [];
+          var promises = entries.filter(function (e) { return e.name.indexOf('.json') !== -1; }).map(function (e) {
+            return _invoke('fs_read_file', { path: 'Documents/Contacts/' + e.name }).then(function (content) {
+              try { return JSON.parse(content); } catch (err) { return null; }
+            });
+          });
+          return Promise.all(promises).then(function (results) {
+            return results.filter(Boolean).sort(function (a, b) { return (a.name || '').localeCompare(b.name || ''); });
+          });
+        }).catch(function () { return []; });
+      },
+      getById: function (p) {
+        return _invoke('fs_read_file', { path: 'Documents/Contacts/' + p.id + '.json' }).then(function (c) {
+          try { return JSON.parse(c); } catch (e) { return null; }
+        });
+      },
+      create: function (p) {
+        var id = 'c_' + Date.now();
+        var contact = { id: id, name: p.name || '', phone: p.phone || '', email: p.email || '' };
+        return _invoke('fs_mkdir', { path: 'Documents/Contacts' }).then(function () {
+          return _invoke('fs_write_file', { path: 'Documents/Contacts/' + id + '.json', content: JSON.stringify(contact) });
+        }).then(function () { return contact; });
+      },
+      update: function (p) {
+        var contact = { id: p.id, name: p.name || '', phone: p.phone || '', email: p.email || '' };
+        return _invoke('fs_write_file', { path: 'Documents/Contacts/' + p.id + '.json', content: JSON.stringify(contact) }).then(function () { return contact; });
+      },
+      delete: function (p) {
+        return _invoke('fs_remove', { path: 'Documents/Contacts/' + p.id + '.json' });
+      },
+      search: function (p) {
+        return serviceMap.contacts.getAll().then(function (all) {
+          var q = (p.query || '').toLowerCase();
+          return all.filter(function (c) {
+            return (c.name || '').toLowerCase().indexOf(q) !== -1 || (c.phone || '').indexOf(q) !== -1;
+          });
+        });
+      }
+    },
+
+    /* -- Messaging Service -- */
+    messaging: {
+      getThreads: function () {
+        return _invoke('fs_read_dir', { path: 'Documents/Messages' }).then(function (entries) {
+          if (!entries || entries.length === 0) return [];
+          var promises = entries.filter(function (e) { return e.name.indexOf('.json') !== -1; }).map(function (e) {
+            return _invoke('fs_read_file', { path: 'Documents/Messages/' + e.name }).then(function (c) {
+              try { return JSON.parse(c); } catch (err) { return null; }
+            });
+          });
+          return Promise.all(promises).then(function (results) {
+            return results.filter(Boolean).sort(function (a, b) { return (b.lastTime || 0) - (a.lastTime || 0); });
+          });
+        }).catch(function () { return []; });
+      },
+      getMessages: function (p) {
+        return _invoke('fs_read_file', { path: 'Documents/Messages/' + p.threadId + '.json' }).then(function (c) {
+          try { var thread = JSON.parse(c); return thread.messages || []; } catch (e) { return []; }
+        });
+      },
+      send: function (p) {
+        var threadId = 'thread_' + (p.number || '').replace(/[^0-9]/g, '');
+        return _invoke('fs_mkdir', { path: 'Documents/Messages' }).then(function () {
+          return _invoke('fs_read_file', { path: 'Documents/Messages/' + threadId + '.json' }).catch(function () { return null; });
+        }).then(function (existing) {
+          var thread;
+          try { thread = existing ? JSON.parse(existing) : null; } catch (e) { thread = null; }
+          if (!thread) thread = { id: threadId, number: p.number, name: p.name || '', messages: [], lastTime: 0 };
+          var msg = { id: 'm_' + Date.now(), text: p.text, sent: true, time: Date.now() };
+          thread.messages.push(msg);
+          thread.lastTime = msg.time;
+          thread.lastMessage = p.text;
+          return _invoke('fs_write_file', { path: 'Documents/Messages/' + threadId + '.json', content: JSON.stringify(thread) }).then(function () { return msg; });
+        });
+      },
+      delete: function (p) {
+        if (p.threadId) return _invoke('fs_remove', { path: 'Documents/Messages/' + p.threadId + '.json' });
+        return Promise.resolve(false);
+      }
     },
 
     /* -- 17. USB — stateful -- */

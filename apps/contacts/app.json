@@ -1,0 +1,11 @@
+{
+  "id": "com.zylos.contacts",
+  "name": "Contacts",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "icon": "icon.png",
+  "permissions": ["storage", "files.read", "files.write", "contacts"],
+  "type": "system",
+  "color": "icon-cyan",
+  "iconKey": "contacts"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "com.zylos.phone",
+  "name": "Phone",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "icon": "icon.png",
+  "permissions": ["telephony", "contacts", "audio", "notification"],
+  "type": "system",
+  "color": "icon-green",
+  "iconKey": "phone"
+}

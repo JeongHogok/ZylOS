@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<!-- 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수. 실제 디바이스 구동 기준이며, mock/demo 등 하드코딩 데이터가 있어서는 안 된다 -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Zyl OS Phone</title>
+  <link rel="stylesheet" href="../shared/runtime.css">
+  <script src="../shared/touch-scroll.js" defer></script>
+  <link rel="stylesheet" href="css/phone.css">
+</head>
+<body>
+  <!-- ── Tab Bar ── -->
+  <div id="tabs">
+    <button class="tab active" data-tab="keypad" data-i18n="phone.keypad">Keypad</button>
+    <button class="tab" data-tab="recents" data-i18n="phone.recents">Recents</button>
+    <button class="tab" data-tab="contacts" data-i18n="phone.contacts_tab">Contacts</button>
+  </div>
+
+  <!-- ── Keypad Tab ── -->
+  <div id="tab-keypad" class="tab-content active">
+    <div id="keypad-display">
+      <span id="dialed-number"></span>
+      <button id="btn-backspace" class="backspace-btn" aria-label="Backspace"></button>
+    </div>
+    <div id="keypad-grid">
+      <button class="key-btn" data-digit="1"><span class="digit">1</span><span class="sub"></span></button>
+      <button class="key-btn" data-digit="2"><span class="digit">2</span><span class="sub">ABC</span></button>
+      <button class="key-btn" data-digit="3"><span class="digit">3</span><span class="sub">DEF</span></button>
+      <button class="key-btn" data-digit="4"><span class="digit">4</span><span class="sub">GHI</span></button>
+      <button class="key-btn" data-digit="5"><span class="digit">5</span><span class="sub">JKL</span></button>
+      <button class="key-btn" data-digit="6"><span class="digit">6</span><span class="sub">MNO</span></button>
+      <button class="key-btn" data-digit="7"><span class="digit">7</span><span class="sub">PQRS</span></button>
+      <button class="key-btn" data-digit="8"><span class="digit">8</span><span class="sub">TUV</span></button>
+      <button class="key-btn" data-digit="9"><span class="digit">9</span><span class="sub">WXYZ</span></button>
+      <button class="key-btn" data-digit="*"><span class="digit">*</span><span class="sub"></span></button>
+      <button class="key-btn" data-digit="0"><span class="digit">0</span><span class="sub">+</span></button>
+      <button class="key-btn" data-digit="#"><span class="digit">#</span><span class="sub"></span></button>
+    </div>
+    <div id="keypad-actions">
+      <button id="btn-call" class="call-btn" data-i18n="phone.call">Call</button>
+    </div>
+  </div>
+
+  <!-- ── Recents Tab ── -->
+  <div id="tab-recents" class="tab-content hidden">
+    <div id="recents-list" class="scroll-area"></div>
+    <div id="recents-empty" class="empty-state" data-i18n="phone.no_recents">No recent calls</div>
+  </div>
+
+  <!-- ── Contacts Tab ── -->
+  <div id="tab-contacts" class="tab-content hidden">
+    <div id="contacts-list" class="scroll-area"></div>
+  </div>
+
+  <!-- ── In-Call Overlay ── -->
+  <div id="incall-overlay" class="hidden">
+    <div class="incall-info">
+      <div id="incall-status" data-i18n="phone.calling">Calling...</div>
+      <div id="incall-name"></div>
+      <div id="incall-number"></div>
+      <div id="incall-timer">00:00</div>
+    </div>
+    <div class="incall-actions">
+      <button id="btn-mute" class="incall-btn">
+        <span class="incall-icon">M</span>
+        <span data-i18n="phone.mute">Mute</span>
+      </button>
+      <button id="btn-speaker" class="incall-btn">
+        <span class="incall-icon">S</span>
+        <span data-i18n="phone.speaker">Speaker</span>
+      </button>
+    </div>
+    <button id="btn-end-call" class="end-call-btn" data-i18n="phone.end_call">End Call</button>
+  </div>
+
+  <script src="../shared/i18n.js"></script>
+  <script src="i18n.js"></script>
+  <script src="../shared/bridge.js"></script>
+  <script src="js/phone.js"></script>
+</body>
+</html>

@@ -71,6 +71,9 @@
     'com.zylos.notes':      { name: 'Notes',       path: 'apps/notes/index.html',       system: true },
     'com.zylos.weather':    { name: 'Weather',     path: 'apps/weather/index.html',     system: true },
     'com.zylos.store':      { name: 'App Store',   path: 'apps/store/index.html',       system: true },
+    'com.zylos.phone':      { name: 'Phone',       path: 'apps/phone/index.html',       system: true },
+    'com.zylos.messages':   { name: 'Messages',    path: 'apps/messages/index.html',    system: true },
+    'com.zylos.contacts':   { name: 'Contacts',    path: 'apps/contacts/index.html',    system: true },
   };
 
   /* ═══ State ═══ */

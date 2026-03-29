@@ -1,0 +1,70 @@
+/* ──────────────────────────────────────────────────────────
+   [Clean Architecture] Presentation Layer - Style
+   역할: 메시지 앱 스타일
+   수행범위: messages 앱 레이아웃 — 대화목록, 채팅, 새 메시지
+   의존방향: messages/index.html
+   SOLID: SRP — messages 앱 스타일만 담당
+
+   클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
+   실제 디바이스 구동 기준이며, mock/demo 등 하드코딩 데이터가 있어서는 안 된다
+   ────────────────────────────────────────────────────────── */
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#0a0a1a; color:#e0e0e0; height:100vh; overflow:hidden; display:flex; flex-direction:column; }
+.hidden { display:none !important; }
+
+/* ── Views ── */
+.view { flex:1; display:none; flex-direction:column; overflow:hidden; height:100vh; }
+.view.active { display:flex; }
+
+/* ── Header ── */
+.header { display:flex; align-items:center; padding:12px 16px; border-bottom:1px solid #1a1a2e; flex-shrink:0; gap:12px; min-height:48px; }
+.header-title { font-size:18px; font-weight:600; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.header-btn { width:36px; height:36px; border-radius:50%; border:none; background:#1a1a2e; color:#e0e0e0; font-size:20px; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; -webkit-tap-highlight-color:transparent; }
+.header-btn:active { background:#2a2a4e; }
+.back-btn::before { content:'\2190'; }
+
+/* ── Scroll Area ── */
+.scroll-area { flex:1; width:100%; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+.empty-state { font-size:15px; color:#666; padding:40px 0; text-align:center; }
+
+/* ── Thread List ── */
+.thread-item { display:flex; align-items:center; padding:14px 16px; border-bottom:1px solid #1a1a2e; gap:12px; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.thread-item:active { background:#111125; }
+.thread-item.unread { background:#0d0d22; }
+.thread-avatar { width:42px; height:42px; border-radius:50%; background:#10b981; color:#fff; display:flex; align-items:center; justify-content:center; font-size:16px; font-weight:600; flex-shrink:0; }
+.thread-info { flex:1; display:flex; flex-direction:column; gap:2px; overflow:hidden; }
+.thread-name { font-size:15px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.thread-item.unread .thread-name { font-weight:700; }
+.thread-preview { font-size:13px; color:#888; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.thread-meta { display:flex; flex-direction:column; align-items:flex-end; gap:4px; flex-shrink:0; }
+.thread-time { font-size:11px; color:#888; }
+.thread-unread-dot { width:8px; height:8px; border-radius:50%; background:#10b981; }
+
+/* ── Chat Messages ── */
+#chat-messages { flex:1; width:100%; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:12px 16px; display:flex; flex-direction:column; gap:6px; }
+.bubble { max-width:75%; padding:10px 14px; border-radius:18px; font-size:14px; line-height:1.4; word-wrap:break-word; }
+.bubble.sent { align-self:flex-end; background:#10b981; color:#fff; border-bottom-right-radius:4px; }
+.bubble.received { align-self:flex-start; background:#1a1a2e; color:#e0e0e0; border-bottom-left-radius:4px; }
+.bubble-time { font-size:10px; opacity:0.6; margin-top:4px; }
+.bubble.sent .bubble-time { text-align:right; }
+.bubble.received .bubble-time { text-align:left; }
+
+/* ── Chat Input Bar ── */
+#chat-input-bar { display:flex; align-items:center; padding:8px 12px; border-top:1px solid #1a1a2e; gap:8px; flex-shrink:0; background:#0a0a1a; }
+#chat-input { flex:1; padding:10px 14px; border-radius:20px; border:1px solid #1a1a2e; background:#111125; color:#e0e0e0; font-size:14px; outline:none; }
+#chat-input:focus { border-color:#10b981; }
+#chat-input::placeholder { color:#555; }
+#btn-send { padding:10px 16px; border-radius:20px; border:none; background:#10b981; color:#fff; font-size:14px; font-weight:600; cursor:pointer; flex-shrink:0; -webkit-tap-highlight-color:transparent; }
+#btn-send:active { background:#059669; }
+
+/* ── New Message ── */
+#new-recipient-bar { padding:8px 16px; border-bottom:1px solid #1a1a2e; flex-shrink:0; }
+#new-recipient-input { width:100%; padding:10px 14px; border-radius:12px; border:1px solid #1a1a2e; background:#111125; color:#e0e0e0; font-size:14px; outline:none; }
+#new-recipient-input:focus { border-color:#10b981; }
+#new-recipient-input::placeholder { color:#555; }
+.new-contact-item { display:flex; align-items:center; padding:12px 16px; border-bottom:1px solid #1a1a2e; gap:12px; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.new-contact-item:active { background:#111125; }
+.new-contact-avatar { width:36px; height:36px; border-radius:50%; background:#10b981; color:#fff; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:600; flex-shrink:0; }
+.new-contact-info { flex:1; display:flex; flex-direction:column; gap:2px; }
+.new-contact-name { font-size:15px; }
+.new-contact-number { font-size:12px; color:#888; }

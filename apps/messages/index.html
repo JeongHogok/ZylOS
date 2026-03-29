@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<!-- 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수. 실제 디바이스 구동 기준이며, mock/demo 등 하드코딩 데이터가 있어서는 안 된다 -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Zyl OS Messages</title>
+  <link rel="stylesheet" href="../shared/runtime.css">
+  <script src="../shared/touch-scroll.js" defer></script>
+  <link rel="stylesheet" href="css/messages.css">
+</head>
+<body>
+  <!-- ── Thread List View ── -->
+  <div id="view-threads" class="view active">
+    <div class="header">
+      <span class="header-title" data-i18n="messages.title">Messages</span>
+      <button id="btn-new-message" class="header-btn" aria-label="New message">+</button>
+    </div>
+    <div id="thread-list" class="scroll-area"></div>
+    <div id="threads-empty" class="empty-state" data-i18n="messages.no_threads">No conversations</div>
+  </div>
+
+  <!-- ── Chat View ── -->
+  <div id="view-chat" class="view hidden">
+    <div class="header">
+      <button id="btn-chat-back" class="header-btn back-btn" aria-label="Back"></button>
+      <span id="chat-contact-name" class="header-title"></span>
+    </div>
+    <div id="chat-messages" class="scroll-area"></div>
+    <div id="chat-input-bar">
+      <input type="text" id="chat-input" data-i18n-placeholder="messages.type_message" placeholder="Type a message" autocomplete="off">
+      <button id="btn-send" data-i18n="messages.send">Send</button>
+    </div>
+  </div>
+
+  <!-- ── New Message View ── -->
+  <div id="view-new" class="view hidden">
+    <div class="header">
+      <button id="btn-new-back" class="header-btn back-btn" aria-label="Back"></button>
+      <span class="header-title" data-i18n="messages.new">New Message</span>
+    </div>
+    <div id="new-recipient-bar">
+      <input type="text" id="new-recipient-input" data-i18n-placeholder="messages.search" placeholder="Search contacts or enter number" autocomplete="off">
+    </div>
+    <div id="new-contact-list" class="scroll-area"></div>
+  </div>
+
+  <script src="../shared/i18n.js"></script>
+  <script src="i18n.js"></script>
+  <script src="../shared/bridge.js"></script>
+  <script src="js/messages.js"></script>
+</body>
+</html>

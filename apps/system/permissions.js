@@ -20,7 +20,8 @@ window.ZylPermissions = (function () {
     'com.zylos.files', 'com.zylos.terminal', 'com.zylos.camera',
     'com.zylos.gallery', 'com.zylos.music', 'com.zylos.clock',
     'com.zylos.calc', 'com.zylos.notes', 'com.zylos.weather',
-    'com.zylos.store', 'com.zylos.keyboard'
+    'com.zylos.store', 'com.zylos.keyboard',
+    'com.zylos.phone', 'com.zylos.messages', 'com.zylos.contacts'
   ];
 
   /* Service → required permission(s). App needs at least ONE of these. */
@@ -35,6 +36,8 @@ window.ZylPermissions = (function () {
     'camera':       ['camera'],
     'audio':        ['audio'],
     'appstore':     ['app.manage'],
+    'contacts':     ['contacts'],
+    'messaging':    ['messaging'],
     'location':     ['location'],
     /* Services with no special permission required */
     'device':        [],
@@ -70,7 +73,8 @@ window.ZylPermissions = (function () {
     'notification', 'notification.read', 'camera', 'microphone',
     'audio', 'app.manage', 'app.list', 'app.launch',
     'location', 'network', 'webview', 'downloads', 'bookmarks',
-    'input', 'i18n', 'battery', 'time', 'auth', 'wallpaper', 'gallery'
+    'input', 'i18n', 'battery', 'time', 'auth', 'wallpaper', 'gallery',
+    'contacts', 'messaging', 'telephony'
   ];
 
   /**

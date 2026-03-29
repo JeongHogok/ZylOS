@@ -1,0 +1,75 @@
+/* ──────────────────────────────────────────────────────────
+   [Clean Architecture] Presentation Layer - Style
+   역할: 전화 앱 스타일
+   수행범위: phone 앱 레이아웃 — 키패드, 통화기록, 연락처, 통화화면
+   의존방향: phone/index.html
+   SOLID: SRP — phone 앱 스타일만 담당
+
+   클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
+   실제 디바이스 구동 기준이며, mock/demo 등 하드코딩 데이터가 있어서는 안 된다
+   ────────────────────────────────────────────────────────── */
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#0a0a1a; color:#e0e0e0; height:100vh; overflow:hidden; display:flex; flex-direction:column; }
+.hidden { display:none !important; }
+
+/* ── Tabs ── */
+#tabs { display:flex; border-bottom:1px solid #1a1a2e; flex-shrink:0; }
+.tab { flex:1; padding:14px 0; text-align:center; background:none; border:none; color:#888; font-size:13px; cursor:pointer; transition:color 0.2s; }
+.tab.active { color:#22c55e; border-bottom:2px solid #22c55e; }
+.tab-content { flex:1; display:flex; flex-direction:column; align-items:center; overflow:hidden; }
+.tab-content.active { display:flex; }
+
+/* ── Keypad Display ── */
+#keypad-display { width:100%; padding:24px 16px 8px; display:flex; align-items:center; justify-content:center; gap:8px; min-height:64px; }
+#dialed-number { font-size:32px; font-weight:300; letter-spacing:2px; text-align:center; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-height:40px; line-height:40px; }
+.backspace-btn { width:40px; height:40px; background:none; border:none; color:#888; font-size:20px; cursor:pointer; flex-shrink:0; position:relative; }
+.backspace-btn::before { content:'\2190'; }
+
+/* ── Keypad Grid ── */
+#keypad-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; padding:8px 24px; width:100%; max-width:320px; }
+.key-btn { width:60px; height:60px; border-radius:50%; border:none; background:#1a1a2e; color:#e0e0e0; cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center; justify-self:center; transition:background 0.15s; -webkit-tap-highlight-color:transparent; }
+.key-btn:active { background:#2a2a4e; }
+.key-btn .digit { font-size:24px; font-weight:400; line-height:1.2; }
+.key-btn .sub { font-size:9px; color:#888; letter-spacing:1px; line-height:1; }
+
+/* ── Keypad Actions ── */
+#keypad-actions { padding:12px 24px 20px; width:100%; display:flex; justify-content:center; }
+.call-btn { width:72px; height:72px; border-radius:50%; border:none; background:#22c55e; color:#fff; font-size:14px; font-weight:600; cursor:pointer; transition:background 0.15s; -webkit-tap-highlight-color:transparent; }
+.call-btn:active { background:#16a34a; }
+
+/* ── Recents ── */
+.scroll-area { flex:1; width:100%; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+.empty-state { font-size:15px; color:#666; padding:40px 0; text-align:center; }
+.recent-item { display:flex; align-items:center; padding:14px 16px; border-bottom:1px solid #1a1a2e; gap:12px; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.recent-item:active { background:#111125; }
+.recent-direction { width:24px; font-size:18px; flex-shrink:0; text-align:center; }
+.recent-direction.incoming { color:#22c55e; }
+.recent-direction.outgoing { color:#3b82f6; }
+.recent-direction.missed { color:#ef4444; }
+.recent-info { flex:1; display:flex; flex-direction:column; gap:2px; overflow:hidden; }
+.recent-name { font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.recent-time { font-size:12px; color:#888; }
+
+/* ── Contacts ── */
+.contact-item { display:flex; align-items:center; padding:14px 16px; border-bottom:1px solid #1a1a2e; gap:12px; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.contact-item:active { background:#111125; }
+.contact-avatar { width:36px; height:36px; border-radius:50%; background:#22c55e; color:#fff; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:600; flex-shrink:0; }
+.contact-name { font-size:15px; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* ── In-Call Overlay ── */
+#incall-overlay { position:fixed; inset:0; background:#0a0a1a; z-index:100; display:flex; flex-direction:column; align-items:center; justify-content:space-between; padding:60px 24px 40px; }
+#incall-overlay.hidden { display:none !important; }
+.incall-info { text-align:center; }
+#incall-status { font-size:14px; color:#888; margin-bottom:8px; }
+#incall-name { font-size:28px; font-weight:300; margin-bottom:4px; }
+#incall-number { font-size:16px; color:#888; margin-bottom:16px; }
+#incall-timer { font-size:18px; color:#22c55e; font-variant-numeric:tabular-nums; }
+
+.incall-actions { display:flex; gap:32px; }
+.incall-btn { width:64px; display:flex; flex-direction:column; align-items:center; gap:6px; background:none; border:none; color:#e0e0e0; cursor:pointer; font-size:11px; }
+.incall-btn.active { color:#22c55e; }
+.incall-icon { width:48px; height:48px; border-radius:50%; background:#1a1a2e; display:flex; align-items:center; justify-content:center; font-size:18px; font-weight:600; }
+.incall-btn.active .incall-icon { background:#22c55e; color:#0a0a1a; }
+
+.end-call-btn { width:72px; height:72px; border-radius:50%; border:none; background:#ef4444; color:#fff; font-size:14px; font-weight:600; cursor:pointer; transition:background 0.15s; }
+.end-call-btn:active { background:#dc2626; }

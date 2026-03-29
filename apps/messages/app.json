@@ -1,0 +1,11 @@
+{
+  "id": "com.zylos.messages",
+  "name": "Messages",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "icon": "icon.png",
+  "permissions": ["messaging", "contacts", "notification", "storage"],
+  "type": "system",
+  "color": "icon-emerald",
+  "iconKey": "messages"
+}
