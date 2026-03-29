@@ -1,19 +1,20 @@
 // ──────────────────────────────────────────────────────────
 // [Clean Architecture] Presentation Layer - Page
 //
-// 역할: 홈스크린 UI — 앱 그리드, 독, 검색, 시계 표시
-// 수행범위: 앱 아이콘 렌더링, 검색 필터링, 페이지 인디케이터, 앱 실행
-// 의존방향: zylI18n (i18n.js), ZylClock (clock.js), ZylBridge (bridge.js)
-// SOLID: SRP — 홈스크린 UI 렌더링과 인터랙션만 담당
+// Role: Home screen UI — app grid with page swipe, dock, search, clock
+// Scope: App icon rendering, multi-page swipe with drag feedback, search filtering,
+//        edit mode (long press) with app deletion, app launch
+// Dependency: zylI18n (i18n.js), ZylClock (clock.js), ZylBridge (bridge.js)
+// SOLID: SRP — home screen UI rendering and interaction only
 //
-// 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
-// 실제 디바이스 구동 기준이며, mock/demo 등 하드코딩 데이터가 있어서는 안 된다
+// Clean Architecture, SOLID principles, i18n rules strictly followed
+// Built for real device runtime; no mock/demo or hardcoded data allowed
 // ──────────────────────────────────────────────────────────
 
 (function () {
   'use strict';
 
-  /* ─── SVG 아이콘 정의 ─── */
+  /* ─── SVG Icons ─── */
   var ICONS = {
     browser:  '<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>',
     files:    '<svg viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>',
@@ -29,48 +30,41 @@
     store:    '<svg viewBox="0 0 24 24"><path d="M18.36 9l.6 3H5.04l.6-3h12.72M20 4H4v2h16V4zm0 3H4l-1 5v2h1v6h10v-6h4v6h2v-6h1v-2l-1-5zM6 18v-4h6v4H6z"/></svg>',
   };
 
-  /* ─── 앱 정의 (서비스에서 로드) ─── */
+  /* ─── App data (loaded from service) ─── */
   var defaultApps = [];
-
-  /* Request app list from central service */
   var appListReceived = false;
-  var appListTimeoutId = null;
 
   function requestAppList() {
     window.parent.postMessage(JSON.stringify({
-      type: 'service.request',
-      service: 'apps',
-      method: 'getInstalled'
+      type: 'service.request', service: 'apps', method: 'getInstalled'
     }), '*');
-
-    /* 5-second timeout: show empty grid if no response */
-    appListTimeoutId = setTimeout(function () {
-      if (!appListReceived) {
-        appGrid.innerHTML = '<div style="text-align:center;opacity:0.5;padding:32px;grid-column:1/-1">No apps</div>';
-      }
-    }, 5000);
   }
 
-  /* 배경화면 그라데이션 매핑 */
+  /* Wallpaper gradients */
   var wallpaperGradients = {
     'default':         'radial-gradient(ellipse at 20% 50%, rgba(72,52,160,0.4) 0%, transparent 50%), radial-gradient(ellipse at 80% 20%, rgba(29,78,137,0.5) 0%, transparent 50%), linear-gradient(160deg, #0a0a1a 0%, #0d1b2a 40%, #1b2838 100%)',
     'gradient-blue':   'linear-gradient(135deg, #0c3547 0%, #1a6b8a 50%, #0a2a3a 100%)',
     'gradient-purple': 'linear-gradient(135deg, #1a0a2e 0%, #4a2080 50%, #1a0a2e 100%)',
     'gradient-dark':   'linear-gradient(160deg, #050505 0%, #1a1a1a 50%, #0a0a0a 100%)',
-    'gradient-sunset':  'linear-gradient(135deg, #2d1b3d 0%, #b44a2a 50%, #1a0a2e 100%)',
+    'gradient-sunset': 'linear-gradient(135deg, #2d1b3d 0%, #b44a2a 50%, #1a0a2e 100%)',
   };
 
-  /* Listen for service responses + settings changes */
+  /* ─── Message handler ─── */
   window.addEventListener('message', function (e) {
     if (e.source !== window.parent && e.source !== window) return;
     try {
       var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
       if (!msg) return;
 
-      /* 앱 목록 응답 — 시스템 전용 앱은 홈 그리드에서 제외 */
+      /* Navigation back → home is root, always exit */
+      if (msg.type === 'navigation.back') {
+        window.parent.postMessage(JSON.stringify({ type: 'navigation.exit' }), '*');
+        return;
+      }
+
+      /* App list response */
       if (msg.type === 'service.response' && msg.service === 'apps' && msg.method === 'getInstalled' && msg.data) {
         appListReceived = true;
-        if (appListTimeoutId) { clearTimeout(appListTimeoutId); appListTimeoutId = null; }
         var SYSTEM_ONLY = ['com.zylos.lockscreen', 'com.zylos.statusbar', 'com.zylos.oobe', 'com.zylos.home'];
         defaultApps = msg.data.filter(function (app) {
           return SYSTEM_ONLY.indexOf(app.id) === -1;
@@ -78,28 +72,29 @@
         renderAppGrid(defaultApps);
       }
 
-      /* 배경화면 변경 수신 → 실제 배경 CSS 변경 */
+      /* Wallpaper change */
       if (msg.type === 'settings.wallpaperChanged' && msg.data && msg.data.wallpaper) {
         var wpEl = document.getElementById('wallpaper');
         var grad = wallpaperGradients[msg.data.wallpaper];
-        if (wpEl && grad) {
-          wpEl.style.background = grad;
-        }
+        if (wpEl && grad) wpEl.style.background = grad;
       }
     } catch (err) { /* ignore */ }
   });
 
   requestAppList();
 
-  /* ─── 시계 (shared ZylClock 사용) ─── */
+  /* ─── Clock (shared ZylClock) ─── */
   var clockTime = document.getElementById('clock-time');
   var clockDate = document.getElementById('clock-date');
-  var clock = ZylClock.create(clockTime, clockDate, { showDate: true, dateFormat: 'long' });
+  ZylClock.create(clockTime, clockDate, { showDate: true, dateFormat: 'long' });
 
-  /* ─── 앱 그리드 렌더링 (페이지 분할) ─── */
+  /* ═══════════════════════════════════════════════════════
+     App Grid — multi-page with real-time swipe drag
+     ═══════════════════════════════════════════════════════ */
   var pagesTrack = document.getElementById('app-pages-track');
   var pageIndicator = document.getElementById('page-indicator');
-  var APPS_PER_PAGE = 8; /* 4열 × 2행 */
+  var viewport = document.getElementById('app-pages-viewport');
+  var APPS_PER_PAGE = 6; /* 3 columns x 2 rows — enables multi-page with 12 apps */
   var currentPage = 0;
   var totalPages = 1;
 
@@ -138,13 +133,19 @@
       }
       pagesTrack.appendChild(page);
     }
+
     updatePageIndicator();
-    goToPage(currentPage);
+    snapToPage(currentPage, false);
   }
 
-  function goToPage(idx) {
+  function snapToPage(idx, animate) {
     currentPage = Math.max(0, Math.min(idx, totalPages - 1));
-    if (pagesTrack) pagesTrack.style.transform = 'translateX(-' + (currentPage * 100) + '%)';
+    if (animate !== false) {
+      pagesTrack.style.transition = 'transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+    } else {
+      pagesTrack.style.transition = 'none';
+    }
+    pagesTrack.style.transform = 'translateX(-' + (currentPage * 100) + '%)';
     updatePageIndicator();
   }
 
@@ -158,43 +159,106 @@
     }
   }
 
-  /* ─── 좌우 스와이프 ─── */
-  var swipe = { active: false, startX: 0 };
-  var viewport = document.getElementById('app-pages-viewport');
+  /* ═══════════════════════════════════════════════════════
+     Swipe — real-time drag feedback + momentum snap
+     ═══════════════════════════════════════════════════════ */
+  var drag = {
+    active: false,
+    startX: 0,
+    startTime: 0,
+    currentX: 0,
+    moved: false
+  };
+
+  var SWIPE_THRESHOLD = 40;
+  var VELOCITY_THRESHOLD = 0.3;
+
+  function onDragStart(x) {
+    if (editMode) return;
+    drag.active = true;
+    drag.startX = x;
+    drag.currentX = x;
+    drag.startTime = Date.now();
+    drag.moved = false;
+    pagesTrack.style.transition = 'none';
+  }
+
+  function onDragMove(x) {
+    if (!drag.active) return;
+    drag.currentX = x;
+    var dx = x - drag.startX;
+    if (Math.abs(dx) > 5) drag.moved = true;
+
+    /* Translate track by drag delta, offset from current page */
+    var baseOffset = -(currentPage * 100);
+    var viewportWidth = viewport ? viewport.offsetWidth : 393;
+    var pxPercent = (dx / viewportWidth) * 100;
+
+    /* Rubber-band at edges */
+    if ((currentPage === 0 && dx > 0) || (currentPage >= totalPages - 1 && dx < 0)) {
+      pxPercent *= 0.3;
+    }
+
+    pagesTrack.style.transform = 'translateX(' + (baseOffset + pxPercent) + '%)';
+  }
+
+  function onDragEnd(x) {
+    if (!drag.active) return;
+    drag.active = false;
+
+    var dx = x - drag.startX;
+    var dt = Date.now() - drag.startTime;
+    var velocity = Math.abs(dx) / Math.max(dt, 1);
+
+    var nextPage = currentPage;
+    if (Math.abs(dx) > SWIPE_THRESHOLD || velocity > VELOCITY_THRESHOLD) {
+      if (dx < 0 && currentPage < totalPages - 1) nextPage = currentPage + 1;
+      else if (dx > 0 && currentPage > 0) nextPage = currentPage - 1;
+    }
+
+    snapToPage(nextPage, true);
+  }
 
   if (viewport) {
+    /* Touch events */
     viewport.addEventListener('touchstart', function (e) {
-      swipe.active = true;
-      swipe.startX = e.touches[0].clientX;
+      onDragStart(e.touches[0].clientX);
+    }, { passive: true });
+
+    viewport.addEventListener('touchmove', function (e) {
+      onDragMove(e.touches[0].clientX);
     }, { passive: true });
 
     viewport.addEventListener('touchend', function (e) {
-      if (!swipe.active) return;
-      swipe.active = false;
-      var dx = e.changedTouches[0].clientX - swipe.startX;
-      if (Math.abs(dx) > 50) {
-        goToPage(currentPage + (dx < 0 ? 1 : -1));
-      }
+      onDragEnd(e.changedTouches[0].clientX);
     });
 
+    /* Mouse events */
     viewport.addEventListener('mousedown', function (e) {
-      swipe.active = true;
-      swipe.startX = e.clientX;
+      onDragStart(e.clientX);
     });
 
-    viewport.addEventListener('mouseup', function (e) {
-      if (!swipe.active) return;
-      swipe.active = false;
-      var dx = e.clientX - swipe.startX;
-      if (Math.abs(dx) > 50) {
-        goToPage(currentPage + (dx < 0 ? 1 : -1));
-      }
+    document.addEventListener('mousemove', function (e) {
+      if (drag.active) onDragMove(e.clientX);
+    });
+
+    document.addEventListener('mouseup', function (e) {
+      if (drag.active) onDragEnd(e.clientX);
     });
   }
 
-  /* ─── 편집 모드 ─── */
+  /* ═══════════════════════════════════════════════════════
+     Edit Mode — long press to delete
+     ═══════════════════════════════════════════════════════ */
   var editMode = false;
   var longPressTimer = null;
+
+  var UNDELETABLE = [
+    'com.zylos.settings', 'com.zylos.browser', 'com.zylos.files',
+    'com.zylos.terminal', 'com.zylos.camera', 'com.zylos.gallery',
+    'com.zylos.music', 'com.zylos.clock', 'com.zylos.calc',
+    'com.zylos.notes', 'com.zylos.weather', 'com.zylos.store'
+  ];
 
   pagesTrack.addEventListener('mousedown', function (e) {
     var appItem = e.target.closest('.app-item');
@@ -213,13 +277,23 @@
     if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
   });
 
-  /* 삭제 불가 앱 (기본 앱 + 시스템 서비스) */
-  var UNDELETABLE = [
-    'com.zylos.settings', 'com.zylos.browser', 'com.zylos.files',
-    'com.zylos.terminal', 'com.zylos.camera', 'com.zylos.gallery',
-    'com.zylos.music', 'com.zylos.clock', 'com.zylos.calc',
-    'com.zylos.notes', 'com.zylos.weather', 'com.zylos.store'
-  ];
+  /* Touch long press */
+  pagesTrack.addEventListener('touchstart', function (e) {
+    var appItem = e.target.closest('.app-item');
+    if (!appItem) return;
+    longPressTimer = setTimeout(function () {
+      enterEditMode();
+      longPressTimer = null;
+    }, 800);
+  }, { passive: true });
+
+  pagesTrack.addEventListener('touchmove', function () {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+  }, { passive: true });
+
+  pagesTrack.addEventListener('touchend', function () {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+  });
 
   function enterEditMode() {
     editMode = true;
@@ -227,21 +301,16 @@
     pagesTrack.querySelectorAll('.app-item').forEach(function (el) {
       if (el.querySelector('.app-delete')) return;
       var appId = el.dataset.appId;
-      /* 시스템/기본 앱은 삭제 버튼 없음 */
       if (UNDELETABLE.indexOf(appId) !== -1) return;
       var delBtn = document.createElement('div');
       delBtn.className = 'app-delete';
       delBtn.textContent = '\u00d7';
-      delBtn.addEventListener('click', function (e) {
-        e.stopPropagation();
-        /* Double guard: UNDELETABLE apps cannot be removed */
+      delBtn.addEventListener('click', function (ev) {
+        ev.stopPropagation();
         if (UNDELETABLE.indexOf(appId) !== -1) return;
-        /* Call appstore.uninstall service */
         window.parent.postMessage(JSON.stringify({
-          type: 'service.request',
-          service: 'appstore',
-          method: 'uninstall',
-          params: { appId: appId }
+          type: 'service.request', service: 'appstore',
+          method: 'uninstall', params: { appId: appId }
         }), '*');
         defaultApps = defaultApps.filter(function (a) { return a.id !== appId; });
         el.remove();
@@ -256,23 +325,22 @@
     pagesTrack.querySelectorAll('.app-delete').forEach(function (el) { el.remove(); });
   }
 
-  /* 빈 영역 클릭 시 편집 모드 종료 */
   document.addEventListener('click', function (e) {
     if (editMode && !e.target.closest('.app-item') && !e.target.closest('.app-delete')) {
       exitEditMode();
     }
   });
 
-  /* Event delegation: single click handler on the pages track */
+  /* ─── App launch (click, not drag) ─── */
   pagesTrack.addEventListener('click', function (e) {
     if (editMode) return;
+    if (drag.moved) return; /* Prevent launch after swipe */
     var appItem = e.target.closest('.app-item');
     if (!appItem) return;
     var appId = appItem.dataset.appId;
     if (appId) launchApp(appId, appItem);
   });
 
-  /* ─── 앱 실행 (shared ZylBridge 사용) ─── */
   function launchApp(appId, el) {
     if (el) {
       el.classList.add('launching');
@@ -281,7 +349,7 @@
     ZylBridge.launch(appId);
   }
 
-  /* ─── 독 클릭 ─── */
+  /* ─── Dock ─── */
   document.querySelectorAll('.dock-app').forEach(function (el) {
     el.addEventListener('click', function () {
       var appId = el.dataset.app;
@@ -289,31 +357,28 @@
     });
   });
 
-  /* ─── 검색 ─── */
+  /* ─── Search ─── */
   var searchInput = document.getElementById('search-input');
-  searchInput.addEventListener('input', function () {
-    var query = searchInput.value.toLowerCase().trim();
-    if (!query) {
-      renderAppGrid(defaultApps);
-      return;
-    }
-    var filtered = defaultApps.filter(function (app) {
-      var name = zylI18n.t(app.nameKey).toLowerCase();
-      return name.includes(query) || app.id.toLowerCase().includes(query);
+  if (searchInput) {
+    searchInput.addEventListener('input', function () {
+      var query = searchInput.value.toLowerCase().trim();
+      if (!query) { renderAppGrid(defaultApps); return; }
+      var filtered = defaultApps.filter(function (app) {
+        var name = zylI18n.t(app.nameKey).toLowerCase();
+        return name.indexOf(query) !== -1 || app.id.toLowerCase().indexOf(query) !== -1;
+      });
+      renderAppGrid(filtered);
     });
-    renderAppGrid(filtered);
-  });
+  }
 
   /* ─── Re-render on locale change ─── */
   zylI18n.onLocaleChange(function () {
     renderAppGrid(defaultApps);
   });
 
-  /* ─── 초기 렌더링 (서비스 응답 전 로딩 상태) ─── */
-  if (defaultApps.length === 0) {
-    appGrid.innerHTML = '<div style="text-align:center;opacity:0.5;padding:32px;grid-column:1/-1">Loading...</div>';
-  } else {
-    renderAppGrid(defaultApps);
+  /* ─── Initial loading state ─── */
+  if (pagesTrack && defaultApps.length === 0) {
+    pagesTrack.innerHTML = '<div class="app-page"><div style="text-align:center;opacity:0.5;padding:32px;grid-column:1/-1">Loading...</div></div>';
   }
 
 })();
