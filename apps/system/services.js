@@ -33,6 +33,10 @@ window.ZylSystemServices = (function () {
         if (s.silentMode !== undefined) audioState.silentMode = !!s.silentMode;
       }
     });
+    /* Pre-load app list to register permissions immediately on boot.
+       This ensures OOBE and other early apps have permissions before
+       any app explicitly calls apps.getInstalled(). */
+    apps.getInstalled();
   }
 
 
