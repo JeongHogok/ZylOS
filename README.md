@@ -25,7 +25,7 @@
 | **디스플레이** | wlroots 0.18 + Wayland | 모바일 컴포지터 (제스처, 풀스크린) |
 | **앱 런타임** | WebKitGTK 6.0 | 앱별 독립 WebView 프로세스 |
 | **IPC** | D-Bus | 14개 시스템 서비스 통신 |
-| **앱 프레임워크** | HTML/CSS/JS (ES5) | 시스템 앱 11개 |
+| **앱 프레임워크** | HTML/CSS/JS (ES5) | 시스템 앱 9개 |
 | **HAL** | C (sysfs, wpa_supplicant, BlueZ, PipeWire) | 하드웨어 추상화 |
 | **샌드박싱** | namespace + seccomp-bpf + cgroup v2 | 5계층 앱 격리 |
 | **패키징** | .ospkg (RSA-2048 서명) | 앱 배포/검증 |
@@ -96,7 +96,7 @@ compositor/          Wayland 모바일 컴포지터 (C, wlroots)
 runtime/wam/         Web Application Manager (C, WebKitGTK)
 runtime/hal/         Hardware Abstraction Layer (C)
 runtime/services/    시스템 서비스 14개 (C, D-Bus)
-apps/                시스템 앱 11개 (HTML/CSS/JS)
+apps/                시스템 앱 9개 (HTML/CSS/JS)
 emulator/            웹 기반 에뮬레이터 (HTML/CSS/JS)
 emulator-app/        Tauri 네이티브 에뮬레이터 (Rust + HTML/CSS/JS)
 system/              systemd, Plymouth, DTS, AppArmor, 복구 모드

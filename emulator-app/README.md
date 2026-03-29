@@ -97,11 +97,16 @@ zyl-emulator/
 └── devices/                저장된 디바이스 설정 (.json)
 ```
 
-### OS 이미지 가져오기
-1. 설정 화면 Step 2에서 "+ Import" 클릭
-2. `apps/` 폴더가 포함된 디렉토리 경로 입력
-3. 버전 번호와 설명 입력
-4. 가져오기 완료 → 목록에 표시
+### OS 이미지 빌드
+```bash
+# apps/를 .img 디스크 이미지로 패키징
+bash scripts/build-image.sh 0.1.0 64
+# 결과: ~/Library/Application Support/zyl-emulator/os-images/0.1.0.img
+```
+
+### OS 이미지 스캔
+설정 화면 Step 2에서 스캔 경로의 `.img` 파일이 자동 리스팅됩니다.
+경로 변경 버튼으로 다른 디렉토리를 스캔할 수 있습니다.
 
 ## 플랫폼 지원
 
