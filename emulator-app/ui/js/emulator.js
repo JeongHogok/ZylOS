@@ -242,9 +242,15 @@
   }
 
   /* 잠금 검사를 거치는 네비게이션 */
+  /* OOBE blocks all navigation — user must complete setup */
+  function isInOobe() {
+    return state.currentApp === 'com.zylos.oobe';
+  }
+
   function goHome() {
     if (requireUnlock('Home')) return;
-    if (state.currentApp === 'com.zylos.home') return; // already on home
+    if (isInOobe()) return;
+    if (state.currentApp === 'com.zylos.home') return;
     launchApp('com.zylos.home');
   }
 
@@ -252,6 +258,7 @@
 
   function goBack() {
     if (requireUnlock('Back')) return;
+    if (isInOobe()) return;
     if (state.currentApp === 'com.zylos.home') return;
     if (_backResponsePending) return;
 
@@ -298,6 +305,7 @@
 
   function showRecents() {
     if (requireUnlock('Recents')) return;
+    if (isInOobe()) return;
     state.recentsOpen = true;
     recentsOverlay.classList.remove('hidden');
     renderRecentsCards();
