@@ -734,4 +734,12 @@
   applyTranslations();
   updateLangChecks();
 
+  /* Re-sync language checks when locale changes from outside (e.g. emulator inject) */
+  zylI18n.onLocaleChange(function () {
+    updateLangChecks();
+    /* Also update main menu current language display */
+    var curLangEl = document.getElementById('current-lang');
+    if (curLangEl) curLangEl.textContent = LANG_NAMES[zylI18n.getLocale()] || '';
+  });
+
 })();
