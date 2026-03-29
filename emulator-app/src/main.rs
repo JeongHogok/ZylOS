@@ -83,6 +83,19 @@ fn main() {
             commands::network::get_bluetooth_devices,
             // App registry
             commands::config::list_installed_apps,
+            // Emulated system services
+            commands::emulated_services::notif_post,
+            commands::emulated_services::notif_cancel,
+            commands::emulated_services::notif_get_active,
+            commands::emulated_services::notif_clear_all,
+            commands::emulated_services::power_get_state,
+            commands::emulated_services::power_set_brightness,
+            commands::emulated_services::location_get_last_known,
+            commands::emulated_services::user_get_current,
+            commands::emulated_services::user_list,
+            commands::emulated_services::credential_store,
+            commands::emulated_services::credential_lookup,
+            commands::emulated_services::credential_delete,
             // HAL commands
             get_battery_state,
             get_platform_info,

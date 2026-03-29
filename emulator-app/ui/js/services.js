@@ -264,6 +264,70 @@ var ZylServices = (function () {
     browser: {
       getBookmarks: function () { return Promise.resolve(null); },
       getQuickLinks: function () { return Promise.resolve(null); }
+    },
+    /* ── 에뮬레이션 시스템 서비스 (실기기 D-Bus 서비스 대응) ── */
+    notification: {
+      post:     function (p) { return tauriInvoke('notif_post', { app_id: p.appId || '', title: p.title || '', body: p.body || '', icon: p.icon || '', priority: p.priority || 1 }); },
+      cancel:   function (p) { return tauriInvoke('notif_cancel', { id: p.id }); },
+      getActive: function () { return tauriInvoke('notif_get_active'); },
+      clearAll: function () { return tauriInvoke('notif_clear_all'); }
+    },
+    power: {
+      getState:      function () { return tauriInvoke('power_get_state'); },
+      setBrightness: function (p) { return tauriInvoke('power_set_brightness', { percent: p.percent || 80 }); }
+    },
+    display: {
+      getMode:     function () { return Promise.resolve({ width: 1080, height: 2400, refresh: 60 }); },
+      getRotation: function () { return Promise.resolve(0); },
+      setRotation: function (p) { return Promise.resolve(p.rotation || 0); },
+      getScale:    function () { return Promise.resolve(1.0); },
+      setScale:    function (p) { return Promise.resolve(p.scale || 1.0); }
+    },
+    input: {
+      showKeyboard: function (p) { return Promise.resolve({ visible: true, layout: p.layout || 'en' }); },
+      hideKeyboard: function () { return Promise.resolve({ visible: false }); },
+      getState:     function () { return Promise.resolve({ visible: false, layout: 'en' }); }
+    },
+    sensors: {
+      getLatest: function (p) {
+        var type = (p && p.type) || 'accelerometer';
+        var defaults = {
+          accelerometer: { type: 'accelerometer', values: [0, 0, -9.8], timestamp: Date.now() },
+          gyroscope:     { type: 'gyroscope', values: [0, 0, 0], timestamp: Date.now() },
+          proximity:     { type: 'proximity', values: [0, 5.0], timestamp: Date.now() },
+          light:         { type: 'light', values: [300], timestamp: Date.now() },
+          magnetometer:  { type: 'magnetometer', values: [0, 25, -45], timestamp: Date.now() }
+        };
+        return Promise.resolve(defaults[type] || defaults.accelerometer);
+      }
+    },
+    location: {
+      getLastKnown:   function () { return tauriInvoke('location_get_last_known'); },
+      requestUpdates: function () { return Promise.resolve(true); },
+      stopUpdates:    function () { return Promise.resolve(true); }
+    },
+    telephony: {
+      getState: function () {
+        return Promise.resolve({
+          simPresent: true, operator: 'Zyl Mobile', networkType: 'LTE',
+          signal: 3, imei: '000000000000000', phoneNumber: '+82-10-0000-0000'
+        });
+      },
+      getCallState: function () { return Promise.resolve({ state: 'IDLE', number: '' }); }
+    },
+    usb: {
+      getMode:     function () { return Promise.resolve('charging'); },
+      setMode:     function (p) { return Promise.resolve(p.mode || 'charging'); },
+      isConnected: function () { return Promise.resolve(true); }
+    },
+    user: {
+      getCurrent: function () { return tauriInvoke('user_get_current'); },
+      listUsers:  function () { return tauriInvoke('user_list'); }
+    },
+    credential: {
+      store:  function (p) { return tauriInvoke('credential_store', { service: p.service, account: p.account, secret: p.secret }); },
+      lookup: function (p) { return tauriInvoke('credential_lookup', { service: p.service, account: p.account }); },
+      delete: function (p) { return tauriInvoke('credential_delete', { service: p.service, account: p.account }); }
     }
   };
 
