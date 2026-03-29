@@ -993,12 +993,7 @@
         syslog('Battery: ' + (HAL.battery.getState().level || '?') + '%', 'sys');
       }
 
-      // System welcome notifications
-      setTimeout(function() {
-        pushNotification({ appId: 'com.zylos.settings', icon: '🔔', title: 'Zyl OS', body: '새로운 업데이트가 있습니다.', channel: 'system', priority: 1 });
-        pushNotification({ appId: 'com.zylos.browser', icon: '💬', title: '메시지', body: '안녕하세요! Zyl OS에 오신 것을 환영합니다.', channel: 'message', priority: 2 });
-        pushNotification({ appId: 'com.zylos.settings', icon: '🔐', title: '보안', body: 'PIN을 설정하여 기기를 보호하세요.', channel: 'security', priority: 1 });
-      }, 100);
+      /* 환영 알림은 OS 이미지의 앱이 담당 (에뮬레이터는 콘텐츠 생성 안 함) */
     }, 600);
   }
 
