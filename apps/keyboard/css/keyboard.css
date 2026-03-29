@@ -51,6 +51,8 @@
   justify-content: center;
   gap: 4px;
   margin-bottom: 4px;
+  /* Prevent gap taps from passing through to elements behind keyboard */
+  padding: 1px 0;
 }
 
 .kb-row:last-child {

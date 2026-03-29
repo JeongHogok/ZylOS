@@ -1198,9 +1198,25 @@
       }
     });
 
+    /* Prevent keyboard area touches from stealing focus from iframe input */
+    var _kbTouching = false;
+    kbContainer.addEventListener('mousedown', function (e) {
+      _kbTouching = true;
+      e.preventDefault(); /* Prevent iframe blur */
+      setTimeout(function () { _kbTouching = false; }, 500);
+    });
+    kbContainer.addEventListener('touchstart', function (e) {
+      _kbTouching = true;
+      /* Don't preventDefault on touchstart — it blocks the key button click.
+         Instead, just set flag to suppress hide during polling. */
+      setTimeout(function () { _kbTouching = false; }, 500);
+    }, { passive: true });
+
     /* Detect input focus inside app iframe */
     setInterval(function () {
       if (!appFrame || !appFrame.contentWindow) return;
+      /* If user is touching keyboard area, don't hide */
+      if (_kbTouching) return;
       try {
         var doc = appFrame.contentDocument || appFrame.contentWindow.document;
         var active = doc.activeElement;
@@ -1213,7 +1229,6 @@
           if (ZylKeyboard.isVisible()) ZylKeyboard.hide();
         }
       } catch (e) {
-        /* Cross-origin: hide keyboard */
         if (ZylKeyboard.isVisible()) ZylKeyboard.hide();
       }
     }, 300);
