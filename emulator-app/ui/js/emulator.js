@@ -573,6 +573,7 @@
       if (qs === 'silent') {
         ZylServices.handleRequest('audio', 'setSilentMode', { enabled: on });
         _systemSilentMode = on;
+        applySettingSideEffect('sound', 'silentMode', on);
       } else if (categoryMap[qs]) {
         ZylServices.handleRequest('settings', 'update', { category: categoryMap[qs], key: keyMap[qs], value: on });
         applySettingSideEffect(categoryMap[qs], keyMap[qs], on);
@@ -898,17 +899,17 @@
   };
 
   function applySettingSideEffect(category, key, value) {
-    /* ── WiFi: 상태바 아이콘 투명도 ── */
+    /* ── WiFi: statusbar icon ── */
     if (category === 'wifi' && key === 'enabled') {
-      var sbIcos = document.querySelectorAll('#emu-statusbar .sb-ico');
-      if (sbIcos[0]) sbIcos[0].style.opacity = value ? '0.85' : '0.15';
+      var wifiIcon = document.getElementById('sb-wifi');
+      if (wifiIcon) wifiIcon.style.opacity = value ? '0.85' : '0.15';
       syslog('WiFi ' + (value ? 'ON' : 'OFF'), 'sys');
     }
 
-    /* ── Bluetooth: statusbar icon opacity ── */
+    /* ── Bluetooth: statusbar icon visibility ── */
     if (category === 'bluetooth' && key === 'enabled') {
-      var sbIcos = document.querySelectorAll('#emu-statusbar .sb-ico');
-      if (sbIcos[1]) sbIcos[1].style.opacity = value ? '0.85' : '0.15';
+      var btIcon = document.getElementById('sb-bt');
+      if (btIcon) btIcon.classList.toggle('hidden', !value);
       syslog('Bluetooth ' + (value ? 'ON' : 'OFF'), 'sys');
     }
 
@@ -933,9 +934,21 @@
       syslog('Font size: ' + value, 'sys');
     }
 
-    /* ── Sound ── */
+    /* ── Sound: statusbar silent/vibrate icons ── */
     if (category === 'sound') {
-      if (key === 'silentMode') _systemSilentMode = !!value;
+      if (key === 'silentMode') {
+        _systemSilentMode = !!value;
+        var silentIcon = document.getElementById('sb-silent');
+        var vibrateIcon = document.getElementById('sb-vibrate');
+        if (silentIcon) silentIcon.classList.toggle('hidden', !value);
+        /* If silent and vibration is on, show vibrate icon */
+        if (vibrateIcon) vibrateIcon.classList.toggle('hidden', !value);
+      }
+      if (key === 'vibration') {
+        var vibrateIcon2 = document.getElementById('sb-vibrate');
+        /* Show vibrate icon only when vibration is ON and silent mode is ON */
+        if (vibrateIcon2) vibrateIcon2.classList.toggle('hidden', !(_systemSilentMode && !!value));
+      }
       syslog('Sound: ' + key + ' \u2192 ' + value, 'sys');
     }
 
