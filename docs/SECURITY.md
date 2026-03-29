@@ -2,8 +2,16 @@
 
 ## 보안 모델 개요
 
-Zyl OS는 5계층 샌드박싱(namespace, seccomp, cgroup, network, D-Bus 정책)과
+Zyl OS는 6계층 보안(namespace, seccomp, cgroup, network, D-Bus 정책, 앱 권한 시행)과
 앱 서명 시스템을 통해 보안을 제공합니다.
+
+### 서비스 아키텍처 보안
+
+서비스 비즈니스 로직은 OS 이미지(`apps/system/services.js`)에 소유됩니다.
+에뮬레이터는 순수 IPC 라우터로서 메시지 전달만 담당하며, 서비스 로직에 접근할 수 없습니다.
+
+- **권한 시행** (`apps/system/permissions.js`): `ZylPermissions`가 모든 서비스 요청을 `app.json` 권한과 대조하여 미선언 권한은 즉시 차단
+- **보안 관리** (`apps/system/security.js`): OS 레벨 보안 정책 관리
 
 ## v0.1.0 알려진 제한사항
 
@@ -49,7 +57,25 @@ Zyl OS는 5계층 샌드박싱(namespace, seccomp, cgroup, network, D-Bus 정책
 ### 시스템 앱 보호 (SYSTEM_APPS)
 - **현재**: 16개 시스템 앱은 App Store에서 삭제 불가
 - **보호 대상**: home, lockscreen, statusbar, oobe, settings, browser, files, terminal, camera, gallery, music, clock, calc, notes, weather, store
-- **적용**: 서비스 라우터에서 SYSTEM_APPS 리스트 확인 후 uninstall 차단
+- **적용**: OS 서비스(apps/system/services.js)에서 SYSTEM_APPS 리스트 확인 후 uninstall 차단
+
+### 파일시스템 보호 (Rust 백엔드)
+- **보호 대상**: `settings.json`, `.credentials/`, `.system/`
+- **적용**: Rust 백엔드에서 fs 서비스의 파일 경로를 검사하여, 보호 대상 파일/디렉토리 접근을 차단
+- `settings.json`: settings 서비스를 통해서만 접근 가능 (fs 서비스 직접 접근 차단)
+- `.credentials/`: 자격증명 저장소 — credential 서비스를 통해서만 접근
+- `.system/`: 시스템 설정 디렉토리 — 직접 접근 차단
+
+### 앱 권한 시행 (ZylPermissions)
+- **현재**: OS 이미지의 `apps/system/permissions.js`에서 실행 시점 권한 검증
+- **적용**: 앱이 서비스를 호출할 때마다 `app.json`의 `permissions` 배열과 대조
+- **차단**: 미선언 권한으로 서비스 호출 시 즉시 에러 응답, 요청 무시
+- 이전 버전의 권고 수준 권한에서 **강제 시행**으로 변경
+
+### OOBE 격리
+- OOBE 앱은 최근 앱(Recents) 목록에서 제외
+- OOBE 진행 중 네비게이션(홈/백) 차단
+- 전원 토글 시 잠금화면 표시하지 않음
 
 ## 보안 취약점 신고
 

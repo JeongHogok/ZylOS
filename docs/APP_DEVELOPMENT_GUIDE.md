@@ -456,7 +456,9 @@ zylI18n.onLocaleChange(function(newLocale) {
 
 ## 7. 권한 시스템
 
-앱이 민감한 시스템 기능에 접근하려면 `app.json`에 권한을 선언해야 합니다.
+앱이 시스템 기능에 접근하려면 `app.json`에 권한을 선언해야 합니다.
+
+> **중요 변경 (v0.1.0)**: 권한은 이제 **실행 시점에 강제 적용**됩니다. `app.json`에 선언되지 않은 권한으로 서비스를 호출하면 요청이 **차단**됩니다. 이전처럼 권고 수준이 아닌, OS 레벨(`apps/system/permissions.js`의 `ZylPermissions`)에서 모든 서비스 요청을 검증합니다.
 
 ### 7.1 권한 목록
 
@@ -483,6 +485,18 @@ zylI18n.onLocaleChange(function(newLocale) {
 3. **높음** 위험도 권한은 설치 시 명시적 승인 필요
 4. **낮음/보통** 위험도 권한은 자동 승인
 5. 사용자는 설정에서 언제든 권한 취소 가능
+6. **서비스 호출 시 권한 검증**: 앱이 서비스를 호출할 때마다 `ZylPermissions`가 `app.json`의 권한과 대조하여 미선언 권한은 즉시 차단
+
+### 7.3 권한 시행 예시
+
+```javascript
+// app.json에 "notification.create" 권한이 없으면 이 호출은 차단됨
+navigator.system.notification.create('제목', '내용');
+// → Error: Permission denied: notification.create not declared in app.json
+```
+
+서비스 호출이 차단되면 에러 콜백에 권한 부족 메시지가 전달됩니다.
+반드시 `app.json`의 `permissions` 배열에 필요한 권한을 선언하세요.
 
 ---
 
@@ -642,9 +656,9 @@ export WEBKIT_INSPECTOR_SERVER=0.0.0.0:8090
 | `addTranslations(locale, keys)` | void | 앱별 번역 키 등록 |
 | `applyTranslations()` | void | DOM data-i18n 재적용 |
 
-### 시스템 서비스 (24개)
+### 시스템 서비스 (25개)
 
-앱에서 `postMessage` IPC로 접근 가능한 서비스 목록:
+앱에서 `postMessage` IPC로 접근 가능한 서비스 목록 (OS 이미지의 `apps/system/services.js`에서 처리):
 
 | # | 서비스 | 주요 메서드 |
 |---|--------|-----------|
@@ -672,6 +686,7 @@ export WEBKIT_INSPECTOR_SERVER=0.0.0.0:8090
 | 22 | sandbox | getPolicy |
 | 23 | logger | getLogs, clearLogs |
 | 24 | accessibility | getSettings, setFontScale, setHighContrast |
+| 25 | audio | getVolume, setVolume, playNotificationSound, vibrate |
 
 ---
 

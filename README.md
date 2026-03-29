@@ -9,11 +9,11 @@
 - **RISC-V 네이티브**: SpacemiT K1 SoC (8코어 X60) 최적화
 - **Wayland 컴포지터**: wlroots 0.18 기반 모바일 전용 (제스처, 풀스크린)
 - **웹 앱 런타임**: WebKitGTK 기반 — HTML/CSS/JS로 앱 개발
-- **24개 시스템 서비스**: D-Bus IPC (전력, 센서, GPS, 전화, 알림, 접근성, 로깅 등)
+- **25개 시스템 서비스**: OS 이미지 소유 (apps/system/services.js), 에뮬레이터는 IPC 라우터만 담당
 - **16개 시스템 앱**: 홈, 잠금, 설정, 브라우저, 파일, 터미널, 카메라, 갤러리 등
 - **앱별 i18n**: 공유 엔진(shared/i18n.js) + 앱별 번역 데이터 (ko/en/ja/zh/es)
 - **5계층 보안**: namespace + seccomp + cgroup + network + D-Bus 정책
-- **네이티브 에뮬레이터**: Tauri 데스크톱 앱 — IP 기반 위치, 실제 WiFi/BT, 카메라 녹화
+- **네이티브 에뮬레이터**: Tauri 데스크톱 앱 — IPC 라우터 + 컴포지터, Rust 백엔드
 - **A/B OTA**: 원자적 시스템 업데이트 + 자동 롤백
 
 ## 기술 스택
@@ -26,7 +26,7 @@
 | **부트로더** | U-Boot + OpenSBI | RISC-V 부팅 |
 | **디스플레이** | wlroots 0.18 + Wayland | 모바일 컴포지터 (제스처, 풀스크린) |
 | **앱 런타임** | WebKitGTK 6.0 | 앱별 독립 WebView 프로세스 |
-| **IPC** | D-Bus | 24개 시스템 서비스 통신 |
+| **IPC** | D-Bus | 25개 시스템 서비스 통신 |
 | **앱 프레임워크** | HTML/CSS/JS (ES5) | 시스템 앱 16개 |
 | **HAL** | C (sysfs, wpa_supplicant, BlueZ, PipeWire) | 하드웨어 추상화 |
 | **샌드박싱** | namespace + seccomp-bpf + cgroup v2 | 5계층 앱 격리 |
@@ -40,8 +40,8 @@
 | 계층 | 기술 | 역할 |
 |------|------|------|
 | **앱 프레임워크** | Tauri 2.x (Rust + WebView) | 독립 실행파일 (.app/.dmg/.deb) |
-| **백엔드** | Rust | 리소스 예약, 파일시스템, 네트워크 조회 |
-| **프론트엔드** | HTML/CSS/JS (ES5) | 설정 UI, 부팅 시퀀스, 디바이스 프레임 |
+| **백엔드** | Rust | 리소스 예약, 파일시스템 보호, 네트워크 조회 |
+| **프론트엔드** | HTML/CSS/JS (ES5) | IPC 라우터 + 컴포지터 UI |
 | **OS 이미지** | .img (HFS+/ext4) | 앱 번들 디스크 이미지 |
 | **스토리지** | sparse 디스크 이미지 마운트 | 실제 파일시스템 예약 (4~32GB) |
 | **메모리** | cgroup v2 (Linux) / rlimit (macOS) | 실제 RAM 예약 |
@@ -49,7 +49,7 @@
 | **설정 영속화** | JSON (마운트 포인트) | 재부팅 시 설정 유지 |
 | **빌드** | Cargo + tauri-cli | macOS/Linux 배포 |
 
-### 시스템 서비스 (24개, D-Bus)
+### 시스템 서비스 (25개, D-Bus)
 
 | 서비스 | D-Bus 이름 | 기술 |
 |--------|-----------|------|
@@ -77,6 +77,7 @@
 | 앱스토어 | (라이브러리) | 패키지 검증/설치 (.ospkg) |
 | 업데이터 | (라이브러리) | OTA A/B 파티션 업데이트 |
 | 샌드박스 | (라이브러리) | seccomp + namespace + cgroup |
+| 오디오 | (서비스 라우터) | 볼륨 키, OSD, 알림 사운드, 진동 |
 
 ## 빠른 시작
 
@@ -107,10 +108,12 @@ ninja -C builddir-riscv
 compositor/          Wayland 모바일 컴포지터 (C, wlroots)
 runtime/wam/         Web Application Manager (C, WebKitGTK)
 runtime/hal/         Hardware Abstraction Layer (C)
-runtime/services/    시스템 서비스 16개 (C, D-Bus) + 에뮬레이터 라우터 8개 = 24개
+runtime/services/    시스템 서비스 16개 (C, D-Bus)
 apps/                시스템 앱 16개 (HTML/CSS/JS)
+apps/system/         OS 서비스 (services.js, permissions.js, security.js)
+apps/keyboard/       가상 키보드 시스템 앱
 
-emulator-app/        Tauri 네이티브 에뮬레이터 (Rust + HTML/CSS/JS)
+emulator-app/        Tauri 네이티브 에뮬레이터 (IPC 라우터 + 컴포지터)
 system/              systemd, Plymouth, DTS, AppArmor, 복구 모드
 tests/               단위/통합 테스트 (C, bash)
 tools/               빌드/프로파일링 도구

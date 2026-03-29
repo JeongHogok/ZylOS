@@ -1,6 +1,8 @@
 # Zyl OS Emulator
 
-Tauri 2.x 기반 네이티브 디바이스 에뮬레이터. 실제 리소스 예약(디스크 이미지, 메모리 제한)을 지원합니다.
+Tauri 2.x 기반 네이티브 디바이스 에뮬레이터. IPC 라우터 + 컴포지터 역할을 담당하며, 실제 리소스 예약(디스크 이미지, 메모리 제한)을 지원합니다.
+
+> **아키텍처 변경**: 25개 시스템 서비스의 비즈니스 로직은 OS 이미지(`apps/system/services.js`)로 이동했습니다. 에뮬레이터는 순수 IPC 라우터로서 앱↔서비스 간 메시지 전달만 담당하며, Rust 백엔드는 파일시스템 보호와 리소스 관리를 수행합니다.
 
 ## 빠른 시작
 
@@ -41,8 +43,12 @@ cargo tauri build
 - Location: IP 기반 위치 서비스 (ipinfo.io, Rust 백엔드)
 - Camera: MediaRecorder 기반 비디오 녹화 (호스트 웹캠)
 
-### 24개 서비스 (모두 상태 유지, 스텁 없음)
-서비스 라우터 (`services.js`)가 24개 서비스를 모두 실제 데이터로 제공합니다:
+### IPC 라우터 (에뮬레이터) + OS 서비스 (25개)
+
+에뮬레이터의 `services.js`는 순수 IPC 라우터로서 앱↔OS 서비스 간 postMessage를 전달합니다.
+25개 서비스의 비즈니스 로직은 OS 이미지의 `apps/system/services.js`가 소유합니다.
+
+**OS 서비스 목록** (apps/system/services.js):
 1. **FileSystem** — 마운트 디스크 이미지 I/O
 2. **Device** — 디바이스 메타데이터
 3. **Storage** — 디스크 사용량 (마운트 포인트)
@@ -67,10 +73,24 @@ cargo tauri build
 22. **Sandbox** — 앱별 보안 정책
 23. **Logger** — 인메모리 로그 저장소
 24. **Accessibility** — settings 기반 접근성 설정
+25. **Audio** — 볼륨 키, OSD, 알림 사운드, 진동
 
-### OOBE 완료 체크
+**OS 보안 컴포넌트**:
+- `apps/system/permissions.js` — ZylPermissions: 앱 권한 실시간 시행
+- `apps/system/security.js` — 파일시스템 보호, 자격증명 격리
+
+**Rust 백엔드 보호**:
+- `settings.json`, `.credentials/`, `.system/` 파일 접근을 Rust 레벨에서 차단
+
+### OOBE 완료 체크 + 격리
 - 부팅 시 `settings.json`의 `oobe_completed` 플래그 확인
 - 미완료 시 OOBE 앱을 먼저 실행, 완료 후 홈 화면으로 진입
+- OOBE 격리: 최근 앱(Recents)에서 제외, 네비게이션(홈/백) 차단, 전원 토글 시 잠금 없음
+
+### 가상 키보드
+- OS 이미지의 `apps/keyboard/`를 에뮬레이터 컴포지터가 마운트
+- postMessage를 통해 키 입력을 앱에 전달
+- 시스템 앱으로 OS 이미지 내에 포함
 
 ### 에뮬레이터 i18n (`emu-i18n.js`)
 - 에뮬레이터 컴포지터 UI 전용 번역 (QS 패널, 알림 패널, 최근 앱)
@@ -109,7 +129,7 @@ emulator-app/
 │   │   ├── config-ui.js    프리부팅 설정 UI
 │   │   ├── boot-sequence.js 부팅 애니메이션
 │   │   ├── emulator.js     에뮬레이터 코어 (앱 라우팅, 네비게이션)
-│   │   ├── services.js     서비스 라우터 — 24개 서비스 (Tauri invoke 연동)
+│   │   ├── services.js     IPC 라우터 — 앱↔OS 서비스 메시지 전달 (비즈니스 로직은 apps/system/)
 │   │   ├── emu-i18n.js     에뮬레이터 컴포지터 i18n (QS, 알림, 최근앱)
 │   │   ├── hal-tauri.js    Tauri HAL (invoke 기반)
 │   │   └── hal-browser.js  브라우저 HAL (Web API 폴백)
