@@ -7,7 +7,6 @@
 // SOLID: SRP — 파일시스템 I/O만 담당, LSP — 모든 커맨드 동일 에러 포맷
 // ──────────────────────────────────────────────────────────
 
-use crate::resource::disk_image;
 use crate::state::AppState;
 use serde::Serialize;
 use std::fs;
@@ -279,7 +278,25 @@ pub fn fs_rename(
     fs::rename(&old_full, &new_full).map_err(|e| format!("Rename error: {}", e))
 }
 
-/// 저장공간 사용량 조회
+/// 마운트 포인트의 실제 파일 사용량 계산 (재귀)
+fn dir_size(path: &Path) -> u64 {
+    if !path.is_dir() {
+        return path.metadata().map(|m| m.len()).unwrap_or(0);
+    }
+    fs::read_dir(path)
+        .map(|entries| {
+            entries
+                .flatten()
+                .map(|e| {
+                    let p = e.path();
+                    if p.is_dir() { dir_size(&p) } else { e.metadata().map(|m| m.len()).unwrap_or(0) }
+                })
+                .sum()
+        })
+        .unwrap_or(0)
+}
+
+/// 저장공간 사용량 조회 (가상 디바이스 기준 — 호스트 디스크 아님)
 #[tauri::command]
 pub fn fs_get_usage(state: State<'_, Mutex<AppState>>) -> Result<StorageUsage, String> {
     let app_state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
@@ -288,15 +305,24 @@ pub fn fs_get_usage(state: State<'_, Mutex<AppState>>) -> Result<StorageUsage, S
         .as_ref()
         .ok_or("No filesystem mounted")?;
 
-    let (total, used, available) = disk_image::get_usage(mount_point)?;
-    let percent = if total > 0 {
-        (used as f64 / total as f64) * 100.0
+    /* 설정된 가상 스토리지 크기를 total로 사용 */
+    let config_total = app_state
+        .config
+        .as_ref()
+        .map(|c| (c.storage_gb as u64) * 1024 * 1024 * 1024)
+        .unwrap_or(8 * 1024 * 1024 * 1024);
+
+    /* 실제 사용량: 마운트 포인트 내 파일 크기 합산 */
+    let used = dir_size(mount_point);
+    let available = if config_total > used { config_total - used } else { 0 };
+    let percent = if config_total > 0 {
+        (used as f64 / config_total as f64) * 100.0
     } else {
         0.0
     };
 
     Ok(StorageUsage {
-        total,
+        total: config_total,
         used,
         available,
         percent,

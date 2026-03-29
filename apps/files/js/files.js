@@ -130,7 +130,11 @@
   }
 
   function formatDate(dateStr) {
-    var d = new Date(dateStr);
+    if (!dateStr) return '';
+    /* Unix timestamp(초) 또는 ISO 문자열 모두 처리 */
+    var ts = parseInt(dateStr, 10);
+    var d = (ts > 1000000000) ? new Date(ts * 1000) : new Date(dateStr);
+    if (isNaN(d.getTime())) return '';
     var m = d.getMonth() + 1;
     var day = d.getDate();
     return d.getFullYear() + '.' + (m < 10 ? '0' : '') + m + '.' + (day < 10 ? '0' : '') + day;
