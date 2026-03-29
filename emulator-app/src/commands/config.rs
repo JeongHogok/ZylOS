@@ -7,6 +7,7 @@
 // SOLID: SRP — 설정 관리만 담당, ISP — 최소 인터페이스 노출
 //
 // 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
+// 에뮬레이터는 실제 디바이스 구동 환경 제공이 목적이며, OS 이미지 영역의 콘텐츠를 포함하지 않는다
 // ──────────────────────────────────────────────────────────
 
 use crate::state::{AppState, DeviceConfig, DeviceProfile, NavMode, SavedDevice};
