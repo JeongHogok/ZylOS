@@ -21,9 +21,9 @@ jobs:
             libxcb-xinput-dev xwayland || true
       - name: Build wlroots 0.18 from source
         run: |
-          git clone --depth 1 --branch 0.18.2 https://gitlab.freedesktop.org/wlroots/wlroots.git /tmp/wlroots
+          git clone --depth 1 --branch 0.18.1 https://gitlab.freedesktop.org/wlroots/wlroots.git /tmp/wlroots
           cd /tmp/wlroots
-          meson setup build --prefix=/usr
+          meson setup build --prefix=/usr -Dexamples=false
           ninja -C build
           sudo ninja -C build install
           sudo ldconfig
