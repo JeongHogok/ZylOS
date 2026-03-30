@@ -7,6 +7,8 @@
  * SOLID: SRP — 패키지 검증과 설치 로직만 담당
  * ────────────────────────────────────────────────────────── */
 
+#define _GNU_SOURCE   /* nftw, strdup, mkdtemp */
+
 #include "appstore.h"
 
 #include <stdio.h>
