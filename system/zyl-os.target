@@ -1,8 +1,8 @@
 [Unit]
 Description=Zyl OS User Session
 Requires=zyl-compositor.service zyl-wam.service
-Wants=zyl-apparmor.service zyl-notification.service zyl-power.service zyl-sensors.service
-After=zyl-apparmor.service zyl-compositor.service zyl-wam.service
+Wants=zyl-apparmor.service zyl-notification.service zyl-power.service zyl-sensors.service systemd-timesyncd.service
+After=zyl-apparmor.service zyl-compositor.service zyl-wam.service systemd-timesyncd.service
 
 [Install]
 WantedBy=graphical.target
