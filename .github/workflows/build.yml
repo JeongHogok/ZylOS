@@ -3,7 +3,6 @@ on: [push, pull_request]
 jobs:
   build-native:
     runs-on: ubuntu-24.04
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
@@ -18,10 +17,12 @@ jobs:
             libseat-dev libxcb-dri3-dev \
             libxcb-present-dev libxcb-composite0-dev libxcb-render-util0-dev \
             libxcb-ewmh-dev libxcb-icccm4-dev libxcb-res0-dev \
-            libxcb-xinput-dev xwayland || true
+            libxcb-xinput-dev || true
+          # Upgrade meson to support c23 (required by wlroots 0.18.x)
+          pip3 install --break-system-packages meson --upgrade
       - name: Build wlroots 0.18 from source
         run: |
-          git clone --depth 1 --branch 0.18.0 https://gitlab.freedesktop.org/wlroots/wlroots.git /tmp/wlroots
+          git clone --depth 1 --branch 0.18.2 https://gitlab.freedesktop.org/wlroots/wlroots.git /tmp/wlroots
           cd /tmp/wlroots
           meson setup build --prefix=/usr -Dexamples=false -Dxwayland=disabled
           ninja -C build
