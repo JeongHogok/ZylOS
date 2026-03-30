@@ -62,6 +62,7 @@ void zyl_bridge_init(void)
     zyl_bridge_register_handler("wifi.scan",           handle_wifi_scan, NULL);
     zyl_bridge_register_handler("settings.get",        handle_settings_get, NULL);
     zyl_bridge_register_handler("settings.update",     handle_settings_update, NULL);
+    zyl_bridge_register_handler("service.request",     handle_service_request, NULL);
 }
 
 void zyl_bridge_cleanup(void)
@@ -446,4 +447,119 @@ static void handle_settings_update(const char *type, gpointer msg_obj,
     g_info("Bridge: settings.update from %s key='%s'",
            app_id, key ? key : "(none)");
     /* Forward to settings service via D-Bus */
+}
+
+/* == service.request → D-Bus dispatch ========================
+ * This is the core IPC handler that routes app service requests
+ * to the appropriate D-Bus system service on real hardware.
+ * Maps: service name → D-Bus bus name + object path + method
+ * ============================================================ */
+
+typedef struct {
+    const char *service;
+    const char *dbus_name;
+    const char *dbus_path;
+    const char *dbus_iface;
+} ServiceRoute;
+
+static const ServiceRoute SERVICE_ROUTES[] = {
+    {"notification", "org.zylos.Notification",      "/org/zylos/Notification",      "org.zylos.Notification"},
+    {"power",        "org.zylos.PowerManager",       "/org/zylos/PowerManager",       "org.zylos.PowerManager"},
+    {"display",      "org.zylos.DisplayManager",     "/org/zylos/DisplayManager",     "org.zylos.DisplayManager"},
+    {"input",        "org.zylos.InputService",       "/org/zylos/InputService",       "org.zylos.InputService"},
+    {"sensors",      "org.zylos.SensorService",      "/org/zylos/SensorService",      "org.zylos.SensorService"},
+    {"location",     "org.zylos.LocationService",    "/org/zylos/LocationService",    "org.zylos.LocationService"},
+    {"telephony",    "org.zylos.Telephony",           "/org/zylos/Telephony",           "org.zylos.Telephony"},
+    {"usb",          "org.zylos.UsbManager",          "/org/zylos/UsbManager",          "org.zylos.UsbManager"},
+    {"user",         "org.zylos.UserManager",         "/org/zylos/UserManager",         "org.zylos.UserManager"},
+    {"credential",   "org.zylos.CredentialManager",   "/org/zylos/CredentialManager",   "org.zylos.CredentialManager"},
+    {"accessibility","org.zylos.Accessibility",       "/org/zylos/Accessibility",       "org.zylos.Accessibility"},
+    {"logger",       "org.zylos.Logger",              "/org/zylos/Logger",              "org.zylos.Logger"},
+    {"camera",       "org.zylos.CameraService",       "/org/zylos/CameraService",       "org.zylos.CameraService"},
+    {"audio",        "org.zylos.AudioService",        "/org/zylos/AudioService",        "org.zylos.AudioService"},
+    {"bluetooth",    "org.zylos.BluetoothService",    "/org/zylos/BluetoothService",    "org.zylos.BluetoothService"},
+    {"wifi",         "org.zylos.WifiService",         "/org/zylos/WifiService",         "org.zylos.WifiService"},
+    {NULL, NULL, NULL, NULL}
+};
+
+static const ServiceRoute *find_route(const char *service) {
+    for (int i = 0; SERVICE_ROUTES[i].service; i++) {
+        if (strcmp(SERVICE_ROUTES[i].service, service) == 0)
+            return &SERVICE_ROUTES[i];
+    }
+    return NULL;
+}
+
+/**
+ * Capitalize first letter of method name for D-Bus convention.
+ * "getState" → "GetState"
+ */
+static char *capitalize_method(const char *method) {
+    if (!method || !method[0]) return g_strdup("");
+    char *cap = g_strdup(method);
+    if (cap[0] >= 'a' && cap[0] <= 'z') cap[0] -= 32;
+    return cap;
+}
+
+static void handle_service_request(const char *type, gpointer msg_obj,
+                                    ZylAppManifest *manifest, gpointer data)
+{
+    (void)type;
+    (void)data;
+    const char *app_id = (manifest && manifest->id) ? manifest->id : "unknown";
+    JsonObject *msg = msg_obj;
+
+    if (!json_object_has_member(msg, "service") ||
+        !json_object_has_member(msg, "method")) {
+        g_warning("Bridge: service.request missing service/method from %s",
+                  app_id);
+        return;
+    }
+
+    const char *service = json_object_get_string_member(msg, "service");
+    const char *method  = json_object_get_string_member(msg, "method");
+
+    const ServiceRoute *route = find_route(service);
+    if (!route) {
+        g_warning("Bridge: no D-Bus route for service '%s' from %s",
+                  service, app_id);
+        return;
+    }
+
+    char *dbus_method = capitalize_method(method);
+
+    g_info("Bridge: service.request from %s → %s.%s → D-Bus %s.%s",
+           app_id, service, method, route->dbus_name, dbus_method);
+
+    /* Async D-Bus call to the target service.
+     * Parameters are forwarded as a JSON string — the receiving service
+     * parses them according to its D-Bus interface. */
+    GError *err = NULL;
+    GDBusConnection *session = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &err);
+    if (err) {
+        g_warning("Bridge: session bus error: %s", err->message);
+        g_error_free(err);
+        g_free(dbus_method);
+        return;
+    }
+
+    /* Build D-Bus call parameters from the JSON params object */
+    GVariant *call_params = NULL;
+    if (json_object_has_member(msg, "params")) {
+        JsonNode *params_node = json_object_get_member(msg, "params");
+        JsonGenerator *gen = json_generator_new();
+        json_generator_set_root(gen, params_node);
+        gchar *params_json = json_generator_to_data(gen, NULL);
+        call_params = g_variant_new("(s)", params_json);
+        g_free(params_json);
+        g_object_unref(gen);
+    }
+
+    /* Fire-and-forget async call */
+    g_dbus_connection_call(session, route->dbus_name, route->dbus_path,
+        route->dbus_iface, dbus_method, call_params,
+        NULL, G_DBUS_CALL_FLAGS_NONE, 5000, NULL, NULL, NULL);
+
+    g_object_unref(session);
+    g_free(dbus_method);
 }

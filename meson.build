@@ -74,6 +74,7 @@ install_data('system/zyl-audio.service',         install_dir: get_option('prefix
 install_data('system/zyl-bluetooth.service',     install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
 install_data('system/zyl-wifi.service',          install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
 install_data('system/zyl-os.target',             install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
+install_data('system/zyl-apparmor.service',      install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
 
 # Install recovery scripts
 install_data('system/recovery/recovery.sh',       install_dir: get_option('datadir') / 'zyl-os' / 'recovery', install_mode: 'rwxr-xr-x')

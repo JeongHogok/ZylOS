@@ -354,13 +354,45 @@ int zyl_sandbox_apply(ZylSandbox *sb, const ZylSandboxPolicy *policy,
 
     /* L3: 네트워크 격리 (권한 없으면) */
     if (!(policy->permissions & ZYL_PERM_NETWORK)) {
-        if (unshare(CLONE_NEWNET) != 0) {
-            fprintf(stderr, "[Sandbox] network namespace failed: %s\n", strerror(errno));
+        if (unshare(CLONE_NEWNET) == 0) {
+            /* Bring up loopback in the new namespace so localhost works */
+            int lo_up = system("ip link set lo up 2>/dev/null");
+            if (lo_up != 0) {
+                fprintf(stderr, "[Sandbox] loopback up failed "
+                        "(ip command may be unavailable)\n");
+            }
+            fprintf(stderr, "[Sandbox] Network namespace created "
+                    "(loopback only)\n");
+        } else {
+            fprintf(stderr, "[Sandbox] network namespace failed "
+                    "(need CAP_SYS_ADMIN): %s\n", strerror(errno));
         }
     }
 
     /* L4: cgroup 리소스 제한 */
     apply_cgroup_limits(sb->cgroup_root, policy->app_id, &policy->limits);
+
+    /* L5-IPC: D-Bus 정책 적용 — 앱별 접근 가능 서비스 제한 */
+    {
+        char dbus_xml[2048];
+        if (zyl_sandbox_generate_dbus_policy(policy, dbus_xml,
+                                              sizeof(dbus_xml)) == 0) {
+            char policy_path[512];
+            snprintf(policy_path, sizeof(policy_path),
+                     "/etc/dbus-1/system.d/zyl-app-%s.conf", policy->app_id);
+            FILE *pf = fopen(policy_path, "w");
+            if (pf) {
+                fputs(dbus_xml, pf);
+                fclose(pf);
+                /* Reload D-Bus configuration */
+                system("dbus-send --system --type=method_call "
+                       "--dest=org.freedesktop.DBus /org/freedesktop/DBus "
+                       "org.freedesktop.DBus.ReloadConfig 2>/dev/null");
+                fprintf(stderr, "[Sandbox] D-Bus policy applied: %s\n",
+                        policy_path);
+            }
+        }
+    }
 
     /* L2: seccomp 시스콜 필터 (마지막에 적용) */
     apply_seccomp_filter(seccomp);
