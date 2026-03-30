@@ -20,6 +20,7 @@
 #include <sys/stat.h>
 #include <sys/prctl.h>
 #include <sys/resource.h>
+#include <time.h>          /* clock_gettime, CLOCK_MONOTONIC */
 #include <seccomp.h>       /* libseccomp API */
 #include <pwd.h>           /* getpwnam for privilege drop */
 #include <grp.h>           /* setgroups for privilege drop */

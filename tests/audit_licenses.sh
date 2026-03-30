@@ -28,7 +28,7 @@ fi
 
 # ─── Rust dependencies from Cargo.toml ───
 echo "■ Rust Dependencies (emulator-app/Cargo.toml)"
-RUST_DEPS=$(grep -E '^[a-z][-a-z_]+ *=' emulator-app/Cargo.toml | grep -v '^\[' | sed 's/ *=.*//' | grep -v -E '^(name|version|edition|description|license|strip|lto|codegen-units)$' | sort -u)
+RUST_DEPS=$(grep -E '^[a-z][-a-z_0-9]+ *=' emulator-app/Cargo.toml | grep -v '^\[' | sed 's/ *=.*//' | grep -v -E '^(name|version|edition|description|license|strip|lto|codegen-units)$' | sort -u)
 
 for dep in $RUST_DEPS; do
   if grep -qi "$dep" "$LICENSE_FILE"; then
@@ -58,6 +58,7 @@ for dep in $C_DEPS; do
     xkbcommon)      lib="xkbcommon" ;;
     pixman-1)       lib="Pixman" ;;
     libinput)       lib="libinput" ;;
+    threads)        continue ;;  # meson builtin (POSIX pthread), no license needed
     webkitgtk*|webkit2gtk*) lib="WebKitGTK" ;;
     *)              lib="$dep" ;;
   esac

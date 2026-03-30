@@ -58,6 +58,11 @@ MIT 라이선스는 GPL-3.0과 완전 호환됩니다.
 | env_logger | MIT/Apache-2.0 | 환경변수 기반 로거 |
 | nix | MIT | POSIX API 바인딩 (Linux/macOS) |
 | regex | MIT/Apache-2.0 | 정규표현식 (터미널 필터링) |
+| aes-gcm | MIT/Apache-2.0 | AES-256-GCM 암호화 (크리덴셜) |
+| pbkdf2 | MIT/Apache-2.0 | PBKDF2 키 파생 (크리덴셜) |
+| sha2 | MIT/Apache-2.0 | SHA-256 해시 (크리덴셜 키 파생) |
+| rand | MIT/Apache-2.0 | 암호학적 난수 생성 (크리덴셜) |
+| base64 | MIT/Apache-2.0 | Base64 인코딩/디코딩 |
 
 ## 라이선스 호환성
 
