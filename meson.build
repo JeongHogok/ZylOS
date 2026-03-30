@@ -5,7 +5,20 @@ project('zyl-os', 'c',
 
 # Subprojects
 subdir('compositor')
-subdir('runtime/wam')
+
+# WAM requires WebKitGTK (6.0 or 4.1 or 4.0); skip if unavailable
+_wam_webkit = dependency('webkitgtk-6.0', required: false)
+if not _wam_webkit.found()
+  _wam_webkit = dependency('webkit2gtk-4.1', required: false)
+endif
+if not _wam_webkit.found()
+  _wam_webkit = dependency('webkit2gtk-4.0', required: false)
+endif
+if _wam_webkit.found()
+  subdir('runtime/wam')
+else
+  warning('WebKitGTK not found — skipping WAM build')
+endif
 subdir('runtime/services/notification')
 subdir('runtime/services/appstore')
 subdir('runtime/services/updater')
