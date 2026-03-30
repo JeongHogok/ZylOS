@@ -15,6 +15,7 @@
 #include <string.h>
 #include <math.h>
 #include <gio/gio.h>
+#include <glib-unix.h>
 
 /* PipeWire integration via wpctl (WirePlumber CLI).
  * Direct libpipewire API requires async event loops that conflict
@@ -267,14 +268,26 @@ int zyl_audio_play_tone(ZylAudioService *svc, int freq_hz,
 }
 
 /* ─── 데몬 진입점 ─── */
+
+static GMainLoop *g_audio_loop = NULL;
+
+static gboolean on_signal_audio(gpointer data) {
+    (void)data;
+    g_message("[Audio] Signal received, shutting down");
+    if (g_audio_loop) g_main_loop_quit(g_audio_loop);
+    return G_SOURCE_REMOVE;
+}
+
 int main(int argc, char *argv[]) {
     (void)argc; (void)argv;
     ZylAudioService *svc = zyl_audio_create();
     if (!svc) { g_critical("[Audio] Failed to create service"); return 1; }
     g_message("[Audio] Zyl OS Audio Service started (PipeWire/ALSA)");
-    GMainLoop *loop = g_main_loop_new(NULL, FALSE);
-    g_main_loop_run(loop);
-    g_main_loop_unref(loop);
+    g_audio_loop = g_main_loop_new(NULL, FALSE);
+    g_unix_signal_add(SIGTERM, on_signal_audio, NULL);
+    g_unix_signal_add(SIGINT,  on_signal_audio, NULL);
+    g_main_loop_run(g_audio_loop);
+    g_main_loop_unref(g_audio_loop);
     zyl_audio_destroy(svc);
     return 0;
 }

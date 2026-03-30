@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <gio/gio.h>
+#include <glib-unix.h>
 
 #define BLUEZ_BUS    "org.bluez"
 #define ADAPTER_PATH "/org/bluez/hci0"
@@ -349,14 +350,26 @@ void zyl_bt_device_free(ZylBtDevice *devices, int count) {
 }
 
 /* ─── 데몬 진입점 ─── */
+
+static GMainLoop *g_bt_loop = NULL;
+
+static gboolean on_signal_bt(gpointer data) {
+    (void)data;
+    g_message("[BT] Signal received, shutting down");
+    if (g_bt_loop) g_main_loop_quit(g_bt_loop);
+    return G_SOURCE_REMOVE;
+}
+
 int main(int argc, char *argv[]) {
     (void)argc; (void)argv;
     ZylBluetoothService *svc = zyl_bt_create();
     if (!svc) { g_critical("[BT] Failed to create service"); return 1; }
     g_message("[BT] Zyl OS Bluetooth Service started (BlueZ)");
-    GMainLoop *loop = g_main_loop_new(NULL, FALSE);
-    g_main_loop_run(loop);
-    g_main_loop_unref(loop);
+    g_bt_loop = g_main_loop_new(NULL, FALSE);
+    g_unix_signal_add(SIGTERM, on_signal_bt, NULL);
+    g_unix_signal_add(SIGINT,  on_signal_bt, NULL);
+    g_main_loop_run(g_bt_loop);
+    g_main_loop_unref(g_bt_loop);
     zyl_bt_destroy(svc);
     return 0;
 }

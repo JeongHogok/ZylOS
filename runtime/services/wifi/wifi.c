@@ -16,6 +16,7 @@
 #include <sys/wait.h>
 #include <spawn.h>
 #include <gio/gio.h>
+#include <glib-unix.h>
 
 #define NM_BUS  "org.freedesktop.NetworkManager"
 #define NM_PATH "/org/freedesktop/NetworkManager"
@@ -256,14 +257,26 @@ void zyl_wifi_network_free(ZylWifiNetwork *networks, int count) {
 }
 
 /* ─── 데몬 진입점 ─── */
+
+static GMainLoop *g_wifi_loop = NULL;
+
+static gboolean on_signal_wifi(gpointer data) {
+    (void)data;
+    g_message("[WiFi] Signal received, shutting down");
+    if (g_wifi_loop) g_main_loop_quit(g_wifi_loop);
+    return G_SOURCE_REMOVE;
+}
+
 int main(int argc, char *argv[]) {
     (void)argc; (void)argv;
     ZylWifiService *svc = zyl_wifi_create();
     if (!svc) { g_critical("[WiFi] Failed to create service"); return 1; }
     g_message("[WiFi] Zyl OS WiFi Service started (NetworkManager)");
-    GMainLoop *loop = g_main_loop_new(NULL, FALSE);
-    g_main_loop_run(loop);
-    g_main_loop_unref(loop);
+    g_wifi_loop = g_main_loop_new(NULL, FALSE);
+    g_unix_signal_add(SIGTERM, on_signal_wifi, NULL);
+    g_unix_signal_add(SIGINT,  on_signal_wifi, NULL);
+    g_main_loop_run(g_wifi_loop);
+    g_main_loop_unref(g_wifi_loop);
     zyl_wifi_destroy(svc);
     return 0;
 }

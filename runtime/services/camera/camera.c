@@ -20,6 +20,7 @@
 #include <sys/mman.h>
 #include <linux/videodev2.h>
 #include <gio/gio.h>
+#include <glib-unix.h>
 
 #define MAX_BUFFERS 4
 
@@ -357,14 +358,26 @@ bool zyl_camera_is_open(const ZylCameraService *cam) {
 }
 
 /* ─── 데몬 진입점 ─── */
+
+static GMainLoop *g_cam_loop = NULL;
+
+static gboolean on_signal_cam(gpointer data) {
+    (void)data;
+    g_message("[Camera] Signal received, shutting down");
+    if (g_cam_loop) g_main_loop_quit(g_cam_loop);
+    return G_SOURCE_REMOVE;
+}
+
 int main(int argc, char *argv[]) {
     (void)argc; (void)argv;
     ZylCameraService *cam = zyl_camera_create();
     if (!cam) { g_critical("[Camera] Failed to create service"); return 1; }
     g_message("[Camera] Zyl OS Camera Service started (V4L2)");
-    GMainLoop *loop = g_main_loop_new(NULL, FALSE);
-    g_main_loop_run(loop);
-    g_main_loop_unref(loop);
+    g_cam_loop = g_main_loop_new(NULL, FALSE);
+    g_unix_signal_add(SIGTERM, on_signal_cam, NULL);
+    g_unix_signal_add(SIGINT,  on_signal_cam, NULL);
+    g_main_loop_run(g_cam_loop);
+    g_main_loop_unref(g_cam_loop);
     zyl_camera_destroy(cam);
     return 0;
 }
