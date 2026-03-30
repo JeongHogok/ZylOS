@@ -1019,6 +1019,9 @@
 
   /* ═══ iframe 메시지 ═══ */
   window.addEventListener('message', function (e) {
+    /* S7: Origin verification — only accept messages from our own app iframe
+       or the window itself. Reject messages from unknown origins. */
+    if (e.source !== appFrame.contentWindow && e.source !== window) return;
     try {
       var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
       if (!msg || !msg.type) return;
