@@ -12,8 +12,37 @@
 
 use crate::state::AppState;
 use std::fs;
+use std::io::Write;
 use std::sync::Mutex;
 use tauri::State;
+
+/// 임시 파일 → fsync → rename 방식의 atomic write 유틸리티
+fn atomic_write(path: &std::path::Path, content: &str) -> Result<(), String> {
+    let dir = path.parent().ok_or("Invalid path: no parent directory")?;
+    let tmp_path = dir.join(format!(
+        ".{}.tmp",
+        path.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("settings")
+    ));
+
+    // 임시 파일에 쓰기
+    let mut f = fs::File::create(&tmp_path)
+        .map_err(|e| format!("Temp file create error: {}", e))?;
+    f.write_all(content.as_bytes())
+        .map_err(|e| format!("Temp file write error: {}", e))?;
+
+    // fsync — 데이터가 디스크에 flush되도록 보장
+    f.sync_all()
+        .map_err(|e| format!("fsync error: {}", e))?;
+    drop(f);
+
+    // atomic rename
+    fs::rename(&tmp_path, path)
+        .map_err(|e| format!("Atomic rename error: {}", e))?;
+
+    Ok(())
+}
 
 /// 설정 파일 경로 결정 (마운트 포인트 또는 data_dir 폴백)
 fn settings_path(app_state: &AppState) -> std::path::PathBuf {
@@ -72,13 +101,13 @@ pub fn save_settings(
         }
     }
 
-    // 디스크에 저장
+    // 디스크에 저장 (atomic: temp → fsync → rename)
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
     }
     let json = serde_json::to_string_pretty(&settings)
         .map_err(|e| format!("Serialize error: {}", e))?;
-    fs::write(&path, json).map_err(|e| format!("Write error: {}", e))?;
+    atomic_write(&path, &json)?;
 
     log::info!("Settings saved: {}.{}", category, key);
 
