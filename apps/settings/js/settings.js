@@ -612,7 +612,7 @@
       if (msgEl) { msgEl.textContent = t('settings.pin_removed') || 'PIN removed'; msgEl.style.color = '#22c55e'; }
       if (curInput) curInput.value = '';
       var lockVal = document.getElementById('lock-type-value');
-      if (lockVal) lockVal.textContent = t('settings.swipe') || 'Swipe';
+      if (lockVal) lockVal.textContent = t('settings.swipe');
 
       setTimeout(function () {
         if (pinDialog) pinDialog.classList.add('hidden');
