@@ -39,6 +39,7 @@ subdir('runtime/services/camera')
 subdir('runtime/services/audio')
 subdir('runtime/services/bluetooth')
 subdir('runtime/services/wifi')
+subdir('runtime/hal')
 
 # Install app files
 install_subdir('apps/home',       install_dir: get_option('datadir') / 'zyl-os' / 'apps')
