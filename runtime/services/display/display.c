@@ -130,7 +130,7 @@ static void scan_connectors(ZylDisplayService *svc) {
     closedir(dir);
 }
 
-/* --- Parse modes from sysfs /sys/class/drm/cardX-*/modes --- */
+/* --- Parse modes from sysfs /sys/class/drm/cardX-{connector}/modes --- */
 static void parse_modes(ZylDisplayService *svc) {
     /* Find first connected connector */
     const DrmConnector *primary = NULL;
