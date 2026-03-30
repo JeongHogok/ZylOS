@@ -28,14 +28,36 @@ MIT 라이선스는 GPL-3.0과 완전 호환됩니다.
 | libinput | MIT | 터치/입력 처리 |
 | Pixman | MIT | 2D 픽셀 처리 |
 
+### OpenSSL (GPL-3.0 호환)
+
+| 라이브러리 | 라이선스 | 용도 |
+|-----------|---------|------|
+| OpenSSL 3.x | Apache-2.0 | AES-256-GCM, RSA-2048, SHA-256 (credential, appstore, updater) |
+
+### Additional C Dependencies
+
+| 라이브러리 | 라이선스 | 용도 |
+|-----------|---------|------|
+| libseccomp | LGPL 2.1 | seccomp BPF 샌드박스 |
+| libzip | BSD-3-Clause | 앱 패키지 (.ospkg) 압축 해제 |
+| libcurl | MIT/X-style | HTTP 클라이언트 (OTA, 앱스토어) |
+| libgps (GPSD) | BSD-2-Clause | GPS 위치 서비스 |
+
 ### Rust Dependencies (에뮬레이터)
 
 | 크레이트 | 라이선스 | 용도 |
 |---------|---------|------|
 | tauri | MIT/Apache-2.0 | 데스크톱 앱 프레임워크 |
+| tauri-build | MIT/Apache-2.0 | Tauri 빌드 도구 |
+| tauri-plugin-dialog | MIT/Apache-2.0 | Tauri 다이얼로그 플러그인 |
 | serde | MIT/Apache-2.0 | 직렬화 |
+| serde_json | MIT/Apache-2.0 | JSON 직렬화 |
 | tokio | MIT | 비동기 런타임 |
 | dirs | MIT/Apache-2.0 | 플랫폼 디렉토리 |
+| log | MIT/Apache-2.0 | 로깅 파사드 |
+| env_logger | MIT/Apache-2.0 | 환경변수 기반 로거 |
+| nix | MIT | POSIX API 바인딩 (Linux/macOS) |
+| regex | MIT/Apache-2.0 | 정규표현식 (터미널 필터링) |
 
 ## 라이선스 호환성
 
