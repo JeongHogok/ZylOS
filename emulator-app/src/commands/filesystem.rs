@@ -228,6 +228,20 @@ pub fn fs_write_file(
 
     let full_path = safe_path(mount_point, &path)?;
 
+    /* F3: Enforce virtual storage quota (prevents exceeding config_total
+       when using VFS fallback directory instead of real disk image) */
+    if let Some(config) = &app_state.config {
+        let config_total = (config.storage_gb as u64) * 1024 * 1024 * 1024;
+        let used = dir_size(mount_point);
+        let write_size = content.len() as u64;
+        if used + write_size > config_total {
+            return Err(format!(
+                "Storage quota exceeded: used={}, write={}, limit={}",
+                used, write_size, config_total
+            ));
+        }
+    }
+
     // 부모 디렉토리 생성
     if let Some(parent) = full_path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("Mkdir error: {}", e))?;

@@ -1,4 +1,13 @@
 #!/bin/bash
+# ──────────────────────────────────────────────────────────
+# Zyl OS Recovery Mode
+#
+# 진입 방법:
+#   1. 부트로더: U-Boot 프롬프트에서 'run recovery' 또는
+#      볼륨 다운 + 전원 버튼 3초 동안 누르기
+#   2. systemd: systemctl isolate zyl-recovery.target
+#   3. 설정 앱: 설정 → 시스템 → 복구 모드
+# ──────────────────────────────────────────────────────────
 # ----------------------------------------------------------
 # [Clean Architecture] Infrastructure Layer - Recovery Script
 #

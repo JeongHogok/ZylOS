@@ -631,7 +631,14 @@ window.ZylSystemServices = (function () {
           if (state) {
             state.brightness = powerState.brightness;
           }
-          return state || { state: 'ACTIVE', brightness: powerState.brightness, screenOn: true, batteryLevel: 85, charging: false };
+          if (state) {
+            /* Normalize battery format: ensure both 'level' and 'batteryLevel' exist */
+            if (state.battery && state.battery.level !== undefined) {
+              state.batteryLevel = state.battery.level;
+              state.charging = state.battery.charging || false;
+            }
+          }
+          return state || { state: 'ACTIVE', brightness: powerState.brightness, screenOn: true, batteryLevel: 85, level: 85, charging: false };
         });
       },
       setBrightness: function (p) {
