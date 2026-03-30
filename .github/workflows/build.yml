@@ -19,7 +19,9 @@ jobs:
             libxcb-ewmh-dev libxcb-icccm4-dev libxcb-res0-dev \
             libxcb-xinput-dev || true
           # Upgrade meson to support c23 (required by wlroots 0.18.x)
-          pip3 install --break-system-packages meson --upgrade
+          # Remove system meson first to avoid version conflict
+          sudo apt-get remove -y meson
+          pip3 install --break-system-packages meson
       - name: Build wayland 1.23 from source
         run: |
           git clone --depth 1 --branch 1.23.0 https://gitlab.freedesktop.org/wayland/wayland.git /tmp/wayland
