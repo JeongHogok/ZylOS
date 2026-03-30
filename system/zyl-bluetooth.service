@@ -1,0 +1,13 @@
+[Unit]
+Description=Zyl OS Bluetooth Service (BlueZ)
+After=bluetooth.service
+
+[Service]
+Type=dbus
+BusName=org.zylos.BluetoothService
+ExecStart=/usr/bin/zyl-bluetooth
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=zyl-os.target

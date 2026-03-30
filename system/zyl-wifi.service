@@ -1,0 +1,13 @@
+[Unit]
+Description=Zyl OS WiFi Service (NetworkManager)
+After=NetworkManager.service
+
+[Service]
+Type=dbus
+BusName=org.zylos.WifiService
+ExecStart=/usr/bin/zyl-wifi
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=zyl-os.target

@@ -1,0 +1,13 @@
+[Unit]
+Description=Zyl OS Audio Service (PipeWire)
+After=pipewire.service
+
+[Service]
+Type=dbus
+BusName=org.zylos.AudioService
+ExecStart=/usr/bin/zyl-audio
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=zyl-os.target

@@ -1,0 +1,13 @@
+[Unit]
+Description=Zyl OS Camera Service (V4L2)
+After=zyl-wam.service
+
+[Service]
+Type=dbus
+BusName=org.zylos.CameraService
+ExecStart=/usr/bin/zyl-camera
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=zyl-os.target

@@ -35,6 +35,10 @@ subdir('runtime/services/user')
 subdir('runtime/services/credential')
 subdir('runtime/services/accessibility')
 subdir('runtime/services/logger')
+subdir('runtime/services/camera')
+subdir('runtime/services/audio')
+subdir('runtime/services/bluetooth')
+subdir('runtime/services/wifi')
 
 # Install app files
 install_subdir('apps/home',       install_dir: get_option('datadir') / 'zyl-os' / 'apps')
@@ -65,6 +69,10 @@ install_data('system/zyl-user.service',       install_dir: get_option('prefix') 
 install_data('system/zyl-credential.service',    install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
 install_data('system/zyl-accessibility.service', install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
 install_data('system/zyl-logger.service',        install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
+install_data('system/zyl-camera.service',        install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
+install_data('system/zyl-audio.service',         install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
+install_data('system/zyl-bluetooth.service',     install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
+install_data('system/zyl-wifi.service',          install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
 install_data('system/zyl-os.target',             install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
 
 # Install recovery scripts
