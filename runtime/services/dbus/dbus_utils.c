@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 /* ──────────────────────────────────────────────────────────
  * [Clean Architecture] Infrastructure Layer - Utility
  *
