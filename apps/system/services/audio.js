@@ -19,13 +19,18 @@
     };
 
     /* Load from settings if available */
+    function clampVolume(val) {
+      var n = parseInt(val, 10);
+      return isNaN(n) ? 0 : Math.min(100, Math.max(0, n));
+    }
+
     function loadFromSettings(s) {
       if (!s) return;
-      if (s.mediaVolume !== undefined) audioState.mediaVolume = parseInt(s.mediaVolume, 10);
-      if (s.notifVolume !== undefined) audioState.notifVolume = parseInt(s.notifVolume, 10);
-      if (s.alarmVolume !== undefined) audioState.alarmVolume = parseInt(s.alarmVolume, 10);
-      if (s.ringtoneVolume !== undefined) audioState.ringtoneVolume = parseInt(s.ringtoneVolume, 10);
-      if (s.systemVolume !== undefined) audioState.systemVolume = parseInt(s.systemVolume, 10);
+      if (s.mediaVolume !== undefined) audioState.mediaVolume = clampVolume(s.mediaVolume);
+      if (s.notifVolume !== undefined) audioState.notifVolume = clampVolume(s.notifVolume);
+      if (s.alarmVolume !== undefined) audioState.alarmVolume = clampVolume(s.alarmVolume);
+      if (s.ringtoneVolume !== undefined) audioState.ringtoneVolume = clampVolume(s.ringtoneVolume);
+      if (s.systemVolume !== undefined) audioState.systemVolume = clampVolume(s.systemVolume);
       if (s.vibration !== undefined) audioState.vibration = !!s.vibration;
       if (s.silentMode !== undefined) audioState.silentMode = !!s.silentMode;
     }
