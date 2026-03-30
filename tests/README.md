@@ -27,7 +27,39 @@ bash tests/test_js_syntax.sh
 
 # Validate all app.json manifest files
 bash tests/test_manifests.sh
+
+# OS 이미지 독립성 검증 (에뮬레이터 의존 차단)
+bash tests/check-os-independence.sh
 ```
+
+## Full Codebase Verification
+
+전체 코드베이스를 11개 섹션으로 자동 검증합니다:
+
+```bash
+bash tests/verify-all.sh
+```
+
+| 섹션 | 영역 | 검증 내용 |
+|------|------|----------|
+| [1] | apps/ | Tauri 참조, postMessage 직접호출, 에뮬레이터 경로 |
+| [2] | apps/ | ES5 호환 (let/const/arrow 금지) |
+| [3] | apps/ | i18n 하드코딩, 5개 언어 키 균등 |
+| [4] | apps/ | Clean Architecture 헤더 (JS + CSS) |
+| [5] | apps/ | backdrop-filter 소프트웨어 렌더링 폴백 |
+| [6] | apps/ | Mock/Demo 데이터 금지 |
+| [7] | apps/ | app.json 필수 필드 (id, name, version) |
+| [8] | emulator-app/ | 비즈니스 로직 금지, Rust CA 헤더, cargo check |
+| [9] | runtime/ | TODO/FIXME, 빈 함수, C CA 헤더 |
+| [10] | system/ | systemd unit 파일 존재 |
+| [11] | 전체 | 기술부채 총계, console.log, 하드코딩 비밀 |
+
+### Git Pre-commit Hook
+
+`apps/` 변경 시 자동 실행되어 다음을 차단합니다:
+- `__TAURI__` 참조
+- `window.parent.postMessage` 직접 호출
+- ES5 위반 (let/const/arrow function)
 
 ## Integration Tests (M8)
 

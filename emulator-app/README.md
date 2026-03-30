@@ -2,7 +2,7 @@
 
 Tauri 2.x 기반 네이티브 디바이스 에뮬레이터. IPC 라우터 + 컴포지터 역할을 담당하며, 실제 리소스 예약(디스크 이미지, 메모리 제한)을 지원합니다.
 
-> **아키텍처 변경**: 25개 시스템 서비스의 비즈니스 로직은 OS 이미지(`apps/system/services.js`)로 이동했습니다. 에뮬레이터는 순수 IPC 라우터로서 앱↔서비스 간 메시지 전달만 담당하며, Rust 백엔드는 파일시스템 보호와 리소스 관리를 수행합니다.
+> **아키텍처**: 28개 시스템 서비스의 비즈니스 로직은 OS 이미지(`apps/system/services.js`)가 소유합니다. 에뮬레이터는 순수 IPC 라우터로서 앱↔서비스 간 메시지 전달만 담당하며, Rust 백엔드는 파일시스템 보호와 비동기 I/O(tokio)를 수행합니다. 모든 네트워크/디바이스 조회 커맨드는 비동기(`async fn` + `std::thread::spawn`)로 UI 블로킹이 없습니다.
 
 ## 빠른 시작
 
@@ -43,10 +43,11 @@ cargo tauri build
 - Location: IP 기반 위치 서비스 (ipinfo.io, Rust 백엔드)
 - Camera: MediaRecorder 기반 비디오 녹화 (호스트 웹캠)
 
-### IPC 라우터 (에뮬레이터) + OS 서비스 (27개)
+### IPC 라우터 (에뮬레이터) + OS 서비스 (28개)
 
 에뮬레이터는 순수 IPC 릴레이로서 앱↔OS 서비스 간 postMessage를 전달하며, OS 로직은 일절 포함하지 않습니다.
 28개 서비스의 비즈니스 로직은 OS 이미지의 `apps/system/services.js`가 소유합니다.
+서비스 호출에는 타임아웃(15초/12초)과 앱 워치독(동시 8건 제한)이 적용됩니다.
 앱은 ZylAppRegistry를 통해 동적으로 로딩되며, 각 앱의 `app.json` 메타데이터를 기반으로 등록됩니다.
 
 **OS 서비스 목록** (apps/system/services.js):
@@ -74,9 +75,10 @@ cargo tauri build
 22. **Sandbox** — 앱별 보안 정책
 23. **Logger** — 인메모리 로그 저장소
 24. **Accessibility** — settings 기반 접근성 설정
-25. **Audio** — 볼륨 키, OSD, 알림 사운드, 진동
+25. **Audio** — 5개 볼륨 카테고리, 키클릭, 알림음, 진동
 26. **Contacts** — 연락처 CRUD, 검색, 그룹 관리
 27. **Messaging** — SMS/MMS 수신함, 대화 스레드 관리
+28. **Network** — HTTP fetch (비동기 curl, native fetch API 폴백)
 
 **OS 보안 컴포넌트**:
 - `apps/system/permissions.js` — ZylPermissions: 앱 권한 실시간 시행

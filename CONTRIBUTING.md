@@ -85,19 +85,32 @@ Co-Authored-By: {이름} <{이메일}>
 
 ## PR 제출 전 체크리스트
 
-- [ ] `ninja -C builddir` 빌드 성공
+### 자동 검증 (필수)
+```bash
+bash tests/verify-all.sh    # 11섹션 전체 검증 — 에러 0건 필수
+```
+
+### 수동 체크
+- [ ] `ninja -C builddir` 빌드 성공 (C/Rust)
 - [ ] `ninja -C builddir test` 테스트 통과
 - [ ] 새 파일에 Clean Architecture 헤더 추가
 - [ ] mock 데이터 사용하지 않음 (서비스 채널로 데이터 전달)
-- [ ] `malloc`/`strdup` NULL 체크
-- [ ] `system()` 미사용
+- [ ] `malloc`/`strdup` NULL 체크 (C 코드)
+- [ ] `system()` 호출 금지 — D-Bus 또는 sysfs 사용 (C 코드)
 - [ ] D-Bus 이름 `org.zylos.*` 규칙 준수
-- [ ] 앱에 `js/i18n.js` 포함 (5개 언어 번역)
-- [ ] 새 앱은 `app.json`에 `iconSvg` 필드 포함 (ZylAppRegistry 동적 로딩용)
+
+### apps/ 영역 추가 규칙 (OS 이미지 독립성)
+- [ ] `window.__TAURI__` 참조 없음
+- [ ] `window.parent.postMessage()` 직접 호출 없음 → `ZylBridge.sendToSystem()` 사용
+- [ ] ES5 호환 (`let`/`const`/`=>` 사용 금지)
+- [ ] 앱에 `js/i18n.js` 포함 (5개 언어 번역 키 균등)
+- [ ] CSS `backdrop-filter` 사용 시 불투명 배경색 폴백 (opacity ≥ 0.85)
+- [ ] 새 앱은 `app.json`에 `iconSvg` 필드 포함
 - [ ] 새 앱은 `app.json`에 필요한 권한 선언 (미선언 시 서비스 호출 차단)
-- [ ] 앱에서 `navigator.*` 브라우저 API 직접 호출 금지 (서비스 채널 사용)
-- [ ] 시스템 파일은 `apps/system/`에 배치 (services.js, permissions.js, security.js)
+- [ ] 시스템 파일은 `apps/system/`에 배치
 - [ ] 관련 문서 업데이트 (해당 시)
+
+> 전체 규칙은 [CLAUDE.md](CLAUDE.md) 참조. Git pre-commit hook이 자동으로 위반을 차단합니다.
 
 ## 디렉토리 구조
 
@@ -106,8 +119,9 @@ compositor/        Wayland 컴포지터
 runtime/wam/       Web Application Manager
 runtime/hal/       Hardware Abstraction Layer
 runtime/services/  시스템 서비스 (18개 C/D-Bus)
-apps/              시스템 앱 (HTML/CSS/JS)
-apps/system/       OS 서비스 로직 (services.js 25개, permissions.js, security.js)
+apps/              시스템 앱 20개 (HTML/CSS/JS, ES5)
+apps/system/       OS 서비스 프레임워크 (services.js 28개, permissions.js, security.js, sandbox.js, app-registry.js)
+apps/shared/       공유 런타임 (bridge.js IPC 추상화, i18n.js, touch-scroll.js)
 apps/keyboard/     가상 키보드 시스템 앱
 system/            systemd, plymouth, DTS, AppArmor
 tools/             빌드/개발 도구
