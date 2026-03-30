@@ -34,7 +34,7 @@
   </div>
 
   <!-- PIN 입력 화면 (초기 숨김 — translateY로 제어) -->
-  <div id="pin-screen">
+  <div id="pin-screen" role="main">
     <div id="pin-title" data-i18n="lock.enter_pin">Enter PIN</div>
 
     <div id="pin-dots">
@@ -58,8 +58,8 @@
       <button class="num-btn" data-num="9">9<span class="num-sub">WXYZ</span></button>
       <button class="num-btn num-empty"></button>
       <button class="num-btn" data-num="0">0</button>
-      <button class="num-btn num-delete" id="btn-delete">
-        <svg viewBox="0 0 24 24" width="24" height="24" fill="white">
+      <button class="num-btn num-delete" id="btn-delete" aria-label="Delete">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="white" aria-hidden="true">
           <path d="M22 3H7c-.69 0-1.23.35-1.59.88L0 12l5.41 8.11c.36.53.9.89 1.59.89h15c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-3 12.59L17.59 17 14 13.41 10.41 17 9 15.59 12.59 12 9 8.41 10.41 7 14 10.59 17.59 7 19 8.41 15.41 12 19 15.59z"/>
         </svg>
       </button>

@@ -10,23 +10,23 @@
   <link rel="stylesheet" href="css/calc.css">
 </head>
 <body>
-  <div id="display">
-    <div id="expression"></div>
-    <div id="result">0</div>
+  <div id="display" role="main">
+    <div id="expression" aria-live="polite" aria-label="Expression"></div>
+    <div id="result" aria-live="polite" aria-label="Result">0</div>
   </div>
-  <div id="keypad">
+  <div id="keypad" role="group" aria-label="Calculator keypad">
     <button class="key fn" data-action="clear">C</button>
-    <button class="key fn" data-action="backspace">&larr;</button>
+    <button class="key fn" data-action="backspace" aria-label="Backspace">&larr;</button>
     <button class="key fn" data-action="percent">%</button>
-    <button class="key op" data-action="divide">&divide;</button>
+    <button class="key op" data-action="divide" aria-label="Divide">&divide;</button>
     <button class="key num" data-value="7">7</button>
     <button class="key num" data-value="8">8</button>
     <button class="key num" data-value="9">9</button>
-    <button class="key op" data-action="multiply">&times;</button>
+    <button class="key op" data-action="multiply" aria-label="Multiply">&times;</button>
     <button class="key num" data-value="4">4</button>
     <button class="key num" data-value="5">5</button>
     <button class="key num" data-value="6">6</button>
-    <button class="key op" data-action="subtract">&minus;</button>
+    <button class="key op" data-action="subtract" aria-label="Subtract">&minus;</button>
     <button class="key num" data-value="1">1</button>
     <button class="key num" data-value="2">2</button>
     <button class="key num" data-value="3">3</button>

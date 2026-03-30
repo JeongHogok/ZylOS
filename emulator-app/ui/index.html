@@ -14,7 +14,7 @@
 </head>
 <body>
   <!-- ═══ Phase 1: 설정 화면 ═══ -->
-  <div id="config-screen">
+  <div id="config-screen" role="main">
     <div class="config-header">
       <h1 class="config-title">Zyl OS Emulator</h1>
       <p class="config-subtitle">Configure and boot a virtual device</p>
@@ -51,8 +51,8 @@
         <div class="host-info" id="host-info"></div>
       </div>
       <div class="step-actions">
-        <button id="btn-back-step1" class="btn btn-secondary">Back</button>
-        <button id="btn-next-step3" class="btn btn-primary">Next</button>
+        <button id="btn-back-step1" class="btn btn-secondary" aria-label="Back to step 1">Back</button>
+        <button id="btn-next-step3" class="btn btn-primary" aria-label="Next step">Next</button>
       </div>
     </div>
 
@@ -86,9 +86,9 @@
     <div id="backdrop"></div>
 
     <div id="device-frame">
-      <button id="side-power" class="side-btn side-btn-right side-power" title="Power (P)"></button>
+      <button id="side-power" class="side-btn side-btn-right side-power" title="Power (P)" aria-label="Power"></button>
       <button id="side-volup" class="side-btn side-btn-right side-volup" title="Vol+ (↑)">+</button>
-      <button id="side-voldown" class="side-btn side-btn-right side-voldown" title="Vol- (↓)"></button>
+      <button id="side-voldown" class="side-btn side-btn-right side-voldown" title="Vol- (↓)" aria-label="Volume down"></button>
 
       <div id="device-notch"></div>
       <div id="device-screen">
@@ -133,7 +133,7 @@
           </div>
           <div class="qs-brightness">
             <svg class="qs-bright-ico" viewBox="0 0 24 24"><path d="M20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12 20 8.69z"/></svg>
-            <input type="range" id="qs-brightness" min="10" max="100" value="80">
+            <input type="range" id="qs-brightness" min="10" max="100" value="80" aria-label="Brightness">
           </div>
           <div id="qs-notif-section">
             <div class="qs-notif-header" data-emu-i18n="qs.notifications">Notifications</div>
@@ -163,10 +163,10 @@
         <!-- Virtual Keyboard (OS keyboard app, mounted by compositor) -->
         <div id="keyboard-container" class="zyl-keyboard"></div>
 
-        <div id="nav-softkeys" class="nav-bar hidden">
-          <button class="nav-sk-btn" id="sk-back"><svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg></button>
-          <button class="nav-sk-btn nav-sk-home" id="sk-home"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" fill="none" stroke="white" stroke-width="2"/></svg></button>
-          <button class="nav-sk-btn" id="sk-recents"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1" fill="none" stroke="white" stroke-width="2"/></svg></button>
+        <div id="nav-softkeys" class="nav-bar hidden" role="navigation" aria-label="Navigation">
+          <button class="nav-sk-btn" id="sk-back" aria-label="Back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg></button>
+          <button class="nav-sk-btn nav-sk-home" id="sk-home" aria-label="Home"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7" fill="none" stroke="white" stroke-width="2"/></svg></button>
+          <button class="nav-sk-btn" id="sk-recents" aria-label="Recent apps"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1" fill="none" stroke="white" stroke-width="2"/></svg></button>
         </div>
 
         <div id="nav-gesture" class="nav-bar hidden">
@@ -174,14 +174,14 @@
         </div>
       </div>
 
-      <div id="nav-hardware" class="hidden">
-        <button class="hw-btn" id="hw-back">&#9665;</button>
-        <button class="hw-btn hw-home" id="hw-home">&#9711;</button>
-        <button class="hw-btn" id="hw-recents">&#9633;</button>
+      <div id="nav-hardware" class="hidden" role="navigation" aria-label="Hardware navigation">
+        <button class="hw-btn" id="hw-back" aria-label="Back">&#9665;</button>
+        <button class="hw-btn hw-home" id="hw-home" aria-label="Home">&#9711;</button>
+        <button class="hw-btn" id="hw-recents" aria-label="Recent apps">&#9633;</button>
       </div>
     </div>
 
-    <div id="control-panel">
+    <div id="control-panel" role="complementary" aria-label="Emulator controls">
       <div id="device-info-header"></div>
       <div class="control-group">
         <label>Actions</label>

@@ -10,19 +10,19 @@
   <link rel="stylesheet" href="css/notes.css">
 </head>
 <body>
-  <div id="header">
+  <div id="header" role="navigation">
     <h1>Notes</h1>
-    <button id="btn-new">+</button>
+    <button id="btn-new" aria-label="New note">+</button>
   </div>
-  <div id="notes-list"></div>
+  <div id="notes-list" role="main"></div>
   <div id="editor" class="hidden">
     <div id="editor-header">
-      <button id="btn-back">&larr;</button>
+      <button id="btn-back" aria-label="Back">&larr;</button>
       <button id="btn-save" data-i18n="notes.save">Save</button>
       <button id="btn-delete" data-i18n="notes.delete">Delete</button>
     </div>
-    <input type="text" id="note-title" placeholder="Title">
-    <textarea id="note-body" placeholder="Start writing..."></textarea>
+    <input type="text" id="note-title" placeholder="Title" aria-label="Note title">
+    <textarea id="note-body" placeholder="Start writing..." aria-label="Note content"></textarea>
   </div>
   <script src="../shared/i18n.js"></script>
   <script src="i18n.js"></script>

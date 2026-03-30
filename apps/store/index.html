@@ -14,8 +14,8 @@
     <h1 data-i18n="store.title">App Store</h1>
   </div>
 
-  <div id="search-bar">
-    <input type="text" id="search-input" data-i18n-placeholder="store.search_placeholder" placeholder="Search apps...">
+  <div id="search-bar" role="search">
+    <input type="text" id="search-input" data-i18n-placeholder="store.search_placeholder" placeholder="Search apps..." data-i18n-aria-label="store.search_placeholder">
   </div>
 
   <div id="tabs">
@@ -23,7 +23,7 @@
     <button class="tab" id="tab-installed" data-tab="installed" data-i18n="store.tab_installed">Installed</button>
   </div>
 
-  <div id="app-list"></div>
+  <div id="app-list" role="main"></div>
 
   <div id="empty-state" class="hidden">
     <div class="empty-icon">&#128230;</div>

@@ -25,26 +25,26 @@
   </header>
 
   <!-- Terminal Output -->
-  <div id="terminal-output">
+  <div id="terminal-output" role="main" aria-live="polite" aria-label="Terminal output">
     <div id="output-content"></div>
   </div>
 
   <!-- Input Area -->
   <div id="input-area">
     <span id="prompt">$ user@bpi-f3:~</span>
-    <input type="text" id="command-input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+    <input type="text" id="command-input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Command input">
   </div>
 
   <!-- Quick Keys -->
-  <div id="quick-keys">
+  <div id="quick-keys" role="group" aria-label="Quick keys">
     <button class="qkey" data-key="tab">Tab</button>
     <button class="qkey" data-key="ctrl">Ctrl</button>
     <button class="qkey" data-insert="|">|</button>
     <button class="qkey" data-insert="/">/</button>
     <button class="qkey" data-insert="-">-</button>
     <button class="qkey" data-insert="~">~</button>
-    <button class="qkey" data-key="up">&uarr;</button>
-    <button class="qkey" data-key="down">&darr;</button>
+    <button class="qkey" data-key="up" aria-label="Up">&uarr;</button>
+    <button class="qkey" data-key="down" aria-label="Down">&darr;</button>
   </div>
 
   <script src="../shared/bridge.js"></script>

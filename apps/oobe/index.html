@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="css/oobe.css">
 </head>
 <body>
-  <div id="oobe-container">
+  <div id="oobe-container" role="main">
     <!-- Step 1: Welcome -->
     <div class="oobe-step active" id="step-welcome">
       <div class="oobe-logo">Zyl OS</div>
@@ -22,12 +22,12 @@
     <!-- Step 2: Language (5 languages) -->
     <div class="oobe-step" id="step-language">
       <h2 data-i18n="oobe.language_title">Select Language</h2>
-      <div class="oobe-list">
-        <div class="oobe-option" data-lang="en">English</div>
-        <div class="oobe-option" data-lang="ko">한국어</div>
-        <div class="oobe-option" data-lang="ja">日本語</div>
-        <div class="oobe-option" data-lang="zh">中文</div>
-        <div class="oobe-option" data-lang="es">Español</div>
+      <div class="oobe-list" role="listbox" aria-label="Select language">
+        <div class="oobe-option" data-lang="en" role="option" tabindex="0">English</div>
+        <div class="oobe-option" data-lang="ko" role="option" tabindex="0">한국어</div>
+        <div class="oobe-option" data-lang="ja" role="option" tabindex="0">日本語</div>
+        <div class="oobe-option" data-lang="zh" role="option" tabindex="0">中文</div>
+        <div class="oobe-option" data-lang="es" role="option" tabindex="0">Español</div>
       </div>
       <div class="oobe-step-actions">
         <button class="oobe-btn-back" onclick="prevStep()" aria-label="Back">&larr;</button>
@@ -38,8 +38,8 @@
     <!-- Step 3: WiFi -->
     <div class="oobe-step" id="step-wifi">
       <h2 data-i18n="oobe.wifi_title">Wi-Fi Connection</h2>
-      <div id="wifi-list" class="oobe-list">
-        <div class="oobe-option" data-i18n="oobe.wifi_searching">Searching for networks...</div>
+      <div id="wifi-list" class="oobe-list" role="listbox" aria-label="Wi-Fi networks">
+        <div class="oobe-option" data-i18n="oobe.wifi_searching" role="option" tabindex="0">Searching for networks...</div>
       </div>
       <div class="oobe-step-actions">
         <button class="oobe-btn-back" onclick="prevStep()" aria-label="Back">&larr;</button>
@@ -51,8 +51,8 @@
     <div class="oobe-step" id="step-pin">
       <h2 data-i18n="oobe.pin_title">Screen Lock Setup</h2>
       <p data-i18n="oobe.pin_desc">Set a 4-digit PIN</p>
-      <input type="password" id="pin-input" maxlength="4" placeholder="PIN" inputmode="numeric" pattern="[0-9]*">
-      <input type="password" id="pin-confirm" maxlength="4" placeholder="Confirm PIN" inputmode="numeric" pattern="[0-9]*">
+      <input type="password" id="pin-input" maxlength="4" placeholder="PIN" inputmode="numeric" pattern="[0-9]*" aria-label="PIN">
+      <input type="password" id="pin-confirm" maxlength="4" placeholder="Confirm PIN" inputmode="numeric" pattern="[0-9]*" aria-label="Confirm PIN">
       <div id="pin-msg"></div>
       <div class="oobe-step-actions">
         <button class="oobe-btn-back" onclick="prevStep()" aria-label="Back">&larr;</button>

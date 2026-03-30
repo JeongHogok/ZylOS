@@ -10,22 +10,22 @@
   <link rel="stylesheet" href="css/gallery.css">
 </head>
 <body>
-  <div id="header"><h1>Gallery</h1></div>
-  <div id="photo-grid"></div>
+  <div id="header" role="navigation"><h1>Gallery</h1></div>
+  <div id="photo-grid" role="main"></div>
   <div id="viewer" class="hidden">
-    <img id="viewer-img" src="">
+    <img id="viewer-img" src="" alt="Viewed media">
     <!-- 비디오 플레이어 (동적 생성 시 컨트롤 영역) -->
     <div id="video-controls" class="hidden">
       <div id="vc-progress-bar">
         <div id="vc-progress-fill"></div>
-        <input type="range" id="vc-seek" min="0" max="100" value="0">
+        <input type="range" id="vc-seek" min="0" max="100" value="0" aria-label="Seek">
       </div>
       <div id="vc-buttons">
-        <button id="vc-skip-back" title="-10s">⏪</button>
-        <button id="vc-play">▶</button>
-        <button id="vc-skip-fwd" title="+10s">⏩</button>
+        <button id="vc-skip-back" title="-10s" aria-label="Skip back 10 seconds">⏪</button>
+        <button id="vc-play" aria-label="Play">▶</button>
+        <button id="vc-skip-fwd" title="+10s" aria-label="Skip forward 10 seconds">⏩</button>
         <span id="vc-time">0:00 / 0:00</span>
-        <select id="vc-speed">
+        <select id="vc-speed" aria-label="Playback speed">
           <option value="0.5">0.5x</option>
           <option value="0.75">0.75x</option>
           <option value="1" selected>1x</option>
@@ -35,8 +35,8 @@
         </select>
       </div>
     </div>
-    <button id="viewer-delete" title="Delete" style="position:absolute;bottom:20px;right:20px;background:rgba(239,68,68,0.8);border:none;color:white;width:44px;height:44px;border-radius:22px;font-size:20px;cursor:pointer;">🗑</button>
-    <button id="viewer-close">&times;</button>
+    <button id="viewer-delete" title="Delete" aria-label="Delete" style="position:absolute;bottom:20px;right:20px;background:rgba(239,68,68,0.8);border:none;color:white;width:44px;height:44px;border-radius:22px;font-size:20px;cursor:pointer;">🗑</button>
+    <button id="viewer-close" aria-label="Close viewer">&times;</button>
   </div>
   <script src="../shared/i18n.js"></script>
   <script src="i18n.js"></script>
