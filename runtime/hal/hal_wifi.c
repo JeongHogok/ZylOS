@@ -8,7 +8,7 @@
  * SOLID: DIP — hal.h 인터페이스 구현, OCP — 다른 HAL과 독립 교체 가능
  * ────────────────────────────────────────────────────────── */
 
-#include "../hal.h"
+#include "hal.h"
 
 #include <stdio.h>
 #include <stdlib.h>

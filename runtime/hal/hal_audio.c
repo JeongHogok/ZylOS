@@ -7,7 +7,7 @@
  * SOLID: DIP — hal.h 인터페이스 구현, SRP — 오디오 제어만 담당
  * ────────────────────────────────────────────────────────── */
 
-#include "../hal.h"
+#include "hal.h"
 
 #include <stdio.h>
 #include <stdlib.h>

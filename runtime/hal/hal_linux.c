@@ -8,7 +8,7 @@
  *         OCP — 새 HAL 모듈 추가 시 이 파일만 수정
  * ────────────────────────────────────────────────────────── */
 
-#include "../hal.h"
+#include "hal.h"
 
 #include <stdlib.h>
 #include <stdio.h>

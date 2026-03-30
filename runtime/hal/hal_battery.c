@@ -7,7 +7,7 @@
  * SOLID: DIP — hal.h 인터페이스 구현, SRP — 배터리 정보만 담당
  * ────────────────────────────────────────────────────────── */
 
-#include "../hal.h"
+#include "hal.h"
 
 #include <stdio.h>
 #include <stdlib.h>
