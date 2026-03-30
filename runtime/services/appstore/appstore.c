@@ -21,6 +21,15 @@
 #include <time.h>
 #include <ftw.h>
 
+#include <openssl/evp.h>
+#include <openssl/pem.h>
+#include <openssl/err.h>
+#include <openssl/sha.h>
+
+#ifdef HAVE_LIBZIP
+#include <zip.h>
+#endif
+
 /* ─── 내부 구현 상수 ─── */
 #define MAX_CERTS            256
 #define MAX_INSTALLED_APPS   512
@@ -134,55 +143,132 @@ static bool mkdir_p(const char *path) {
     return mkdir(tmp, 0755) == 0 || errno == EEXIST;
 }
 
-/* ─── 유틸리티: SHA-256 해시 (간이 구현 - 프로덕션에서는 OpenSSL 사용) ─── */
+/* ─── 유틸리티: SHA-256 해시 (OpenSSL EVP API) ─── */
 static bool compute_sha256(const char *file_path, uint8_t out_hash[HASH_SIZE]) {
-    /*
-     * NOTE: 프로덕션 환경에서는 OpenSSL의 SHA256() 함수를 사용해야 합니다.
-     * 여기서는 프로토타입을 위해 파일 내용의 간단한 해시를 계산합니다.
-     *
-     * 실제 구현:
-     *   #include <openssl/sha.h>
-     *   SHA256(file_data, file_size, out_hash);
-     */
     FILE *f = fopen(file_path, "rb");
     if (!f) return false;
 
-    /* 간이 해시: 파일 내용을 256비트로 폴딩 */
-    memset(out_hash, 0, HASH_SIZE);
-    uint8_t buf[4096];
+    EVP_MD_CTX *ctx = EVP_MD_CTX_new();
+    if (!ctx) { fclose(f); return false; }
+
+    bool ok = false;
+    if (EVP_DigestInit_ex(ctx, EVP_sha256(), NULL) != 1) goto done;
+
+    uint8_t buf[8192];
     size_t n;
-    size_t pos = 0;
     while ((n = fread(buf, 1, sizeof(buf), f)) > 0) {
-        for (size_t i = 0; i < n; i++) {
-            out_hash[(pos + i) % HASH_SIZE] ^= buf[i];
-            out_hash[(pos + i) % HASH_SIZE] =
-                (out_hash[(pos + i) % HASH_SIZE] * 31 + buf[i]) & 0xFF;
-        }
-        pos += n;
+        if (EVP_DigestUpdate(ctx, buf, n) != 1) goto done;
     }
+
+    unsigned int digest_len = 0;
+    if (EVP_DigestFinal_ex(ctx, out_hash, &digest_len) != 1) goto done;
+    ok = (digest_len == HASH_SIZE);
+
+done:
+    EVP_MD_CTX_free(ctx);
     fclose(f);
-    return true;
+    return ok;
 }
 
-/* ─── 유틸리티: RSA 서명 검증 (간이 - 프로덕션에서는 OpenSSL 사용) ─── */
+/* ─── 유틸리티: Base64 디코딩 (OpenSSL EVP) ─── */
+static uint8_t *base64_decode_alloc(const char *input, size_t *out_len) {
+    if (!input || !out_len) return NULL;
+    size_t in_len = strlen(input);
+    if (in_len == 0) return NULL;
+
+    /* Strip trailing whitespace/newlines */
+    while (in_len > 0 && (input[in_len - 1] == '\n' ||
+                           input[in_len - 1] == '\r' ||
+                           input[in_len - 1] == ' ')) {
+        in_len--;
+    }
+    if (in_len == 0) return NULL;
+
+    size_t max_out = (in_len * 3) / 4 + 4;
+    uint8_t *output = malloc(max_out);
+    if (!output) return NULL;
+
+    EVP_ENCODE_CTX *ctx = EVP_ENCODE_CTX_new();
+    if (!ctx) { free(output); return NULL; }
+
+    int decoded_len = 0;
+    int final_len = 0;
+    EVP_DecodeInit(ctx);
+    if (EVP_DecodeUpdate(ctx, output, &decoded_len,
+                         (const unsigned char *)input, (int)in_len) < 0) {
+        EVP_ENCODE_CTX_free(ctx);
+        free(output);
+        return NULL;
+    }
+    if (EVP_DecodeFinal(ctx, output + decoded_len, &final_len) < 0) {
+        EVP_ENCODE_CTX_free(ctx);
+        free(output);
+        return NULL;
+    }
+    EVP_ENCODE_CTX_free(ctx);
+
+    *out_len = (size_t)(decoded_len + final_len);
+    return output;
+}
+
+/* ─── 유틸리티: RSA-2048+SHA-256 서명 검증 (OpenSSL EVP API) ─── */
 static bool verify_rsa_signature(const uint8_t *hash, size_t hash_len,
                                   const char *signature_b64,
                                   const char *public_key_pem) {
-    /*
-     * NOTE: 프로덕션 환경에서는 OpenSSL의 RSA_verify()를 사용해야 합니다.
-     *
-     * 실제 구현:
-     *   EVP_PKEY *pkey = PEM_read_PUBKEY(...);
-     *   EVP_DigestVerifyInit(ctx, NULL, EVP_sha256(), NULL, pkey);
-     *   EVP_DigestVerifyUpdate(ctx, hash, hash_len);
-     *   EVP_DigestVerifyFinal(ctx, sig, sig_len);
-     */
-    (void)hash;
-    (void)hash_len;
+    if (!hash || hash_len == 0 || !signature_b64 || !public_key_pem)
+        return false;
 
-    /* 프로토타입: 서명과 키가 존재하면 유효로 간주 */
-    return signature_b64 != NULL && public_key_pem != NULL
-        && strlen(signature_b64) > 0 && strlen(public_key_pem) > 0;
+    bool verified = false;
+
+    /* Decode base64 signature */
+    size_t sig_len = 0;
+    uint8_t *sig_bytes = base64_decode_alloc(signature_b64, &sig_len);
+    if (!sig_bytes || sig_len == 0) {
+        fprintf(stderr, "[APPSTORE] Failed to decode base64 signature\n");
+        free(sig_bytes);
+        return false;
+    }
+
+    /* Load public key from PEM string */
+    BIO *bio = BIO_new_mem_buf(public_key_pem, -1);
+    if (!bio) { free(sig_bytes); return false; }
+
+    EVP_PKEY *pkey = PEM_read_bio_PUBKEY(bio, NULL, NULL, NULL);
+    BIO_free(bio);
+    if (!pkey) {
+        fprintf(stderr, "[APPSTORE] Failed to parse public key PEM\n");
+        free(sig_bytes);
+        return false;
+    }
+
+    /* Verify signature using EVP_DigestVerify */
+    EVP_MD_CTX *ctx = EVP_MD_CTX_new();
+    if (!ctx) { EVP_PKEY_free(pkey); free(sig_bytes); return false; }
+
+    if (EVP_DigestVerifyInit(ctx, NULL, EVP_sha256(), NULL, pkey) != 1)
+        goto cleanup;
+
+    if (EVP_DigestVerifyUpdate(ctx, hash, hash_len) != 1)
+        goto cleanup;
+
+    int rc = EVP_DigestVerifyFinal(ctx, sig_bytes, sig_len);
+    if (rc == 1) {
+        verified = true;
+    } else if (rc == 0) {
+        fprintf(stderr, "[APPSTORE] RSA signature verification FAILED — "
+                "signature does not match\n");
+    } else {
+        unsigned long err = ERR_get_error();
+        char err_buf[256];
+        ERR_error_string_n(err, err_buf, sizeof(err_buf));
+        fprintf(stderr, "[APPSTORE] RSA verify error: %s\n", err_buf);
+    }
+
+cleanup:
+    EVP_MD_CTX_free(ctx);
+    EVP_PKEY_free(pkey);
+    free(sig_bytes);
+    return verified;
 }
 
 /* ─── 유틸리티: 파일 내용 읽기 ─── */
@@ -249,6 +335,143 @@ static int rm_rf_callback(const char *fpath, const struct stat *sb,
 static int rm_rf(const char *path) {
     return nftw(path, rm_rf_callback, 64, FTW_DEPTH | FTW_PHYS);
 }
+
+/* ─── 안전한 ZIP 추출 (libzip 또는 fork+execvp) ───
+ * system() 사용 금지 — command injection 벡터.
+ * libzip이 있으면 직접 API, 없으면 fork+execvp로 안전 호출.
+ * ─── */
+
+#ifdef HAVE_LIBZIP
+/**
+ * Extract ZIP archive to dest_dir using libzip.
+ * Returns 0 on success, -1 on failure.
+ * If specific_file is non-NULL, extract only that file.
+ */
+static int safe_extract_zip(const char *zip_path, const char *dest_dir,
+                             const char *specific_file) {
+    int errcode = 0;
+    zip_t *za = zip_open(zip_path, ZIP_RDONLY, &errcode);
+    if (!za) {
+        fprintf(stderr, "[APPSTORE] zip_open failed: error %d\n", errcode);
+        return -1;
+    }
+
+    zip_int64_t num_entries = zip_get_num_entries(za, 0);
+    for (zip_int64_t i = 0; i < num_entries; i++) {
+        const char *name = zip_get_name(za, (zip_uint64_t)i, 0);
+        if (!name) continue;
+
+        /* Security: reject path traversal */
+        if (strstr(name, "..") != NULL) {
+            fprintf(stderr, "[SECURITY] Path traversal in ZIP entry: %s\n",
+                    name);
+            zip_close(za);
+            return -1;
+        }
+
+        /* If extracting specific file, skip others */
+        if (specific_file && strcmp(name, specific_file) != 0) continue;
+
+        /* Build destination path */
+        char dest_path[512];
+        snprintf(dest_path, sizeof(dest_path), "%s/%s", dest_dir, name);
+
+        /* If entry is a directory, create it */
+        size_t name_len = strlen(name);
+        if (name_len > 0 && name[name_len - 1] == '/') {
+            mkdir_p(dest_path);
+            continue;
+        }
+
+        /* Ensure parent directory exists */
+        char *slash = strrchr(dest_path, '/');
+        if (slash) {
+            char parent[512];
+            size_t plen = (size_t)(slash - dest_path);
+            if (plen >= sizeof(parent)) plen = sizeof(parent) - 1;
+            memcpy(parent, dest_path, plen);
+            parent[plen] = '\0';
+            mkdir_p(parent);
+        }
+
+        /* Extract file */
+        zip_file_t *zf = zip_fopen_index(za, (zip_uint64_t)i, 0);
+        if (!zf) continue;
+
+        FILE *out = fopen(dest_path, "wb");
+        if (!out) { zip_fclose(zf); continue; }
+
+        char buf[8192];
+        zip_int64_t rd;
+        while ((rd = zip_fread(zf, buf, sizeof(buf))) > 0) {
+            fwrite(buf, 1, (size_t)rd, out);
+        }
+        fclose(out);
+        zip_fclose(zf);
+    }
+
+    zip_close(za);
+    return 0;
+}
+
+#else /* !HAVE_LIBZIP — fork+execvp fallback */
+
+#include <sys/wait.h>
+#include <spawn.h>
+
+/**
+ * Extract ZIP archive using fork+execvp (no system()).
+ * Avoids shell interpretation of arguments — immune to injection.
+ */
+static int safe_extract_zip(const char *zip_path, const char *dest_dir,
+                             const char *specific_file) {
+    pid_t pid;
+    int status;
+
+    /* Build argument list — no shell involved */
+    const char *argv[8];
+    int argc = 0;
+    argv[argc++] = "unzip";
+    argv[argc++] = "-o";     /* overwrite */
+    argv[argc++] = "-q";     /* quiet */
+    argv[argc++] = zip_path;
+    if (specific_file) {
+        argv[argc++] = specific_file;
+    }
+    argv[argc++] = "-d";
+    argv[argc++] = dest_dir;
+    argv[argc] = NULL;
+
+    extern char **environ;
+    /* Use restricted environment */
+    char *safe_env[] = {
+        "PATH=/usr/bin:/bin",
+        "HOME=/tmp",
+        NULL
+    };
+
+    int rc = posix_spawn(&pid, "/usr/bin/unzip", NULL, NULL,
+                         (char *const *)argv, safe_env);
+    if (rc != 0) {
+        fprintf(stderr, "[APPSTORE] posix_spawn(unzip) failed: %s\n",
+                strerror(rc));
+        return -1;
+    }
+
+    if (waitpid(pid, &status, 0) == -1) {
+        fprintf(stderr, "[APPSTORE] waitpid failed: %s\n", strerror(errno));
+        return -1;
+    }
+
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+        fprintf(stderr, "[APPSTORE] unzip exited with status %d\n",
+                WIFEXITED(status) ? WEXITSTATUS(status) : -1);
+        return -1;
+    }
+
+    return 0;
+}
+#endif /* HAVE_LIBZIP */
 
 /* ─── 유틸리티: app.json 파싱하여 ZylPackageMeta 생성 ─── */
 static ZylPackageMeta *parse_app_json(const char *json_path) {
@@ -396,11 +619,7 @@ ZylPkgSignatureStatus zyl_appstore_verify_package(
         /* 개발자 모드에서도 메타데이터 추출 시도 */
         char tmp_dir[] = "/tmp/zyl-pkg-XXXXXX";
         if (mkdtemp(tmp_dir)) {
-            char cmd[1024];
-            snprintf(cmd, sizeof(cmd),
-                     "unzip -o -q '%s' %s -d '%s' 2>/dev/null",
-                     package_path, MANIFEST_FILE, tmp_dir);
-            system(cmd);
+            safe_extract_zip(package_path, tmp_dir, MANIFEST_FILE);
 
             char manifest_path[512];
             snprintf(manifest_path, sizeof(manifest_path),
@@ -420,18 +639,13 @@ ZylPkgSignatureStatus zyl_appstore_verify_package(
     }
 
     /* Step 2: .ospkg(ZIP)를 임시 디렉토리에 압축 해제 */
-    /* TODO: libzip 통합 시 popen/system 대신 zip_open() 사용 */
     char tmp_dir[] = "/tmp/zyl-pkg-XXXXXX";
     if (!mkdtemp(tmp_dir)) {
         fprintf(stderr, "[APPSTORE] Failed to create temp dir\n");
         return ZYL_PKG_UNSIGNED;
     }
 
-    char cmd[1024];
-    snprintf(cmd, sizeof(cmd),
-             "unzip -o -q '%s' -d '%s' 2>/dev/null", package_path, tmp_dir);
-    int ret = system(cmd);
-    if (ret != 0) {
+    if (safe_extract_zip(package_path, tmp_dir, NULL) != 0) {
         fprintf(stderr, "[APPSTORE] Failed to extract package: %s\n",
                 package_path);
         rm_rf(tmp_dir);
@@ -639,18 +853,7 @@ ZylInstallResult zyl_appstore_install(ZylAppStore *store,
     }
 
     /* 4. 패키지 내용을 설치 디렉토리로 추출 */
-    /* 보안: 쉘 인젝션 방지를 위한 경로 검증 */
-    if (!is_safe_path(package_path) || !is_safe_path(install_dir)) {
-        fprintf(stderr, "[SECURITY] Unsafe characters in path\n");
-        zyl_package_meta_free(meta);
-        return ZYL_INSTALL_ERR_IO;
-    }
-
-    char cmd[1024];
-    snprintf(cmd, sizeof(cmd),
-             "unzip -o -q '%s' -d '%s' 2>/dev/null", package_path, install_dir);
-    int ret = system(cmd);
-    if (ret != 0) {
+    if (safe_extract_zip(package_path, install_dir, NULL) != 0) {
         fprintf(stderr, "[APPSTORE] Failed to extract to: %s\n", install_dir);
         rm_rf(install_dir);
         zyl_package_meta_free(meta);
