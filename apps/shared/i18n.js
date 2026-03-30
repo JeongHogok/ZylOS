@@ -142,7 +142,7 @@ window.zylI18n = (function () {
 
   /* ─── Locale Detection ─── */
   function detectLocale() {
-    var lang = (navigator.language || navigator.userLanguage || 'ko').split('-')[0];
+    var lang = (navigator.language || navigator.userLanguage || 'en').split('-')[0];
     if (translations[lang]) return lang;
     return fallbackLocale;
   }

@@ -354,7 +354,7 @@
       if (isNaN(hour) || hour < 0 || hour > 23) hour = 8;
       if (isNaN(minute) || minute < 0 || minute > 59) minute = 0;
 
-      var label = (labelInput ? labelInput.value : '').trim() || 'Alarm';
+      var label = (labelInput ? labelInput.value : '').trim() || zylI18n.t('clock.alarm');
 
       var selectedDays = [];
       var activeDayBtns = document.querySelectorAll('.day-btn.active');
@@ -425,7 +425,7 @@
     /* Send notification via IPC */
     requestService('notification', 'post', {
       appId: 'com.zylos.clock',
-      title: alarm.label || 'Alarm',
+      title: alarm.label || zylI18n.t('clock.alarm'),
       body: pad(alarm.hour) + ':' + pad(alarm.minute),
       icon: '',
       priority: 2

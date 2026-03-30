@@ -14,5 +14,6 @@
   "type": "system",
   "role": "statusbar",
   "color": "icon-blue",
-  "iconKey": "browser"
+  "iconKey": "browser",
+  "iconSvg": "M2 22h20V2z"
 }

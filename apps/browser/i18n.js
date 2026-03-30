@@ -22,7 +22,8 @@
     'browser.bookmarks': 'Bookmarks',
     'browser.add_bookmark': 'Add Bookmark',
     'browser.menu': 'Menu',
-    'browser.search': 'Search or enter URL'
+    'browser.search': 'Search or enter URL',
+    'browser.loading': 'Loading...'
   });
 
   zylI18n.addTranslations('ja', {
@@ -46,6 +47,7 @@
     'browser.bookmarks': 'Marcadores',
     'browser.add_bookmark': 'Agregar marcador',
     'browser.menu': 'Men\u00FA',
-    'browser.search': 'Buscar o ingresar URL'
+    'browser.search': 'Buscar o ingresar URL',
+    'browser.loading': 'Cargando...'
   });
 })();

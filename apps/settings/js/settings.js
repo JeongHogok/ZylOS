@@ -552,7 +552,7 @@
       /* Validate */
       var storedPin = settingsCache.security ? settingsCache.security.pin : '0000';
       if (currentPin !== storedPin) {
-        if (msgEl) { msgEl.textContent = t('settings.wrong_pin') || 'Incorrect current PIN'; msgEl.style.color = '#ef4444'; }
+        if (msgEl) { msgEl.textContent = t('settings.wrong_pin'); msgEl.style.color = '#ef4444'; }
         return;
       }
       if (newPin.length !== 4 || !/^\d{4}$/.test(newPin)) {
@@ -592,11 +592,11 @@
 
       /* Must verify current PIN to remove */
       if (!storedPin) {
-        if (msgEl) { msgEl.textContent = t('settings.no_pin_set') || 'No PIN is set'; msgEl.style.color = '#f59e0b'; }
+        if (msgEl) { msgEl.textContent = t('settings.no_pin_set'); msgEl.style.color = '#f59e0b'; }
         return;
       }
       if (currentPin !== storedPin) {
-        if (msgEl) { msgEl.textContent = t('settings.wrong_pin') || 'Incorrect current PIN'; msgEl.style.color = '#ef4444'; }
+        if (msgEl) { msgEl.textContent = t('settings.wrong_pin'); msgEl.style.color = '#ef4444'; }
         return;
       }
 
@@ -889,21 +889,21 @@
 
   if (wifiScanBtn) wifiScanBtn.addEventListener('click', function () {
     wifiScanBtn.classList.add('scanning');
-    wifiScanBtn.textContent = t('settings.scanning') || 'Scanning...';
+    wifiScanBtn.textContent = t('settings.scanning');
     requestService('wifi', 'getNetworks');
     setTimeout(function () {
       wifiScanBtn.classList.remove('scanning');
-      wifiScanBtn.textContent = t('settings.wifi_scan') || 'Scan for Networks';
+      wifiScanBtn.textContent = t('settings.wifi_scan');
     }, 3000);
   });
 
   if (btScanBtn) btScanBtn.addEventListener('click', function () {
     btScanBtn.classList.add('scanning');
-    btScanBtn.textContent = t('settings.scanning') || 'Scanning...';
+    btScanBtn.textContent = t('settings.scanning');
     requestService('bluetooth', 'getDevices');
     setTimeout(function () {
       btScanBtn.classList.remove('scanning');
-      btScanBtn.textContent = t('settings.bt_scan') || 'Scan for Devices';
+      btScanBtn.textContent = t('settings.bt_scan');
     }, 3000);
   });
 

@@ -193,7 +193,7 @@
     var tab = getActiveTab();
     var domain = extractDomain(url);
     tab.url = url;
-    tab.title = domain || 'Loading...';
+    tab.title = domain || zylI18n.t('browser.loading');
 
     if (!skipHistory) {
       tab.history = tab.history.slice(0, tab.historyIndex + 1);
