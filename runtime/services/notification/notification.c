@@ -685,6 +685,7 @@ void zyl_notification_channel_free(ZylNotificationChannel *channel)
  * Entry Point
  * ══════════════════════════════════════════════════════════════ */
 
+#ifndef ZYL_TEST
 int main(int argc, char *argv[])
 {
     (void)argc;
@@ -707,3 +708,4 @@ int main(int argc, char *argv[])
 
     return 0;
 }
+#endif /* ZYL_TEST */

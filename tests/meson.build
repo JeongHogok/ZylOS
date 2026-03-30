@@ -35,5 +35,6 @@ test('notification',
       '../runtime/services/notification',
     ),
     dependencies: [gio_dep],
+    c_args: ['-DZYL_TEST'],
   )
 )
