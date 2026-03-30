@@ -18,7 +18,7 @@ jobs:
             libdrm mesa libglvnd \
             gtk4 json-glib \
             hwdata libdisplay-info \
-            seatd webkit2gtk \
+            seatd webkit2gtk webkit2gtk-4.1 \
             python
       - name: Build wlroots from source
         run: |
