@@ -15,10 +15,10 @@ jobs:
             libdrm-dev libegl-dev libgles2-mesa-dev libgbm-dev \
             libgtk-4-dev libjson-glib-dev \
             build-essential cmake hwdata libdisplay-info-dev \
-            libseat-dev libliftoff-dev libxcb-dri3-dev \
+            libseat-dev libxcb-dri3-dev \
             libxcb-present-dev libxcb-composite0-dev libxcb-render-util0-dev \
             libxcb-ewmh-dev libxcb-icccm4-dev libxcb-res0-dev \
-            libxcb-xinput-dev libxwayland-dev
+            libxcb-xinput-dev xwayland || true
       - name: Build wlroots 0.18 from source
         run: |
           git clone --depth 1 --branch 0.18.2 https://gitlab.freedesktop.org/wlroots/wlroots.git /tmp/wlroots
