@@ -25,12 +25,17 @@
       },
       getRotation: function () { return Promise.resolve(displayState.rotation); },
       setRotation: function (p) {
-        displayState.rotation = parseInt(p.rotation, 10) || 0;
+        var VALID_ROTATIONS = [0, 90, 180, 270];
+        var requested = parseInt(p.rotation, 10);
+        var rotation = VALID_ROTATIONS.indexOf(requested) !== -1 ? requested : 0;
+        displayState.rotation = rotation;
         return Promise.resolve(displayState.rotation);
       },
       getScale: function () { return Promise.resolve(displayState.scale); },
       setScale: function (p) {
-        displayState.scale = parseFloat(p.scale) || 1.0;
+        var raw = parseFloat(p.scale);
+        var scale = isNaN(raw) ? 1.0 : Math.min(3.0, Math.max(0.5, raw));
+        displayState.scale = scale;
         return Promise.resolve(displayState.scale);
       },
       _applyProfile: function (profile) {
