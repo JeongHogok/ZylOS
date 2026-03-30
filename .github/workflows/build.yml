@@ -18,7 +18,7 @@ jobs:
             libdrm mesa libglvnd \
             gtk4 json-glib \
             hwdata libdisplay-info \
-            seatd webkit2gtk-4.1 \
+            seatd webkit2gtk \
             python
       - name: Build wlroots from source
         run: |
@@ -28,6 +28,10 @@ jobs:
           ninja -C build
           ninja -C build install
           ldconfig
+      - name: Generate xdg-shell protocol header
+        run: |
+          PROTO_DIR=$(pkg-config --variable=pkgdatadir wayland-protocols)
+          wayland-scanner server-header "$PROTO_DIR/stable/xdg-shell/xdg-shell.xml" /usr/include/xdg-shell-protocol.h
       - name: Build Zyl OS
         run: |
           meson setup builddir
