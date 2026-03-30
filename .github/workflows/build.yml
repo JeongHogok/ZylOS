@@ -1,6 +1,7 @@
-name: Build
+name: Build & Test
 on: [push, pull_request]
 jobs:
+  # ─── Native C build (Arch Linux) ───
   build-native:
     runs-on: ubuntu-24.04
     container:
@@ -19,7 +20,8 @@ jobs:
             gtk4 json-glib \
             hwdata libdisplay-info \
             seatd \
-            python
+            openssl libseccomp libzip curl gpsd \
+            python nodejs
       - name: Build wlroots from source
         run: |
           git clone --depth 1 --branch 0.18.2 https://gitlab.freedesktop.org/wlroots/wlroots.git /tmp/wlroots
@@ -36,13 +38,14 @@ jobs:
         run: |
           meson setup builddir
           ninja -C builddir
-      - name: Check apps
+      - name: Check app manifests
         run: |
           for f in apps/*/app.json; do
             python3 -c "import json; json.load(open('$f'))" || exit 1
           done
           echo "All manifests valid"
 
+  # ─── HTML lint ───
   lint-html:
     runs-on: ubuntu-24.04
     steps:
@@ -50,6 +53,7 @@ jobs:
       - name: Check HTML DOCTYPE first line
         run: bash tests/test_doctype.sh
 
+  # ─── JavaScript syntax check ───
   lint-js:
     runs-on: ubuntu-24.04
     steps:
@@ -60,3 +64,58 @@ jobs:
             node --check "$f" || exit 1
           done
           echo "All JS files parse OK"
+
+  # ─── JavaScript unit tests ───
+  test-js:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run service module tests
+        run: node tests/test_services.js
+
+  # ─── License audit ───
+  audit-licenses:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit third-party licenses
+        run: bash tests/audit_licenses.sh
+
+  # ─── Fuzz testing (short CI run) ───
+  fuzz:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run fuzzers
+        run: |
+          cd tests/fuzz
+          for f in fuzz_*.c; do
+            name="${f%.c}"
+            clang -g -O1 -fsanitize=fuzzer,address "$f" -o "$name"
+            mkdir -p "corpus/$name"
+            "./$name" "corpus/$name" -max_len=4096 -runs=10000 || exit 1
+          done
+          echo "All fuzz runs passed"
+
+  # ─── Integration tests ───
+  test-integration:
+    runs-on: ubuntu-24.04
+    needs: build-native
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run integration tests
+        run: |
+          bash tests/test_manifests.sh
+          bash tests/test_js_syntax.sh
+          echo "Integration tests passed"
+
+  # ─── Docker reproducible build ───
+  build-docker:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build in Docker
+        run: docker build --target builder -t zylos-build .

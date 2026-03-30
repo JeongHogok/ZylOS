@@ -1,0 +1,14 @@
+[Unit]
+Description=Zyl OS Crash Handler
+DefaultDependencies=no
+Before=zyl-os.target
+
+[Service]
+Type=dbus
+BusName=org.zylos.CrashHandler
+ExecStart=/usr/bin/zyl-crash-handler
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=zyl-os.target

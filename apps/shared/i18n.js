@@ -133,8 +133,60 @@ window.zylI18n = (function () {
       'month.4': 'abril', 'month.5': 'mayo', 'month.6': 'junio',
       'month.7': 'julio', 'month.8': 'agosto', 'month.9': 'septiembre',
       'month.10': 'octubre', 'month.11': 'noviembre', 'month.12': 'diciembre'
+    },
+    ar: {
+      'search': '\u0628\u062D\u062B...',
+      'app.browser': '\u0627\u0644\u0645\u062A\u0635\u0641\u062D',
+      'app.files': '\u0627\u0644\u0645\u0644\u0641\u0627\u062A',
+      'app.terminal': '\u0627\u0644\u0637\u0631\u0641\u064A\u0629',
+      'app.settings': '\u0627\u0644\u0625\u0639\u062F\u0627\u062F\u0627\u062A',
+      'app.camera': '\u0627\u0644\u0643\u0627\u0645\u064A\u0631\u0627',
+      'app.gallery': '\u0627\u0644\u0645\u0639\u0631\u0636',
+      'app.music': '\u0627\u0644\u0645\u0648\u0633\u064A\u0642\u0649',
+      'app.clock': '\u0627\u0644\u0633\u0627\u0639\u0629',
+      'app.calc': '\u0627\u0644\u0622\u0644\u0629 \u0627\u0644\u062D\u0627\u0633\u0628\u0629',
+      'app.notes': '\u0627\u0644\u0645\u0644\u0627\u062D\u0638\u0627\u062A',
+      'app.weather': '\u0627\u0644\u0637\u0642\u0633',
+      'app.store': '\u0645\u062A\u062C\u0631 \u0627\u0644\u062A\u0637\u0628\u064A\u0642\u0627\u062A',
+      'app.phone': '\u0627\u0644\u0647\u0627\u062A\u0641',
+      'app.messages': '\u0627\u0644\u0631\u0633\u0627\u0626\u0644',
+      'app.contacts': '\u062C\u0647\u0627\u062A \u0627\u0644\u0627\u062A\u0635\u0627\u0644',
+      'date.format': '{d}/{m}/{y} {day}',
+      'day.0': '\u0627\u0644\u0623\u062D\u062F', 'day.1': '\u0627\u0644\u0627\u062B\u0646\u064A\u0646', 'day.2': '\u0627\u0644\u062B\u0644\u0627\u062B\u0627\u0621',
+      'day.3': '\u0627\u0644\u0623\u0631\u0628\u0639\u0627\u0621', 'day.4': '\u0627\u0644\u062E\u0645\u064A\u0633', 'day.5': '\u0627\u0644\u062C\u0645\u0639\u0629',
+      'day.6': '\u0627\u0644\u0633\u0628\u062A'
+    },
+    he: {
+      'search': '\u05D7\u05D9\u05E4\u05D5\u05E9...',
+      'app.browser': '\u05D3\u05E4\u05D3\u05E4\u05DF',
+      'app.files': '\u05E7\u05D1\u05E6\u05D9\u05DD',
+      'app.terminal': '\u05DE\u05E1\u05D5\u05E3',
+      'app.settings': '\u05D4\u05D2\u05D3\u05E8\u05D5\u05EA',
+      'app.camera': '\u05DE\u05E6\u05DC\u05DE\u05D4',
+      'date.format': '{d}/{m}/{y} {day}'
     }
   };
+
+  /* ─── RTL Language Support ─── */
+  var RTL_LOCALES = { ar: true, he: true, fa: true, ur: true };
+
+  function isRtl(locale) {
+    return !!RTL_LOCALES[locale];
+  }
+
+  function applyDirection(locale) {
+    var dir = isRtl(locale) ? 'rtl' : 'ltr';
+    document.documentElement.dir = dir;
+    document.documentElement.setAttribute('data-dir', dir);
+    /* Apply CSS class for layout adjustments */
+    if (isRtl(locale)) {
+      document.body.classList.add('zyl-rtl');
+      document.body.classList.remove('zyl-ltr');
+    } else {
+      document.body.classList.add('zyl-ltr');
+      document.body.classList.remove('zyl-rtl');
+    }
+  }
 
   var currentLocale = 'ko';
   var fallbackLocale = 'en';
@@ -188,6 +240,7 @@ window.zylI18n = (function () {
       el.placeholder = t(el.getAttribute('data-i18n-placeholder'));
     });
     document.documentElement.lang = currentLocale;
+    applyDirection(currentLocale);
   }
 
   /* ─── Set Locale ─── */
@@ -295,5 +348,6 @@ window.zylI18n = (function () {
     applyTranslations: applyTranslations,
     onLocaleChange: onLocaleChange,
     addTranslations: addTranslations,
+    isRtl: isRtl,
   };
 })();

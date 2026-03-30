@@ -40,6 +40,8 @@ subdir('runtime/services/audio')
 subdir('runtime/services/bluetooth')
 subdir('runtime/services/wifi')
 subdir('runtime/hal')
+subdir('runtime/services/crash')
+subdir('runtime/services/telemetry')
 
 # Install app files
 install_subdir('apps/home',       install_dir: get_option('datadir') / 'zyl-os' / 'apps')
@@ -77,6 +79,7 @@ install_data('system/zyl-wifi.service',          install_dir: get_option('prefix
 install_data('system/zyl-os.target',             install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
 install_data('system/zyl-apparmor.service',      install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
 install_data('system/timesyncd.conf',            install_dir: get_option('sysconfdir') / 'systemd')
+install_data('system/zyl-crash-handler.service', install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
 
 # Install recovery scripts
 install_data('system/recovery/recovery.sh',       install_dir: get_option('datadir') / 'zyl-os' / 'recovery', install_mode: 'rwxr-xr-x')

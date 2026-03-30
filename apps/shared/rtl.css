@@ -1,0 +1,73 @@
+/* ──────────────────────────────────────────────────────────
+ * [Clean Architecture] Presentation Layer - Style
+ *
+ * 역할: RTL (Right-to-Left) 언어 레이아웃 지원
+ * 수행범위: Arabic, Hebrew, Persian, Urdu 텍스트 방향 + UI 미러링
+ * SOLID: SRP — RTL 스타일만 담당
+ * ────────────────────────────────────────────────────────── */
+
+/* ─── Base direction ─── */
+[dir="rtl"] {
+  direction: rtl;
+  text-align: right;
+}
+
+/* ─── Flex layout mirroring ─── */
+.zyl-rtl .row,
+.zyl-rtl .flex-row {
+  flex-direction: row-reverse;
+}
+
+/* ─── Margin/padding mirroring ─── */
+.zyl-rtl .ml-auto { margin-left: 0; margin-right: auto; }
+.zyl-rtl .mr-auto { margin-right: 0; margin-left: auto; }
+.zyl-rtl .pl-1 { padding-left: 0; padding-right: 0.25rem; }
+.zyl-rtl .pr-1 { padding-right: 0; padding-left: 0.25rem; }
+
+/* ─── Icon mirroring (directional icons) ─── */
+.zyl-rtl .icon-back,
+.zyl-rtl .icon-forward,
+.zyl-rtl .icon-chevron-right,
+.zyl-rtl .icon-chevron-left {
+  transform: scaleX(-1);
+}
+
+/* ─── Statusbar ─── */
+.zyl-rtl .status-bar {
+  flex-direction: row-reverse;
+}
+
+/* ─── List items ─── */
+.zyl-rtl .list-item {
+  text-align: right;
+}
+
+.zyl-rtl .list-item .list-item-icon {
+  margin-left: 12px;
+  margin-right: 0;
+}
+
+/* ─── Input fields ─── */
+.zyl-rtl input,
+.zyl-rtl textarea {
+  text-align: right;
+}
+
+/* ─── Navigation drawer ─── */
+.zyl-rtl .nav-drawer {
+  left: auto;
+  right: 0;
+  transform: translateX(100%);
+}
+
+.zyl-rtl .nav-drawer.open {
+  transform: translateX(0);
+}
+
+/* ─── Scrollbar position ─── */
+.zyl-rtl ::-webkit-scrollbar {
+  /* Keep scrollbar on left side for RTL */
+  direction: ltr;
+}
+
+/* ─── Swipe gestures should be mirrored in JS ─── */
