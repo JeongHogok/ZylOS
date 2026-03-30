@@ -269,9 +269,10 @@ pub fn list_installed_apps() -> Result<Vec<serde_json::Value>, String> {
     let mut apps = Vec::new();
 
     for base in &search_dirs {
-        if !base.exists() {
+        if !base.exists() || !base.is_dir() {
             continue;
         }
+        log::debug!("Scanning apps directory: {:?}", base);
         if let Ok(entries) = fs::read_dir(base) {
             for entry in entries.flatten() {
                 let path = entry.path();
@@ -305,10 +306,18 @@ pub fn list_installed_apps() -> Result<Vec<serde_json::Value>, String> {
                 }
             }
         }
-        if !apps.is_empty() {
-            break; // 첫 번째 유효한 디렉토리에서 발견하면 중단
-        }
+        /* Continue scanning all directories — merge results, dedup by app id */
     }
+
+    /* Deduplicate by app id — first occurrence wins */
+    let mut seen = std::collections::HashSet::new();
+    apps.retain(|app| {
+        if let Some(id) = app.get("id").and_then(|v| v.as_str()) {
+            seen.insert(id.to_string())
+        } else {
+            false
+        }
+    });
 
     Ok(apps)
 }

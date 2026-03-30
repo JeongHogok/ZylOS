@@ -149,19 +149,42 @@ window.ZylSystemServices = (function () {
   var _appPending = {}; /* appId → count of pending calls */
   var _appBlocked = {}; /* appId → true if force-blocked */
 
+  var WATCHDOG_AUTO_RELEASE_MS = 30000; /* 30s failsafe auto-release */
+  var _watchdogTimers = {}; /* appId → [timerIds] */
+
   function watchdogAcquire(appId) {
     if (!appId) return true;
     if (_appBlocked[appId]) return false;
     if (!_appPending[appId]) _appPending[appId] = 0;
     if (_appPending[appId] >= MAX_CONCURRENT_PER_APP) return false;
     _appPending[appId]++;
+    /* Failsafe: auto-release after 30s to prevent permanent count leak */
+    if (!_watchdogTimers[appId]) _watchdogTimers[appId] = [];
+    var timerId = setTimeout(function () {
+      watchdogRelease(appId);
+      if (_watchdogTimers[appId]) {
+        _watchdogTimers[appId] = _watchdogTimers[appId].filter(function (t) { return t !== timerId; });
+      }
+    }, WATCHDOG_AUTO_RELEASE_MS);
+    _watchdogTimers[appId].push(timerId);
     return true;
   }
 
   function watchdogRelease(appId) {
     if (!appId || !_appPending[appId]) return;
     _appPending[appId]--;
-    if (_appPending[appId] <= 0) delete _appPending[appId];
+    if (_appPending[appId] <= 0) {
+      delete _appPending[appId];
+      /* Clear all failsafe timers for this app */
+      if (_watchdogTimers[appId]) {
+        _watchdogTimers[appId].forEach(function (t) { clearTimeout(t); });
+        delete _watchdogTimers[appId];
+      }
+    } else if (_watchdogTimers[appId] && _watchdogTimers[appId].length > 0) {
+      /* Clear one timer (LIFO) — corresponding to this release */
+      var tid = _watchdogTimers[appId].pop();
+      if (tid) clearTimeout(tid);
+    }
   }
 
   /**

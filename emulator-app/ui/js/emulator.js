@@ -1038,7 +1038,16 @@
         case 'unlock':
           state.locked = false;
           syslog('Device unlocked', 'sys');
-          goHome();
+          /* Ensure PIN is loaded from settings before proceeding */
+          var pinReload = ZylServices.handleRequest('settings', 'get', { category: 'security' });
+          if (pinReload && typeof pinReload.then === 'function') {
+            pinReload.then(function (sec) {
+              if (sec && sec.pin) _currentPin = String(sec.pin);
+              goHome();
+            }).catch(function () { goHome(); });
+          } else {
+            goHome();
+          }
           break;
         case 'notification.create':
           pushNotification(msg);

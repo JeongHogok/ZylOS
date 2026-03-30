@@ -76,15 +76,18 @@ pub fn notif_clear_all() {
 // 2. Power Service
 // ════════════════════════════════════════════
 
+static BRIGHTNESS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(80);
+
 #[tauri::command]
 pub fn power_get_state() -> serde_json::Value {
     let battery = crate::platform::get_battery_info().unwrap_or_else(|_| {
         serde_json::json!({"level": 100, "charging": true})
     });
+    let brightness = BRIGHTNESS.load(std::sync::atomic::Ordering::Relaxed);
 
     serde_json::json!({
         "state": "ACTIVE",
-        "brightness": 80,
+        "brightness": brightness,
         "battery": battery,
         "screenOn": true,
     })
@@ -92,7 +95,9 @@ pub fn power_get_state() -> serde_json::Value {
 
 #[tauri::command]
 pub fn power_set_brightness(percent: u32) -> serde_json::Value {
-    serde_json::json!({ "brightness": percent.min(100) })
+    let clamped = percent.min(100);
+    BRIGHTNESS.store(clamped, std::sync::atomic::Ordering::Relaxed);
+    serde_json::json!({ "brightness": clamped })
 }
 
 // ════════════════════════════════════════════
