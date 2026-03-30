@@ -3,48 +3,21 @@ on: [push, pull_request]
 jobs:
   build-native:
     runs-on: ubuntu-24.04
+    container:
+      image: archlinux:latest
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y meson ninja-build pkg-config \
-            libwayland-dev wayland-protocols \
-            libxkbcommon-dev libpixman-1-dev libinput-dev \
-            libdrm-dev libegl-dev libgles2-mesa-dev libgbm-dev \
-            libgtk-4-dev libjson-glib-dev \
-            build-essential cmake hwdata libdisplay-info-dev \
-            libseat-dev libxcb-dri3-dev \
-            libxcb-present-dev libxcb-composite0-dev libxcb-render-util0-dev \
-            libxcb-ewmh-dev libxcb-icccm4-dev libxcb-res0-dev \
-            libxcb-xinput-dev || true
-          # Upgrade meson to support c23 (required by wlroots 0.18.x)
-          # Remove system meson first to avoid version conflict
-          sudo apt-get remove -y meson
-          pip3 install --break-system-packages meson
-      - name: Build wayland 1.23 from source
-        run: |
-          git clone --depth 1 --branch 1.23.0 https://gitlab.freedesktop.org/wayland/wayland.git /tmp/wayland
-          cd /tmp/wayland
-          meson setup build --prefix=/usr -Ddocumentation=false -Dtests=false
-          ninja -C build
-          sudo ninja -C build install
-          sudo ldconfig
-      - name: Build wayland-protocols from source
-        run: |
-          git clone --depth 1 --branch 1.38 https://gitlab.freedesktop.org/wayland/wayland-protocols.git /tmp/wayland-protocols
-          cd /tmp/wayland-protocols
-          meson setup build --prefix=/usr -Dtests=false
-          ninja -C build
-          sudo ninja -C build install
-      - name: Build wlroots 0.18 from source
-        run: |
-          git clone --depth 1 --branch 0.18.2 https://gitlab.freedesktop.org/wlroots/wlroots.git /tmp/wlroots
-          cd /tmp/wlroots
-          meson setup build --prefix=/usr -Dexamples=false -Dxwayland=disabled
-          ninja -C build
-          sudo ninja -C build install
-          sudo ldconfig
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm base-devel meson ninja pkgconf git \
+            wayland wayland-protocols \
+            libxkbcommon pixman libinput \
+            libdrm mesa libglvnd \
+            gtk4 json-glib \
+            hwdata libdisplay-info \
+            seatd wlroots \
+            python
       - name: Build Zyl OS
         run: |
           meson setup builddir
