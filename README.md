@@ -88,14 +88,27 @@
 
 ## 빠른 시작
 
-### 에뮬레이터로 체험하기 (하드웨어 불필요)
+### 방법 1: 빌드된 에뮬레이터 다운로드 (가장 간편)
+
+> [**v0.1.0 릴리즈 다운로드**](https://github.com/JeongHogok/ZylOS/releases/tag/v0.1.0)
+
+| 파일 | 플랫폼 |
+|------|--------|
+| `Zyl OS Emulator_0.1.0_aarch64.dmg` | macOS (Apple Silicon) |
+
+1. `.dmg` 파일 다운로드 → 더블클릭 → Applications에 드래그
+2. 앱 실행 → 디바이스 선택 → 부팅 → OOBE(초기 설정) → 홈 화면
+
+> Linux / Intel Mac은 아래 소스 빌드 방법을 사용하세요.
+
+### 방법 2: 소스에서 빌드
 
 #### 사전 요구사항
 - **Rust** 1.70+ (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`)
 - **Tauri CLI** (`cargo install tauri-cli`)
 - macOS: Xcode Command Line Tools / Linux: `libwebkit2gtk-4.1-dev libgtk-3-dev`
 
-#### 다운로드 및 실행
+#### 빌드 및 실행
 ```bash
 # 1. 저장소 클론
 git clone https://github.com/JeongHogok/ZylOS.git
