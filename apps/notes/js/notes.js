@@ -20,9 +20,9 @@
   var currentNote = null;
 
   function requestNotes() {
-    window.parent.postMessage(JSON.stringify({
+    ZylBridge.sendToSystem({
       type: 'service.request', service: 'fs', method: 'getDirectory', params: { path: 'Documents/Notes' }
-    }), '*');
+    });
   }
 
   window.addEventListener('message', function (e) {
@@ -35,9 +35,9 @@
       if (msg.type === 'navigation.back') {
         if (editor && !editor.classList.contains('hidden')) {
           closeEditor();
-          window.parent.postMessage(JSON.stringify({ type: 'navigation.handled' }), '*');
+          ZylBridge.sendToSystem({ type: 'navigation.handled' });
         } else {
-          window.parent.postMessage(JSON.stringify({ type: 'navigation.exit' }), '*');
+          ZylBridge.sendToSystem({ type: 'navigation.exit' });
         }
         return;
       }
@@ -68,9 +68,9 @@
     if (editor) editor.classList.remove('hidden');
     if (document.getElementById('header')) document.getElementById('header').classList.add('hidden');
     /* 파일 내용 요청 */
-    window.parent.postMessage(JSON.stringify({
+    ZylBridge.sendToSystem({
       type: 'service.request', service: 'fs', method: 'getFileContent', params: { path: 'Documents/Notes/' + filename }
-    }), '*');
+    });
   }
 
   function closeEditor() {
@@ -92,25 +92,25 @@
 
     /* If title changed, rename old file first */
     if (currentNote && currentNote !== newFileName) {
-      window.parent.postMessage(JSON.stringify({
+      ZylBridge.sendToSystem({
         type: 'service.request', service: 'fs', method: 'rename',
         params: { oldPath: 'Documents/Notes/' + currentNote, newPath: 'Documents/Notes/' + newFileName }
-      }), '*');
+      });
     }
 
-    window.parent.postMessage(JSON.stringify({
+    ZylBridge.sendToSystem({
       type: 'service.request', service: 'fs', method: 'writeFile',
       params: { path: 'Documents/Notes/' + newFileName, content: body }
-    }), '*');
+    });
     closeEditor();
   });
 
   if (document.getElementById('btn-delete')) document.getElementById('btn-delete').addEventListener('click', function () {
     if (!currentNote) return;
-    window.parent.postMessage(JSON.stringify({
+    ZylBridge.sendToSystem({
       type: 'service.request', service: 'fs', method: 'remove',
       params: { path: 'Documents/Notes/' + currentNote }
-    }), '*');
+    });
     closeEditor();
   });
 
@@ -135,8 +135,8 @@
   });
 
   /* Notes 디렉토리 생성 보장 */
-  window.parent.postMessage(JSON.stringify({
+  ZylBridge.sendToSystem({
     type: 'service.request', service: 'fs', method: 'mkdir', params: { path: 'Documents/Notes' }
-  }), '*');
+  });
   requestNotes();
 })();

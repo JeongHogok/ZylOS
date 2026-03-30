@@ -99,63 +99,75 @@ pub fn power_set_brightness(percent: u32) -> serde_json::Value {
 // 3. Location Service
 // ════════════════════════════════════════════
 
+/// Location via IP geolocation (non-blocking).
+/// Runs curl in a background thread to avoid blocking the Tauri main thread.
 #[tauri::command]
-pub fn location_get_last_known() -> serde_json::Value {
+pub async fn location_get_last_known() -> serde_json::Value {
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64;
 
-    // Try IP-based geolocation from ipinfo.io (free, no API key)
-    if let Ok(output) = std::process::Command::new("curl")
-        .args(["-s", "-m", "3", "https://ipinfo.io/json"])
-        .output()
-    {
-        if output.status.success() {
-            if let Ok(text) = String::from_utf8(output.stdout) {
-                if let Ok(data) = serde_json::from_str::<serde_json::Value>(&text) {
-                    if let Some(loc_str) = data["loc"].as_str() {
+    // Spawn curl in background thread to avoid blocking WebView
+    let (tx, rx) = tokio::sync::oneshot::channel();
+
+    std::thread::spawn(move || {
+        let result = std::process::Command::new("curl")
+            .args(["-s", "-m", "3", "--connect-timeout", "2", "https://ipinfo.io/json"])
+            .output();
+
+        let location = match result {
+            Ok(output) if output.status.success() => {
+                String::from_utf8(output.stdout)
+                    .ok()
+                    .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+                    .and_then(|data| {
+                        let loc_str = data["loc"].as_str()?;
                         let parts: Vec<&str> = loc_str.split(',').collect();
-                        if parts.len() == 2 {
-                            if let (Ok(lat), Ok(lon)) = (parts[0].parse::<f64>(), parts[1].parse::<f64>()) {
-                                let city = data["city"].as_str().unwrap_or("");
-                                let region = data["region"].as_str().unwrap_or("");
-                                let country = data["country"].as_str().unwrap_or("");
-                                return serde_json::json!({
-                                    "latitude": lat,
-                                    "longitude": lon,
-                                    "altitude": 0.0,
-                                    "accuracy": 5000.0,
-                                    "speed": 0.0,
-                                    "bearing": 0.0,
-                                    "timestamp": ts,
-                                    "provider": "ip-geolocation",
-                                    "city": city,
-                                    "region": region,
-                                    "country": country
-                                });
-                            }
-                        }
-                    }
-                }
+                        if parts.len() != 2 { return None; }
+                        let lat = parts[0].parse::<f64>().ok()?;
+                        let lon = parts[1].parse::<f64>().ok()?;
+                        Some(serde_json::json!({
+                            "latitude": lat,
+                            "longitude": lon,
+                            "altitude": 0.0,
+                            "accuracy": 5000.0,
+                            "speed": 0.0,
+                            "bearing": 0.0,
+                            "timestamp": ts,
+                            "provider": "ip-geolocation",
+                            "city": data["city"].as_str().unwrap_or(""),
+                            "region": data["region"].as_str().unwrap_or(""),
+                            "country": data["country"].as_str().unwrap_or("")
+                        }))
+                    })
             }
+            _ => None,
+        };
+
+        let _ = tx.send(location);
+    });
+
+    // Await background thread without blocking main thread
+    match rx.await {
+        Ok(Some(loc)) => loc,
+        _ => {
+            // Fallback: default coordinates (Seoul City Hall)
+            serde_json::json!({
+                "latitude": 37.5665,
+                "longitude": 126.9780,
+                "altitude": 38.0,
+                "accuracy": 100.0,
+                "speed": 0.0,
+                "bearing": 0.0,
+                "timestamp": ts,
+                "provider": "fallback",
+                "city": "Seoul",
+                "region": "Seoul",
+                "country": "KR"
+            })
         }
     }
-
-    // Fallback: default coordinates (Seoul City Hall)
-    serde_json::json!({
-        "latitude": 37.5665,
-        "longitude": 126.9780,
-        "altitude": 38.0,
-        "accuracy": 100.0,
-        "speed": 0.0,
-        "bearing": 0.0,
-        "timestamp": ts,
-        "provider": "fallback",
-        "city": "Seoul",
-        "region": "Seoul",
-        "country": "KR"
-    })
 }
 
 // ════════════════════════════════════════════

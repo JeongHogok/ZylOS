@@ -21,6 +21,90 @@ var ZylBridge = (function () {
     }
   }
 
+  /* ═══════════════════════════════════════════════════════════
+     IPC Mode Detection — runtime environment auto-detection.
+     Determines whether we're running in:
+     - 'iframe'  : Tauri emulator (app inside iframe, postMessage to parent)
+     - 'webkit'  : Real device WAM (WebKitGTK messageHandlers → D-Bus)
+     - 'native'  : Real device with navigator.system bridge
+     - 'standalone' : Plain browser (no parent, no bridge — fallback)
+     ═══════════════════════════════════════════════════════════ */
+  var IPC_MODE = (function () {
+    if (window.navigator && window.navigator.system) return 'native';
+    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.bridge) return 'webkit';
+    if (window.parent && window.parent !== window) return 'iframe';
+    return 'standalone';
+  })();
+
+  /**
+   * Send a message to the system (compositor/WAM/emulator).
+   * Automatically routes based on detected IPC mode.
+   * @param {Object|string} msg - Message object or JSON string
+   */
+  function sendToSystem(msg) {
+    var json = typeof msg === 'string' ? msg : JSON.stringify(msg);
+    switch (IPC_MODE) {
+      case 'native':
+        /* Real device: navigator.system bridge */
+        try {
+          var parsed = typeof msg === 'string' ? JSON.parse(msg) : msg;
+          if (window.navigator.system.postMessage) {
+            window.navigator.system.postMessage(json);
+          }
+        } catch (e) { log('native IPC error:', e); }
+        break;
+      case 'webkit':
+        /* Real device WAM: WebKit messageHandlers → D-Bus */
+        try {
+          window.webkit.messageHandlers.bridge.postMessage(json);
+        } catch (e) { log('webkit IPC error:', e); }
+        break;
+      case 'iframe':
+        /* Emulator: postMessage to parent compositor */
+        window.parent.postMessage(json, '*');
+        break;
+      case 'standalone':
+        /* Standalone: try direct ZylSystemServices if available */
+        try {
+          var p = typeof msg === 'string' ? JSON.parse(msg) : msg;
+          if (p && p.type === 'service.request' && typeof ZylSystemServices !== 'undefined') {
+            var result = ZylSystemServices.handleRequest(p.service, p.method, p.params || {});
+            if (result && typeof result.then === 'function') {
+              result.then(function (data) {
+                window.postMessage(JSON.stringify({
+                  type: 'service.response', service: p.service,
+                  method: p.method, data: data
+                }), '*');
+              });
+            }
+          }
+        } catch (e) { log('standalone IPC error:', e); }
+        break;
+    }
+  }
+
+  /**
+   * Request a system service via IPC.
+   * Universal API that works in all runtime environments.
+   * @param {string} service - Service name (e.g. 'fs', 'network', 'contacts')
+   * @param {string} method - Method name (e.g. 'fetch', 'getAll')
+   * @param {Object} [params] - Parameters
+   */
+  function requestService(service, method, params) {
+    sendToSystem({
+      type: 'service.request',
+      service: service,
+      method: method,
+      params: params || {}
+    });
+  }
+
+  /**
+   * Get current IPC mode for diagnostics.
+   * @returns {string} 'native' | 'webkit' | 'iframe' | 'standalone'
+   */
+  function getIpcMode() { return IPC_MODE; }
+
   /**
    * Check whether the native bridge is available.
    * @returns {boolean}
@@ -54,13 +138,9 @@ var ZylBridge = (function () {
         return Promise.reject(e);
       }
     }
-    /* 에뮬레이터 환경: 부모 프레임에 postMessage */
-    if (window.parent && window.parent !== window) {
-      window.parent.postMessage(JSON.stringify({ type: 'app.launch', appId: appId }), '*');
-      return Promise.resolve(true);
-    }
-    log('launch (no bridge):', appId);
-    return Promise.resolve(false);
+    /* IPC 추상화: 런타임 환경에 따라 자동 라우팅 */
+    sendToSystem({ type: 'app.launch', appId: appId });
+    return Promise.resolve(true);
   }
 
   /**
@@ -77,12 +157,8 @@ var ZylBridge = (function () {
         return Promise.reject(e);
       }
     }
-    if (window.parent && window.parent !== window) {
-      window.parent.postMessage(JSON.stringify({ type: 'app.close' }), '*');
-      return Promise.resolve(true);
-    }
-    log('closeApp (no bridge)');
-    return Promise.resolve(false);
+    sendToSystem({ type: 'app.close' });
+    return Promise.resolve(true);
   }
 
   /* ─── System Settings ─── */
@@ -145,11 +221,7 @@ var ZylBridge = (function () {
     /* Delegate to OS power service via postMessage IPC.
        Direct navigator.getBattery() is a Clean Architecture violation —
        battery state must come from the power service. */
-    if (window.parent && window.parent !== window) {
-      window.parent.postMessage(JSON.stringify({
-        type: 'service.request', service: 'power', method: 'getState', params: {}
-      }), '*');
-    }
+    requestService('power', 'getState', {});
     return Promise.resolve({ level: -1, charging: false });
   }
 
@@ -175,15 +247,8 @@ var ZylBridge = (function () {
       actions: opts.actions || [],
     };
     log('notify', title);
-    if (isWebKitAvailable()) {
-      window.webkit.messageHandlers.bridge.postMessage(JSON.stringify(msg));
-      return Promise.resolve(Date.now());
-    }
-    if (window.parent && window.parent !== window) {
-      window.parent.postMessage(JSON.stringify(msg), '*');
-      return Promise.resolve(Date.now());
-    }
-    return Promise.resolve(0);
+    sendToSystem(msg);
+    return Promise.resolve(Date.now());
   }
 
   /**
@@ -191,10 +256,7 @@ var ZylBridge = (function () {
    * @param {number} id
    */
   function clearNotification(id) {
-    var msg = { type: 'notification.dismiss', id: id };
-    if (window.parent && window.parent !== window) {
-      window.parent.postMessage(JSON.stringify(msg), '*');
-    }
+    sendToSystem({ type: 'notification.dismiss', id: id });
     return Promise.resolve(true);
   }
 
@@ -202,10 +264,7 @@ var ZylBridge = (function () {
    * Clear all notifications.
    */
   function clearAllNotifications() {
-    var msg = { type: 'notification.clearAll' };
-    if (window.parent && window.parent !== window) {
-      window.parent.postMessage(JSON.stringify(msg), '*');
-    }
+    sendToSystem({ type: 'notification.clearAll' });
     return Promise.resolve(true);
   }
 
@@ -268,6 +327,10 @@ var ZylBridge = (function () {
   /* ─── Public API ─── */
   return {
     isAvailable: isAvailable,
+    isWebKitAvailable: isWebKitAvailable,
+    getIpcMode: getIpcMode,
+    sendToSystem: sendToSystem,
+    requestService: requestService,
     launch: launch,
     closeApp: closeApp,
     setLocale: setLocale,

@@ -30,32 +30,32 @@ pub struct BluetoothDevice {
     pub connected: bool,
 }
 
-/// WiFi 네트워크 목록 조회
+/// WiFi 네트워크 목록 조회 (non-blocking)
 #[tauri::command]
-pub fn get_wifi_networks() -> Result<Vec<WifiNetwork>, String> {
-    #[cfg(target_os = "macos")]
-    {
-        get_wifi_macos()
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        get_wifi_linux()
-    }
+pub async fn get_wifi_networks() -> Result<Vec<WifiNetwork>, String> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    std::thread::spawn(move || {
+        #[cfg(target_os = "macos")]
+        let result = get_wifi_macos();
+        #[cfg(target_os = "linux")]
+        let result = get_wifi_linux();
+        let _ = tx.send(result);
+    });
+    rx.await.map_err(|_| "WiFi scan cancelled".to_string())?
 }
 
-/// Bluetooth 디바이스 목록 조회
+/// Bluetooth 디바이스 목록 조회 (non-blocking)
 #[tauri::command]
-pub fn get_bluetooth_devices() -> Result<Vec<BluetoothDevice>, String> {
-    #[cfg(target_os = "macos")]
-    {
-        get_bt_macos()
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        get_bt_linux()
-    }
+pub async fn get_bluetooth_devices() -> Result<Vec<BluetoothDevice>, String> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    std::thread::spawn(move || {
+        #[cfg(target_os = "macos")]
+        let result = get_bt_macos();
+        #[cfg(target_os = "linux")]
+        let result = get_bt_linux();
+        let _ = tx.send(result);
+    });
+    rx.await.map_err(|_| "Bluetooth scan cancelled".to_string())?
 }
 
 // ── macOS WiFi ──
@@ -248,24 +248,57 @@ fn get_bt_linux() -> Result<Vec<BluetoothDevice>, String> {
 // HTTP Proxy — network.fetch service backend
 // ════════════════════════════════════════════
 
-/// Fetch a URL via curl. Domain whitelist is enforced in the OS service layer (sandbox.js).
+/// Fetch a URL via curl (non-blocking).
+/// Domain whitelist is enforced in the OS service layer (sandbox.js).
 /// This command is the backend for apps that need network access (weather, etc.).
+///
+/// Runs curl in a background thread via std::thread::spawn so the Tauri main
+/// thread (and therefore the entire WebView) is never blocked by slow networks.
+/// Uses `async` + `tokio::sync::oneshot` pattern to return a Future that resolves
+/// when the background thread completes, keeping the Tauri event loop free.
 #[tauri::command]
-pub fn http_fetch(url: String) -> Result<String, String> {
+pub async fn http_fetch(url: String) -> Result<String, String> {
     // Basic URL validation
     if !url.starts_with("https://") && !url.starts_with("http://") {
         return Err("Invalid URL: must start with http:// or https://".into());
     }
 
-    let output = Command::new("curl")
-        .args(["-s", "-m", "10", "-L", &url])
-        .output()
-        .map_err(|e| format!("curl failed: {}", e))?;
-
-    if !output.status.success() {
-        return Err(format!("HTTP request failed with status: {}", output.status));
+    // URL length limit (prevent abuse)
+    if url.len() > 2048 {
+        return Err("URL too long (max 2048 characters)".into());
     }
 
-    String::from_utf8(output.stdout)
-        .map_err(|e| format!("Response encoding error: {}", e))
+    // Spawn blocking curl in a background OS thread
+    let (tx, rx) = tokio::sync::oneshot::channel();
+
+    std::thread::spawn(move || {
+        let result = Command::new("curl")
+            .args([
+                "-s",          // silent
+                "-m", "8",     // max time 8 seconds (reduced from 10)
+                "--connect-timeout", "5", // connection timeout 5 seconds
+                "-L",          // follow redirects
+                "--max-redirs", "3", // max 3 redirects
+                "--max-filesize", "1048576", // max 1MB response
+                &url,
+            ])
+            .output();
+
+        let send_result = match result {
+            Ok(output) => {
+                if !output.status.success() {
+                    Err(format!("HTTP request failed with status: {}", output.status))
+                } else {
+                    String::from_utf8(output.stdout)
+                        .map_err(|e| format!("Response encoding error: {}", e))
+                }
+            }
+            Err(e) => Err(format!("curl failed: {}", e)),
+        };
+
+        let _ = tx.send(send_result);
+    });
+
+    // Await the background thread result without blocking the main thread
+    rx.await.map_err(|_| "Network request cancelled".to_string())?
 }

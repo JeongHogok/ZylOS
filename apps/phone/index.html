@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수. 실제 디바이스 구동 기준이며, mock/demo 등 하드코딩 데이터가 있어서는 안 된다 -->
+<!-- Clean Architecture, SOLID principles, i18n rules strictly followed. Built for real device runtime; no mock/demo or hardcoded data allowed -->
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -10,21 +10,23 @@
   <link rel="stylesheet" href="css/phone.css">
 </head>
 <body>
-  <!-- ── Tab Bar ── -->
-  <div id="tabs">
-    <button class="tab active" data-tab="keypad" data-i18n="phone.keypad">Keypad</button>
-    <button class="tab" data-tab="recents" data-i18n="phone.recents">Recents</button>
-    <button class="tab" data-tab="contacts" data-i18n="phone.contacts_tab">Contacts</button>
+  <!-- Tab bar -->
+  <div id="tabs" role="tablist">
+    <button class="tab active" data-tab="keypad" role="tab" data-i18n="phone.keypad"></button>
+    <button class="tab" data-tab="recents" role="tab" data-i18n="phone.recents"></button>
+    <button class="tab" data-tab="contacts" role="tab" data-i18n="phone.contacts_tab"></button>
   </div>
 
-  <!-- ── Keypad Tab ── -->
+  <!-- Keypad Tab -->
   <div id="tab-keypad" class="tab-content active">
     <div id="keypad-display">
       <span id="dialed-number"></span>
-      <button id="btn-backspace" class="backspace-btn" aria-label="Backspace"></button>
+      <button id="btn-backspace" class="btn-icon" aria-label="Backspace">
+        <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M22 3H7c-.69 0-1.23.35-1.59.88L0 12l5.41 8.11c.36.53.9.89 1.59.89h15c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-3 12.59L17.59 17 14 13.41 10.41 17 9 15.59 12.59 12 9 8.41 10.41 7 14 10.59 17.59 7 19 8.41 15.41 12 19 15.59z"/></svg>
+      </button>
     </div>
     <div id="keypad-grid">
-      <button class="key-btn" data-digit="1"><span class="digit">1</span><span class="sub"></span></button>
+      <button class="key-btn" data-digit="1"><span class="digit">1</span><span class="sub">&nbsp;</span></button>
       <button class="key-btn" data-digit="2"><span class="digit">2</span><span class="sub">ABC</span></button>
       <button class="key-btn" data-digit="3"><span class="digit">3</span><span class="sub">DEF</span></button>
       <button class="key-btn" data-digit="4"><span class="digit">4</span><span class="sub">GHI</span></button>
@@ -33,50 +35,63 @@
       <button class="key-btn" data-digit="7"><span class="digit">7</span><span class="sub">PQRS</span></button>
       <button class="key-btn" data-digit="8"><span class="digit">8</span><span class="sub">TUV</span></button>
       <button class="key-btn" data-digit="9"><span class="digit">9</span><span class="sub">WXYZ</span></button>
-      <button class="key-btn" data-digit="*"><span class="digit">*</span><span class="sub"></span></button>
+      <button class="key-btn" data-digit="*"><span class="digit">*</span><span class="sub">&nbsp;</span></button>
       <button class="key-btn" data-digit="0"><span class="digit">0</span><span class="sub">+</span></button>
-      <button class="key-btn" data-digit="#"><span class="digit">#</span><span class="sub"></span></button>
+      <button class="key-btn" data-digit="#"><span class="digit">#</span><span class="sub">&nbsp;</span></button>
     </div>
     <div id="keypad-actions">
-      <button id="btn-call" class="call-btn" data-i18n="phone.call">Call</button>
+      <button id="btn-call" class="call-btn" aria-label="Call">
+        <svg viewBox="0 0 24 24" width="28" height="28"><path fill="#fff" d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
+      </button>
     </div>
   </div>
 
-  <!-- ── Recents Tab ── -->
+  <!-- Recents Tab -->
   <div id="tab-recents" class="tab-content hidden">
-    <div id="recents-list" class="scroll-area"></div>
-    <div id="recents-empty" class="empty-state" data-i18n="phone.no_recents">No recent calls</div>
+    <div id="recents-list" class="scroll-area zyl-scroll"></div>
+    <div id="recents-empty" class="empty-state hidden">
+      <svg viewBox="0 0 24 24" width="48" height="48"><path fill="rgba(255,255,255,0.15)" d="M13 3a9 9 0 00-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.954 8.954 0 0013 21a9 9 0 000-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>
+      <span data-i18n="phone.no_recents"></span>
+    </div>
   </div>
 
-  <!-- ── Contacts Tab ── -->
+  <!-- Contacts Tab -->
   <div id="tab-contacts" class="tab-content hidden">
-    <div id="contacts-list" class="scroll-area"></div>
+    <div id="contacts-list" class="scroll-area zyl-scroll"></div>
   </div>
 
-  <!-- ── In-Call Overlay ── -->
+  <!-- In-Call Overlay -->
   <div id="incall-overlay" class="hidden">
-    <div class="incall-info">
-      <div id="incall-status" data-i18n="phone.calling">Calling...</div>
-      <div id="incall-name"></div>
-      <div id="incall-number"></div>
-      <div id="incall-timer">00:00</div>
-    </div>
-    <div class="incall-actions">
-      <button id="btn-mute" class="incall-btn">
-        <span class="incall-icon">M</span>
-        <span data-i18n="phone.mute">Mute</span>
+    <div id="incall-bg"></div>
+    <div id="incall-content">
+      <div id="incall-avatar">
+        <svg viewBox="0 0 24 24" width="48" height="48"><path fill="rgba(255,255,255,0.7)" d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+      </div>
+      <div id="incall-name">--</div>
+      <div id="incall-status" data-i18n="phone.calling"></div>
+      <div id="incall-timer" class="hidden">00:00</div>
+      <div id="incall-actions">
+        <button id="btn-mute" class="incall-action-btn" aria-label="Mute">
+          <svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/></svg>
+          <span data-i18n="phone.mute"></span>
+        </button>
+        <button id="btn-speaker" class="incall-action-btn" aria-label="Speaker">
+          <svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+          <span data-i18n="phone.speaker"></span>
+        </button>
+        <button id="btn-keypad-incall" class="incall-action-btn" aria-label="Keypad">
+          <svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M12 19c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zM6 1c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12-8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm-6 8c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
+          <span data-i18n="phone.keypad"></span>
+        </button>
+      </div>
+      <button id="btn-end-call" class="btn-hangup" aria-label="End call">
+        <svg viewBox="0 0 24 24" width="32" height="32"><path fill="#fff" d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08c-.18-.17-.29-.42-.29-.7 0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28-.79-.74-1.69-1.36-2.67-1.85-.33-.16-.56-.5-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/></svg>
       </button>
-      <button id="btn-speaker" class="incall-btn">
-        <span class="incall-icon">S</span>
-        <span data-i18n="phone.speaker">Speaker</span>
-      </button>
     </div>
-    <button id="btn-end-call" class="end-call-btn" data-i18n="phone.end_call">End Call</button>
   </div>
 
   <script src="../shared/i18n.js"></script>
   <script src="i18n.js"></script>
   <script src="../shared/bridge.js"></script>
   <script src="js/phone.js"></script>
-</body>
-</html>
+</body></html>

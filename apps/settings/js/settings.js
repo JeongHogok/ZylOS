@@ -118,12 +118,12 @@
 
   /* ─── System Service IPC ─── */
   function requestService(service, method, params) {
-    window.parent.postMessage(JSON.stringify({
+    ZylBridge.sendToSystem({
       type: 'service.request',
       service: service,
       method: method,
       params: params || {}
-    }), '*');
+    });
   }
 
   /* Listen for messages from emulator */
@@ -139,10 +139,10 @@
         if (currentPage) {
           /* Sub-page open → go back (navStack or main menu) */
           btnBack.click();
-          window.parent.postMessage(JSON.stringify({ type: 'navigation.handled' }), '*');
+          ZylBridge.sendToSystem({ type: 'navigation.handled' });
         } else {
           /* Already on main menu → exit to home */
-          window.parent.postMessage(JSON.stringify({ type: 'navigation.exit' }), '*');
+          ZylBridge.sendToSystem({ type: 'navigation.exit' });
         }
         return;
       }
@@ -564,10 +564,10 @@
       if (settingsCache.security) settingsCache.security.pin = newPin;
 
       /* Broadcast to lockscreen via parent */
-      window.parent.postMessage(JSON.stringify({
+      ZylBridge.sendToSystem({
         type: 'settings.pinChanged',
         data: { pin: newPin }
-      }), '*');
+      });
 
       if (msgEl) { msgEl.textContent = t('settings.pin_changed') || 'PIN changed'; msgEl.style.color = '#22c55e'; }
       if (curInput) curInput.value = '';
@@ -604,10 +604,10 @@
       updateSetting('security', 'pin', '');
       if (settingsCache.security) settingsCache.security.pin = '';
 
-      window.parent.postMessage(JSON.stringify({
+      ZylBridge.sendToSystem({
         type: 'settings.pinChanged',
         data: { pin: '' }
-      }), '*');
+      });
 
       if (msgEl) { msgEl.textContent = t('settings.pin_removed') || 'PIN removed'; msgEl.style.color = '#22c55e'; }
       if (curInput) curInput.value = '';
@@ -659,10 +659,10 @@
         swatch.classList.add('selected');
 
         /* Broadcast wallpaper change to home screen via parent */
-        window.parent.postMessage(JSON.stringify({
+        ZylBridge.sendToSystem({
           type: 'settings.wallpaperChanged',
           wallpaper: opt
-        }), '*');
+        });
 
         if (settingsCache.wallpaper) settingsCache.wallpaper.current = opt;
       });

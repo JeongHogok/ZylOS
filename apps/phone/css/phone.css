@@ -1,6 +1,6 @@
 /* ──────────────────────────────────────────────────────────
    [Clean Architecture] Presentation Layer - Style
-   역할: 전화 앱 스타일
+   역할: 전화 앱 스타일 — 프리미엄 다이얼러 디자인
    수행범위: phone 앱 레이아웃 — 키패드, 통화기록, 연락처, 통화화면
    의존방향: phone/index.html
    SOLID: SRP — phone 앱 스타일만 담당
@@ -8,68 +8,424 @@
    클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
    실제 디바이스 구동 기준이며, mock/demo 등 하드코딩 데이터가 있어서는 안 된다
    ────────────────────────────────────────────────────────── */
-* { margin:0; padding:0; box-sizing:border-box; }
-body { font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#0a0a1a; color:#e0e0e0; height:100vh; overflow:hidden; display:flex; flex-direction:column; }
-.hidden { display:none !important; }
 
-/* ── Tabs ── */
-#tabs { display:flex; border-bottom:1px solid #1a1a2e; flex-shrink:0; }
-.tab { flex:1; padding:14px 0; text-align:center; background:none; border:none; color:#888; font-size:13px; cursor:pointer; transition:color 0.2s; }
-.tab.active { color:#22c55e; border-bottom:2px solid #22c55e; }
-.tab-content { flex:1; display:flex; flex-direction:column; align-items:center; overflow:hidden; }
-.tab-content.active { display:flex; }
+/* ── Reset ── */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+  color: #e2e8f0;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.hidden { display: none !important; }
+
+/* ── Tab Bar ── */
+#tabs {
+  display: flex;
+  padding: 4px 16px;
+  gap: 4px;
+  flex-shrink: 0;
+  background: rgba(255,255,255,0.03);
+}
+.tab {
+  flex: 1;
+  padding: 10px 0;
+  text-align: center;
+  background: none;
+  border: none;
+  border-radius: 10px;
+  color: rgba(255,255,255,0.45);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.tab.active {
+  color: #fff;
+  background: rgba(255,255,255,0.08);
+}
+
+/* ── Tab Content ── */
+.tab-content {
+  flex: 1;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  overflow: hidden;
+}
+.tab-content.active { display: flex; }
 
 /* ── Keypad Display ── */
-#keypad-display { width:100%; padding:24px 16px 8px; display:flex; align-items:center; justify-content:center; gap:8px; min-height:64px; }
-#dialed-number { font-size:32px; font-weight:300; letter-spacing:2px; text-align:center; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-height:40px; line-height:40px; }
-.backspace-btn { width:40px; height:40px; background:none; border:none; color:#888; font-size:20px; cursor:pointer; flex-shrink:0; position:relative; }
-.backspace-btn::before { content:'\2190'; }
+#keypad-display {
+  width: 100%;
+  padding: 20px 20px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 60px;
+}
+#dialed-number {
+  font-size: 32px;
+  font-weight: 300;
+  letter-spacing: 2px;
+  text-align: center;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-height: 40px;
+  line-height: 40px;
+  color: #fff;
+}
+.btn-icon {
+  width: 40px;
+  height: 40px;
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.4);
+  cursor: pointer;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.15s;
+}
+.btn-icon:active { background: rgba(255,255,255,0.1); color: #fff; }
 
 /* ── Keypad Grid ── */
-#keypad-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; padding:8px 24px; width:100%; max-width:320px; }
-.key-btn { width:60px; height:60px; border-radius:50%; border:none; background:#1a1a2e; color:#e0e0e0; cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center; justify-self:center; transition:background 0.15s; -webkit-tap-highlight-color:transparent; }
-.key-btn:active { background:#2a2a4e; }
-.key-btn .digit { font-size:24px; font-weight:400; line-height:1.2; }
-.key-btn .sub { font-size:9px; color:#888; letter-spacing:1px; line-height:1; }
+#keypad-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  padding: 4px 28px;
+  width: 100%;
+  max-width: 340px;
+}
+.key-btn {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(30,41,59,0.88);
+  color: #e2e8f0;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  justify-self: center;
+  transition: all 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+.key-btn:active {
+  background: rgba(255,255,255,0.18);
+  transform: scale(0.92);
+}
+.key-btn .digit {
+  font-size: 26px;
+  font-weight: 300;
+  line-height: 1.1;
+}
+.key-btn .sub {
+  font-size: 9px;
+  color: rgba(255,255,255,0.4);
+  letter-spacing: 1.5px;
+  line-height: 1;
+  font-weight: 500;
+}
 
 /* ── Keypad Actions ── */
-#keypad-actions { padding:12px 24px 20px; width:100%; display:flex; justify-content:center; }
-.call-btn { width:72px; height:72px; border-radius:50%; border:none; background:#22c55e; color:#fff; font-size:14px; font-weight:600; cursor:pointer; transition:background 0.15s; -webkit-tap-highlight-color:transparent; }
-.call-btn:active { background:#16a34a; }
+#keypad-actions {
+  padding: 12px 24px 16px;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+.call-btn {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: none;
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+  box-shadow: 0 4px 20px rgba(34, 197, 94, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.call-btn:active {
+  transform: scale(0.92);
+  box-shadow: 0 2px 12px rgba(34, 197, 94, 0.5);
+}
 
-/* ── Recents ── */
-.scroll-area { flex:1; width:100%; overflow-y:auto; -webkit-overflow-scrolling:touch; }
-.empty-state { font-size:15px; color:#666; padding:40px 0; text-align:center; }
-.recent-item { display:flex; align-items:center; padding:14px 16px; border-bottom:1px solid #1a1a2e; gap:12px; cursor:pointer; -webkit-tap-highlight-color:transparent; }
-.recent-item:active { background:#111125; }
-.recent-direction { width:24px; font-size:18px; flex-shrink:0; text-align:center; }
-.recent-direction.incoming { color:#22c55e; }
-.recent-direction.outgoing { color:#3b82f6; }
-.recent-direction.missed { color:#ef4444; }
-.recent-info { flex:1; display:flex; flex-direction:column; gap:2px; overflow:hidden; }
-.recent-name { font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.recent-time { font-size:12px; color:#888; }
+/* ── Scroll Area ── */
+.scroll-area {
+  flex: 1;
+  width: 100%;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
 
-/* ── Contacts ── */
-.contact-item { display:flex; align-items:center; padding:14px 16px; border-bottom:1px solid #1a1a2e; gap:12px; cursor:pointer; -webkit-tap-highlight-color:transparent; }
-.contact-item:active { background:#111125; }
-.contact-avatar { width:36px; height:36px; border-radius:50%; background:#22c55e; color:#fff; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:600; flex-shrink:0; }
-.contact-name { font-size:15px; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* ── Empty State ── */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 60px 24px;
+  color: rgba(255,255,255,0.3);
+  font-size: 14px;
+}
+
+/* ── Recent Call Items ── */
+.recent-item {
+  display: flex;
+  align-items: center;
+  padding: 14px 16px;
+  gap: 12px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.recent-item:active { background: rgba(255,255,255,0.05); }
+
+.recent-direction {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.recent-direction svg { width: 16px; height: 16px; }
+.recent-direction.incoming { background: rgba(34,197,94,0.15); color: #22c55e; }
+.recent-direction.outgoing { background: rgba(59,130,246,0.15); color: #3b82f6; }
+.recent-direction.missed { background: rgba(239,68,68,0.15); color: #ef4444; }
+
+.recent-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+.recent-name {
+  font-size: 15px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recent-name.missed { color: #ef4444; }
+.recent-time { font-size: 12px; color: rgba(255,255,255,0.35); }
+
+.recent-call-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(34,197,94,0.12);
+  color: #22c55e;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+.recent-call-btn:active { background: rgba(34,197,94,0.25); }
+
+/* ── Contacts in Phone ── */
+.contact-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  gap: 12px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.contact-item:active { background: rgba(255,255,255,0.05); }
+.contact-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 600;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+.contact-name {
+  font-size: 15px;
+  font-weight: 400;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* ── In-Call Overlay ── */
-#incall-overlay { position:fixed; inset:0; background:#0a0a1a; z-index:100; display:flex; flex-direction:column; align-items:center; justify-content:space-between; padding:60px 24px 40px; }
-#incall-overlay.hidden { display:none !important; }
-.incall-info { text-align:center; }
-#incall-status { font-size:14px; color:#888; margin-bottom:8px; }
-#incall-name { font-size:28px; font-weight:300; margin-bottom:4px; }
-#incall-number { font-size:16px; color:#888; margin-bottom:16px; }
-#incall-timer { font-size:18px; color:#22c55e; font-variant-numeric:tabular-nums; }
+#incall-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 60px 24px 40px;
+}
+#incall-overlay.hidden { display: none !important; }
 
-.incall-actions { display:flex; gap:32px; }
-.incall-btn { width:64px; display:flex; flex-direction:column; align-items:center; gap:6px; background:none; border:none; color:#e0e0e0; cursor:pointer; font-size:11px; }
-.incall-btn.active { color:#22c55e; }
-.incall-icon { width:48px; height:48px; border-radius:50%; background:#1a1a2e; display:flex; align-items:center; justify-content:center; font-size:18px; font-weight:600; }
-.incall-btn.active .incall-icon { background:#22c55e; color:#0a0a1a; }
+#incall-bg {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, #0f172a 0%, #1e3a5f 50%, #0f172a 100%);
+  z-index: -1;
+}
 
-.end-call-btn { width:72px; height:72px; border-radius:50%; border:none; background:#ef4444; color:#fff; font-size:14px; font-weight:600; cursor:pointer; transition:background 0.15s; }
-.end-call-btn:active { background:#dc2626; }
+#incall-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  flex: 1;
+  justify-content: center;
+  gap: 8px;
+  animation: fadeInUp 0.35s ease;
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+#incall-avatar {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: rgba(30,41,59,0.88);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+#incall-name {
+  font-size: 28px;
+  font-weight: 300;
+  color: #fff;
+  text-align: center;
+}
+#incall-status {
+  font-size: 14px;
+  color: rgba(255,255,255,0.5);
+  text-align: center;
+}
+#incall-timer {
+  font-size: 18px;
+  color: #22c55e;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+@keyframes timerPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+#incall-timer.calling-pulse {
+  animation: timerPulse 2s ease-in-out infinite;
+}
+
+/* ── In-Call Action Buttons ── */
+#incall-actions {
+  display: flex;
+  gap: 28px;
+  margin: 32px 0;
+}
+.incall-action-btn {
+  width: 68px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.7);
+  cursor: pointer;
+  font-size: 11px;
+  -webkit-tap-highlight-color: transparent;
+}
+.incall-action-btn svg {
+  width: 48px;
+  height: 48px;
+  padding: 12px;
+  border-radius: 50%;
+  background: rgba(30,41,59,0.88);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  transition: all 0.2s;
+}
+.incall-action-btn.active svg {
+  background: rgba(34,197,94,0.2);
+  color: #22c55e;
+}
+.incall-action-btn:active svg {
+  transform: scale(0.92);
+  background: rgba(255,255,255,0.15);
+}
+
+/* ── Hangup Button ── */
+.btn-hangup {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: none;
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 20px rgba(239, 68, 68, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: auto;
+  margin-bottom: 20px;
+}
+.btn-hangup:active {
+  transform: scale(0.92);
+  box-shadow: 0 2px 12px rgba(239, 68, 68, 0.5);
+}
+
+/* ── Avatar color palette ── */
+.avatar-0 { background: linear-gradient(135deg, #f97316, #ea580c); }
+.avatar-1 { background: linear-gradient(135deg, #22c55e, #16a34a); }
+.avatar-2 { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+.avatar-3 { background: linear-gradient(135deg, #a855f7, #9333ea); }
+.avatar-4 { background: linear-gradient(135deg, #ec4899, #db2777); }
+.avatar-5 { background: linear-gradient(135deg, #14b8a6, #0d9488); }
+.avatar-6 { background: linear-gradient(135deg, #f59e0b, #d97706); }
+.avatar-7 { background: linear-gradient(135deg, #6366f1, #4f46e5); }
+.avatar-8 { background: linear-gradient(135deg, #ef4444, #dc2626); }
+.avatar-9 { background: linear-gradient(135deg, #06b6d4, #0891b2); }

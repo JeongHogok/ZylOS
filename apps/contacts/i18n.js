@@ -26,7 +26,10 @@
     'contacts.email': '\uC774\uBA54\uC77C',
     'contacts.call': '\uC804\uD654',
     'contacts.message': '\uBA54\uC2DC\uC9C0',
-    'contacts.confirm_delete': '\uC774 \uC5F0\uB77D\uCC98\uB97C \uC0AD\uC81C\uD558\uC2DC\uACA0\uC2B5\uB2C8\uAE4C?'
+    'contacts.email_label': '\uC774\uBA54\uC77C',
+    'contacts.confirm_delete': '\uC774 \uC5F0\uB77D\uCC98\uB97C \uC0AD\uC81C\uD558\uC2DC\uACA0\uC2B5\uB2C8\uAE4C?',
+    'contacts.delete_confirm': '\uC5F0\uB77D\uCC98 \uC0AD\uC81C',
+    'contacts.delete_confirm_msg': '\uC774 \uC5F0\uB77D\uCC98\uB97C \uC0AD\uC81C\uD558\uC2DC\uACA0\uC2B5\uB2C8\uAE4C?'
   });
 
   zylI18n.addTranslations('en', {
@@ -43,7 +46,10 @@
     'contacts.email': 'Email',
     'contacts.call': 'Call',
     'contacts.message': 'Message',
-    'contacts.confirm_delete': 'Delete this contact?'
+    'contacts.confirm_delete': 'Delete this contact?',
+    'contacts.delete_confirm': 'Delete Contact',
+    'contacts.delete_confirm_msg': 'Are you sure you want to delete this contact?',
+    'contacts.email_label': 'Email'
   });
 
   zylI18n.addTranslations('ja', {
@@ -60,7 +66,10 @@
     'contacts.email': '\u30E1\u30FC\u30EB',
     'contacts.call': '\u96FB\u8A71',
     'contacts.message': '\u30E1\u30C3\u30BB\u30FC\u30B8',
-    'contacts.confirm_delete': '\u3053\u306E\u9023\u7D61\u5148\u3092\u524A\u9664\u3057\u307E\u3059\u304B\uFF1F'
+    'contacts.confirm_delete': '\u3053\u306E\u9023\u7D61\u5148\u3092\u524A\u9664\u3057\u307E\u3059\u304B\uFF1F',
+    'contacts.delete_confirm': '\u9023\u7D61\u5148\u306E\u524A\u9664',
+    'contacts.delete_confirm_msg': '\u3053\u306E\u9023\u7D61\u5148\u3092\u524A\u9664\u3057\u307E\u3059\u304B\uFF1F',
+    'contacts.email_label': '\u30E1\u30FC\u30EB'
   });
 
   zylI18n.addTranslations('zh', {
@@ -77,7 +86,10 @@
     'contacts.email': '\u90AE\u7BB1',
     'contacts.call': '\u62E8\u6253',
     'contacts.message': '\u77ED\u4FE1',
-    'contacts.confirm_delete': '\u5220\u9664\u8BE5\u8054\u7CFB\u4EBA\uFF1F'
+    'contacts.confirm_delete': '\u5220\u9664\u8BE5\u8054\u7CFB\u4EBA\uFF1F',
+    'contacts.delete_confirm': '\u5220\u9664\u8054\u7CFB\u4EBA',
+    'contacts.delete_confirm_msg': '\u786E\u5B9A\u8981\u5220\u9664\u8BE5\u8054\u7CFB\u4EBA\u5417\uFF1F',
+    'contacts.email_label': '\u90AE\u4EF6'
   });
 
   zylI18n.addTranslations('es', {
@@ -94,6 +106,9 @@
     'contacts.email': 'Correo',
     'contacts.call': 'Llamar',
     'contacts.message': 'Mensaje',
-    'contacts.confirm_delete': '\u00BFEliminar este contacto?'
+    'contacts.confirm_delete': '\u00BFEliminar este contacto?',
+    'contacts.delete_confirm': 'Eliminar contacto',
+    'contacts.delete_confirm_msg': '\u00BFEst\u00E1 seguro de eliminar este contacto?',
+    'contacts.email_label': 'Correo'
   });
 })();

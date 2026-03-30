@@ -14,7 +14,8 @@
     'browser.bookmarks': '\uBD81\uB9C8\uD06C',
     'browser.add_bookmark': '\uBD81\uB9C8\uD06C \uCD94\uAC00',
     'browser.menu': '\uBA54\uB274',
-    'browser.search': '\uAC80\uC0C9 \uB610\uB294 URL \uC785\uB825'
+    'browser.search': '\uAC80\uC0C9 \uB610\uB294 URL \uC785\uB825',
+    'browser.loading': '\uBD88\uB7EC\uC624\uB294 \uC911...'
   });
 
   zylI18n.addTranslations('en', {
@@ -31,7 +32,8 @@
     'browser.bookmarks': '\u30D6\u30C3\u30AF\u30DE\u30FC\u30AF',
     'browser.add_bookmark': '\u30D6\u30C3\u30AF\u30DE\u30FC\u30AF\u3092\u8FFD\u52A0',
     'browser.menu': '\u30E1\u30CB\u30E5\u30FC',
-    'browser.search': '\u691C\u7D22\u307E\u305F\u306FURL\u3092\u5165\u529B'
+    'browser.search': '\u691C\u7D22\u307E\u305F\u306FURL\u3092\u5165\u529B',
+    'browser.loading': '\u8AAD\u307F\u8FBC\u307F\u4E2D...'
   });
 
   zylI18n.addTranslations('zh', {
@@ -39,7 +41,8 @@
     'browser.bookmarks': '\u4E66\u7B7E',
     'browser.add_bookmark': '\u6DFB\u52A0\u4E66\u7B7E',
     'browser.menu': '\u83DC\u5355',
-    'browser.search': '\u641C\u7D22\u6216\u8F93\u5165\u7F51\u5740'
+    'browser.search': '\u641C\u7D22\u6216\u8F93\u5165\u7F51\u5740',
+    'browser.loading': '\u52A0\u8F7D\u4E2D...'
   });
 
   zylI18n.addTranslations('es', {

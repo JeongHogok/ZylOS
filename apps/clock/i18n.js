@@ -45,7 +45,8 @@
     'clock.pause': '\uC77C\uC2DC\uC815\uC9C0',
     'clock.hours': '\uC2DC',
     'clock.minutes': '\uBD84',
-    'clock.seconds': '\uCD08'
+    'clock.seconds': '\uCD08',
+    'clock.timer_done': '\uC2DC\uAC04\uC774 \uB418\uC5C8\uC2B5\uB2C8\uB2E4!'
   });
 
   zylI18n.addTranslations('en', {
@@ -84,7 +85,8 @@
     'clock.pause': 'Pause',
     'clock.hours': 'h',
     'clock.minutes': 'm',
-    'clock.seconds': 's'
+    'clock.seconds': 's',
+    'clock.timer_done': 'Time is up!'
   });
 
   zylI18n.addTranslations('ja', {
@@ -123,7 +125,8 @@
     'clock.pause': '\u4E00\u6642\u505C\u6B62',
     'clock.hours': '\u6642',
     'clock.minutes': '\u5206',
-    'clock.seconds': '\u79D2'
+    'clock.seconds': '\u79D2',
+    'clock.timer_done': '\u6642\u9593\u306B\u306A\u308A\u307E\u3057\u305F\uFF01'
   });
 
   zylI18n.addTranslations('zh', {
@@ -162,7 +165,8 @@
     'clock.pause': '\u6682\u505C',
     'clock.hours': '\u65F6',
     'clock.minutes': '\u5206',
-    'clock.seconds': '\u79D2'
+    'clock.seconds': '\u79D2',
+    'clock.timer_done': '\u65F6\u95F4\u5230\uFF01'
   });
 
   zylI18n.addTranslations('es', {
@@ -201,6 +205,7 @@
     'clock.pause': 'Pausa',
     'clock.hours': 'h',
     'clock.minutes': 'm',
-    'clock.seconds': 's'
+    'clock.seconds': 's',
+    'clock.timer_done': '\u00A1Se acab\u00F3 el tiempo!'
   });
 })();

@@ -19,7 +19,7 @@
 
 :root {
   --sb-height: 36px;
-  --sb-bg: rgba(0, 0, 0, 0.25);
+  --sb-bg: rgba(0, 0, 0, 0.85);
   --sb-text: #ffffff;
   --accent: #4a9eff;
   --qs-bg: rgba(255,255,255,0.1);

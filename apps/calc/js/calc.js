@@ -132,7 +132,7 @@
 
       /* Navigation back handling */
       if (msg.type === 'navigation.back') {
-        window.parent.postMessage(JSON.stringify({ type: 'navigation.exit' }), '*');
+        ZylBridge.sendToSystem({ type: 'navigation.exit' });
         return;
       }
     } catch (err) { /* ignore */ }

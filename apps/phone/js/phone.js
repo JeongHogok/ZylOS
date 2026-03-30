@@ -18,14 +18,12 @@
      ═══════════════════════════════════════════════════════════ */
 
   function requestService(service, method, params) {
-    if (window.parent && window.parent !== window) {
-      window.parent.postMessage(JSON.stringify({
-        type: 'service.request',
-        service: service,
-        method: method,
-        params: params || {}
-      }), '*');
-    }
+    ZylBridge.sendToSystem({
+      type: 'service.request',
+      service: service,
+      method: method,
+      params: params || {}
+    });
   }
 
   var serviceCallbacks = {};
@@ -45,9 +43,9 @@
       if (msg.type === 'navigation.back') {
         if (incallOverlay && !incallOverlay.classList.contains('hidden')) {
           /* During call, back does nothing — must end call explicitly */
-          window.parent.postMessage(JSON.stringify({ type: 'navigation.handled' }), '*');
+          ZylBridge.sendToSystem({ type: 'navigation.handled' });
         } else {
-          window.parent.postMessage(JSON.stringify({ type: 'navigation.exit' }), '*');
+          ZylBridge.sendToSystem({ type: 'navigation.exit' });
         }
         return;
       }
@@ -168,6 +166,8 @@
     if (digit) {
       dialedNumber += digit;
       updateDisplay();
+      /* Play key click sound via audio service */
+      requestService('audio', 'playKeyClick', {});
     }
   });
 
@@ -322,6 +322,12 @@
     renderRecents(data.logs);
   });
 
+  var DIR_ICONS = {
+    incoming: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M20 5.41L18.59 4 7 15.59V9H5v10h10v-2H8.41z"/></svg>',
+    outgoing: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M9 5v2h6.59L4 18.59 5.41 20 17 8.41V15h2V5z"/></svg>',
+    missed: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M19.59 7L12 14.59 6.41 9H11V7H3v8h2v-4.59l7 7 9-9z"/></svg>'
+  };
+
   function renderRecents(logs) {
     var html = '';
     for (var i = 0; i < logs.length; i++) {
@@ -338,12 +344,16 @@
       }
       var timeStr = formatRecentTime(log.timestamp);
       var displayName = log.name || log.number || '';
+      var nameClass = dirClass === 'missed' ? 'recent-name missed' : 'recent-name';
       html += '<div class="recent-item" data-number="' + escapeAttr(log.number || '') + '">' +
-        '<div class="recent-direction ' + dirClass + '">' + dirArrow + '</div>' +
+        '<div class="recent-direction ' + dirClass + '">' + (DIR_ICONS[dirClass] || '') + '</div>' +
         '<div class="recent-info">' +
-          '<div class="recent-name">' + escapeHtml(displayName) + '</div>' +
+          '<div class="' + nameClass + '">' + escapeHtml(displayName) + '</div>' +
           '<div class="recent-time">' + escapeHtml(dirLabel + ' \u00B7 ' + timeStr) + '</div>' +
         '</div>' +
+        '<button class="recent-call-btn" data-number="' + escapeAttr(log.number || '') + '">' +
+          '<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>' +
+        '</button>' +
       '</div>';
     }
     recentsList.innerHTML = html;
@@ -392,14 +402,21 @@
     renderContacts(data.contacts);
   });
 
+  function avatarColor(name) {
+    var code = 0;
+    for (var j = 0; j < (name || '').length; j++) code += name.charCodeAt(j);
+    return 'avatar-' + (code % 10);
+  }
+
   function renderContacts(contacts) {
     var html = '';
     for (var i = 0; i < contacts.length; i++) {
       var c = contacts[i];
       var initial = (c.name || '?').charAt(0).toUpperCase();
       var phone = c.phone || c.number || '';
+      var colorClass = avatarColor(c.name || phone);
       html += '<div class="contact-item" data-number="' + escapeAttr(phone) + '">' +
-        '<div class="contact-avatar">' + escapeHtml(initial) + '</div>' +
+        '<div class="contact-avatar ' + colorClass + '">' + escapeHtml(initial) + '</div>' +
         '<div class="contact-name">' + escapeHtml(c.name || phone) + '</div>' +
       '</div>';
     }

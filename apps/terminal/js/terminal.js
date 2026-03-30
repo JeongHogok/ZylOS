@@ -36,22 +36,22 @@
 
   /* Request data from central service */
   function requestServiceData() {
-    window.parent.postMessage(JSON.stringify({
+    ZylBridge.sendToSystem({
       type: 'service.request', service: 'fs', method: 'getAllData'
-    }), '*');
-    window.parent.postMessage(JSON.stringify({
+    });
+    ZylBridge.sendToSystem({
       type: 'service.request', service: 'device', method: 'getInfo'
-    }), '*');
+    });
   }
 
   /* Async service request with callback */
   function requestServiceAsync(service, method, params, callback) {
     var id = 'term_' + (++_asyncId);
     _asyncCallbacks[id] = callback;
-    window.parent.postMessage(JSON.stringify({
+    ZylBridge.sendToSystem({
       type: 'service.request', service: service, method: method,
       params: params || {}, requestId: id
-    }), '*');
+    });
   }
 
   /* ─── Helpers ─── */
@@ -88,7 +88,7 @@
 
       /* Navigation back handling */
       if (msg.type === 'navigation.back') {
-        window.parent.postMessage(JSON.stringify({ type: 'navigation.exit' }), '*');
+        ZylBridge.sendToSystem({ type: 'navigation.exit' });
         return;
       }
 
@@ -568,12 +568,12 @@
 
   function execOnBackend(command) {
     _pendingExec = command;
-    window.parent.postMessage(JSON.stringify({
+    ZylBridge.sendToSystem({
       type: 'service.request',
       service: 'terminal',
       method: 'exec',
       params: { command: command }
-    }), '*');
+    });
   }
 
   /* 에뮬레이터 서비스 응답 수신 */

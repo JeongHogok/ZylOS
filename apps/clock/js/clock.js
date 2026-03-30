@@ -18,14 +18,12 @@
      ═══════════════════════════════════════════════════════════ */
 
   function requestService(service, method, params) {
-    if (window.parent && window.parent !== window) {
-      window.parent.postMessage(JSON.stringify({
-        type: 'service.request',
-        service: service,
-        method: method,
-        params: params || {}
-      }), '*');
-    }
+    ZylBridge.sendToSystem({
+      type: 'service.request',
+      service: service,
+      method: method,
+      params: params || {}
+    });
   }
 
   /** Map of pending callbacks keyed by "service.method" */
@@ -47,9 +45,9 @@
         if (alarmForm && !alarmForm.classList.contains('hidden')) {
           alarmForm.classList.add('hidden');
           if (btnAddAlarm) btnAddAlarm.classList.remove('hidden');
-          window.parent.postMessage(JSON.stringify({ type: 'navigation.handled' }), '*');
+          ZylBridge.sendToSystem({ type: 'navigation.handled' });
         } else {
-          window.parent.postMessage(JSON.stringify({ type: 'navigation.exit' }), '*');
+          ZylBridge.sendToSystem({ type: 'navigation.exit' });
         }
         return;
       }
@@ -80,10 +78,10 @@
   var systemAlarmVolume = 90;
 
   function playBeep(frequency, durationMs, repeat) {
-    window.parent.postMessage(JSON.stringify({
+    ZylBridge.sendToSystem({
       type: 'service.request', service: 'audio', method: 'playBeep',
       params: { frequency: frequency, duration: durationMs, repeat: repeat }
-    }), '*');
+    });
   }
 
   /* ═══════════════════════════════════════════════════════════
@@ -504,8 +502,8 @@
     /* Notification */
     requestService('notification', 'post', {
       appId: 'com.zylos.clock',
-      title: 'Timer',
-      body: 'Time is up!',
+      title: zylI18n.t('clock.timer'),
+      body: zylI18n.t('clock.timer_done'),
       icon: '',
       priority: 2
     });

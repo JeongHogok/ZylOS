@@ -45,9 +45,9 @@
   }
 
   function requestService(service, method, params) {
-    window.parent.postMessage(JSON.stringify({
+    ZylBridge.sendToSystem({
       type: 'service.request', service: service, method: method, params: params || {}
-    }), '*');
+    });
   }
 
   function requestMedia() {
@@ -64,9 +64,9 @@
       if (msg.type === 'navigation.back') {
         if (viewer && !viewer.classList.contains('hidden')) {
           closeViewer();
-          window.parent.postMessage(JSON.stringify({ type: 'navigation.handled' }), '*');
+          ZylBridge.sendToSystem({ type: 'navigation.handled' });
         } else {
-          window.parent.postMessage(JSON.stringify({ type: 'navigation.exit' }), '*');
+          ZylBridge.sendToSystem({ type: 'navigation.exit' });
         }
         return;
       }

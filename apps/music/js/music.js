@@ -62,12 +62,12 @@
 
   /* ─── IPC ─── */
   function requestService(service, method, params) {
-    window.parent.postMessage(JSON.stringify({
+    ZylBridge.sendToSystem({
       type: 'service.request',
       service: service,
       method: method,
       params: params || {}
-    }), '*');
+    });
   }
 
   function requestTrackList() {
@@ -88,7 +88,7 @@
 
       /* Navigation back handling */
       if (msg.type === 'navigation.back') {
-        window.parent.postMessage(JSON.stringify({ type: 'navigation.exit' }), '*');
+        ZylBridge.sendToSystem({ type: 'navigation.exit' });
         return;
       }
 

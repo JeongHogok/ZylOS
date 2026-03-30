@@ -68,9 +68,9 @@
 
   /* ─── Request camera access via OS permission service ─── */
   function requestCameraAccess() {
-    window.parent.postMessage(JSON.stringify({
+    ZylBridge.sendToSystem({
       type: 'service.request', service: 'camera', method: 'requestAccess', params: {}
-    }), '*');
+    });
   }
   requestCameraAccess();
 
@@ -91,6 +91,7 @@
 
   function startVideoRecording() {
     if (!currentStream) return;
+    if (typeof MediaRecorder === 'undefined') return; /* WebKitGTK on RISC-V may lack MediaRecorder */
     recordedChunks = [];
     try {
       mediaRecorder = new MediaRecorder(currentStream, { mimeType: 'video/webm' });
@@ -108,12 +109,12 @@
       reader.onloadend = function () {
         var base64 = reader.result.split(',')[1];
         var filename = 'VID_' + new Date().toISOString().replace(/[:.]/g, '-') + '.webm';
-        window.parent.postMessage(JSON.stringify({
+        ZylBridge.sendToSystem({
           type: 'service.request',
           service: 'fs',
           method: 'writeFile',
           params: { path: 'Pictures/' + filename, content: base64 }
-        }), '*');
+        });
       };
       reader.readAsDataURL(blob);
     };
@@ -257,12 +258,12 @@
       var path = 'Pictures/' + filename;
 
       /* 에뮬레이터 서비스를 통해 OS 파일시스템에 저장 */
-      window.parent.postMessage(JSON.stringify({
+      ZylBridge.sendToSystem({
         type: 'service.request',
         service: 'fs',
         method: 'writeFile',
         params: { path: path, content: base64 }
-      }), '*');
+      });
       showNotice('Saved: ' + filename);
     }
     photoPreview.classList.add('hidden');
@@ -302,9 +303,9 @@
       if (msg.type === 'navigation.back') {
         if (photoPreview && !photoPreview.classList.contains('hidden')) {
           photoPreview.classList.add('hidden');
-          window.parent.postMessage(JSON.stringify({ type: 'navigation.handled' }), '*');
+          ZylBridge.sendToSystem({ type: 'navigation.handled' });
         } else {
-          window.parent.postMessage(JSON.stringify({ type: 'navigation.exit' }), '*');
+          ZylBridge.sendToSystem({ type: 'navigation.exit' });
         }
         return;
       }

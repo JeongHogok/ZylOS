@@ -18,7 +18,7 @@
 
   /* ─── State ─── */
   var tabs = [
-    { id: 0, title: 'New Tab', url: '', history: [], historyIndex: -1 }
+    { id: 0, title: (typeof zylI18n !== 'undefined' ? zylI18n.t('browser.new_tab') : 'New Tab'), url: '', history: [], historyIndex: -1 }
   ];
   var activeTabId = 0;
   var nextTabId = 1;
@@ -55,12 +55,12 @@
 
   /* Request browser data from central service */
   function requestBrowserData() {
-    window.parent.postMessage(JSON.stringify({
+    ZylBridge.sendToSystem({
       type: 'service.request', service: 'browser', method: 'getBookmarks'
-    }), '*');
-    window.parent.postMessage(JSON.stringify({
+    });
+    ZylBridge.sendToSystem({
       type: 'service.request', service: 'browser', method: 'getQuickLinks'
-    }), '*');
+    });
   }
 
   /* Listen for service responses */
@@ -75,9 +75,9 @@
         var tab = tabs[activeTabIndex];
         if (tab && tab.historyIndex > 0) {
           if (btnBack) btnBack.click();
-          window.parent.postMessage(JSON.stringify({ type: 'navigation.handled' }), '*');
+          ZylBridge.sendToSystem({ type: 'navigation.handled' });
         } else {
-          window.parent.postMessage(JSON.stringify({ type: 'navigation.exit' }), '*');
+          ZylBridge.sendToSystem({ type: 'navigation.exit' });
         }
         return;
       }
@@ -142,7 +142,7 @@
   /* ─── New Tab ─── */
   function createNewTab() {
     if (tabs.length >= MAX_TABS) return;
-    var tab = { id: nextTabId++, title: 'New Tab', url: '', history: [], historyIndex: -1 };
+    var tab = { id: nextTabId++, title: (typeof zylI18n !== 'undefined' ? zylI18n.t('browser.new_tab') : 'New Tab'), url: '', history: [], historyIndex: -1 };
     tabs.push(tab);
     switchTab(tab.id);
   }

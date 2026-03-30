@@ -198,14 +198,12 @@
    *  IPC — postMessage Communication
    * ════════════════════════════════════════════ */
   function sendServiceRequest(service, method, params) {
-    if (window.parent && window.parent !== window) {
-      window.parent.postMessage(JSON.stringify({
-        type: 'service.request',
-        service: service,
-        method: method,
-        params: params || {}
-      }), '*');
-    }
+    ZylBridge.sendToSystem({
+      type: 'service.request',
+      service: service,
+      method: method,
+      params: params || {}
+    });
   }
 
   window.addEventListener('message', function (e) {

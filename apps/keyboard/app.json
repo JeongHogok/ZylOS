@@ -2,7 +2,7 @@
   "id": "com.zylos.keyboard",
   "name": "Zyl Keyboard",
   "version": "1.0.0",
-  "entry": "index.html",
+  "entry": "js/keyboard.js",
   "permissions": [
     "input",
     "i18n",

@@ -1,24 +1,315 @@
 /* ──────────────────────────────────────────────────────────
    [Clean Architecture] Presentation Layer - Style
-   역할: 날씨 앱 스타일
-   수행범위: weather 앱 레이아웃과 시각적 표현
+   역할: 날씨 앱 스타일 — 삼성 날씨앱 수준 디자인
+   수행범위: weather 앱 레이아웃, 동적 배경, 카드 시스템
    의존방향: weather/index.html
    SOLID: SRP — weather 앱 스타일만 담당
 
    클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
    실제 디바이스 구동 기준이며, mock/demo 등 하드코딩 데이터가 있어서는 안 된다
    ────────────────────────────────────────────────────────── */
-* { margin:0; padding:0; box-sizing:border-box; }
-body { font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#0a0a1a; color:#e0e0e0; height:100vh; overflow:hidden; display:flex; flex-direction:column; }
-.hidden { display:none !important; }
-#header { padding:20px 16px 12px; }
-#header h1 { font-size:28px; font-weight:700; }
-body { justify-content:center; align-items:center; }
-#weather-main { text-align:center; margin-bottom:32px; }
-#location-name { font-size:18px; opacity:0.6; margin-bottom:8px; }
-#temperature { font-size:72px; font-weight:200; }
-#condition { font-size:18px; opacity:0.7; margin-top:4px; }
-#details { display:flex; gap:24px; }
-.detail { text-align:center; }
-.detail .label { display:block; font-size:12px; opacity:0.5; margin-bottom:4px; }
-.detail span:last-child { font-size:18px; }
+
+/* ── Reset ── */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* ── Body — dynamic gradient based on weather ── */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: #fff;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  /* Default: clear sky gradient */
+  background: linear-gradient(180deg, #1a73e8 0%, #4fc3f7 50%, #81d4fa 100%);
+  transition: background 0.8s ease;
+}
+body.weather-clear    { background: linear-gradient(180deg, #1565c0 0%, #42a5f5 50%, #90caf9 100%); }
+body.weather-cloudy   { background: linear-gradient(180deg, #546e7a 0%, #78909c 50%, #90a4ae 100%); }
+body.weather-rain     { background: linear-gradient(180deg, #37474f 0%, #546e7a 50%, #78909c 100%); }
+body.weather-snow     { background: linear-gradient(180deg, #455a64 0%, #78909c 50%, #b0bec5 100%); }
+body.weather-storm    { background: linear-gradient(180deg, #1a237e 0%, #283593 50%, #3949ab 100%); }
+body.weather-fog      { background: linear-gradient(180deg, #607d8b 0%, #90a4ae 50%, #b0bec5 100%); }
+body.weather-night    { background: linear-gradient(180deg, #0d1b2a 0%, #1b2838 50%, #2c3e50 100%); }
+
+.hidden { display: none !important; }
+
+/* ── Scroll area ── */
+#weather-scroll {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 24px;
+}
+
+/* ── Current card (hero) ── */
+#current-card {
+  padding: 16px 20px 20px;
+}
+
+#current-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+#location-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  font-weight: 500;
+  opacity: 0.9;
+}
+
+.icon-loc { opacity: 0.8; }
+
+#btn-refresh {
+  background: rgba(255,255,255,0.15);
+  border: none;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+#btn-refresh:active { background: rgba(255,255,255,0.3); }
+#btn-refresh svg { opacity: 0.9; }
+
+/* ── Main temperature area ── */
+#current-main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+#weather-icon-lg {
+  font-size: 64px;
+  line-height: 1;
+  filter: drop-shadow(0 2px 8px rgba(0,0,0,0.2));
+}
+
+#temp-block {
+  text-align: left;
+}
+
+#temperature {
+  font-size: 72px;
+  font-weight: 200;
+  line-height: 1;
+  letter-spacing: -2px;
+  text-shadow: 0 2px 12px rgba(0,0,0,0.15);
+}
+
+#condition {
+  font-size: 16px;
+  opacity: 0.85;
+  margin-top: 4px;
+  font-weight: 400;
+}
+
+/* ── Detail grid (humidity, feels-like, wind, pressure) ── */
+#current-details {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  background: rgba(15,23,42,0.88);
+  border-radius: 16px;
+  padding: 14px 8px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.detail-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.detail-item svg {
+  opacity: 0.7;
+}
+
+.detail-value {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.detail-label {
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+/* ── Cards (shared) ── */
+.card {
+  margin: 12px 16px 0;
+  background: rgba(15,23,42,0.88);
+  border-radius: 16px;
+  padding: 14px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.section-title {
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.7;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+}
+
+/* ── Hourly forecast ── */
+#hourly-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0 -14px;
+  padding: 0 14px;
+}
+
+#hourly-list {
+  display: flex;
+  gap: 16px;
+  padding-bottom: 4px;
+}
+
+.hourly-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 48px;
+  flex-shrink: 0;
+}
+
+.hourly-time {
+  font-size: 12px;
+  opacity: 0.7;
+  font-weight: 500;
+}
+
+.hourly-icon {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.hourly-temp {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* ── 7-day forecast ── */
+#forecast-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.forecast-day {
+  display: flex;
+  align-items: center;
+  padding: 10px 4px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.forecast-day:last-child { border-bottom: none; }
+
+.forecast-name {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.forecast-icon {
+  font-size: 20px;
+  width: 36px;
+  text-align: center;
+}
+
+.forecast-temp-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 90px;
+  justify-content: flex-end;
+}
+
+.forecast-temp-bar {
+  width: 48px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255,255,255,0.2);
+  position: relative;
+  overflow: hidden;
+}
+
+.forecast-temp-fill {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #42a5f5, #ff7043);
+}
+
+.forecast-max {
+  font-size: 14px;
+  font-weight: 600;
+  min-width: 28px;
+  text-align: right;
+}
+
+.forecast-min {
+  font-size: 14px;
+  font-weight: 400;
+  opacity: 0.5;
+  min-width: 28px;
+  text-align: right;
+}
+
+/* ── Sun / UV section ── */
+.sun-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.sun-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.sun-label {
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+.sun-value {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* ── Loading animation ── */
+@keyframes pulse-text {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+#location-name[data-loading="true"] {
+  animation: pulse-text 1.5s ease-in-out infinite;
+}
+
+/* ── Refresh button spin ── */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+#btn-refresh.refreshing svg {
+  animation: spin 1s linear infinite;
+}

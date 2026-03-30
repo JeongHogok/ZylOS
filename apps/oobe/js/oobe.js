@@ -58,25 +58,21 @@
         zylI18n.setLocale(lang);
       }
       /* Save locale to settings — emulator applies via applySettingSideEffect */
-      if (window.parent && window.parent !== window) {
-        window.parent.postMessage(JSON.stringify({
-          type: 'service.request',
-          service: 'settings',
-          method: 'update',
-          params: { category: 'language', key: 'locale', value: lang }
-        }), '*');
-      }
+      ZylBridge.sendToSystem({
+        type: 'service.request',
+        service: 'settings',
+        method: 'update',
+        params: { category: 'language', key: 'locale', value: lang }
+      });
     });
   });
 
   /* ─── WiFi List ─── */
-  if (window.parent && window.parent !== window) {
-    window.parent.postMessage(JSON.stringify({
-      type: 'service.request',
-      service: 'wifi',
-      method: 'getNetworks'
-    }), '*');
-  }
+  ZylBridge.sendToSystem({
+    type: 'service.request',
+    service: 'wifi',
+    method: 'getNetworks'
+  });
 
   window.addEventListener('message', function (e) {
     if (e.source !== window.parent && e.source !== window) return;
@@ -123,14 +119,12 @@
 
     msg.textContent = '';
     /* Save PIN to system settings */
-    if (window.parent && window.parent !== window) {
-      window.parent.postMessage(JSON.stringify({
-        type: 'service.request',
-        service: 'settings',
-        method: 'update',
-        params: { category: 'security', key: 'pin', value: pin }
-      }), '*');
-    }
+    ZylBridge.sendToSystem({
+      type: 'service.request',
+      service: 'settings',
+      method: 'update',
+      params: { category: 'security', key: 'pin', value: pin }
+    });
     nextStep();
   };
 
@@ -144,18 +138,16 @@
   /* ─── Setup Complete → save flag + go home ─── */
   window.finishSetup = function () {
     /* Save OOBE completion flag so it doesn't show again */
-    if (window.parent && window.parent !== window) {
-      window.parent.postMessage(JSON.stringify({
-        type: 'service.request',
-        service: 'settings',
-        method: 'update',
-        params: { category: 'system', key: 'oobe_completed', value: true }
-      }), '*');
-      /* Launch home */
-      window.parent.postMessage(JSON.stringify({
-        type: 'app.launch', appId: 'com.zylos.home'
-      }), '*');
-    }
+    ZylBridge.sendToSystem({
+      type: 'service.request',
+      service: 'settings',
+      method: 'update',
+      params: { category: 'system', key: 'oobe_completed', value: true }
+    });
+    /* Launch home */
+    ZylBridge.sendToSystem({
+      type: 'app.launch', appId: 'com.zylos.home'
+    });
   };
 
   /* Select default language based on i18n locale (avoid navigator.language bypass) */

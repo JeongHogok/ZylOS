@@ -235,6 +235,32 @@
     updateRunningApps();
   }
 
+  /**
+   * Force-stop an app — kills its iframe, clears watchdog state,
+   * and releases all resources. Used for misbehaving / hung apps.
+   */
+  function forceStopApp(appId) {
+    if (!appId) return;
+    /* Block further service calls from this app */
+    if (typeof ZylSystemServices !== 'undefined' && ZylSystemServices.watchdog) {
+      ZylSystemServices.watchdog.block(appId);
+    }
+    /* Destroy the app iframe if it's the current app */
+    var appFrame = document.getElementById('app-frame');
+    if (appFrame && state.currentApp === appId) {
+      appFrame.src = 'about:blank';
+    }
+    /* Remove from running apps */
+    closeApp(appId);
+    /* Unblock after a brief delay (allows relaunch) */
+    setTimeout(function () {
+      if (typeof ZylSystemServices !== 'undefined' && ZylSystemServices.watchdog) {
+        ZylSystemServices.watchdog.unblock(appId);
+      }
+    }, 1000);
+    syslog('ForceStop: ' + appId, 'sys');
+  }
+
   /* 잠금 검사를 거치는 네비게이션 */
   /* OOBE blocks all navigation — user must complete setup */
   function isInOobe() {

@@ -49,7 +49,6 @@ window.ZylPermissions = (function () {
     'display':       [],
     'input':         [],
     'sensors':       [],
-    'telephony':     [],
     'usb':           [],
     'user':          [],
     'updater':       [],

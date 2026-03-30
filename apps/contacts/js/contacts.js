@@ -24,6 +24,11 @@
   var detailName = document.getElementById('detail-name');
   var detailPhone = document.getElementById('detail-phone');
   var detailEmail = document.getElementById('detail-email');
+  var detailPhoneText = document.getElementById('detail-phone-text');
+  var detailEmailText = document.getElementById('detail-email-text');
+  var deleteModal = document.getElementById('delete-modal');
+  var modalCancel = document.getElementById('modal-cancel');
+  var modalDelete = document.getElementById('modal-delete');
 
   var inputName = document.getElementById('input-name');
   var inputPhone = document.getElementById('input-phone');
@@ -59,6 +64,13 @@
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  function getAvatarClass(name) {
+    if (!name) return 'avatar-0';
+    var hash = 0;
+    for (var i = 0; i < name.length; i++) hash += name.charCodeAt(i);
+    return 'avatar-' + (hash % 10);
   }
 
   function getAvatarGradient(name) {
@@ -98,7 +110,7 @@
       method: method,
       params: params || {}
     };
-    window.parent.postMessage(JSON.stringify(msg), '*');
+    ZylBridge.sendToSystem(msg);
   }
 
   function loadContacts() {
@@ -161,8 +173,7 @@
       row.setAttribute('data-id', c.id || '');
 
       var avatar = document.createElement('div');
-      avatar.className = 'avatar';
-      avatar.style.background = getAvatarGradient(c.name);
+      avatar.className = 'avatar ' + getAvatarClass(c.name);
       avatar.textContent = getInitial(c.name);
 
       var info = document.createElement('div');
@@ -197,12 +208,15 @@
   function showDetail(contact) {
     currentContact = contact;
     if (detailAvatar) {
-      detailAvatar.style.background = getAvatarGradient(contact.name);
+      detailAvatar.className = getAvatarClass(contact.name);
       detailAvatar.textContent = getInitial(contact.name);
     }
     if (detailName) detailName.textContent = contact.name || '';
     if (detailPhone) detailPhone.textContent = contact.phone || '';
     if (detailEmail) detailEmail.textContent = contact.email || '';
+    /* Update new detail text elements */
+    if (detailPhoneText) detailPhoneText.textContent = contact.phone || '';
+    if (detailEmailText) detailEmailText.textContent = contact.email || '';
     showView('detail');
   }
 
@@ -240,11 +254,27 @@
 
   function deleteContact() {
     if (!currentContact || !currentContact.id) return;
-    if (!confirm(t('contacts.confirm_delete'))) return;
-    requestService('contacts', 'delete', { id: currentContact.id });
-    currentContact = null;
-    showView('list');
-    loadContacts();
+    /* Show custom delete confirmation modal */
+    if (deleteModal) {
+      deleteModal.classList.remove('hidden');
+    }
+  }
+
+  /* Modal event handlers */
+  if (modalCancel) {
+    modalCancel.addEventListener('click', function () {
+      if (deleteModal) deleteModal.classList.add('hidden');
+    });
+  }
+  if (modalDelete) {
+    modalDelete.addEventListener('click', function () {
+      if (deleteModal) deleteModal.classList.add('hidden');
+      if (!currentContact || !currentContact.id) return;
+      requestService('contacts', 'delete', { id: currentContact.id });
+      currentContact = null;
+      showView('list');
+      loadContacts();
+    });
   }
 
   /* ── Message Handler ── */
@@ -258,13 +288,13 @@
       if (msg.type === 'navigation.back') {
         if (currentView === 'form') {
           showView(editingId ? 'detail' : 'list');
-          window.parent.postMessage(JSON.stringify({ type: 'navigation.handled' }), '*');
+          ZylBridge.sendToSystem({ type: 'navigation.handled' });
         } else if (currentView === 'detail') {
           currentContact = null;
           showView('list');
-          window.parent.postMessage(JSON.stringify({ type: 'navigation.handled' }), '*');
+          ZylBridge.sendToSystem({ type: 'navigation.handled' });
         } else {
-          window.parent.postMessage(JSON.stringify({ type: 'navigation.exit' }), '*');
+          ZylBridge.sendToSystem({ type: 'navigation.exit' });
         }
         return;
       }
@@ -318,21 +348,21 @@
   var btnCall = document.getElementById('btn-call');
   if (btnCall) btnCall.addEventListener('click', function () {
     if (!currentContact) return;
-    window.parent.postMessage(JSON.stringify({
+    ZylBridge.sendToSystem({
       type: 'app.launch',
       appId: 'com.zylos.phone',
       params: { action: 'call', number: currentContact.phone || '' }
-    }), '*');
+    });
   });
 
   var btnMessage = document.getElementById('btn-message');
   if (btnMessage) btnMessage.addEventListener('click', function () {
     if (!currentContact) return;
-    window.parent.postMessage(JSON.stringify({
+    ZylBridge.sendToSystem({
       type: 'app.launch',
       appId: 'com.zylos.messages',
       params: { action: 'compose', number: currentContact.phone || '' }
-    }), '*');
+    });
   });
 
   /* Search input */

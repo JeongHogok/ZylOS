@@ -150,65 +150,78 @@ pub async fn create_os_image(
 
     let size_mb = if size_mb == 0 { 64 } else { size_mb };
 
-    // 1. sparse 이미지 생성
-    #[cfg(target_os = "macos")]
-    {
-        let status = Command::new("hdiutil")
-            .args([
-                "create",
-                "-size",
-                &format!("{}m", size_mb),
-                "-fs",
-                "HFS+",
-                "-volname",
-                &format!("ZylOS-{}", version),
-                "-o",
-            ])
-            .arg(&img_path)
-            .status()
-            .map_err(|e| format!("hdiutil create failed: {}", e))?;
+    // 1. sparse 이미지 생성 (background thread to avoid blocking Tauri)
+    let img_path_clone = img_path.clone();
+    let version_clone = version.clone();
+    let (tx, rx) = tokio::sync::oneshot::channel();
 
-        if !status.success() {
-            return Err("Failed to create disk image".into());
-        }
+    std::thread::spawn(move || {
+        let result = (|| -> Result<(), String> {
+            #[cfg(target_os = "macos")]
+            {
+                let status = Command::new("hdiutil")
+                    .args([
+                        "create",
+                        "-size",
+                        &format!("{}m", size_mb),
+                        "-fs",
+                        "HFS+",
+                        "-volname",
+                        &format!("ZylOS-{}", version_clone),
+                        "-o",
+                    ])
+                    .arg(&img_path_clone)
+                    .status()
+                    .map_err(|e| format!("hdiutil create failed: {}", e))?;
 
-        // hdiutil은 .dmg를 추가할 수 있음
-        let dmg_path = img_path.with_extension("img.dmg");
-        if dmg_path.exists() && !img_path.exists() {
-            fs::rename(&dmg_path, &img_path)
-                .map_err(|e| format!("Rename failed: {}", e))?;
-        }
-    }
+                if !status.success() {
+                    return Err("Failed to create disk image".into());
+                }
 
-    #[cfg(target_os = "linux")]
-    {
-        let size_bytes = (size_mb as u64) * 1024 * 1024;
-        let status = Command::new("dd")
-            .args([
-                "if=/dev/zero",
-                &format!("of={}", img_path.display()),
-                "bs=1",
-                "count=0",
-                &format!("seek={}", size_bytes),
-            ])
-            .status()
-            .map_err(|e| format!("dd failed: {}", e))?;
+                // hdiutil은 .dmg를 추가할 수 있음
+                let dmg_path = img_path_clone.with_extension("img.dmg");
+                if dmg_path.exists() && !img_path_clone.exists() {
+                    fs::rename(&dmg_path, &img_path_clone)
+                        .map_err(|e| format!("Rename failed: {}", e))?;
+                }
+            }
 
-        if !status.success() {
-            return Err("Failed to create sparse image".into());
-        }
+            #[cfg(target_os = "linux")]
+            {
+                let size_bytes = (size_mb as u64) * 1024 * 1024;
+                let status = Command::new("dd")
+                    .args([
+                        "if=/dev/zero",
+                        &format!("of={}", img_path_clone.display()),
+                        "bs=1",
+                        "count=0",
+                        &format!("seek={}", size_bytes),
+                    ])
+                    .status()
+                    .map_err(|e| format!("dd failed: {}", e))?;
 
-        let status = Command::new("mkfs.ext4")
-            .args(["-F", "-q"])
-            .arg(&img_path)
-            .status()
-            .map_err(|e| format!("mkfs.ext4 failed: {}", e))?;
+                if !status.success() {
+                    return Err("Failed to create sparse image".into());
+                }
 
-        if !status.success() {
-            let _ = fs::remove_file(&img_path);
-            return Err("Failed to format image".into());
-        }
-    }
+                let status = Command::new("mkfs.ext4")
+                    .args(["-F", "-q"])
+                    .arg(&img_path_clone)
+                    .status()
+                    .map_err(|e| format!("mkfs.ext4 failed: {}", e))?;
+
+                if !status.success() {
+                    let _ = fs::remove_file(&img_path_clone);
+                    return Err("Failed to format image".into());
+                }
+            }
+
+            Ok(())
+        })();
+        let _ = tx.send(result);
+    });
+
+    rx.await.map_err(|_| "Image creation cancelled".to_string())??;
 
     // 2. 메타데이터 저장
     let meta = OsImage {

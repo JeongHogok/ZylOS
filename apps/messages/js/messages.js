@@ -18,14 +18,12 @@
      ═══════════════════════════════════════════════════════════ */
 
   function requestService(service, method, params) {
-    if (window.parent && window.parent !== window) {
-      window.parent.postMessage(JSON.stringify({
-        type: 'service.request',
-        service: service,
-        method: method,
-        params: params || {}
-      }), '*');
-    }
+    ZylBridge.sendToSystem({
+      type: 'service.request',
+      service: service,
+      method: method,
+      params: params || {}
+    });
   }
 
   var serviceCallbacks = {};
@@ -117,12 +115,12 @@
     if (currentView === 'chat') {
       showView('threads');
       loadThreads();
-      window.parent.postMessage(JSON.stringify({ type: 'navigation.handled' }), '*');
+      ZylBridge.sendToSystem({ type: 'navigation.handled' });
     } else if (currentView === 'new') {
       showView('threads');
-      window.parent.postMessage(JSON.stringify({ type: 'navigation.handled' }), '*');
+      ZylBridge.sendToSystem({ type: 'navigation.handled' });
     } else {
-      window.parent.postMessage(JSON.stringify({ type: 'navigation.exit' }), '*');
+      ZylBridge.sendToSystem({ type: 'navigation.exit' });
     }
   }
 
@@ -144,6 +142,12 @@
     renderThreads(data.threads);
   });
 
+  function avatarColor(name) {
+    var code = 0;
+    for (var j = 0; j < (name || '').length; j++) code += name.charCodeAt(j);
+    return 'avatar-' + (code % 10);
+  }
+
   function renderThreads(threads) {
     var html = '';
     for (var i = 0; i < threads.length; i++) {
@@ -151,11 +155,12 @@
       var initial = (t.name || t.number || '?').charAt(0).toUpperCase();
       var timeStr = formatRelativeTime(t.lastTimestamp);
       var unreadClass = t.unread ? ' unread' : '';
+      var colorClass = avatarColor(t.name || t.number || '');
       html += '<div class="thread-item' + unreadClass + '" ' +
         'data-thread-id="' + escapeAttr(t.id || '') + '" ' +
         'data-number="' + escapeAttr(t.number || '') + '" ' +
         'data-name="' + escapeAttr(t.name || t.number || '') + '">' +
-        '<div class="thread-avatar">' + escapeHtml(initial) + '</div>' +
+        '<div class="thread-avatar ' + colorClass + '">' + escapeHtml(initial) + '</div>' +
         '<div class="thread-info">' +
           '<div class="thread-name">' + escapeHtml(t.name || t.number || '') + '</div>' +
           '<div class="thread-preview">' + escapeHtml(t.lastMessage || '') + '</div>' +
@@ -253,6 +258,14 @@
       sendMessage();
     }
   });
+  /* Activate send button when input has text */
+  chatInput.addEventListener('input', function () {
+    if (chatInput.value.trim()) {
+      btnSend.classList.add('active');
+    } else {
+      btnSend.classList.remove('active');
+    }
+  });
 
   btnChatBack.addEventListener('click', function () {
     showView('threads');
@@ -309,8 +322,9 @@
       var c = contacts[i];
       var initial = (c.name || '?').charAt(0).toUpperCase();
       var phone = c.phone || c.number || '';
+      var cColor = avatarColor(c.name || phone);
       html += '<div class="new-contact-item" data-number="' + escapeAttr(phone) + '" data-name="' + escapeAttr(c.name || phone) + '">' +
-        '<div class="new-contact-avatar">' + escapeHtml(initial) + '</div>' +
+        '<div class="new-contact-avatar ' + cColor + '">' + escapeHtml(initial) + '</div>' +
         '<div class="new-contact-info">' +
           '<div class="new-contact-name">' + escapeHtml(c.name || phone) + '</div>' +
           '<div class="new-contact-number">' + escapeHtml(phone) + '</div>' +

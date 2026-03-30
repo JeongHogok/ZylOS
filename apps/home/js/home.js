@@ -99,30 +99,30 @@
   }
 
   function saveGridSettings() {
-    window.parent.postMessage(JSON.stringify({
+    ZylBridge.sendToSystem({
       type: 'service.request', service: 'settings', method: 'update',
       params: { category: 'home', key: 'gridOrder', value: gridOrder.join(',') }
-    }), '*');
+    });
   }
 
   /* ─── Service Requests ─── */
   function requestAppList() {
-    window.parent.postMessage(JSON.stringify({
+    ZylBridge.sendToSystem({
       type: 'service.request', service: 'apps', method: 'getInstalled'
-    }), '*');
+    });
   }
 
   function requestDockSettings() {
-    window.parent.postMessage(JSON.stringify({
+    ZylBridge.sendToSystem({
       type: 'service.request', service: 'settings', method: 'get', params: { category: 'home' }
-    }), '*');
+    });
   }
 
   function saveDockSettings() {
-    window.parent.postMessage(JSON.stringify({
+    ZylBridge.sendToSystem({
       type: 'service.request', service: 'settings', method: 'update',
       params: { category: 'home', key: 'dock', value: dockApps.join(',') }
-    }), '*');
+    });
   }
 
   /* ═══════════════════════════════════════════════════════
@@ -177,7 +177,7 @@
 
       /* Navigation back -> home is root, always exit */
       if (msg.type === 'navigation.back') {
-        window.parent.postMessage(JSON.stringify({ type: 'navigation.exit' }), '*');
+        ZylBridge.sendToSystem({ type: 'navigation.exit' });
         return;
       }
 
@@ -333,10 +333,10 @@
       delBtn.addEventListener('click', function (ev) {
         ev.stopPropagation();
         if (isUndeletable(appId)) return;
-        window.parent.postMessage(JSON.stringify({
+        ZylBridge.sendToSystem({
           type: 'service.request', service: 'appstore',
           method: 'uninstall', params: { appId: appId }
-        }), '*');
+        });
         defaultApps = defaultApps.filter(function (a) { return a.id !== appId; });
         renderAppGrid(getGridApps());
       });

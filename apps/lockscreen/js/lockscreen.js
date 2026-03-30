@@ -28,14 +28,12 @@
   var lockoutUntil = 0;
 
   /* Fetch current PIN from settings service */
-  if (window.parent && window.parent !== window) {
-    window.parent.postMessage(JSON.stringify({
-      type: 'service.request',
-      service: 'settings',
-      method: 'get',
-      params: { category: 'security' }
-    }), '*');
-  }
+  ZylBridge.sendToSystem({
+    type: 'service.request',
+    service: 'settings',
+    method: 'get',
+    params: { category: 'security' }
+  });
 
   /* ─── 파티클 생성 ─── */
   (function createParticles() {
@@ -131,12 +129,10 @@
         document.body.classList.add('unlocking');
         unlockFlash.classList.add('flash');
         setTimeout(function () {
-          if (window.parent && window.parent !== window) {
-            if (pendingAppId) {
-              window.parent.postMessage(JSON.stringify({ type: 'app.launch', appId: pendingAppId }), '*');
-            } else {
-              window.parent.postMessage(JSON.stringify({ type: 'unlock' }), '*');
-            }
+          if (pendingAppId) {
+            ZylBridge.sendToSystem({ type: 'app.launch', appId: pendingAppId });
+          } else {
+            ZylBridge.sendToSystem({ type: 'unlock' });
           }
         }, 500);
       } else {
@@ -237,16 +233,14 @@
 
       setTimeout(function () {
         /* 에뮬레이터에 잠금해제 알림 */
-        if (window.parent && window.parent !== window) {
-          if (pendingAppId) {
-            window.parent.postMessage(JSON.stringify({
-              type: 'app.launch', appId: pendingAppId
-            }), '*');
-          } else {
-            window.parent.postMessage(JSON.stringify({
-              type: 'unlock'
-            }), '*');
-          }
+        if (pendingAppId) {
+          ZylBridge.sendToSystem({
+            type: 'app.launch', appId: pendingAppId
+          });
+        } else {
+          ZylBridge.sendToSystem({
+            type: 'unlock'
+          });
         }
 
         /* 자체 Bridge 호출 (WAM 환경) */

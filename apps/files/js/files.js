@@ -19,12 +19,12 @@
 
   /* Request filesystem data from central service */
   function requestService(service, method, params) {
-    window.parent.postMessage(JSON.stringify({
+    ZylBridge.sendToSystem({
       type: 'service.request',
       service: service,
       method: method,
       params: params || {}
-    }), '*');
+    });
   }
 
   function requestFileSystem() {
@@ -43,9 +43,9 @@
       if (msg.type === 'navigation.back') {
         if (currentPath !== '/') {
           btnBack.click();
-          window.parent.postMessage(JSON.stringify({ type: 'navigation.handled' }), '*');
+          ZylBridge.sendToSystem({ type: 'navigation.handled' });
         } else {
-          window.parent.postMessage(JSON.stringify({ type: 'navigation.exit' }), '*');
+          ZylBridge.sendToSystem({ type: 'navigation.exit' });
         }
         return;
       }
@@ -293,12 +293,12 @@
 
     /* 해당 경로의 데이터가 없으면 서비스에 요청 */
     if (!fileSystem[path]) {
-      window.parent.postMessage(JSON.stringify({
+      ZylBridge.sendToSystem({
         type: 'service.request',
         service: 'fs',
         method: 'getDirectory',
         params: { path: path }
-      }), '*');
+      });
       fileList.innerHTML = '<div style="text-align:center;opacity:0.5;padding:32px">Loading...</div>';
     } else {
       renderFiles();
@@ -464,10 +464,10 @@
     }
 
     if (appId) {
-      window.parent.postMessage(JSON.stringify({
+      ZylBridge.sendToSystem({
         type: 'app.launch',
         appId: appId
-      }), '*');
+      });
     }
   }
 

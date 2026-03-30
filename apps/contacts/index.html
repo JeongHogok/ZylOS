@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수. 실제 디바이스 구동 기준이며, mock/demo 등 하드코딩 데이터가 있어서는 안 된다 -->
+<!-- Clean Architecture, SOLID principles, i18n rules strictly followed. Built for real device runtime; no mock/demo or hardcoded data allowed -->
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -14,32 +14,81 @@
   <!-- List View -->
   <div id="list-view">
     <div id="header">
-      <h1 data-i18n="contacts.title">Contacts</h1>
-      <button id="btn-add">+</button>
+      <h1 data-i18n="contacts.title"></h1>
+      <button id="btn-add" aria-label="Add contact">
+        <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+      </button>
     </div>
     <div id="search-bar">
-      <input type="text" id="search-input" data-i18n-placeholder="contacts.search" placeholder="Search">
+      <div class="search-wrap">
+        <svg class="search-icon" viewBox="0 0 24 24" width="18" height="18"><path fill="rgba(255,255,255,0.3)" d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+        <input type="text" id="search-input" data-i18n-placeholder="contacts.search" autocomplete="off">
+      </div>
     </div>
-    <div id="contact-list"></div>
+    <div id="contact-list" class="zyl-scroll"></div>
+    <div id="empty-state" class="empty-state hidden">
+      <svg viewBox="0 0 24 24" width="48" height="48"><path fill="rgba(255,255,255,0.15)" d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+      <span data-i18n="contacts.no_contacts"></span>
+    </div>
   </div>
 
   <!-- Detail View -->
   <div id="detail-view" class="hidden">
     <div id="detail-header">
-      <button id="detail-back">&larr;</button>
+      <button id="detail-back" class="back-btn" aria-label="Back">
+        <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+      </button>
     </div>
     <div id="detail-content">
       <div id="detail-avatar"></div>
       <div id="detail-name"></div>
-      <div id="detail-phone"></div>
-      <div id="detail-email"></div>
+      <div id="detail-phone-text"></div>
+      <div id="detail-email-text"></div>
       <div id="detail-actions">
-        <button id="btn-call" class="action-btn action-call" data-i18n="contacts.call">Call</button>
-        <button id="btn-message" class="action-btn action-message" data-i18n="contacts.message">Message</button>
+        <button id="btn-call" class="action-circle" aria-label="Call">
+          <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
+          <span data-i18n="contacts.call"></span>
+        </button>
+        <button id="btn-message" class="action-circle" aria-label="Message">
+          <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"/></svg>
+          <span data-i18n="contacts.message"></span>
+        </button>
+        <button id="btn-email-action" class="action-circle" aria-label="Email">
+          <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+          <span data-i18n="contacts.email_label"></span>
+        </button>
+      </div>
+      <div id="detail-info-card" class="info-card">
+        <div id="detail-phone-row" class="info-row">
+          <svg viewBox="0 0 24 24" width="18" height="18"><path fill="rgba(255,255,255,0.4)" d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
+          <div class="info-content">
+            <span class="info-label" data-i18n="contacts.phone"></span>
+            <span id="detail-phone" class="info-value"></span>
+          </div>
+        </div>
+        <div id="detail-email-row" class="info-row">
+          <svg viewBox="0 0 24 24" width="18" height="18"><path fill="rgba(255,255,255,0.4)" d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+          <div class="info-content">
+            <span class="info-label" data-i18n="contacts.email"></span>
+            <span id="detail-email" class="info-value"></span>
+          </div>
+        </div>
       </div>
       <div id="detail-manage">
-        <button id="btn-edit" class="manage-btn" data-i18n="contacts.edit">Edit</button>
-        <button id="btn-delete" class="manage-btn manage-delete" data-i18n="contacts.delete">Delete</button>
+        <button id="btn-edit" class="manage-btn" data-i18n="contacts.edit"></button>
+        <button id="btn-delete" class="manage-btn manage-delete" data-i18n="contacts.delete"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Confirm Modal -->
+  <div id="delete-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="modal-title" data-i18n="contacts.delete_confirm"></div>
+      <div class="modal-body" data-i18n="contacts.delete_confirm_msg"></div>
+      <div class="modal-actions">
+        <button id="modal-cancel" class="modal-btn" data-i18n="contacts.cancel"></button>
+        <button id="modal-delete" class="modal-btn modal-danger" data-i18n="contacts.delete"></button>
       </div>
     </div>
   </div>
@@ -47,19 +96,27 @@
   <!-- Form View (Add / Edit) -->
   <div id="form-view" class="hidden">
     <div id="form-header">
-      <button id="form-back">&larr;</button>
-      <span id="form-title" data-i18n="contacts.add">Add Contact</span>
+      <button id="form-back" class="back-btn" aria-label="Back">
+        <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+      </button>
+      <span id="form-title" data-i18n="contacts.add"></span>
     </div>
-    <div id="form-body">
-      <label data-i18n="contacts.name">Name</label>
-      <input type="text" id="input-name" data-i18n-placeholder="contacts.name" placeholder="Name">
-      <label data-i18n="contacts.phone">Phone</label>
-      <input type="tel" id="input-phone" data-i18n-placeholder="contacts.phone" placeholder="Phone">
-      <label data-i18n="contacts.email">Email</label>
-      <input type="email" id="input-email" data-i18n-placeholder="contacts.email" placeholder="Email">
+    <div id="form-body" class="zyl-scroll">
+      <div class="form-field">
+        <label data-i18n="contacts.name"></label>
+        <input type="text" id="input-name" data-i18n-placeholder="contacts.name">
+      </div>
+      <div class="form-field">
+        <label data-i18n="contacts.phone"></label>
+        <input type="tel" id="input-phone" data-i18n-placeholder="contacts.phone">
+      </div>
+      <div class="form-field">
+        <label data-i18n="contacts.email"></label>
+        <input type="email" id="input-email" data-i18n-placeholder="contacts.email">
+      </div>
       <div id="form-actions">
-        <button id="btn-save" class="form-btn form-save" data-i18n="contacts.save">Save</button>
-        <button id="btn-cancel" class="form-btn form-cancel" data-i18n="contacts.cancel">Cancel</button>
+        <button id="btn-save" class="form-btn form-save" data-i18n="contacts.save"></button>
+        <button id="btn-cancel" class="form-btn form-cancel" data-i18n="contacts.cancel"></button>
       </div>
     </div>
   </div>
@@ -68,5 +125,4 @@
   <script src="i18n.js"></script>
   <script src="../shared/bridge.js"></script>
   <script src="js/contacts.js"></script>
-</body>
-</html>
+</body></html>

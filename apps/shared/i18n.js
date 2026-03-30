@@ -255,25 +255,21 @@ window.zylI18n = (function () {
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function () {
       applyTranslations();
-      /* Request saved locale from emulator */
-      if (window.parent && window.parent !== window) {
-        window.parent.postMessage(JSON.stringify({
-          type: 'service.request',
-          service: 'settings',
-          method: 'get',
-          params: { category: 'language' }
-        }), '*');
+      /* Request saved locale — uses ZylBridge if available, else postMessage */
+      var localeMsg = { type: 'service.request', service: 'settings', method: 'get', params: { category: 'language' } };
+      if (typeof ZylBridge !== 'undefined' && ZylBridge.sendToSystem) {
+        ZylBridge.sendToSystem(localeMsg);
+      } else if (window.parent && window.parent !== window) {
+        window.parent.postMessage(JSON.stringify(localeMsg), '*');
       }
     });
   } else {
     applyTranslations();
-    if (window.parent && window.parent !== window) {
-      window.parent.postMessage(JSON.stringify({
-        type: 'service.request',
-        service: 'settings',
-        method: 'get',
-        params: { category: 'language' }
-      }), '*');
+    var localeMsg2 = { type: 'service.request', service: 'settings', method: 'get', params: { category: 'language' } };
+    if (typeof ZylBridge !== 'undefined' && ZylBridge.sendToSystem) {
+      ZylBridge.sendToSystem(localeMsg2);
+    } else if (window.parent && window.parent !== window) {
+      window.parent.postMessage(JSON.stringify(localeMsg2), '*');
     }
   }
 
