@@ -8,15 +8,18 @@
 gtk4 = dependency('gtk4')
 
 # WebKitGTK: try multiple pkg-config names across distros
-# Arch: webkitgtk-6.0 | Ubuntu/Debian: webkit2gtk-4.1 | Fedora: webkit2gtk-4.1
+# webkitgtk-6.0 (Fedora 40+, future) | webkit2gtk-4.1 (Ubuntu/Debian) | webkit2gtk-4.0 (Arch)
 wam_c_args = []
 webkitgtk = dependency('webkitgtk-6.0', required: false)
 if not webkitgtk.found()
   webkitgtk = dependency('webkit2gtk-4.1', required: false)
+  if not webkitgtk.found()
+    webkitgtk = dependency('webkit2gtk-4.0', required: false)
+  endif
   if webkitgtk.found()
     wam_c_args += ['-DZYL_USE_WEBKIT2GTK']
   else
-    error('Neither webkitgtk-6.0 nor webkit2gtk-4.1 found. Install webkit2gtk or webkit2gtk-4.1.')
+    error('WebKitGTK not found. Install one of: webkitgtk-6.0, webkit2gtk-4.1, webkit2gtk-4.0')
   endif
 endif
 json_glib = dependency('json-glib-1.0')
