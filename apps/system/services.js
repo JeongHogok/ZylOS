@@ -214,7 +214,9 @@ window.ZylSystemServices = (function () {
               color: m.color || 'icon-blue',
               version: m.version || '1.0.0',
               description: m.description || '',
-              system: m.system || false,
+              /* System flag determined by OS SYSTEM_APPS list — NOT from app.json.
+                 Prevents malicious apps from claiming system status. */
+              system: (SYSTEM_APPS.indexOf(m.id) !== -1),
               permissions: m.permissions || [],
               iconSvg: m.iconSvg || ''
             };

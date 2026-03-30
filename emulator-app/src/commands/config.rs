@@ -279,9 +279,12 @@ pub fn list_installed_apps() -> Result<Vec<serde_json::Value>, String> {
                 if manifest_path.exists() {
                     if let Ok(content) = fs::read_to_string(&manifest_path) {
                         if let Ok(mut manifest) = serde_json::from_str::<serde_json::Value>(&content) {
-                            let app_type = manifest.get("type").and_then(|v| v.as_str()).unwrap_or("");
                             let app_id = manifest.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                            let is_system = app_type == "system";
+                            /* Rust does NOT determine system status.
+                               It passes raw app.json data; the OS permission layer
+                               (ZylPermissions.SYSTEM_APPS) is the sole authority.
+                               The 'system' field here is advisory only — overridden by OS. */
+                            let is_system = false; /* always false from Rust — OS decides */
 
                             // Hidden system apps (not shown in grid — managed by OS app-registry.js)
                             let is_hidden = app_id == "com.zylos.lockscreen"
