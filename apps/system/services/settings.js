@@ -15,6 +15,7 @@
 
     var state = {};
     var _loaded = false;
+    var _debounceTimers = {};
 
     function _loadFromBackend() {
       if (_loaded) return Promise.resolve(state);
@@ -43,11 +44,27 @@
         state[category] = {};
       }
       state[category][key] = value;
-      invoke('save_settings', {
-        category: category,
-        key: key,
-        value: value
-      }).catch(function () {});
+
+      /* 200ms debounce — 같은 category의 연속 쓰기를 병합 */
+      if (_debounceTimers[category]) {
+        clearTimeout(_debounceTimers[category]);
+      }
+      _debounceTimers[category] = setTimeout(function () {
+        delete _debounceTimers[category];
+        var snapshot = state[category];
+        var keys = Object.keys(snapshot);
+        /* 변경된 category 전체를 단일 호출로 flush */
+        for (var i = 0; i < keys.length; i++) {
+          (function (k) {
+            invoke('save_settings', {
+              category: category,
+              key: k,
+              value: snapshot[k]
+            }).catch(function () {});
+          })(keys[i]);
+        }
+      }, 200);
+
       return state[category];
     }
 
