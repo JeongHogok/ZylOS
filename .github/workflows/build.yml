@@ -32,6 +32,11 @@ jobs:
         run: |
           PROTO_DIR=$(pkg-config --variable=pkgdatadir wayland-protocols)
           wayland-scanner server-header "$PROTO_DIR/stable/xdg-shell/xdg-shell.xml" /usr/include/xdg-shell-protocol.h
+      - name: Check WebKitGTK pkg-config
+        run: |
+          echo "=== Available webkit .pc files ==="
+          find /usr/lib/pkgconfig /usr/share/pkgconfig -name '*webkit*' 2>/dev/null || true
+          pkg-config --list-all 2>/dev/null | grep -i webkit || echo "No webkit pkg-config found"
       - name: Build Zyl OS
         run: |
           meson setup builddir

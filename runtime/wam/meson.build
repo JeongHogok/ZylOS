@@ -6,11 +6,18 @@
 # SOLID: Single-responsibility — only WAM build logic
 
 gtk4 = dependency('gtk4')
-webkitgtk = dependency('webkitgtk-6.0', required: false)
+
+# WebKitGTK: try multiple pkg-config names across distros
+# Arch: webkitgtk-6.0 | Ubuntu/Debian: webkit2gtk-4.1 | Fedora: webkit2gtk-4.1
 wam_c_args = []
+webkitgtk = dependency('webkitgtk-6.0', required: false)
 if not webkitgtk.found()
-  webkitgtk = dependency('webkit2gtk-4.1')
-  wam_c_args += ['-DZYL_USE_WEBKIT2GTK']
+  webkitgtk = dependency('webkit2gtk-4.1', required: false)
+  if webkitgtk.found()
+    wam_c_args += ['-DZYL_USE_WEBKIT2GTK']
+  else
+    error('Neither webkitgtk-6.0 nor webkit2gtk-4.1 found. Install webkit2gtk or webkit2gtk-4.1.')
+  endif
 endif
 json_glib = dependency('json-glib-1.0')
 gio = dependency('gio-2.0')
