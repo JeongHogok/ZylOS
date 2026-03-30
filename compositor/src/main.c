@@ -146,7 +146,7 @@ int main(int argc, char *argv[])
         wlr_log(WLR_INFO, "Cursor theme '%s' loaded at size %d",
                 cursor_theme, cursor_size);
     } else if (strcmp(cursor_theme, "default") != 0) {
-        wlr_log(WLR_WARN, "Cursor theme '%s' not found, trying 'default'",
+        wlr_log(WLR_ERROR, "Cursor theme '%s' not found, trying 'default'",
                 cursor_theme);
         wlr_xcursor_manager_destroy(server.cursor_mgr);
         server.cursor_mgr = wlr_xcursor_manager_create("default", 24);

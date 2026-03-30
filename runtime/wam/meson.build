@@ -7,8 +7,10 @@
 
 gtk4 = dependency('gtk4')
 webkitgtk = dependency('webkitgtk-6.0', required: false)
+wam_c_args = []
 if not webkitgtk.found()
   webkitgtk = dependency('webkit2gtk-4.1')
+  wam_c_args += ['-DZYL_USE_WEBKIT2GTK']
 endif
 json_glib = dependency('json-glib-1.0')
 gio = dependency('gio-2.0')
@@ -26,6 +28,7 @@ wam_sources = files(
 executable('zyl-wam',
   wam_sources,
   dependencies: wam_deps,
+  c_args: wam_c_args,
   install: true,
 )
 

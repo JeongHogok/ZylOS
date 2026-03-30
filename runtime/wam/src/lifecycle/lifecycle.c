@@ -12,7 +12,11 @@
 
 #include <stdio.h>
 #include <string.h>
+#ifdef ZYL_USE_WEBKIT2GTK
+#include <webkit2/webkit2.h>
+#else
 #include <webkit/webkit.h>
+#endif
 #include <gdk/gdk.h>
 
 /* --- H20: Statusbar height in pixels (reserved at top of screen) --- */

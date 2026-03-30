@@ -13,7 +13,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <json-glib/json-glib.h>
+#ifdef ZYL_USE_WEBKIT2GTK
+#include <webkit2/webkit2.h>
+#else
 #include <webkit/webkit.h>
+#endif
 
 static ZylWam *g_wam = NULL;
 

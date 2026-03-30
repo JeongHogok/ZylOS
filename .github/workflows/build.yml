@@ -3,7 +3,6 @@ on: [push, pull_request]
 jobs:
   build-native:
     runs-on: ubuntu-24.04
-    continue-on-error: true
     container:
       image: archlinux:latest
     steps:

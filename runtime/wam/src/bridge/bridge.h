@@ -11,7 +11,11 @@
 #define ZYL_WAM_BRIDGE_H
 
 #include <glib.h>
+#ifdef ZYL_USE_WEBKIT2GTK
+#include <webkit2/webkit2.h>
+#else
 #include <webkit/webkit.h>
+#endif
 #include "../manifest/manifest.h"
 
 /*
