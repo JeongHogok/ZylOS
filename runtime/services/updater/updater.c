@@ -18,6 +18,11 @@
 #include <errno.h>
 #include <time.h>
 
+#include <openssl/evp.h>
+#include <openssl/pem.h>
+#include <openssl/err.h>
+#include <openssl/sha.h>
+
 /* ─── 내부 상수 ─── */
 #define BOOTCTL_PATH          "/usr/sbin/bootctl"
 #define SLOT_METADATA_PATH    "/var/lib/zyl-os/slot-metadata"
@@ -191,28 +196,40 @@ static char *run_command(const char *cmd, size_t *out_len) {
     return buf;
 }
 
-/* ─── 유틸리티: SHA-256 해시 계산 (sha256sum 명령어 사용) ─── */
+/* ─── 유틸리티: SHA-256 해시 계산 (OpenSSL EVP API) ─── */
 static bool compute_sha256_file(const char *path, char *out_hex, size_t hex_size) {
-    char cmd[1024];
-    /* Linux: sha256sum, macOS: shasum -a 256 */
-    snprintf(cmd, sizeof(cmd),
-             "sha256sum '%s' 2>/dev/null || shasum -a 256 '%s' 2>/dev/null",
-             path, path);
+    if (hex_size < 65) return false; /* need 64 hex chars + NUL */
 
-    char *output = run_command(cmd, NULL);
-    if (!output) return false;
+    FILE *f = fopen(path, "rb");
+    if (!f) return false;
 
-    /* 출력 형식: "hash  filename\n" — 처음 64자가 해시 */
-    if (strlen(output) < 64) {
-        free(output);
-        return false;
+    EVP_MD_CTX *ctx = EVP_MD_CTX_new();
+    if (!ctx) { fclose(f); return false; }
+
+    bool ok = false;
+    if (EVP_DigestInit_ex(ctx, EVP_sha256(), NULL) != 1) goto done;
+
+    uint8_t buf[8192];
+    size_t n;
+    while ((n = fread(buf, 1, sizeof(buf), f)) > 0) {
+        if (EVP_DigestUpdate(ctx, buf, n) != 1) goto done;
     }
 
-    size_t copy_len = hex_size - 1 < 64 ? hex_size - 1 : 64;
-    memcpy(out_hex, output, copy_len);
-    out_hex[copy_len] = '\0';
-    free(output);
-    return true;
+    uint8_t hash[SHA256_DIGEST_LENGTH];
+    unsigned int digest_len = 0;
+    if (EVP_DigestFinal_ex(ctx, hash, &digest_len) != 1) goto done;
+
+    /* Convert to hex string */
+    for (unsigned int i = 0; i < digest_len; i++) {
+        snprintf(out_hex + i * 2, 3, "%02x", hash[i]);
+    }
+    out_hex[digest_len * 2] = '\0';
+    ok = true;
+
+done:
+    EVP_MD_CTX_free(ctx);
+    fclose(f);
+    return ok;
 }
 
 /* ─── 유틸리티: 업데이트 타입 문자열 → 열거형 변환 ─── */
@@ -487,11 +504,103 @@ bool zyl_updater_download(ZylUpdater *u,
 
     report_progress(u, 50, "Verifying signature...");
 
-    /* 3. RSA 서명 검증 */
-    /* TODO: OpenSSL 통합 시 실제 RSA 서명 검증 수행 */
+    /* 3. RSA-2048+SHA-256 서명 검증 (OpenSSL EVP API) */
     if (u->pending->signature && strlen(u->pending->signature) > 0) {
-        fprintf(stderr, "[UPDATER] Signature present — "
-                "TODO: verify with OpenSSL\n");
+        /* Load OTA signing public key */
+        const char *pubkey_path = "/etc/zyl-os/ota-signing-key.pem";
+        FILE *key_fp = fopen(pubkey_path, "r");
+        if (!key_fp) {
+            fprintf(stderr, "[UPDATER] OTA signing key not found: %s\n",
+                    pubkey_path);
+            u->state = ZYL_UPDATE_FAILED;
+            report_progress(u, 0, "OTA signing key missing");
+            return false;
+        }
+
+        EVP_PKEY *pkey = PEM_read_PUBKEY(key_fp, NULL, NULL, NULL);
+        fclose(key_fp);
+        if (!pkey) {
+            fprintf(stderr, "[UPDATER] Failed to parse OTA signing key\n");
+            u->state = ZYL_UPDATE_FAILED;
+            report_progress(u, 0, "Invalid OTA signing key");
+            return false;
+        }
+
+        /* Decode base64 signature from manifest */
+        size_t sig_b64_len = strlen(u->pending->signature);
+        size_t sig_max = (sig_b64_len * 3) / 4 + 4;
+        uint8_t *sig_bytes = malloc(sig_max);
+        if (!sig_bytes) { EVP_PKEY_free(pkey); return false; }
+
+        EVP_ENCODE_CTX *dec_ctx = EVP_ENCODE_CTX_new();
+        int dec_len = 0, dec_final = 0;
+        EVP_DecodeInit(dec_ctx);
+        if (EVP_DecodeUpdate(dec_ctx, sig_bytes, &dec_len,
+                             (const unsigned char *)u->pending->signature,
+                             (int)sig_b64_len) < 0) {
+            fprintf(stderr, "[UPDATER] Signature base64 decode failed\n");
+            EVP_ENCODE_CTX_free(dec_ctx);
+            free(sig_bytes);
+            EVP_PKEY_free(pkey);
+            u->state = ZYL_UPDATE_FAILED;
+            return false;
+        }
+        EVP_DecodeFinal(dec_ctx, sig_bytes + dec_len, &dec_final);
+        EVP_ENCODE_CTX_free(dec_ctx);
+        size_t sig_len = (size_t)(dec_len + dec_final);
+
+        /* Compute SHA-256 hash of the downloaded package for verification */
+        uint8_t file_hash[SHA256_DIGEST_LENGTH];
+        {
+            FILE *pkg_fp = fopen(pkg_path, "rb");
+            if (!pkg_fp) {
+                free(sig_bytes); EVP_PKEY_free(pkey);
+                return false;
+            }
+            EVP_MD_CTX *hash_ctx = EVP_MD_CTX_new();
+            EVP_DigestInit_ex(hash_ctx, EVP_sha256(), NULL);
+            uint8_t hbuf[8192];
+            size_t hn;
+            while ((hn = fread(hbuf, 1, sizeof(hbuf), pkg_fp)) > 0) {
+                EVP_DigestUpdate(hash_ctx, hbuf, hn);
+            }
+            unsigned int hlen = 0;
+            EVP_DigestFinal_ex(hash_ctx, file_hash, &hlen);
+            EVP_MD_CTX_free(hash_ctx);
+            fclose(pkg_fp);
+        }
+
+        /* Verify: RSA-2048 + SHA-256 */
+        EVP_MD_CTX *vfy_ctx = EVP_MD_CTX_new();
+        bool sig_ok = false;
+        if (EVP_DigestVerifyInit(vfy_ctx, NULL, EVP_sha256(),
+                                 NULL, pkey) == 1 &&
+            EVP_DigestVerifyUpdate(vfy_ctx, file_hash,
+                                   SHA256_DIGEST_LENGTH) == 1) {
+            int rc = EVP_DigestVerifyFinal(vfy_ctx, sig_bytes, sig_len);
+            sig_ok = (rc == 1);
+        }
+        EVP_MD_CTX_free(vfy_ctx);
+        EVP_PKEY_free(pkey);
+        free(sig_bytes);
+
+        if (!sig_ok) {
+            fprintf(stderr, "[UPDATER] RSA signature verification FAILED "
+                    "— update package may be tampered\n");
+            u->state = ZYL_UPDATE_FAILED;
+            report_progress(u, 0, "Signature verification failed");
+            unlink(pkg_path);
+            return false;
+        }
+
+        fprintf(stderr, "[UPDATER] RSA-2048+SHA-256 signature verified\n");
+    } else {
+        /* No signature present — reject */
+        fprintf(stderr, "[UPDATER] Update package has no signature — "
+                "rejecting\n");
+        u->state = ZYL_UPDATE_FAILED;
+        report_progress(u, 0, "Unsigned update rejected");
+        return false;
     }
 
     report_progress(u, 100, "Package verified");
