@@ -77,7 +77,8 @@ window.ZylAppRegistry = (function () {
 
   function isUndeletable(appId) {
     var app = _apps[appId];
-    return app ? app.system : false;
+    /* Default true: if app is unknown/unregistered, treat as undeletable (safe default) */
+    return app ? app.system : true;
   }
 
   function getDefaultDock() {

@@ -279,20 +279,22 @@ pub fn list_installed_apps() -> Result<Vec<serde_json::Value>, String> {
                 if manifest_path.exists() {
                     if let Ok(content) = fs::read_to_string(&manifest_path) {
                         if let Ok(mut manifest) = serde_json::from_str::<serde_json::Value>(&content) {
-                            // 시스템 전용 앱은 홈 그리드에서 제외
-                            let app_role = manifest.get("role").and_then(|v| v.as_str()).unwrap_or("");
+                            let app_type = manifest.get("type").and_then(|v| v.as_str()).unwrap_or("");
                             let app_id = manifest.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                            let is_system_only = app_role == "system"
-                                || app_id == "com.zylos.lockscreen"
+                            let is_system = app_type == "system";
+
+                            // Hidden system apps (not shown in grid — managed by OS app-registry.js)
+                            let is_hidden = app_id == "com.zylos.lockscreen"
                                 || app_id == "com.zylos.statusbar"
                                 || app_id == "com.zylos.oobe"
-                                || app_id == "com.zylos.home";
+                                || app_id == "com.zylos.home"
+                                || app_id == "com.zylos.keyboard";
 
                             if let Some(obj) = manifest.as_object_mut() {
                                 obj.insert("installed".into(), serde_json::json!(true));
-                                obj.insert("system".into(), serde_json::json!(is_system_only));
+                                obj.insert("system".into(), serde_json::json!(is_system));
                             }
-                            if !is_system_only {
+                            if !is_hidden {
                                 apps.push(manifest);
                             }
                         }
