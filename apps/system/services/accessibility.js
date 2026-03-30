@@ -28,7 +28,7 @@
             fontScale: a11yState.fontScale,
             screenReader: a11yState.screenReader
           };
-        });
+        }).catch(function () { return null; });
       },
       setHighContrast: function (p) {
         a11yState.highContrast = !!p.enabled;

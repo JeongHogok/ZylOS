@@ -19,7 +19,7 @@
         return entries.filter(function (e) {
           return !ZylSecurity.isHiddenFromListing(e.name);
         });
-      });
+      }).catch(function () { return []; });
     }
 
     function getUnixDirectory(path) {
@@ -32,7 +32,7 @@
             return (e.is_dir ? 'drwxr-xr-x' : '-rw-r--r--') +
               '  user user  ' + (e.size || 0) + '  ' + e.name;
           }).join('\n');
-        });
+        }).catch(function () { return ''; });
       }
       return null;
     }

@@ -44,7 +44,7 @@
             available: formatBytes(s.available),
             percent: Math.round(s.percent || 0)
           };
-        });
+        }).catch(function () { return null; });
       },
       prefetch: function () { return _fetchFromBackend(); }
     };

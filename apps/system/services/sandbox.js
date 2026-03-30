@@ -25,7 +25,7 @@
             permissions: 0,
             seccompProfile: 'DEFAULT'
           };
-        });
+        }).catch(function () { return null; });
       },
       apply: function (p) {
         if (logFn) logFn('INFO', 'sandbox', 'Policy applied for ' + (p.appId || 'unknown'));

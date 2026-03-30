@@ -26,7 +26,7 @@
             imei:        (tel && tel.imei) || '000000000000000',
             phoneNumber: (tel && tel.phoneNumber) || ''
           };
-        });
+        }).catch(function () { return null; });
       },
       getCallState: function () { return Promise.resolve(_callState); },
       dial: function (p) {
@@ -49,7 +49,7 @@
       getCallLog: function () {
         return settingsSvc._getSetting('callLog').then(function (log) {
           return (log && log.entries) ? JSON.parse(log.entries) : [];
-        });
+        }).catch(function () { return []; });
       },
       addCallLog: function (p) {
         return settingsSvc._getSetting('callLog').then(function (log) {
@@ -58,7 +58,7 @@
           if (entries.length > 100) entries = entries.slice(0, 100);
           settingsSvc._updateSetting('callLog', 'entries', JSON.stringify(entries));
           return entries;
-        });
+        }).catch(function () { return []; });
       }
     };
   };

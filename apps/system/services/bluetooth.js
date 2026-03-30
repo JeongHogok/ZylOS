@@ -19,7 +19,7 @@
       getConnected: function () {
         return invoke('get_bluetooth_devices').then(function (devs) {
           return (devs || []).filter(function (d) { return d.connected; });
-        });
+        }).catch(function () { return []; });
       }
     };
   };

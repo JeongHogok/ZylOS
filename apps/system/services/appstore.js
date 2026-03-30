@@ -32,7 +32,7 @@
           settingsSvc._updateSetting('appstore', 'uninstalled', uninstalled.join(','));
           appsSvc._invalidate();
           return { success: true, appId: p.appId };
-        });
+        }).catch(function () { return { success: false, appId: p.appId }; });
       },
       uninstall: function (p) {
         if (SYSTEM_APPS.indexOf(p.appId) !== -1) {
@@ -46,7 +46,7 @@
           settingsSvc._updateSetting('appstore', 'uninstalled', uninstalled.join(','));
           appsSvc._invalidate();
           return { success: true, appId: p.appId };
-        });
+        }).catch(function () { return { success: false, appId: p.appId }; });
       },
       verify: function (p) {
         return getInstalledApps().then(function (list) {
@@ -74,7 +74,7 @@
             system: SYSTEM_APPS.indexOf(app.id) !== -1,
             hashAlgorithm: 'SHA-256', signatureAlgorithm: 'RSA-2048'
           };
-        });
+        }).catch(function () { return { valid: false, appId: p.appId, error: 'Service error' }; });
       },
       getAvailable: function () {
         return getInstalledApps().then(function (list) {
@@ -88,8 +88,8 @@
                 installed: uninstalled.indexOf(app.id) === -1
               };
             });
-          });
-        });
+          }).catch(function () { return []; });
+        }).catch(function () { return []; });
       },
       getPackageInfo: function (p) {
         return getInstalledApps().then(function (list) {
@@ -107,7 +107,7 @@
               entryPoint: 'index.html'
             }
           };
-        });
+        }).catch(function () { return null; });
       }
     };
   };

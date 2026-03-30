@@ -19,11 +19,11 @@
         var promises = entries.filter(function (e) { return e.name.indexOf('.json') !== -1; }).map(function (e) {
           return invoke('fs_read_file', { path: 'Documents/Contacts/' + e.name }).then(function (content) {
             try { return JSON.parse(content); } catch (err) { return null; }
-          });
+          }).catch(function () { return null; });
         });
         return Promise.all(promises).then(function (results) {
           return results.filter(Boolean).sort(function (a, b) { return (a.name || '').localeCompare(b.name || ''); });
-        });
+        }).catch(function () { return []; });
       }).catch(function () { return []; });
     }
 
@@ -32,18 +32,18 @@
       getById: function (p) {
         return invoke('fs_read_file', { path: 'Documents/Contacts/' + p.id + '.json' }).then(function (c) {
           try { return JSON.parse(c); } catch (e) { return null; }
-        });
+        }).catch(function () { return null; });
       },
       create: function (p) {
         var id = 'c_' + Date.now();
         var contact = { id: id, name: p.name || '', phone: p.phone || '', email: p.email || '' };
         return invoke('fs_mkdir', { path: 'Documents/Contacts' }).then(function () {
           return invoke('fs_write_file', { path: 'Documents/Contacts/' + id + '.json', content: JSON.stringify(contact) });
-        }).then(function () { return contact; });
+        }).then(function () { return contact; }).catch(function () { return null; });
       },
       update: function (p) {
         var contact = { id: p.id, name: p.name || '', phone: p.phone || '', email: p.email || '' };
-        return invoke('fs_write_file', { path: 'Documents/Contacts/' + p.id + '.json', content: JSON.stringify(contact) }).then(function () { return contact; });
+        return invoke('fs_write_file', { path: 'Documents/Contacts/' + p.id + '.json', content: JSON.stringify(contact) }).then(function () { return contact; }).catch(function () { return null; });
       },
       'delete': function (p) {
         return invoke('fs_remove', { path: 'Documents/Contacts/' + p.id + '.json' });
@@ -54,7 +54,7 @@
           return all.filter(function (c) {
             return (c.name || '').toLowerCase().indexOf(q) !== -1 || (c.phone || '').indexOf(q) !== -1;
           });
-        });
+        }).catch(function () { return []; });
       }
     };
   };

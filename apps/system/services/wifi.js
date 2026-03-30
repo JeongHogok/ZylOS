@@ -18,7 +18,7 @@
       getConnected: function () {
         return invoke('get_wifi_networks').then(function (nets) {
           return (nets || []).filter(function (n) { return n.connected; });
-        });
+        }).catch(function () { return []; });
       }
     };
   };

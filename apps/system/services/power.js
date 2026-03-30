@@ -27,7 +27,7 @@
             }
           }
           return state || { state: 'ACTIVE', brightness: powerState.brightness, screenOn: true, batteryLevel: 85, level: 85, charging: false };
-        });
+        }).catch(function () { return null; });
       },
       setBrightness: function (p) {
         var pct = Math.max(0, Math.min(100, parseInt(p.percent, 10) || 80));
