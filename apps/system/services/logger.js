@@ -39,7 +39,7 @@
         return Promise.resolve(logLevel);
       },
       getRecent: function (p) {
-        var count = parseInt(p.count, 10) || 50;
+        var count = Math.min(parseInt(p.count, 10) || 50, 1000);
         return Promise.resolve(logBuffer.slice(-count));
       },
       _addEntry: addEntry
