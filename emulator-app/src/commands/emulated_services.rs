@@ -217,9 +217,30 @@ pub fn user_list(state: State<'_, Mutex<AppState>>) -> Vec<serde_json::Value> {
 }
 
 // ════════════════════════════════════════════
-// 5. Credential Service
+// 5. Credential Service (AES-256-GCM)
 // ════════════════════════════════════════════
 
+use aes_gcm::{Aes256Gcm, KeyInit, aead::Aead};
+use aes_gcm::aead::generic_array::GenericArray;
+use rand::RngCore;
+
+/// Derive a 256-bit key from a passphrase + salt using PBKDF2-HMAC-SHA256.
+fn derive_key(passphrase: &[u8], salt: &[u8]) -> [u8; 32] {
+    let mut key = [0u8; 32];
+    pbkdf2::pbkdf2_hmac::<sha2::Sha256>(passphrase, salt, 100_000, &mut key);
+    key
+}
+
+/// Master passphrase for emulator credential encryption.
+/// In production, this comes from the user's PIN via D-Bus SetMasterKey.
+/// For emulator, we derive from the store path to ensure consistency.
+fn get_master_passphrase(app_state: &crate::state::AppState) -> Vec<u8> {
+    let base = app_state.mount_point.as_ref()
+        .unwrap_or(&app_state.data_dir);
+    format!("zyl-emu-cred-{}", base.display()).into_bytes()
+}
+
+/// File format: [salt(16)][nonce(12)][ciphertext+tag]
 #[tauri::command]
 pub fn credential_store(
     service: String,
@@ -233,10 +254,39 @@ pub fn credential_store(
     let cred_dir = base.join(".credentials");
     let _ = fs::create_dir_all(&cred_dir);
 
-    let key = format!("{}_{}", service, account);
-    let path = cred_dir.join(format!("{}.enc", key));
-    // 프로토타입: 평문 저장 (실기기에서는 AES-256-GCM)
-    fs::write(&path, &secret).map_err(|e| format!("Write error: {}", e))
+    let passphrase = get_master_passphrase(&app_state);
+
+    // Generate random salt + nonce
+    let mut salt = [0u8; 16];
+    let mut nonce_bytes = [0u8; 12];
+    rand::thread_rng().fill_bytes(&mut salt);
+    rand::thread_rng().fill_bytes(&mut nonce_bytes);
+
+    let key = derive_key(&passphrase, &salt);
+    let cipher = Aes256Gcm::new(GenericArray::from_slice(&key));
+    let nonce = GenericArray::from_slice(&nonce_bytes);
+
+    let ciphertext = cipher.encrypt(nonce, secret.as_bytes())
+        .map_err(|e| format!("Encryption failed: {}", e))?;
+
+    // Assemble: [salt][nonce][ciphertext+tag]
+    let mut output = Vec::with_capacity(16 + 12 + ciphertext.len());
+    output.extend_from_slice(&salt);
+    output.extend_from_slice(&nonce_bytes);
+    output.extend_from_slice(&ciphertext);
+
+    let key_name = format!("{}_{}", service, account);
+    let path = cred_dir.join(format!("{}.enc", key_name));
+
+    // Set restrictive permissions
+    fs::write(&path, &output).map_err(|e| format!("Write error: {}", e))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(&path, fs::Permissions::from_mode(0o600));
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -249,9 +299,29 @@ pub fn credential_lookup(
     let base = app_state.mount_point.as_ref()
         .unwrap_or(&app_state.data_dir);
 
-    let key = format!("{}_{}", service, account);
-    let path = base.join(".credentials").join(format!("{}.enc", key));
-    fs::read_to_string(&path).map_err(|_| "Credential not found".into())
+    let passphrase = get_master_passphrase(&app_state);
+
+    let key_name = format!("{}_{}", service, account);
+    let path = base.join(".credentials").join(format!("{}.enc", key_name));
+    let data = fs::read(&path).map_err(|_| "Credential not found".to_string())?;
+
+    if data.len() < 16 + 12 + 16 {
+        return Err("Credential file too short".into());
+    }
+
+    let salt = &data[..16];
+    let nonce_bytes = &data[16..28];
+    let ciphertext = &data[28..];
+
+    let key = derive_key(&passphrase, salt);
+    let cipher = Aes256Gcm::new(GenericArray::from_slice(&key));
+    let nonce = GenericArray::from_slice(nonce_bytes);
+
+    let plaintext = cipher.decrypt(nonce, ciphertext)
+        .map_err(|_| "Decryption failed — wrong key or tampered data".to_string())?;
+
+    String::from_utf8(plaintext)
+        .map_err(|e| format!("UTF-8 decode error: {}", e))
 }
 
 #[tauri::command]
@@ -264,8 +334,21 @@ pub fn credential_delete(
     let base = app_state.mount_point.as_ref()
         .unwrap_or(&app_state.data_dir);
 
-    let key = format!("{}_{}", service, account);
-    let path = base.join(".credentials").join(format!("{}.enc", key));
+    let key_name = format!("{}_{}", service, account);
+    let path = base.join(".credentials").join(format!("{}.enc", key_name));
+
+    // Overwrite with random data before deleting (secure delete)
+    if path.exists() {
+        if let Ok(metadata) = fs::metadata(&path) {
+            let len = metadata.len() as usize;
+            if len > 0 {
+                let mut noise = vec![0u8; len];
+                rand::thread_rng().fill_bytes(&mut noise);
+                let _ = fs::write(&path, &noise);
+            }
+        }
+    }
+
     let _ = fs::remove_file(&path);
     Ok(())
 }

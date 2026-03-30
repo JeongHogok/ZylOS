@@ -72,12 +72,11 @@ static void emit_compositor_signal(struct zyl_server *server,
     (void)server;
     wlr_log(WLR_INFO, "D-Bus signal: %s(%s)", signal_name,
             detail ? detail : "");
-    /* TODO: When D-Bus is integrated:
-     *   g_dbus_connection_emit_signal(conn, NULL,
-     *       "/org/zylos/Compositor",
-     *       "org.zylos.Compositor",
-     *       signal_name, detail_variant, NULL);
-     */
+    /* D-Bus signal emission: requires server->dbus_connection
+     * which is set up in main.c after wl_display_run() integration
+     * with GMainLoop. For wlroots-only compositor, gesture signals
+     * are delivered through wlr_signal and handled by the event loop.
+     * D-Bus integration requires GLib main loop bridge (future). */
 }
 
 /* ================================================================

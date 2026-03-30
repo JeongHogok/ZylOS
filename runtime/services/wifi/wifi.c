@@ -13,10 +13,24 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/wait.h>
+#include <spawn.h>
 #include <gio/gio.h>
 
 #define NM_BUS  "org.freedesktop.NetworkManager"
 #define NM_PATH "/org/freedesktop/NetworkManager"
+
+/* Safe command execution without system() — no shell interpretation */
+static int safe_exec(const char *const argv[]) {
+    pid_t pid;
+    char *safe_env[] = { "PATH=/usr/bin:/bin", "HOME=/tmp", NULL };
+    int rc = posix_spawn(&pid, argv[0], NULL, NULL,
+                         (char *const *)argv, safe_env);
+    if (rc != 0) return -1;
+    int status;
+    if (waitpid(pid, &status, 0) == -1) return -1;
+    return (WIFEXITED(status) && WEXITSTATUS(status) == 0) ? 0 : -1;
+}
 
 struct ZylWifiService {
     GDBusConnection *system_bus;
@@ -28,25 +42,26 @@ struct ZylWifiService {
 /* ─── nmcli wrapper (portable, no direct NM D-Bus complexity) ─── */
 
 static int nmcli_scan(void) {
-    return system("nmcli device wifi rescan 2>/dev/null");
+    const char *argv[] = { "/usr/bin/nmcli", "device", "wifi", "rescan", NULL };
+    return safe_exec(argv);
 }
 
 static int nmcli_connect(const char *ssid, const char *pass) {
-    char cmd[512];
-    /* nmcli handles authentication internally */
     if (pass && strlen(pass) > 0) {
-        snprintf(cmd, sizeof(cmd),
-                 "nmcli device wifi connect '%s' password '%s' 2>/dev/null",
-                 ssid, pass);
+        const char *argv[] = { "/usr/bin/nmcli", "device", "wifi", "connect",
+                               ssid, "password", pass, NULL };
+        return safe_exec(argv);
     } else {
-        snprintf(cmd, sizeof(cmd),
-                 "nmcli device wifi connect '%s' 2>/dev/null", ssid);
+        const char *argv[] = { "/usr/bin/nmcli", "device", "wifi", "connect",
+                               ssid, NULL };
+        return safe_exec(argv);
     }
-    return system(cmd);
 }
 
 static int nmcli_disconnect(void) {
-    return system("nmcli device disconnect wlan0 2>/dev/null");
+    const char *argv[] = { "/usr/bin/nmcli", "device", "disconnect",
+                           "wlan0", NULL };
+    return safe_exec(argv);
 }
 
 /* ─── D-Bus interface ─── */
@@ -224,10 +239,9 @@ bool zyl_wifi_is_enabled(ZylWifiService *svc) {
 void zyl_wifi_set_enabled(ZylWifiService *svc, bool enabled) {
     if (!svc) return;
     svc->enabled = enabled;
-    char cmd[64];
-    snprintf(cmd, sizeof(cmd), "nmcli radio wifi %s 2>/dev/null",
-             enabled ? "on" : "off");
-    system(cmd);
+    const char *argv[] = { "/usr/bin/nmcli", "radio", "wifi",
+                           enabled ? "on" : "off", NULL };
+    safe_exec(argv);
     g_message("[WiFi] %s", enabled ? "Enabled" : "Disabled");
 }
 

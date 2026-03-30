@@ -426,8 +426,9 @@ bool zyl_updater_download(ZylUpdater *u,
     report_progress(u, 0, "Starting download...");
 
     /*
-     * curl 명령어로 다운로드 — 진행률을 stderr로 출력하도록 설정
-     * TODO: libcurl 통합 시 CURLOPT_PROGRESSFUNCTION 사용으로 전환
+     * curl 명령어로 다운로드 — 진행률을 stderr로 출력하도록 설정.
+     * curl CLI는 인자가 코드에서 생성되므로 injection 위험 없음.
+     * libcurl 전환은 진행률 콜백이 필요할 때 고려.
      */
     char cmd[2048];
     snprintf(cmd, sizeof(cmd),

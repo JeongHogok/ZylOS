@@ -513,8 +513,20 @@ int zyl_sandbox_get_cpu_usage(const char *app_id, float *out_percent) {
     }
     fclose(f);
 
-    /* 간이 CPU% 계산 — 실제로는 두 시점 간 차이를 사용 */
-    *out_percent = (float)(usage_usec % 100000) / 1000.0f;
+    /* CPU% = delta_usage / delta_wall * 100.
+     * Single-sample approximation: use usage since boot / uptime.
+     * For accurate per-interval measurement, caller should track
+     * previous values and compute delta. */
+    {
+        struct timespec ts;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        uint64_t wall_usec = (uint64_t)ts.tv_sec * 1000000 + (uint64_t)ts.tv_nsec / 1000;
+        if (wall_usec > 0) {
+            *out_percent = (float)((double)usage_usec / (double)wall_usec * 100.0);
+        } else {
+            *out_percent = 0.0f;
+        }
+    }
     return 0;
 }
 

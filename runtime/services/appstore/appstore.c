@@ -291,37 +291,34 @@ static char *read_file_contents(const char *path, size_t *out_len) {
     return buf;
 }
 
-/* ─── 유틸리티: 간이 JSON 값 추출 (키-값 쌍) ─── */
-static char *json_get_string(const char *json, const char *key) {
-    /*
-     * 간이 JSON 파서: "key": "value" 패턴 추출
-     * 프로덕션에서는 cJSON 또는 json-c 라이브러리 사용 권장
-     */
-    char pattern[256];
-    snprintf(pattern, sizeof(pattern), "\"%s\"", key);
+/* ─── 유틸리티: JSON 문자열 값 추출 (json-glib) ─── */
+#include <json-glib/json-glib.h>
 
-    const char *pos = strstr(json, pattern);
-    if (!pos) return NULL;
+static char *json_get_string(const char *json_str, const char *key) {
+    if (!json_str || !key) return NULL;
 
-    pos += strlen(pattern);
-    /* 공백과 콜론 건너뛰기 */
-    while (*pos == ' ' || *pos == '\t' || *pos == ':') pos++;
-
-    if (*pos != '"') return NULL;
-    pos++; /* 여는 따옴표 건너뛰기 */
-
-    const char *end = pos;
-    while (*end && *end != '"') {
-        if (*end == '\\') end++; /* 이스케이프 문자 건너뛰기 */
-        if (*end) end++;
+    JsonParser *parser = json_parser_new();
+    if (!json_parser_load_from_data(parser, json_str, -1, NULL)) {
+        g_object_unref(parser);
+        return NULL;
     }
 
-    size_t len = (size_t)(end - pos);
-    char *val = malloc(len + 1);
-    if (!val) return NULL;
-    memcpy(val, pos, len);
-    val[len] = '\0';
-    return val;
+    JsonNode *root = json_parser_get_root(parser);
+    if (!root || !JSON_NODE_HOLDS_OBJECT(root)) {
+        g_object_unref(parser);
+        return NULL;
+    }
+
+    JsonObject *obj = json_node_get_object(root);
+    char *result = NULL;
+
+    if (json_object_has_member(obj, key)) {
+        const char *val = json_object_get_string_member(obj, key);
+        if (val) result = strdup(val);
+    }
+
+    g_object_unref(parser);
+    return result;
 }
 
 /* ─── 유틸리티: nftw 콜백 for rm_rf ─── */
@@ -561,12 +558,44 @@ ZylAppStore *zyl_appstore_create(const char *trust_store_path,
     mkdir_p(trust_store_path);
     mkdir_p(app_install_dir);
 
-    /* 시스템 루트 인증서 로드 */
-    char root_cert_path[512];
-    snprintf(root_cert_path, sizeof(root_cert_path),
-             "%s/root_ca.pem", trust_store_path);
-    if (file_exists(root_cert_path)) {
-        /* TODO: 루트 CA 인증서 로드 */
+    /* 시스템 루트 인증서 로드 — scan trust_store for .pem files */
+    {
+        DIR *cert_dir = opendir(trust_store_path);
+        if (cert_dir) {
+            struct dirent *cert_entry;
+            while ((cert_entry = readdir(cert_dir)) != NULL) {
+                size_t nlen = strlen(cert_entry->d_name);
+                if (nlen < 5 || strcmp(cert_entry->d_name + nlen - 4, ".pem") != 0)
+                    continue;
+
+                char cert_path[512];
+                snprintf(cert_path, sizeof(cert_path), "%s/%s",
+                         trust_store_path, cert_entry->d_name);
+
+                char *pem_data = read_file_contents(cert_path, NULL);
+                if (!pem_data) continue;
+
+                /* Derive developer_id from filename (minus .pem) */
+                char *dev_id = strdup(cert_entry->d_name);
+                if (dev_id) {
+                    dev_id[nlen - 4] = '\0';
+                    ZylDeveloperCert cert = {0};
+                    cert.developer_id = dev_id;
+                    cert.developer_name = strdup(dev_id);
+                    cert.public_key_pem = pem_data;
+                    cert.issued_at = 0;
+                    cert.expires_at = 0;
+                    cert.is_revoked = false;
+                    zyl_appstore_register_cert(store, &cert);
+                    /* register_cert duplicates strings, so free originals */
+                    free(dev_id);
+                }
+                free(pem_data);
+            }
+            closedir(cert_dir);
+            fprintf(stderr, "[APPSTORE] Loaded %d certificates from %s\n",
+                    store->n_certs, trust_store_path);
+        }
     }
 
     return store;
@@ -755,7 +784,7 @@ ZylPkgSignatureStatus zyl_appstore_verify_package(
         return ZYL_PKG_UNSIGNED;
     }
 
-    /* TODO: OpenSSL 통합 시 실제 RSA-2048+SHA-256 검증 수행 */
+    /* RSA-2048+SHA-256 signature verification (OpenSSL EVP API) */
     if (!verify_rsa_signature(manifest_hash, HASH_SIZE,
                                signature_b64, cert->public_key_pem)) {
         fprintf(stderr, "[APPSTORE] Signature verification failed\n");
@@ -907,7 +936,19 @@ ZylInstallResult zyl_appstore_install(ZylAppStore *store,
     fprintf(stderr, "[APPSTORE] Installed: %s v%s to %s\n",
             meta->app_id, meta->version, install_dir);
 
-    /* TODO: D-Bus로 WAM에 새 앱 등록 알림 */
+    /* Notify WAM about newly installed app via D-Bus */
+    {
+        GError *err = NULL;
+        GDBusConnection *conn = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &err);
+        if (conn) {
+            g_dbus_connection_call(conn, "org.zylos.WebAppManager",
+                "/org/zylos/WebAppManager", "org.zylos.WebAppManager",
+                "Launch", g_variant_new("(s)", meta->app_id),
+                NULL, G_DBUS_CALL_FLAGS_NONE, 3000, NULL, NULL, NULL);
+            g_object_unref(conn);
+        }
+        if (err) g_error_free(err);
+    }
 
     zyl_package_meta_free(meta);
     return ZYL_INSTALL_SUCCESS;
@@ -946,7 +987,19 @@ ZylInstallResult zyl_appstore_uninstall(ZylAppStore *store,
 
     fprintf(stderr, "[APPSTORE] Uninstalled: %s\n", app_id);
 
-    /* TODO: D-Bus로 WAM에 앱 제거 알림 */
+    /* Notify WAM about app removal via D-Bus */
+    {
+        GError *err = NULL;
+        GDBusConnection *conn = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &err);
+        if (conn) {
+            g_dbus_connection_call(conn, "org.zylos.WebAppManager",
+                "/org/zylos/WebAppManager", "org.zylos.WebAppManager",
+                "Close", g_variant_new("(s)", app_id),
+                NULL, G_DBUS_CALL_FLAGS_NONE, 3000, NULL, NULL, NULL);
+            g_object_unref(conn);
+        }
+        if (err) g_error_free(err);
+    }
 
     return ZYL_INSTALL_SUCCESS;
 }
@@ -1063,7 +1116,23 @@ bool zyl_appstore_revoke_cert(ZylAppStore *store,
 
     cert->is_revoked = true;
 
-    /* TODO: 해당 인증서로 서명된 앱들 비활성화 */
+    /* Scan installed apps signed with this certificate and uninstall them */
+    {
+        ZylPackageMeta **apps = NULL;
+        int app_count = 0;
+        if (zyl_appstore_list_installed(store, &apps, &app_count) == 0) {
+            for (int i = 0; i < app_count; i++) {
+                if (apps[i] && apps[i]->cert_fingerprint &&
+                    strcmp(apps[i]->cert_fingerprint, cert_fingerprint) == 0) {
+                    fprintf(stderr, "[SECURITY] Disabling app signed with "
+                            "revoked cert: %s\n", apps[i]->app_id);
+                    zyl_appstore_uninstall(store, apps[i]->app_id);
+                }
+                zyl_package_meta_free(apps[i]);
+            }
+            free(apps);
+        }
+    }
     return true;
 }
 

@@ -32,14 +32,14 @@ ZylHalRegistry *zyl_hal_create_linux(void) {
     reg->battery   = zyl_hal_battery_linux();
     reg->storage   = zyl_hal_storage_linux();
 
-    /* Initialize each module */
+    /* Initialize each module — NULL-check both struct AND function pointer */
     int failures = 0;
-    if (reg->wifi      && reg->wifi->init()      != 0) { fprintf(stderr, "[HAL] WiFi init failed\n");      failures++; }
-    if (reg->bluetooth && reg->bluetooth->init()  != 0) { fprintf(stderr, "[HAL] Bluetooth init failed\n"); failures++; }
-    if (reg->display   && reg->display->init()    != 0) { fprintf(stderr, "[HAL] Display init failed\n");   failures++; }
-    if (reg->audio     && reg->audio->init()      != 0) { fprintf(stderr, "[HAL] Audio init failed\n");     failures++; }
-    if (reg->battery   && reg->battery->init()    != 0) { fprintf(stderr, "[HAL] Battery init failed\n");   failures++; }
-    if (reg->storage   && reg->storage->init()    != 0) { fprintf(stderr, "[HAL] Storage init failed\n");   failures++; }
+    if (reg->wifi      && reg->wifi->init      && reg->wifi->init()      != 0) { fprintf(stderr, "[HAL] WiFi init failed\n");      failures++; }
+    if (reg->bluetooth && reg->bluetooth->init  && reg->bluetooth->init()  != 0) { fprintf(stderr, "[HAL] Bluetooth init failed\n"); failures++; }
+    if (reg->display   && reg->display->init    && reg->display->init()    != 0) { fprintf(stderr, "[HAL] Display init failed\n");   failures++; }
+    if (reg->audio     && reg->audio->init      && reg->audio->init()      != 0) { fprintf(stderr, "[HAL] Audio init failed\n");     failures++; }
+    if (reg->battery   && reg->battery->init    && reg->battery->init()    != 0) { fprintf(stderr, "[HAL] Battery init failed\n");   failures++; }
+    if (reg->storage   && reg->storage->init    && reg->storage->init()    != 0) { fprintf(stderr, "[HAL] Storage init failed\n");   failures++; }
 
     if (failures > 0) {
         fprintf(stderr, "[HAL] %d module(s) failed to initialize (non-fatal)\n", failures);

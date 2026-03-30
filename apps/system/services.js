@@ -269,9 +269,20 @@ window.ZylSystemServices = (function () {
   /* ===============================================================
      Init
      =============================================================== */
+  var _publicRef = null; /* Reference to the returned public API object */
+
   function init(invoker) {
     _invoke = invoker || _createNativeInvoker();
     assembleModules();
+
+    /* A5: Bind module references to public API after assembly */
+    if (_publicRef) {
+      _publicRef.device  = _modules.device  || serviceMap.device  || null;
+      _publicRef.storage = _modules.storage || serviceMap.storage || null;
+      _publicRef.fs      = serviceMap.fs      || null;
+      _publicRef.apps    = _modules.apps    || serviceMap.apps    || null;
+      _publicRef.settings = _modules.settings || serviceMap.settings || null;
+    }
 
     /* Load persisted settings and audio state on boot */
     if (_modules.settings) {
@@ -368,10 +379,10 @@ window.ZylSystemServices = (function () {
   /* ===============================================================
      Public API
      =============================================================== */
-  return {
+  _publicRef = {
     init: init,
     handleRequest: handleRequest,
-    device: null, /* set after init */
+    device: null, /* populated by init() after assembleModules() */
     storage: null,
     fs: null,
     apps: null,
@@ -382,7 +393,7 @@ window.ZylSystemServices = (function () {
       unblock: watchdogUnblock,
       status: watchdogStatus
     },
-    /* Lazy accessors for backward compat */
     _getModule: function (name) { return _modules[name] || serviceMap[name]; }
   };
+  return _publicRef;
 })();
