@@ -20,6 +20,21 @@ jobs:
             libxcb-xinput-dev || true
           # Upgrade meson to support c23 (required by wlroots 0.18.x)
           pip3 install --break-system-packages meson --upgrade
+      - name: Build wayland 1.23 from source
+        run: |
+          git clone --depth 1 --branch 1.23.0 https://gitlab.freedesktop.org/wayland/wayland.git /tmp/wayland
+          cd /tmp/wayland
+          meson setup build --prefix=/usr -Ddocumentation=false -Dtests=false
+          ninja -C build
+          sudo ninja -C build install
+          sudo ldconfig
+      - name: Build wayland-protocols from source
+        run: |
+          git clone --depth 1 --branch 1.38 https://gitlab.freedesktop.org/wayland/wayland-protocols.git /tmp/wayland-protocols
+          cd /tmp/wayland-protocols
+          meson setup build --prefix=/usr -Dtests=false
+          ninja -C build
+          sudo ninja -C build install
       - name: Build wlroots 0.18 from source
         run: |
           git clone --depth 1 --branch 0.18.2 https://gitlab.freedesktop.org/wlroots/wlroots.git /tmp/wlroots
