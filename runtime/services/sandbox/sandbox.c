@@ -20,14 +20,9 @@
 #include <sys/stat.h>
 #include <sys/prctl.h>
 #include <sys/resource.h>
-#include <linux/seccomp.h>
-#include <linux/filter.h>
-#include <linux/audit.h>
-
-/* seccomp BPF 매크로 (리눅스 커널 헤더) */
-#ifndef SECCOMP_SET_MODE_FILTER
-#define SECCOMP_SET_MODE_FILTER 1
-#endif
+#include <seccomp.h>       /* libseccomp API */
+#include <pwd.h>           /* getpwnam for privilege drop */
+#include <grp.h>           /* setgroups for privilege drop */
 
 /* ─── 내부 구조체 ─── */
 struct ZylSandbox {
@@ -125,56 +120,155 @@ static int apply_filesystem_isolation(const ZylSandboxPolicy *policy,
 }
 
 /* ═══════════════════════════════════════════════════════
-   L2: seccomp-bpf 시스콜 필터
+   L2: seccomp-bpf 시스콜 필터 (libseccomp)
    ═══════════════════════════════════════════════════════ */
-static int apply_seccomp_filter(ZylSeccompProfile profile) {
-    /*
-     * BPF 프로그램으로 위험한 시스콜을 차단:
-     *   - STRICT: read, write, exit, sigreturn, mmap 등만 허용
-     *   - DEFAULT: ptrace, mount, reboot, kexec 등 차단
-     *   - PERMISSIVE: kexec, reboot만 차단
-     *
-     * 실제 프로덕션에서는 libseccomp를 사용하여
-     * 아키텍처 독립적인 필터를 생성합니다.
-     */
 
-    /* prctl로 no_new_privs 설정 (seccomp 필수 전제조건) */
+/**
+ * Blocked syscalls for DEFAULT profile — dangerous for sandboxed apps.
+ * These can escalate privileges, modify kernel state, or escape isolation.
+ */
+static const int BLOCKED_SYSCALLS_DEFAULT[] = {
+    SCMP_SYS(ptrace),           /* process tracing — escape sandbox */
+    SCMP_SYS(mount),            /* filesystem manipulation */
+    SCMP_SYS(umount2),          /* filesystem manipulation */
+    SCMP_SYS(reboot),           /* system reboot */
+    SCMP_SYS(kexec_load),       /* kernel replacement */
+    SCMP_SYS(init_module),      /* kernel module loading */
+    SCMP_SYS(delete_module),    /* kernel module removal */
+    SCMP_SYS(finit_module),     /* kernel module loading (fd) */
+    SCMP_SYS(pivot_root),       /* root filesystem change */
+    SCMP_SYS(swapon),           /* swap manipulation */
+    SCMP_SYS(swapoff),          /* swap manipulation */
+    SCMP_SYS(acct),             /* process accounting */
+    SCMP_SYS(settimeofday),     /* system time manipulation */
+    SCMP_SYS(clock_settime),    /* system clock manipulation */
+    SCMP_SYS(adjtimex),         /* kernel clock tuning */
+    SCMP_SYS(personality),      /* execution domain change */
+    SCMP_SYS(unshare),          /* namespace escape */
+    SCMP_SYS(setns),            /* namespace injection */
+    SCMP_SYS(keyctl),           /* kernel keyring manipulation */
+    SCMP_SYS(add_key),          /* kernel keyring */
+    SCMP_SYS(request_key),      /* kernel keyring */
+    SCMP_SYS(mbind),            /* NUMA memory policy */
+    SCMP_SYS(move_pages),       /* NUMA page migration */
+    SCMP_SYS(perf_event_open),  /* performance monitoring */
+    SCMP_SYS(bpf),              /* eBPF — kernel programmability */
+    SCMP_SYS(userfaultfd),      /* page fault interception */
+};
+static const int N_BLOCKED_DEFAULT =
+    sizeof(BLOCKED_SYSCALLS_DEFAULT) / sizeof(BLOCKED_SYSCALLS_DEFAULT[0]);
+
+/**
+ * Additional syscalls blocked for STRICT profile.
+ * Restricts network, raw device I/O, and debugging.
+ */
+static const int BLOCKED_SYSCALLS_STRICT[] = {
+    SCMP_SYS(socket),           /* network socket creation */
+    SCMP_SYS(bind),             /* network bind */
+    SCMP_SYS(listen),           /* network listen */
+    SCMP_SYS(accept),           /* network accept */
+    SCMP_SYS(accept4),          /* network accept */
+    SCMP_SYS(connect),          /* network connect */
+    SCMP_SYS(sendto),           /* network send */
+    SCMP_SYS(recvfrom),         /* network receive */
+    SCMP_SYS(sendmsg),          /* network send */
+    SCMP_SYS(recvmsg),          /* network receive */
+    SCMP_SYS(ioctl),            /* device I/O control */
+    SCMP_SYS(execve),           /* process replacement */
+    SCMP_SYS(execveat),         /* process replacement */
+    SCMP_SYS(fork),             /* process creation */
+    SCMP_SYS(vfork),            /* process creation */
+    SCMP_SYS(clone),            /* process/thread creation */
+    SCMP_SYS(clone3),           /* process/thread creation */
+};
+static const int N_BLOCKED_STRICT =
+    sizeof(BLOCKED_SYSCALLS_STRICT) / sizeof(BLOCKED_SYSCALLS_STRICT[0]);
+
+/**
+ * Minimal syscalls blocked even for PERMISSIVE (system apps).
+ */
+static const int BLOCKED_SYSCALLS_PERMISSIVE[] = {
+    SCMP_SYS(kexec_load),       /* kernel replacement */
+    SCMP_SYS(reboot),           /* system reboot (use systemd) */
+    SCMP_SYS(bpf),              /* eBPF */
+};
+static const int N_BLOCKED_PERMISSIVE =
+    sizeof(BLOCKED_SYSCALLS_PERMISSIVE) / sizeof(BLOCKED_SYSCALLS_PERMISSIVE[0]);
+
+static int apply_seccomp_filter(ZylSeccompProfile profile) {
+    /* PR_SET_NO_NEW_PRIVS is mandatory before seccomp */
     if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0) {
-        fprintf(stderr, "[Sandbox] PR_SET_NO_NEW_PRIVS failed: %s\n", strerror(errno));
+        fprintf(stderr, "[Sandbox] PR_SET_NO_NEW_PRIVS failed: %s\n",
+                strerror(errno));
         return -1;
     }
 
-    if (profile == ZYL_SECCOMP_PERMISSIVE) {
-        /* 시스템 앱: 최소 제한만 */
-        return 0;
+    /* Default action: ALLOW — we block specific dangerous syscalls */
+    scmp_filter_ctx ctx = seccomp_init(SCMP_ACT_ALLOW);
+    if (!ctx) {
+        fprintf(stderr, "[Sandbox] seccomp_init failed\n");
+        return -1;
     }
 
-    /*
-     * 실제 구현에서는 libseccomp를 사용:
-     *
-     *   scmp_filter_ctx ctx = seccomp_init(SCMP_ACT_ALLOW);
-     *   // 위험 시스콜 차단
-     *   seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EPERM), SCMP_SYS(ptrace), 0);
-     *   seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EPERM), SCMP_SYS(mount), 0);
-     *   seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EPERM), SCMP_SYS(umount2), 0);
-     *   seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EPERM), SCMP_SYS(reboot), 0);
-     *   seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EPERM), SCMP_SYS(kexec_load), 0);
-     *   seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EPERM), SCMP_SYS(init_module), 0);
-     *   seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EPERM), SCMP_SYS(delete_module), 0);
-     *
-     *   if (profile == ZYL_SECCOMP_STRICT) {
-     *       // 추가 제한: 네트워크 소켓, raw IO 등
-     *       seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EPERM), SCMP_SYS(socket), 0);
-     *       seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EPERM), SCMP_SYS(ioctl), 0);
-     *   }
-     *
-     *   seccomp_load(ctx);
-     *   seccomp_release(ctx);
-     */
+    int ret = -1;
+    const int *blocked = NULL;
+    int n_blocked = 0;
 
-    fprintf(stderr, "[Sandbox] seccomp profile=%d applied (stub — needs libseccomp)\n",
-            profile);
-    return 0;
+    switch (profile) {
+    case ZYL_SECCOMP_PERMISSIVE:
+        blocked = BLOCKED_SYSCALLS_PERMISSIVE;
+        n_blocked = N_BLOCKED_PERMISSIVE;
+        break;
+    case ZYL_SECCOMP_DEFAULT:
+        blocked = BLOCKED_SYSCALLS_DEFAULT;
+        n_blocked = N_BLOCKED_DEFAULT;
+        break;
+    case ZYL_SECCOMP_STRICT:
+        /* STRICT includes DEFAULT + extra */
+        blocked = BLOCKED_SYSCALLS_DEFAULT;
+        n_blocked = N_BLOCKED_DEFAULT;
+        break;
+    }
+
+    /* Apply blocked syscalls */
+    for (int i = 0; i < n_blocked; i++) {
+        int rc = seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EPERM),
+                                  blocked[i], 0);
+        if (rc < 0) {
+            fprintf(stderr, "[Sandbox] seccomp_rule_add failed for "
+                    "syscall %d: %s\n", blocked[i], strerror(-rc));
+            /* Non-fatal: continue with remaining rules */
+        }
+    }
+
+    /* STRICT profile: add extra restrictions */
+    if (profile == ZYL_SECCOMP_STRICT) {
+        for (int i = 0; i < N_BLOCKED_STRICT; i++) {
+            int rc = seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EPERM),
+                                      BLOCKED_SYSCALLS_STRICT[i], 0);
+            if (rc < 0) {
+                fprintf(stderr, "[Sandbox] seccomp_rule_add(strict) "
+                        "failed for syscall %d: %s\n",
+                        BLOCKED_SYSCALLS_STRICT[i], strerror(-rc));
+            }
+        }
+    }
+
+    /* Load the BPF filter into the kernel */
+    ret = seccomp_load(ctx);
+    if (ret < 0) {
+        fprintf(stderr, "[Sandbox] seccomp_load failed: %s\n",
+                strerror(-ret));
+    } else {
+        fprintf(stderr, "[Sandbox] seccomp profile=%d loaded "
+                "(%d rules active)\n", profile,
+                n_blocked + (profile == ZYL_SECCOMP_STRICT
+                             ? N_BLOCKED_STRICT : 0));
+        ret = 0;
+    }
+
+    seccomp_release(ctx);
+    return ret;
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -271,13 +365,32 @@ int zyl_sandbox_apply(ZylSandbox *sb, const ZylSandboxPolicy *policy,
     /* L2: seccomp 시스콜 필터 (마지막에 적용) */
     apply_seccomp_filter(seccomp);
 
-    /* 권한 드롭: setuid/setgid to unprivileged user */
-    /*
-     * 실제 구현:
-     *   struct passwd *pw = getpwnam("zyl-app");
-     *   setgid(pw->pw_gid);
-     *   setuid(pw->pw_uid);
-     */
+    /* L5: 권한 드롭 — setgid/setuid to unprivileged "zyl-app" user.
+     * This MUST be the last step — after namespaces, cgroups, and seccomp. */
+    if (!(policy->permissions & ZYL_PERM_SYSTEM)) {
+        struct passwd *pw = getpwnam("zyl-app");
+        if (pw) {
+            /* Drop supplementary groups */
+            if (setgroups(0, NULL) != 0) {
+                fprintf(stderr, "[Sandbox] setgroups(0) failed: %s\n",
+                        strerror(errno));
+            }
+            /* Set GID before UID (cannot setgid after dropping root) */
+            if (setgid(pw->pw_gid) != 0) {
+                fprintf(stderr, "[Sandbox] setgid(%d) failed: %s\n",
+                        pw->pw_gid, strerror(errno));
+            }
+            if (setuid(pw->pw_uid) != 0) {
+                fprintf(stderr, "[Sandbox] setuid(%d) failed: %s\n",
+                        pw->pw_uid, strerror(errno));
+            }
+            fprintf(stderr, "[Sandbox] Dropped to uid=%d gid=%d\n",
+                    pw->pw_uid, pw->pw_gid);
+        } else {
+            fprintf(stderr, "[Sandbox] WARNING: user 'zyl-app' not found "
+                    "— running without privilege drop\n");
+        }
+    }
 
     return 0;
 }
