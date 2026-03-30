@@ -42,12 +42,16 @@ var ZylBridge = (function () {
    * @param {Object|string} msg - Message object or JSON string
    */
   function sendToSystem(msg) {
-    var json = typeof msg === 'string' ? msg : JSON.stringify(msg);
+    /* I21: 모든 시스템 메시지에 version: 1 자동 삽입 */
+    var payload = typeof msg === 'string' ? JSON.parse(msg) : msg;
+    if (payload && typeof payload === 'object' && payload.version === undefined) {
+      payload.version = 1;
+    }
+    var json = JSON.stringify(payload);
     switch (IPC_MODE) {
       case 'native':
         /* Real device: navigator.system bridge */
         try {
-          var parsed = typeof msg === 'string' ? JSON.parse(msg) : msg;
           if (window.navigator.system.postMessage) {
             window.navigator.system.postMessage(json);
           }
@@ -66,14 +70,13 @@ var ZylBridge = (function () {
       case 'standalone':
         /* Standalone: try direct ZylSystemServices if available */
         try {
-          var p = typeof msg === 'string' ? JSON.parse(msg) : msg;
-          if (p && p.type === 'service.request' && typeof ZylSystemServices !== 'undefined') {
-            var result = ZylSystemServices.handleRequest(p.service, p.method, p.params || {});
+          if (payload && payload.type === 'service.request' && typeof ZylSystemServices !== 'undefined') {
+            var result = ZylSystemServices.handleRequest(payload.service, payload.method, payload.params || {});
             if (result && typeof result.then === 'function') {
               result.then(function (data) {
                 window.postMessage(JSON.stringify({
-                  type: 'service.response', service: p.service,
-                  method: p.method, data: data
+                  type: 'service.response', service: payload.service,
+                  method: payload.method, data: data
                 }), '*');
               });
             }
