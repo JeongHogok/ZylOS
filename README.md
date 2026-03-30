@@ -188,6 +188,8 @@ CLAUDE.md            프로젝트 규칙 (AI/개발자 공통)
 
 ## 라이선스
 
-MIT License — [LICENSE](LICENSE) 참고
+**GNU General Public License v3.0 (GPL-3.0)** — [LICENSE](LICENSE) 참고
 
-LGPL 의존성 정보: [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)
+Zyl OS를 수정하거나 포함하여 배포하는 프로젝트는 전체 소스 코드를 GPL-3.0으로 공개해야 합니다.
+
+의존성 라이선스 정보: [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)

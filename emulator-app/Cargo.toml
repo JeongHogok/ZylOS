@@ -3,7 +3,7 @@ name = "zyl-emulator"
 version = "0.1.0"
 edition = "2021"
 description = "Zyl OS Device Emulator — Tauri 2.x Desktop Application"
-license = "MIT"
+license = "GPL-3.0-only"
 
 [dependencies]
 tauri = { version = "2", features = [] }

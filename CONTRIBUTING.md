@@ -1,7 +1,7 @@
 <!--
   Zyl OS: Contributing Guide
   Copyright (c) 2026 Zyl OS Project
-  SPDX-License-Identifier: MIT
+  SPDX-License-Identifier: GPL-3.0-only
 -->
 
 # Zyl OS 기여 가이드
@@ -131,4 +131,5 @@ docs/              문서
 
 ## 라이선스
 
-기여하신 코드는 MIT 라이선스 하에 배포됩니다.
+기여하신 코드는 **GNU General Public License v3.0 (GPL-3.0)** 하에 배포됩니다.
+PR을 제출하면 해당 코드가 GPL-3.0 조건으로 배포되는 것에 동의하는 것으로 간주합니다.
