@@ -823,15 +823,8 @@
     }
 
     /* Check if this is a system app — system apps have locked permissions */
-    var SYSTEM_APPS = [
-      'com.zylos.home', 'com.zylos.lockscreen', 'com.zylos.statusbar',
-      'com.zylos.oobe', 'com.zylos.settings', 'com.zylos.browser',
-      'com.zylos.files', 'com.zylos.terminal', 'com.zylos.camera',
-      'com.zylos.gallery', 'com.zylos.music', 'com.zylos.clock',
-      'com.zylos.calc', 'com.zylos.notes', 'com.zylos.weather',
-      'com.zylos.store', 'com.zylos.keyboard'
-    ];
-    var isSystem = SYSTEM_APPS.indexOf(app.id) !== -1;
+    /* System app check — use OS policy from app.json type field, not hardcoded list */
+    var isSystem = app.system || (app.type === 'system');
 
     if (isSystem) {
       permList.innerHTML =
