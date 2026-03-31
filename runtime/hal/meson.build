@@ -7,6 +7,7 @@ hal_sources = files(
   'hal_audio.c',
   'hal_battery.c',
   'hal_storage.c',
+  'hal_cpu.c',
   'hal_linux.c',
 )
 

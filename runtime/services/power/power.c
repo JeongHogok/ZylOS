@@ -350,17 +350,26 @@ int zyl_power_request_screen_off(ZylPowerService *svc) {
     zyl_power_set_brightness(svc, 0);
     transition_state(svc, ZYL_POWER_STATE_SCREEN_OFF);
 
-    /* 자동 서스펜드 타이머 */
-    if (svc->config.auto_suspend && svc->wakelock_count == 0) {
-        svc->suspend_timer_id = g_timeout_add_seconds(
-            svc->config.suspend_delay_sec,
-            (GSourceFunc)zyl_power_request_suspend, svc);
+    /* Doze → Suspend 단계적 전력 절감 */
+    if (svc->wakelock_count == 0) {
+        if (svc->config.doze_enabled) {
+            /* Screen off → Doze 전환 (5분 후) */
+            svc->suspend_timer_id = g_timeout_add_seconds(
+                300, /* 5 minutes to doze */
+                (GSourceFunc)zyl_power_enter_doze, svc);
+        } else if (svc->config.auto_suspend) {
+            svc->suspend_timer_id = g_timeout_add_seconds(
+                svc->config.suspend_delay_sec,
+                (GSourceFunc)zyl_power_request_suspend, svc);
+        }
     }
     return 0;
 }
 
 int zyl_power_request_screen_on(ZylPowerService *svc) {
     if (!svc) return -1;
+    /* Exit doze if in doze state */
+    if (svc->state == ZYL_POWER_STATE_DOZE) exit_doze(svc);
     zyl_power_set_brightness(svc, svc->brightness > 0 ? svc->brightness : 80);
     transition_state(svc, ZYL_POWER_STATE_ACTIVE);
     reset_idle_timers(svc);
@@ -502,6 +511,52 @@ void zyl_power_on_wake(ZylPowerService *svc, zyl_wake_fn cb, void *data) {
     if (!svc) return;
     svc->wake_cb = cb;
     svc->wake_cb_data = data;
+}
+
+/* ─── Doze 모드 ─── */
+
+static gboolean zyl_power_enter_doze(gpointer data) {
+    ZylPowerService *svc = data;
+    if (!svc || svc->state != ZYL_POWER_STATE_SCREEN_OFF) return G_SOURCE_REMOVE;
+    if (svc->wakelock_count > 0) return G_SOURCE_REMOVE; /* 웨이크락 보유 → doze 안 함 */
+
+    transition_state(svc, ZYL_POWER_STATE_DOZE);
+    g_message("[Power] Entered DOZE mode — network restricted, alarms only");
+
+    /* CPU 절전 거버너 전환 */
+    zyl_cpu_set_governor("powersave");
+
+    /* 비활성 코어 오프라인 (코어 4~7) */
+    int ncores = zyl_cpu_get_core_count();
+    for (int i = ncores / 2; i < ncores; i++) {
+        zyl_cpu_set_core_online(i, 0);
+    }
+
+    /* Doze → Deep Sleep 전환 타이머 (30분) */
+    if (svc->config.auto_suspend) {
+        svc->suspend_timer_id = g_timeout_add_seconds(
+            1800, /* 30 minutes in doze → suspend */
+            (GSourceFunc)zyl_power_request_suspend, svc);
+    }
+
+    return G_SOURCE_REMOVE;
+}
+
+/* Doze 해제 — 화면 켜질 때 호출 */
+static void exit_doze(ZylPowerService *svc) {
+    if (!svc || svc->state != ZYL_POWER_STATE_DOZE) return;
+
+    /* 코어 다시 온라인 */
+    int ncores = zyl_cpu_get_core_count();
+    for (int i = 1; i < ncores; i++) {
+        zyl_cpu_set_core_online(i, 1);
+    }
+
+    /* 거버너 복원 */
+    int profile = zyl_cpu_get_power_profile();
+    zyl_cpu_set_power_profile(profile);
+
+    g_message("[Power] Exited DOZE mode — all cores online");
 }
 
 /* ─── 데몬 진입점 ─── */
