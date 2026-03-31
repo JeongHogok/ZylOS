@@ -2,6 +2,17 @@
 
 이 파일은 AI 어시스턴트와 모든 개발자가 반드시 따라야 하는 프로젝트 규칙입니다.
 
+## 코드베이스 현황 (2026-03-31)
+
+- **파일 수**: 394개
+- **LoC**: ~50,200줄
+- **C 서비스 디렉토리**: 26개 (runtime/services/)
+- **systemd 서비스**: 24개 (system/*.service)
+- **JS 서비스 모듈**: 29개 (apps/system/services/)
+- **HAL 구현체**: 7개 (runtime/hal/)
+- **시스템 앱**: 20개 (apps/)
+- **에뮬레이터**: Tauri 2.x (Rust), aes-gcm 암호화
+
 ## 아키텍처 경계 — 절대 규칙
 
 ### 1. OS 이미지(apps/)는 에뮬레이터(emulator-app/)에 절대 의존하지 않는다
@@ -17,6 +28,7 @@
 - IPC는 반드시 `ZylBridge.sendToSystem()` 또는 `ZylBridge.requestService()` 경유
 - 서비스 호출은 반드시 `ZylSystemServices.handleRequest()` 경유
 - 하드웨어 접근은 반드시 `_invoke()` 추상화 경유 (Tauri가 아닌 HAL)
+- `requestService()`는 **Promise를 반환**한다. `requestId` 기반 응답 매칭.
 
 ### 2. 에뮬레이터(emulator-app/)에 OS 로직을 넣지 않는다
 
@@ -76,6 +88,21 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 - 앱이 스스로를 시스템앱으로 선언하는 것을 신뢰하지 않음
 - `settings.json`, `.credentials/`, `.system/`은 보호 경로
 - 서비스 권한 체크는 OS 레이어에서만 수행
+
+### 9. Intent 시스템 경계 규칙
+
+- 앱 간 직접 함수 호출 금지 → 반드시 `ZylIntent.startActivity()` 경유
+- 인텐트 필터는 앱 초기화 시 `ZylIntent.registerFilter()`로 등록
+- 인텐트 데이터 전달은 `extras` 객체로만 (DOM 공유 금지)
+- 암시적 인텐트 resolve가 0개면 "앱 없음" 다이얼로그, 복수면 앱 선택 다이얼로그
+
+### 10. ContentProvider 경계 규칙
+
+- 앱 간 데이터 공유는 직접 파일 접근 금지 → 반드시 ContentProvider URI 경유
+- `ZylContentProvider.query(callerAppId, uri)` — callerAppId 생략 금지
+- 프로바이더 등록 시 `ZylPermissions` 체크 로직을 impl 내부에 포함하지 않음
+  (권한 체크는 ZylContentProvider가 직접 수행)
+- content:// URI 형식 엄수: `content://authority/path`
 
 ---
 

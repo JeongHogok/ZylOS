@@ -18,6 +18,38 @@ meson setup builddir
 ninja -C builddir
 ```
 
+### 추가 의존성 설치 (C 빌드)
+
+```bash
+sudo apt install -y \
+  libssl-dev \
+  libseccomp-dev \
+  libzip-dev \
+  libjson-glib-dev \
+  libcurl4-openssl-dev
+```
+
+| 패키지 | 용도 |
+|--------|------|
+| `libssl-dev` | OpenSSL — AES-256-GCM (credential), RSA-2048 (appstore, updater) |
+| `libseccomp-dev` | libseccomp BPF — 샌드박스 시스콜 필터 (sandbox.c) |
+| `libzip-dev` | .ospkg 패키지 압축/해제 (appstore.c) |
+| `libjson-glib-dev` | JSON 파싱 |
+
+### Docker 빌드 (재현 가능)
+
+```bash
+# Docker 이미지 빌드
+docker build -t zylos-build .
+
+# 빌드 실행 (output/ 디렉토리에 결과물 생성)
+docker run --rm -v $(pwd)/output:/output zylos-build
+```
+
+Docker 빌드는 호스트 환경에 무관하게 동일한 바이너리를 생성합니다.
+
+---
+
 ## 코드 스타일
 
 ### C 코드
@@ -29,6 +61,7 @@ ninja -C builddir
 - 모든 `malloc`/`calloc`/`strdup` → NULL 체크 필수
 - `system()` 호출 금지 → D-Bus 또는 sysfs 사용
 - `snprintf`에 `sizeof(buffer)` 사용 (매직 넘버 금지)
+- OpenSSL 함수 반환값 반드시 확인 (`EVP_EncryptInit_ex`, `RAND_bytes` 등)
 
 ### HTML
 - **`<!DOCTYPE html>`이 반드시 파일 첫 번째 줄이어야 합니다**
@@ -42,6 +75,7 @@ ninja -C builddir
 - 세미콜론 필수
 - `===` 사용 (`==` 금지)
 - `postMessage` 수신 시 `e.source` 검증 필수
+- 서비스 호출은 `ZylBridge.requestService()` 경유, Promise 반환값 처리 필수
 
 ### i18n (다국어)
 - **모든 앱은 `js/i18n.js` 파일을 반드시 포함해야 합니다**
@@ -64,6 +98,8 @@ ninja -C builddir
 // ──────────────────────────────────────────────────────────
 ```
 
+---
+
 ## 브랜치 전략
 
 - `main`: 안정 브랜치 (CI 통과 필수)
@@ -83,6 +119,8 @@ Co-Authored-By: {이름} <{이메일}>
 
 영역 예시: `compositor`, `wam`, `apps/home`, `services/power`, `docs`
 
+---
+
 ## PR 제출 전 체크리스트
 
 ### 자동 검증 (필수)
@@ -97,6 +135,7 @@ bash tests/verify-all.sh    # 11섹션 전체 검증 — 에러 0건 필수
 - [ ] mock 데이터 사용하지 않음 (서비스 채널로 데이터 전달)
 - [ ] `malloc`/`strdup` NULL 체크 (C 코드)
 - [ ] `system()` 호출 금지 — D-Bus 또는 sysfs 사용 (C 코드)
+- [ ] OpenSSL 함수 반환값 확인 (C 코드)
 - [ ] D-Bus 이름 `org.zylos.*` 규칙 준수
 
 ### apps/ 영역 추가 규칙 (OS 이미지 독립성)
@@ -108,26 +147,42 @@ bash tests/verify-all.sh    # 11섹션 전체 검증 — 에러 0건 필수
 - [ ] 새 앱은 `app.json`에 `iconSvg` 필드 포함
 - [ ] 새 앱은 `app.json`에 필요한 권한 선언 (미선언 시 서비스 호출 차단)
 - [ ] 시스템 파일은 `apps/system/`에 배치
+- [ ] 인텐트 기반 앱 간 통신 시 `ZylIntent.registerFilter()` / `ZylIntent.startActivity()` 사용
+- [ ] 앱 간 데이터 공유 시 `ZylContentProvider` URI 경유 (직접 파일 접근 금지)
 - [ ] 관련 문서 업데이트 (해당 시)
 
 > 전체 규칙은 [CLAUDE.md](CLAUDE.md) 참조. Git pre-commit hook이 자동으로 위반을 차단합니다.
+
+---
 
 ## 디렉토리 구조
 
 ```
 compositor/        Wayland 컴포지터
 runtime/wam/       Web Application Manager
-runtime/hal/       Hardware Abstraction Layer
-runtime/services/  시스템 서비스 (18개 C/D-Bus)
+runtime/hal/       Hardware Abstraction Layer (7개 구현체)
+runtime/services/  시스템 서비스 (26개 C 디렉토리)
 apps/              시스템 앱 20개 (HTML/CSS/JS, ES5)
-apps/system/       OS 서비스 프레임워크 (services.js 28개, permissions.js, security.js, sandbox.js, app-registry.js)
-apps/shared/       공유 런타임 (bridge.js IPC 추상화, i18n.js, touch-scroll.js)
+apps/system/       OS 서비스 프레임워크
+  services.js        서비스 라우터 (29개 모듈 조립)
+  intent.js          인텐트 시스템
+  content-provider.js ContentProvider
+  permission-dialog.js 런타임 권한 다이얼로그
+  permissions.js     ZylPermissions (권한 시행)
+  security.js        보안 정책
+  sandbox.js         iframe sandbox + CSP
+  app-registry.js    동적 앱 레지스트리
+  services/          JS 서비스 모듈 29개
+apps/shared/       공유 런타임 (bridge.js, i18n.js, touch-scroll.js)
 apps/keyboard/     가상 키보드 시스템 앱
-system/            systemd, plymouth, DTS, AppArmor
-tools/             빌드/개발 도구
+system/            systemd (24개), plymouth, DTS, AppArmor
+tools/             빌드/개발 도구 (zyl SDK CLI, gen-boot-keys.sh, sign-ospkg.sh, sign-image.sh)
 tests/             테스트
 docs/              문서
+Dockerfile         Docker 재현 가능 빌드
 ```
+
+---
 
 ## 라이선스
 
