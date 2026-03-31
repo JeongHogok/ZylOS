@@ -134,3 +134,51 @@
   background: #3a3a58;
   transform: scale(0.98);
 }
+
+/* ─── Prediction Candidate Bar ─── */
+.kb-candidate-bar {
+  display: none;            /* hidden until visible class added */
+  flex-direction: row;
+  align-items: stretch;
+  height: 36px;
+  background: #16162a;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  margin-bottom: 4px;
+  overflow: hidden;
+}
+
+.kb-candidate-bar.visible {
+  display: flex;
+}
+
+.kb-candidate {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: #c8c8e8;
+  font-size: 14px;
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  cursor: pointer;
+  padding: 0 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.08s ease;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.kb-candidate:active {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* 구분선 */
+.kb-candidate-sep {
+  width: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  align-self: stretch;
+  margin: 6px 0;
+}
