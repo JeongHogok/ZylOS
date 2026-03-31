@@ -166,7 +166,7 @@ sudo cp -r apps/* $ROOTFS/usr/share/zyl-os/apps/
 sudo mkdir -p $ROOTFS/usr/share/zyl-os/wam
 sudo cp runtime/wam/src/bridge/bridge.js $ROOTFS/usr/share/zyl-os/wam/
 
-# systemd 서비스 (24개)
+# systemd 서비스 (25개)
 sudo cp system/*.service system/*.target $ROOTFS/usr/lib/systemd/system/
 
 # 디바이스 트리 오버레이

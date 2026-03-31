@@ -26,7 +26,7 @@
 - **Verified Boot**: FIT 이미지 서명 + dm-verity (rootfs 무결성)
 - **zyl SDK CLI**: init/validate/package/sign/keygen 개발자 워크플로우
 - **코드 품질 보증**: verify-all.sh (11섹션 자동 검증) + pre-commit hook
-- **코드베이스 규모**: 394개 파일, ~50,200 LoC
+- **코드베이스 규모**: 398개 파일, ~52,500 LoC
 
 ## 기술 스택
 
@@ -41,7 +41,7 @@
 | **앱 런타임** | WebKitGTK 6.0 | 앱별 독립 WebView 프로세스 |
 | **IPC** | D-Bus | C 서비스 간 통신 (~22개 D-Bus 데몬) |
 | **앱 프레임워크** | HTML/CSS/JS (ES5) | 시스템 앱 20개 |
-| **HAL** | C (sysfs, wpa_supplicant, BlueZ, PipeWire) | 하드웨어 추상화 (7개 구현체) |
+| **HAL** | C (sysfs, wpa_supplicant, BlueZ, PipeWire) | 하드웨어 추상화 (8개 구현체) |
 | **샌드박싱** | namespace + libseccomp BPF (3프로필 46규칙) + cgroup v2 | 앱 격리 |
 | **크리덴셜** | OpenSSL AES-256-GCM + PBKDF2-HMAC-SHA256 | 인증 정보 암호화 |
 | **패키징** | .ospkg (RSA-2048+SHA-256 서명, OpenSSL EVP) | 앱 배포/검증 |
@@ -130,10 +130,11 @@
 | user | 사용자 프로필 |
 | wifi | WiFi 스캔/연결 (비동기) |
 
-### HAL 구현체 (7개 — runtime/hal/)
+### HAL 구현체 (8개 — runtime/hal/)
 
 | 파일 | 역할 |
 |------|------|
+| hal_linux.c | HAL Registry 팩토리 (모듈 조립/초기화) |
 | hal_wifi.c | wpa_supplicant 연동 |
 | hal_bt.c | BlueZ 연동 |
 | hal_display.c | DRM/KMS 디스플레이 |
@@ -351,9 +352,9 @@ emulator-app/                  Tauri 2.x 네이티브 에뮬레이터
 
 compositor/                    Wayland 모바일 컴포지터 (C, wlroots)
 runtime/wam/                   Web Application Manager (C, WebKitGTK)
-runtime/hal/                   Hardware Abstraction Layer (C, 7개 구현체)
+runtime/hal/                   Hardware Abstraction Layer (C, 8개 구현체)
 runtime/services/              시스템 서비스 26개 C 디렉토리 (D-Bus)
-system/                        systemd (24개 서비스), Plymouth, DTS, AppArmor, 복구
+system/                        systemd (25개 서비스), Plymouth, DTS, AppArmor, 복구
 tools/                         빌드/개발 도구
   zyl                            SDK CLI (init/validate/package/sign/keygen)
   sign-ospkg.sh                  앱 패키지 서명 스크립트

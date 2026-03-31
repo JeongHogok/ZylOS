@@ -21,7 +21,7 @@ var i18n = (function () {
     t: function (key) { return key; },
     formatDate: function () { return ''; },
     setLocale: function () {},
-    getLocale: function () { return 'en'; },
+    getLocale: function () { return navigator.language || ''; },
     getSupportedLocales: function () { return []; }
   };
 })();

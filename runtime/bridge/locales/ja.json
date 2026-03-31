@@ -1,0 +1,83 @@
+{
+  "locale": "ja",
+  "name": "日本語",
+  "direction": "ltr",
+
+  "common": {
+    "ok": "OK",
+    "cancel": "キャンセル",
+    "save": "保存",
+    "delete": "削除",
+    "edit": "編集",
+    "done": "完了",
+    "back": "戻る",
+    "next": "次へ",
+    "search": "検索...",
+    "loading": "読み込み中...",
+    "error": "エラー",
+    "retry": "再試行",
+    "yes": "はい",
+    "no": "いいえ"
+  },
+
+  "app": {
+    "browser": "ブラウザ",
+    "files": "ファイル",
+    "terminal": "ターミナル",
+    "settings": "設定",
+    "camera": "カメラ",
+    "gallery": "ギャラリー",
+    "music": "ミュージック",
+    "clock": "時計",
+    "calc": "電卓",
+    "notes": "メモ",
+    "weather": "天気",
+    "store": "アプリストア"
+  },
+
+  "settings": {
+    "title": "設定",
+    "wifi": "Wi-Fi",
+    "bluetooth": "Bluetooth",
+    "display": "ディスプレイ",
+    "sound": "サウンド",
+    "language": "言語",
+    "wallpaper": "壁紙",
+    "security": "セキュリティ",
+    "storage": "ストレージ",
+    "about": "このデバイスについて",
+    "connected": "接続済み",
+    "on": "オン",
+    "off": "オフ",
+    "brightness": "明るさ",
+    "dark_mode": "ダークモード",
+    "auto_brightness": "自動明るさ調整",
+    "font_size": "フォントサイズ",
+    "device_name": "デバイス名",
+    "os_version": "OSバージョン",
+    "kernel": "カーネル",
+    "build": "ビルド"
+  },
+
+  "lock": {
+    "swipe": "上にスワイプしてロック解除",
+    "enter_pin": "PINを入力してください",
+    "wrong_pin": "PINが正しくありません",
+    "cancel": "キャンセル"
+  },
+
+  "statusbar": {
+    "wifi": "Wi-Fi",
+    "bluetooth": "Bluetooth",
+    "silent": "マナーモード",
+    "rotation": "画面回転",
+    "flashlight": "懐中電灯",
+    "no_notifications": "通知はありません"
+  },
+
+  "date": {
+    "format": "{y}年{m}月{d}日 {day}",
+    "days": ["日曜日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日"],
+    "months": ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"]
+  }
+}

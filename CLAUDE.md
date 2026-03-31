@@ -4,12 +4,12 @@
 
 ## 코드베이스 현황 (2026-03-31)
 
-- **파일 수**: 394개
-- **LoC**: ~50,200줄
+- **파일 수**: 398개
+- **LoC**: ~52,500줄
 - **C 서비스 디렉토리**: 26개 (runtime/services/)
-- **systemd 서비스**: 24개 (system/*.service)
+- **systemd 서비스**: 25개 (system/*.service)
 - **JS 서비스 모듈**: 29개 (apps/system/services/)
-- **HAL 구현체**: 7개 (runtime/hal/)
+- **HAL 구현체**: 8개 (runtime/hal/)
 - **시스템 앱**: 20개 (apps/)
 - **에뮬레이터**: Tauri 2.x (Rust), aes-gcm 암호화
 

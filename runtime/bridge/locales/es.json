@@ -1,0 +1,83 @@
+{
+  "locale": "es",
+  "name": "Español",
+  "direction": "ltr",
+
+  "common": {
+    "ok": "Aceptar",
+    "cancel": "Cancelar",
+    "save": "Guardar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "done": "Listo",
+    "back": "Atrás",
+    "next": "Siguiente",
+    "search": "Buscar...",
+    "loading": "Cargando...",
+    "error": "Error",
+    "retry": "Reintentar",
+    "yes": "Sí",
+    "no": "No"
+  },
+
+  "app": {
+    "browser": "Navegador",
+    "files": "Archivos",
+    "terminal": "Terminal",
+    "settings": "Ajustes",
+    "camera": "Cámara",
+    "gallery": "Galería",
+    "music": "Música",
+    "clock": "Reloj",
+    "calc": "Calculadora",
+    "notes": "Notas",
+    "weather": "El Tiempo",
+    "store": "Tienda de Apps"
+  },
+
+  "settings": {
+    "title": "Ajustes",
+    "wifi": "Wi-Fi",
+    "bluetooth": "Bluetooth",
+    "display": "Pantalla",
+    "sound": "Sonido",
+    "language": "Idioma",
+    "wallpaper": "Fondo de pantalla",
+    "security": "Seguridad",
+    "storage": "Almacenamiento",
+    "about": "Acerca del dispositivo",
+    "connected": "Conectado",
+    "on": "Encendido",
+    "off": "Apagado",
+    "brightness": "Brillo",
+    "dark_mode": "Modo oscuro",
+    "auto_brightness": "Brillo automático",
+    "font_size": "Tamaño de fuente",
+    "device_name": "Nombre del dispositivo",
+    "os_version": "Versión del SO",
+    "kernel": "Kernel",
+    "build": "Compilación"
+  },
+
+  "lock": {
+    "swipe": "Desliza hacia arriba para desbloquear",
+    "enter_pin": "Introduce el PIN",
+    "wrong_pin": "PIN incorrecto",
+    "cancel": "Cancelar"
+  },
+
+  "statusbar": {
+    "wifi": "Wi-Fi",
+    "bluetooth": "Bluetooth",
+    "silent": "Silencio",
+    "rotation": "Rotación",
+    "flashlight": "Linterna",
+    "no_notifications": "Sin notificaciones"
+  },
+
+  "date": {
+    "format": "{day}, {d} de {monthName} de {y}",
+    "days": ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"],
+    "months": ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+  }
+}
