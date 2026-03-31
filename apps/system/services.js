@@ -194,6 +194,7 @@ window.ZylSystemServices = (function () {
 
     /* Independent modules */
     if (ns.fs)            serviceMap.fs           = ns.fs(deps);
+    if (ns.clipboard)     serviceMap.clipboard    = ns.clipboard(deps);
     if (ns.device) {
       var devMod = ns.device(deps);
       serviceMap.device = devMod;
