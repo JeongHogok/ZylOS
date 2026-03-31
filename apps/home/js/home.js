@@ -722,7 +722,7 @@
 
   /* ─── Initial loading state ─── */
   if (pagesTrack && defaultApps.length === 0) {
-    pagesTrack.innerHTML = '<div class="app-page"><div style="text-align:center;opacity:0.5;padding:32px;grid-column:1/-1">Loading...</div></div>';
+    pagesTrack.innerHTML = '<div class="app-page"><div style="text-align:center;opacity:0.5;padding:32px;grid-column:1/-1">' + (typeof zylI18n !== 'undefined' ? zylI18n.t('home.loading') : 'Loading...') + '</div></div>';
   }
 
 })();

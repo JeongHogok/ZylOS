@@ -20,7 +20,9 @@
     'files.share': '\uACF5\uC720',
     'files.sort_name': '\uC774\uB984',
     'files.sort_date': '\uB0A0\uC9DC',
-    'files.sort_size': '\uD06C\uAE30'
+    'files.sort_size': '\uD06C\uAE30',
+    'files.empty_folder': '\uBE48 \uD3F4\uB354',
+    'files.loading': '\uB85C\uB529 \uC911...'
   });
 
   zylI18n.addTranslations('en', {
@@ -34,7 +36,9 @@
     'files.share': 'Share',
     'files.sort_name': 'Name',
     'files.sort_date': 'Date',
-    'files.sort_size': 'Size'
+    'files.sort_size': 'Size',
+    'files.empty_folder': 'Empty folder',
+    'files.loading': 'Loading...'
   });
 
   zylI18n.addTranslations('ja', {
@@ -48,7 +52,9 @@
     'files.share': '\u5171\u6709',
     'files.sort_name': '\u540D\u524D',
     'files.sort_date': '\u65E5\u4ED8',
-    'files.sort_size': '\u30B5\u30A4\u30BA'
+    'files.sort_size': '\u30B5\u30A4\u30BA',
+    'files.empty_folder': '\u7A7A\u306E\u30D5\u30A9\u30EB\u30C0',
+    'files.loading': '\u8AAD\u307F\u8FBC\u307F\u4E2D...'
   });
 
   zylI18n.addTranslations('zh', {
@@ -62,7 +68,9 @@
     'files.share': '\u5171\u4EAB',
     'files.sort_name': '\u540D\u79F0',
     'files.sort_date': '\u65E5\u671F',
-    'files.sort_size': '\u5927\u5C0F'
+    'files.sort_size': '\u5927\u5C0F',
+    'files.empty_folder': '\u7A7A\u6587\u4EF6\u5939',
+    'files.loading': '\u52A0\u8F7D\u4E2D...'
   });
 
   zylI18n.addTranslations('es', {
@@ -76,6 +84,8 @@
     'files.share': 'Compartir',
     'files.sort_name': 'Nombre',
     'files.sort_date': 'Fecha',
-    'files.sort_size': 'Tama\u00F1o'
+    'files.sort_size': 'Tama\u00F1o',
+    'files.empty_folder': 'Carpeta vac\u00EDa',
+    'files.loading': 'Cargando...'
   });
 })();

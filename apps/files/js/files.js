@@ -222,7 +222,7 @@
     fileList.innerHTML = '';
 
     if (!serviceReady) {
-      fileList.innerHTML = '<div class="empty-state"><span>Loading...</span></div>';
+      fileList.innerHTML = '<div class="empty-state"><span>' + (typeof zylI18n !== 'undefined' ? zylI18n.t('files.loading') : 'Loading...') + '</span></div>';
       return;
     }
 
@@ -232,7 +232,7 @@
       fileList.innerHTML =
         '<div class="empty-state">' +
         '<svg viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>' +
-        '<span>Empty folder</span></div>';
+        '<span>' + (typeof zylI18n !== 'undefined' ? zylI18n.t('files.empty_folder') : 'Empty folder') + '</span></div>';
       return;
     }
 
@@ -299,7 +299,7 @@
         method: 'getDirectory',
         params: { path: path }
       });
-      fileList.innerHTML = '<div style="text-align:center;opacity:0.5;padding:32px">Loading...</div>';
+      fileList.innerHTML = '<div style="text-align:center;opacity:0.5;padding:32px">' + (typeof zylI18n !== 'undefined' ? zylI18n.t('files.loading') : 'Loading...') + '</div>';
     } else {
       renderFiles();
     }

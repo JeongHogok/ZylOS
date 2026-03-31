@@ -50,7 +50,8 @@ window.zylI18n = (function () {
       'permission.deny': '\uAC70\uBD80',
       'permission.allow': '\uD5C8\uC6A9',
       'permission.dont_ask_again': '\uB2E4\uC2DC \uBB3B\uC9C0 \uC54A\uAE30',
-      'permission.request_message': '{app}\uC774(\uAC00) {perm}\uC5D0 \uC811\uADFC\uD558\uB824\uACE0 \uD569\uB2C8\uB2E4'
+      'permission.request_message': '{app}\uC774(\uAC00) {perm}\uC5D0 \uC811\uADFC\uD558\uB824\uACE0 \uD569\uB2C8\uB2E4',
+      'home.loading': '\uB85C\uB529 \uC911...'
     },
     en: {
       'search': 'Search...',
@@ -88,7 +89,8 @@ window.zylI18n = (function () {
       'permission.deny': 'Deny',
       'permission.allow': 'Allow',
       'permission.dont_ask_again': "Don't ask again",
-      'permission.request_message': '{app} wants to access {perm}'
+      'permission.request_message': '{app} wants to access {perm}',
+      'home.loading': 'Loading...'
     },
     ja: {
       'search': '\u691C\u7D22...',
@@ -122,7 +124,8 @@ window.zylI18n = (function () {
       'permission.deny': '\u62D2\u5426',
       'permission.allow': '\u8A31\u53EF',
       'permission.dont_ask_again': '\u4ECA\u5F8C\u8868\u793A\u3057\u306A\u3044',
-      'permission.request_message': '{app}\u304C{perm}\u3078\u306E\u30A2\u30AF\u30BB\u30B9\u3092\u6C42\u3081\u3066\u3044\u307E\u3059'
+      'permission.request_message': '{app}\u304C{perm}\u3078\u306E\u30A2\u30AF\u30BB\u30B9\u3092\u6C42\u3081\u3066\u3044\u307E\u3059',
+      'home.loading': '\u8AAD\u307F\u8FBC\u307F\u4E2D...'
     },
     zh: {
       'search': '\u641C\u7D22...',
@@ -156,7 +159,8 @@ window.zylI18n = (function () {
       'permission.deny': '\u62D2\u7EDD',
       'permission.allow': '\u5141\u8BB8',
       'permission.dont_ask_again': '\u4E0D\u518D\u8BE2\u95EE',
-      'permission.request_message': '{app}\u60F3\u8981\u8BBF\u95EE{perm}'
+      'permission.request_message': '{app}\u60F3\u8981\u8BBF\u95EE{perm}',
+      'home.loading': '\u52A0\u8F7D\u4E2D...'
     },
     es: {
       'search': 'Buscar...',
@@ -194,7 +198,8 @@ window.zylI18n = (function () {
       'permission.deny': 'Denegar',
       'permission.allow': 'Permitir',
       'permission.dont_ask_again': 'No volver a preguntar',
-      'permission.request_message': '{app} quiere acceder a {perm}'
+      'permission.request_message': '{app} quiere acceder a {perm}',
+      'home.loading': 'Cargando...'
     },
     ar: {
       'search': '\u0628\u062D\u062B...',

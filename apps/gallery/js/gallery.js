@@ -80,7 +80,7 @@
       if (msg.service === 'fs' && msg.method === 'readBinary' && msg.data && msg.params) {
         handleMediaData(msg.params, msg.data);
       }
-    } catch (err) {}
+    } catch (err) { if (typeof console !== 'undefined') console.error('[Gallery] message parse error:', err); }
   });
 
   function renderMediaList(entries) {
@@ -91,7 +91,7 @@
     });
 
     if (mediaFiles.length === 0) {
-      grid.innerHTML = '<div style="text-align:center;opacity:0.5;padding:40px;grid-column:1/-1">No media in Pictures/</div>';
+      grid.innerHTML = '<div style="text-align:center;opacity:0.5;padding:40px;grid-column:1/-1">' + (typeof zylI18n !== 'undefined' ? zylI18n.t('gallery.no_media') : 'No photos or videos') + '</div>';
       return;
     }
 
@@ -303,7 +303,7 @@
   if (viewerDeleteBtn) {
     viewerDeleteBtn.addEventListener('click', function () {
       if (!currentViewingFile) return;
-      if (confirm('Delete this file?')) {
+      if (confirm(typeof zylI18n !== 'undefined' ? zylI18n.t('gallery.confirm_delete') : 'Delete this file?')) {
         requestService('fs', 'remove', { path: 'Pictures/' + currentViewingFile });
         /* Remove from local list */
         mediaFiles = mediaFiles.filter(function (f) { return f.name !== currentViewingFile; });

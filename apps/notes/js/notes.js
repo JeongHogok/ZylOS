@@ -44,14 +44,14 @@
 
       if (msg.type !== 'service.response') return;
       if (msg.service === 'fs' && msg.method === 'getDirectory' && msg.data) { renderNotes(msg.data); }
-    } catch (err) {}
+    } catch (err) { if (typeof console !== 'undefined') console.error('[Notes] message parse error:', err); }
   });
 
   function renderNotes(entries) {
     if (!list) return;
     list.innerHTML = '';
     notes = (entries || []).filter(function (e) { return (e.name || '').indexOf('.txt') !== -1; });
-    if (notes.length === 0) { list.innerHTML = '<div style="text-align:center;opacity:0.5;padding:40px">No notes yet</div>'; return; }
+    if (notes.length === 0) { list.innerHTML = '<div style="text-align:center;opacity:0.5;padding:40px">' + (typeof zylI18n !== 'undefined' ? zylI18n.t('notes.no_notes') : 'No notes yet') + '</div>'; return; }
     notes.forEach(function (n) {
       var el = document.createElement('div'); el.className = 'note-item';
       el.textContent = n.name.replace('.txt', '');
@@ -156,7 +156,7 @@
       if (msg && msg.type === 'service.response' && msg.service === 'fs' && msg.method === 'getFileContent' && msg.data) {
         if (bodyEl) bodyEl.value = msg.data;
       }
-    } catch (err) {}
+    } catch (err) { if (typeof console !== 'undefined') console.error('[Notes] file content parse error:', err); }
   });
 
   /* Notes 디렉토리 생성 보장 */

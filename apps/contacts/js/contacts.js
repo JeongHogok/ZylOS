@@ -131,7 +131,7 @@
           requestService('contacts', 'getAll');
         } else {
           if (contactList) {
-            contactList.innerHTML = '<div class="empty-state">Contacts permission denied</div>';
+            contactList.innerHTML = '<div class="empty-state">' + t('contacts.permission_denied') + '</div>';
           }
         }
       }).catch(function (err) {

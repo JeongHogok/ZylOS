@@ -123,7 +123,7 @@
               osc.stop(ctx.currentTime + delay + dur / 1000);
             })(i * (dur + 100) / 1000);
           }
-        } catch (e) {}
+        } catch (e) { /* Web Audio unavailable */ }
         return Promise.resolve(true);
       },
       playKeyClick: function () {
@@ -136,7 +136,7 @@
           osc.type = 'sine'; osc.frequency.value = 800;
           osc.connect(g); g.connect(ctx.destination);
           osc.start(); osc.stop(ctx.currentTime + 0.03);
-        } catch (e) {}
+        } catch (e) { /* Web Audio unavailable */ }
         return Promise.resolve(true);
       },
       vibrate: function (p) {

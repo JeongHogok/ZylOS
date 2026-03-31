@@ -29,7 +29,8 @@
     'contacts.email_label': '\uC774\uBA54\uC77C',
     'contacts.confirm_delete': '\uC774 \uC5F0\uB77D\uCC98\uB97C \uC0AD\uC81C\uD558\uC2DC\uACA0\uC2B5\uB2C8\uAE4C?',
     'contacts.delete_confirm': '\uC5F0\uB77D\uCC98 \uC0AD\uC81C',
-    'contacts.delete_confirm_msg': '\uC774 \uC5F0\uB77D\uCC98\uB97C \uC0AD\uC81C\uD558\uC2DC\uACA0\uC2B5\uB2C8\uAE4C?'
+    'contacts.delete_confirm_msg': '\uC774 \uC5F0\uB77D\uCC98\uB97C \uC0AD\uC81C\uD558\uC2DC\uACA0\uC2B5\uB2C8\uAE4C?',
+    'contacts.permission_denied': '\uC5F0\uB77D\uCC98 \uAD8C\uD55C\uC774 \uAC70\uBD80\uB418\uC5C8\uC2B5\uB2C8\uB2E4'
   });
 
   zylI18n.addTranslations('en', {
@@ -49,7 +50,8 @@
     'contacts.confirm_delete': 'Delete this contact?',
     'contacts.delete_confirm': 'Delete Contact',
     'contacts.delete_confirm_msg': 'Are you sure you want to delete this contact?',
-    'contacts.email_label': 'Email'
+    'contacts.email_label': 'Email',
+    'contacts.permission_denied': 'Contacts permission denied'
   });
 
   zylI18n.addTranslations('ja', {
@@ -69,7 +71,8 @@
     'contacts.confirm_delete': '\u3053\u306E\u9023\u7D61\u5148\u3092\u524A\u9664\u3057\u307E\u3059\u304B\uFF1F',
     'contacts.delete_confirm': '\u9023\u7D61\u5148\u306E\u524A\u9664',
     'contacts.delete_confirm_msg': '\u3053\u306E\u9023\u7D61\u5148\u3092\u524A\u9664\u3057\u307E\u3059\u304B\uFF1F',
-    'contacts.email_label': '\u30E1\u30FC\u30EB'
+    'contacts.email_label': '\u30E1\u30FC\u30EB',
+    'contacts.permission_denied': '\u9023\u7D61\u5148\u306E\u6A29\u9650\u304C\u62D2\u5426\u3055\u308C\u307E\u3057\u305F'
   });
 
   zylI18n.addTranslations('zh', {
@@ -89,7 +92,8 @@
     'contacts.confirm_delete': '\u5220\u9664\u8BE5\u8054\u7CFB\u4EBA\uFF1F',
     'contacts.delete_confirm': '\u5220\u9664\u8054\u7CFB\u4EBA',
     'contacts.delete_confirm_msg': '\u786E\u5B9A\u8981\u5220\u9664\u8BE5\u8054\u7CFB\u4EBA\u5417\uFF1F',
-    'contacts.email_label': '\u90AE\u4EF6'
+    'contacts.email_label': '\u90AE\u4EF6',
+    'contacts.permission_denied': '\u901A\u8BAF\u5F55\u6743\u9650\u88AB\u62D2\u7EDD'
   });
 
   zylI18n.addTranslations('es', {
@@ -109,6 +113,7 @@
     'contacts.confirm_delete': '\u00BFEliminar este contacto?',
     'contacts.delete_confirm': 'Eliminar contacto',
     'contacts.delete_confirm_msg': '\u00BFEst\u00E1 seguro de eliminar este contacto?',
-    'contacts.email_label': 'Correo'
+    'contacts.email_label': 'Correo',
+    'contacts.permission_denied': 'Permiso de contactos denegado'
   });
 })();
