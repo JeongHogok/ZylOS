@@ -9,6 +9,7 @@
  * ────────────────────────────────────────────────────────── */
 
 #include "power_internal.h"
+#include <glib-unix.h>
 
 /* ─── 유틸리티: sysfs 읽기/쓰기 ─── */
 int sysfs_read_int(const char *path) {
@@ -150,9 +151,11 @@ static void on_power_bus_acquired(GDBusConnection *conn, const gchar *name,
     svc->dbus = conn;
 
     GDBusNodeInfo *info = g_dbus_node_info_new_for_xml(power_introspection_xml, NULL);
-    g_dbus_connection_register_object(conn, ZYL_POWER_DBUS_PATH,
-        info->interfaces[0], &power_vtable, svc, NULL, NULL);
-    g_dbus_node_info_unref(info);
+    if (info && info->interfaces && info->interfaces[0]) {
+        g_dbus_connection_register_object(conn, ZYL_POWER_DBUS_PATH,
+            info->interfaces[0], &power_vtable, svc, NULL, NULL);
+    }
+    if (info) g_dbus_node_info_unref(info);
     g_message("[Power] D-Bus registered: %s", ZYL_POWER_DBUS_NAME);
 }
 
@@ -319,6 +322,16 @@ void zyl_power_on_wake(ZylPowerService *svc, zyl_wake_fn cb, void *data) {
 }
 
 /* ─── 데몬 진입점 ─── */
+
+static GMainLoop *g_power_loop = NULL;
+
+static gboolean on_signal_power(gpointer data) {
+    (void)data;
+    g_message("[Power] Signal received, shutting down");
+    if (g_power_loop) g_main_loop_quit(g_power_loop);
+    return G_SOURCE_REMOVE;
+}
+
 int main(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
@@ -331,10 +344,12 @@ int main(int argc, char *argv[]) {
 
     g_message("[Power] Zyl OS Power Manager started");
 
-    GMainLoop *loop = g_main_loop_new(NULL, FALSE);
-    g_main_loop_run(loop);
+    g_power_loop = g_main_loop_new(NULL, FALSE);
+    g_unix_signal_add(SIGTERM, on_signal_power, NULL);
+    g_unix_signal_add(SIGINT,  on_signal_power, NULL);
+    g_main_loop_run(g_power_loop);
 
-    g_main_loop_unref(loop);
+    g_main_loop_unref(g_power_loop);
     zyl_power_destroy(svc);
     return 0;
 }

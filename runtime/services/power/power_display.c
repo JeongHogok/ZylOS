@@ -77,8 +77,19 @@ void reset_idle_timers(ZylPowerService *svc) {
 /* ─── 화면 끄기 ─── */
 int zyl_power_request_screen_off(ZylPowerService *svc) {
     if (!svc) return -1;
+
+    /* Save current brightness before turning off, so screen_on can restore it */
+    if (svc->brightness > 0) {
+        svc->saved_brightness = svc->brightness;
+    }
     zyl_power_set_brightness(svc, 0);
     transition_state(svc, ZYL_POWER_STATE_SCREEN_OFF);
+
+    /* Cancel any existing suspend timer before starting a new one */
+    if (svc->suspend_timer_id) {
+        g_source_remove(svc->suspend_timer_id);
+        svc->suspend_timer_id = 0;
+    }
 
     /* Doze → Suspend 단계적 전력 절감 */
     if (svc->wakelock_count == 0) {
@@ -101,7 +112,9 @@ int zyl_power_request_screen_on(ZylPowerService *svc) {
     if (!svc) return -1;
     /* Exit doze if in doze state */
     if (svc->state == ZYL_POWER_STATE_DOZE) exit_doze(svc);
-    zyl_power_set_brightness(svc, svc->brightness > 0 ? svc->brightness : 80);
+    /* Restore saved brightness (brightness is 0 after screen_off) */
+    int restore = (svc->saved_brightness > 0) ? svc->saved_brightness : 80;
+    zyl_power_set_brightness(svc, restore);
     transition_state(svc, ZYL_POWER_STATE_ACTIVE);
     reset_idle_timers(svc);
     return 0;

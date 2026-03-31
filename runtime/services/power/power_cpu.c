@@ -30,6 +30,11 @@ gboolean zyl_power_enter_doze(gpointer data) {
 
     /* Doze → Deep Sleep 전환 타이머 (30분) */
     if (svc->config.auto_suspend) {
+        /* Cancel existing timer to prevent leak */
+        if (svc->suspend_timer_id) {
+            g_source_remove(svc->suspend_timer_id);
+            svc->suspend_timer_id = 0;
+        }
         svc->suspend_timer_id = g_timeout_add_seconds(
             1800, /* 30 minutes in doze → suspend */
             (GSourceFunc)zyl_power_request_suspend, svc);

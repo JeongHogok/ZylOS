@@ -37,6 +37,7 @@ struct ZylPowerService {
     ZylPowerState state;
     ZylPowerConfig config;
     int brightness;               /* 현재 밝기 0-100 */
+    int saved_brightness;         /* screen_off 전 밝기 (복원용) */
     char *backlight_device;       /* sysfs backlight 장치 경로 */
     int max_brightness;           /* 장치 최대 밝기 값 */
 
