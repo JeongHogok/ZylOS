@@ -279,6 +279,7 @@
   function switchTab(id) {
     activeTabId = id;
     var tab = getActiveTab();
+    if (!tab) return;
     renderTabs();
     if (tab.url) {
       urlInput.value = tab.url;
@@ -351,6 +352,7 @@
     if (pageFrame) pageFrame.style.display = 'none';
 
     var tab = getActiveTab();
+    if (!tab) return;
     var domain = extractDomain(url);
     tab.url = url;
     tab.title = domain || zylI18n.t('browser.loading');
@@ -415,6 +417,7 @@
   /* ─── Navigation ─── */
   function navigateBack() {
     var tab = getActiveTab();
+    if (!tab) return;
     if (tab.historyIndex > 0) {
       tab.historyIndex--;
       var url = tab.history[tab.historyIndex];
@@ -425,6 +428,7 @@
 
   function navigateForward() {
     var tab = getActiveTab();
+    if (!tab) return;
     if (tab.historyIndex < tab.history.length - 1) {
       tab.historyIndex++;
       var url = tab.history[tab.historyIndex];
@@ -435,6 +439,7 @@
 
   function refresh() {
     var tab = getActiveTab();
+    if (!tab) return;
     if (tab.url) {
       showWebPage(tab.url, true);
     }
@@ -442,6 +447,7 @@
 
   function updateNavButtons() {
     var tab = getActiveTab();
+    if (!tab) return;
     btnBack.disabled = tab.historyIndex <= 0;
     btnForward.disabled = tab.historyIndex >= tab.history.length - 1;
   }
@@ -592,12 +598,12 @@
       var el = document.createElement('div');
       el.className = 'quick-link';
       el.dataset.url = ql.url;
-      var fillAttr = ql.svgFill ? ' fill="' + ql.svgFill + '"' : '';
+      var fillAttr = ql.svgFill ? ' fill="' + escapeHtml(ql.svgFill) + '"' : '';
       el.innerHTML =
-        '<div class="quick-link-icon" style="background: ' + ql.iconBg + ';">' +
-          '<svg viewBox="0 0 24 24" width="24" height="24"><path' + fillAttr + ' d="' + ql.svgPath + '"/></svg>' +
+        '<div class="quick-link-icon" style="background: ' + escapeHtml(ql.iconBg || '') + ';">' +
+          '<svg viewBox="0 0 24 24" width="24" height="24"><path' + fillAttr + ' d="' + escapeHtml(ql.svgPath || '') + '"/></svg>' +
         '</div>' +
-        '<span>' + ql.name + '</span>';
+        '<span>' + escapeHtml(ql.name || '') + '</span>';
       el.setAttribute('role', 'link');
       el.setAttribute('aria-label', ql.name);
       addButtonKeyHandler(el);
@@ -614,7 +620,7 @@
     var tab = getActiveTab();
     if (!tab || !tab.url) return;
     if (typeof ZylBridge !== 'undefined') {
-      ZylBridge.requestService('clipboard', 'copy', { text: tab.url });
+      ZylBridge.requestService('clipboard', 'copy', { text: tab.url }).catch(function () { /* ignore */ });
     }
     showToast(zylI18n.t('browser.url_copied'));
   }

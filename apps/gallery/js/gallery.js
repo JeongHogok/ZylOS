@@ -98,18 +98,35 @@
     }
     var cancelText = t('common.cancel');
     var okText = t('common.ok');
-    galleryModalOverlay.innerHTML =
-      '<div role="dialog" aria-modal="true" aria-label="' + title + '" style="background:#1e1e2e;border-radius:16px;padding:24px;width:280px;max-width:90%;color:#fff">' +
-        '<div style="font-size:16px;font-weight:600;margin-bottom:12px">' + title + '</div>' +
-        '<div style="font-size:14px;opacity:0.8;margin-bottom:20px">' + message + '</div>' +
-        '<div style="display:flex;gap:8px;justify-content:flex-end">' +
-          '<button class="gm-cancel" style="padding:8px 16px;border:none;border-radius:8px;background:#333;color:#fff;cursor:pointer">' + cancelText + '</button>' +
-          '<button class="gm-ok" style="padding:8px 16px;border:none;border-radius:8px;background:#ef4444;color:#fff;cursor:pointer">' + okText + '</button>' +
-        '</div>' +
-      '</div>';
+    galleryModalOverlay.innerHTML = '';
+    var dialog = document.createElement('div');
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
+    dialog.setAttribute('aria-label', title);
+    dialog.style.cssText = 'background:#1e1e2e;border-radius:16px;padding:24px;width:280px;max-width:90%;color:#fff';
+    var titleDiv = document.createElement('div');
+    titleDiv.style.cssText = 'font-size:16px;font-weight:600;margin-bottom:12px';
+    titleDiv.textContent = title;
+    var msgDiv = document.createElement('div');
+    msgDiv.style.cssText = 'font-size:14px;opacity:0.8;margin-bottom:20px';
+    msgDiv.textContent = message;
+    var btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:8px;justify-content:flex-end';
+    var cancelBtn = document.createElement('button');
+    cancelBtn.className = 'gm-cancel';
+    cancelBtn.style.cssText = 'padding:8px 16px;border:none;border-radius:8px;background:#333;color:#fff;cursor:pointer';
+    cancelBtn.textContent = cancelText;
+    var okBtn = document.createElement('button');
+    okBtn.className = 'gm-ok';
+    okBtn.style.cssText = 'padding:8px 16px;border:none;border-radius:8px;background:#ef4444;color:#fff;cursor:pointer';
+    okBtn.textContent = okText;
+    btnRow.appendChild(cancelBtn);
+    btnRow.appendChild(okBtn);
+    dialog.appendChild(titleDiv);
+    dialog.appendChild(msgDiv);
+    dialog.appendChild(btnRow);
+    galleryModalOverlay.appendChild(dialog);
     galleryModalOverlay.style.display = 'flex';
-    var cancelBtn = galleryModalOverlay.querySelector('.gm-cancel');
-    var okBtn = galleryModalOverlay.querySelector('.gm-ok');
     cancelBtn.addEventListener('click', function () { galleryModalOverlay.style.display = 'none'; });
     okBtn.addEventListener('click', function () { galleryModalOverlay.style.display = 'none'; onConfirm(); });
     okBtn.focus();

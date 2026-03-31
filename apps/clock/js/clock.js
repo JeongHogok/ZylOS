@@ -185,7 +185,7 @@
     }
   }
   updateClock();
-  setInterval(updateClock, 1000);
+  var clockInterval = setInterval(updateClock, 1000);
 
   /* ═══════════════════════════════════════════════════════════
      Alarm Tab
@@ -197,7 +197,7 @@
   var activeSnoozeAlarm = null;
   var snoozeTimerId = null;
 
-  var DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  var DAY_KEYS = ['clock.day_sun', 'clock.day_mon', 'clock.day_tue', 'clock.day_wed', 'clock.day_thu', 'clock.day_fri', 'clock.day_sat'];
 
   /* ── Persist alarms via settings service ── */
 
@@ -286,7 +286,7 @@
         if (alarm.days && alarm.days.length > 0 && alarm.days.length < 7) {
           var dayLabels = [];
           for (var d = 0; d < alarm.days.length; d++) {
-            dayLabels.push(DAY_NAMES[alarm.days[d]] || '');
+            dayLabels.push(zylI18n.t(DAY_KEYS[alarm.days[d]]) || '');
           }
           daysEl.textContent = dayLabels.join(', ');
         } else if (alarm.days && alarm.days.length === 7) {
@@ -516,7 +516,7 @@
     }
   }
 
-  setInterval(checkAlarms, 30000);
+  var alarmCheckInterval = setInterval(checkAlarms, 30000);
 
   /* Load alarms from settings on startup */
   loadAlarms();

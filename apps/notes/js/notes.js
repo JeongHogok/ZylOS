@@ -312,7 +312,7 @@
       var selectedText = bodyEl.value.substring(start, end);
       if (!selectedText) return;
       if (typeof ZylBridge !== 'undefined') {
-        ZylBridge.requestService('clipboard', 'copy', { text: selectedText });
+        ZylBridge.requestService('clipboard', 'copy', { text: selectedText }).catch(function () { /* ignore */ });
       }
     }
 

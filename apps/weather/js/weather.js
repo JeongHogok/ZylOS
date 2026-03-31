@@ -224,7 +224,7 @@
         var region = msg.data.region || '';
         var displayName = cityName;
         if (region && region !== cityName) displayName += ', ' + region;
-        if (!displayName) displayName = lastLat.toFixed(2) + ', ' + lastLon.toFixed(2);
+        if (!displayName && lastLat != null && lastLon != null) displayName = lastLat.toFixed(2) + ', ' + lastLon.toFixed(2);
 
         currentLocationCity = { name: displayName, lat: lastLat, lon: lastLon };
 

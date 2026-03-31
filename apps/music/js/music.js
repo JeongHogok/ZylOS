@@ -328,7 +328,7 @@
       var empty = document.createElement('div');
       empty.className = 'empty-state';
       empty.setAttribute('data-i18n', 'music.noTracks');
-      empty.textContent = zylI18n.t('music.no_tracks');
+      empty.textContent = (typeof zylI18n !== 'undefined') ? zylI18n.t('music.no_tracks') : 'No music files';
       trackListEl.appendChild(empty);
       return;
     }
@@ -544,7 +544,7 @@
 
         var countEl = document.createElement('span');
         countEl.className = 'playlist-count';
-        countEl.textContent = (pl.trackPaths ? pl.trackPaths.length : 0) + ' ' + zylI18n.t('music.tracks_count');
+        countEl.textContent = (pl.trackPaths ? pl.trackPaths.length : 0) + ' ' + ((typeof zylI18n !== 'undefined') ? zylI18n.t('music.tracks_count') : 'tracks');
 
         el.appendChild(nameEl);
         el.appendChild(countEl);
@@ -599,7 +599,7 @@
     if (!pl.trackPaths || pl.trackPaths.length === 0) {
       var empty = document.createElement('div');
       empty.className = 'empty-state';
-      empty.textContent = zylI18n.t('music.no_tracks');
+      empty.textContent = (typeof zylI18n !== 'undefined') ? zylI18n.t('music.no_tracks') : 'No music files';
       playlistDetailTracks.appendChild(empty);
       return;
     }

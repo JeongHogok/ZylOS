@@ -22,7 +22,9 @@
     'gallery.rotate': '\uD68C\uC804',
     'gallery.photos_count': '{count}\uAC1C',
     'gallery.slideshow_playing': '\uC7AC\uC0DD \uC911',
-    'gallery.slideshow_paused': '\uC77C\uC2DC\uC815\uC9C0'
+    'gallery.slideshow_paused': '\uC77C\uC2DC\uC815\uC9C0',
+    'common.cancel': '\uCDE8\uC18C',
+    'common.ok': '\uD655\uC778'
   });
 
   zylI18n.addTranslations('en', {
@@ -38,7 +40,9 @@
     'gallery.rotate': 'Rotate',
     'gallery.photos_count': '{count} items',
     'gallery.slideshow_playing': 'Playing',
-    'gallery.slideshow_paused': 'Paused'
+    'gallery.slideshow_paused': 'Paused',
+    'common.cancel': 'Cancel',
+    'common.ok': 'OK'
   });
 
   zylI18n.addTranslations('ja', {
@@ -54,7 +58,9 @@
     'gallery.rotate': '\u56DE\u8EE2',
     'gallery.photos_count': '{count}\u4EF6',
     'gallery.slideshow_playing': '\u518D\u751F\u4E2D',
-    'gallery.slideshow_paused': '\u4E00\u6642\u505C\u6B62'
+    'gallery.slideshow_paused': '\u4E00\u6642\u505C\u6B62',
+    'common.cancel': '\u30AD\u30E3\u30F3\u30BB\u30EB',
+    'common.ok': 'OK'
   });
 
   zylI18n.addTranslations('zh', {
@@ -70,7 +76,9 @@
     'gallery.rotate': '\u65CB\u8F6C',
     'gallery.photos_count': '{count}\u9879',
     'gallery.slideshow_playing': '\u64AD\u653E\u4E2D',
-    'gallery.slideshow_paused': '\u5DF2\u6682\u505C'
+    'gallery.slideshow_paused': '\u5DF2\u6682\u505C',
+    'common.cancel': '\u53D6\u6D88',
+    'common.ok': '\u786E\u8BA4'
   });
 
   zylI18n.addTranslations('es', {
@@ -86,6 +94,8 @@
     'gallery.rotate': 'Rotar',
     'gallery.photos_count': '{count} elementos',
     'gallery.slideshow_playing': 'Reproduciendo',
-    'gallery.slideshow_paused': 'En pausa'
+    'gallery.slideshow_paused': 'En pausa',
+    'common.cancel': 'Cancelar',
+    'common.ok': 'Aceptar'
   });
 })();

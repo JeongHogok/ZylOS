@@ -25,7 +25,9 @@
     'music.save': '\uC800\uC7A5',
     'music.done': '\uC644\uB8CC',
     'music.add_tracks': '\uD2B8\uB799 \uCD94\uAC00',
-    'music.tracks_count': '\uACE1'
+    'music.tracks_count': '\uACE1',
+    'music.no_track': '\uC120\uD0DD\uB41C \uD2B8\uB799 \uC5C6\uC74C',
+    'music.unknown_artist': '\uC54C \uC218 \uC5C6\uB294 \uC544\uD2F0\uC2A4\uD2B8'
   });
 
   zylI18n.addTranslations('en', {
@@ -44,7 +46,9 @@
     'music.save': 'Save',
     'music.done': 'Done',
     'music.add_tracks': 'Add Tracks',
-    'music.tracks_count': 'tracks'
+    'music.tracks_count': 'tracks',
+    'music.no_track': 'No track selected',
+    'music.unknown_artist': 'Unknown artist'
   });
 
   zylI18n.addTranslations('ja', {
@@ -63,7 +67,9 @@
     'music.save': '\u4FDD\u5B58',
     'music.done': '\u5B8C\u4E86',
     'music.add_tracks': '\u66F2\u3092\u8FFD\u52A0',
-    'music.tracks_count': '\u66F2'
+    'music.tracks_count': '\u66F2',
+    'music.no_track': '\u30C8\u30E9\u30C3\u30AF\u672A\u9078\u629E',
+    'music.unknown_artist': '\u4E0D\u660E\u306A\u30A2\u30FC\u30C6\u30A3\u30B9\u30C8'
   });
 
   zylI18n.addTranslations('zh', {
@@ -82,7 +88,9 @@
     'music.save': '\u4FDD\u5B58',
     'music.done': '\u5B8C\u6210',
     'music.add_tracks': '\u6DFB\u52A0\u66F2\u76EE',
-    'music.tracks_count': '\u9996'
+    'music.tracks_count': '\u9996',
+    'music.no_track': '\u672A\u9009\u62E9\u66F2\u76EE',
+    'music.unknown_artist': '\u672A\u77E5\u827A\u672F\u5BB6'
   });
 
   zylI18n.addTranslations('es', {
@@ -101,6 +109,8 @@
     'music.save': 'Guardar',
     'music.done': 'Listo',
     'music.add_tracks': 'Agregar pistas',
-    'music.tracks_count': 'pistas'
+    'music.tracks_count': 'pistas',
+    'music.no_track': 'Sin pista seleccionada',
+    'music.unknown_artist': 'Artista desconocido'
   });
 })();

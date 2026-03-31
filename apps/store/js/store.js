@@ -185,7 +185,7 @@
       (function (cat) {
         var chip = document.createElement('span');
         chip.className = activeCategory === cat ? 'category-chip active' : 'category-chip';
-        chip.textContent = escapeHtml(cat);
+        chip.textContent = cat;
         chip.addEventListener('click', function () {
           activeCategory = cat;
           renderCategoryBar();
@@ -307,7 +307,7 @@
 
     var nameEl = document.createElement('span');
     nameEl.className = 'app-name';
-    nameEl.textContent = escapeHtml(app.name || app.id || '');
+    nameEl.textContent = app.name || app.id || '';
     nameRow.appendChild(nameEl);
 
     if (isSystem) {
@@ -331,14 +331,14 @@
     if (app.version) {
       var verEl = document.createElement('span');
       verEl.className = 'app-version';
-      verEl.textContent = 'v' + escapeHtml(app.version);
+      verEl.textContent = 'v' + app.version;
       infoEl.appendChild(verEl);
     }
 
     if (app.description) {
       var descEl = document.createElement('div');
       descEl.className = 'app-desc';
-      descEl.textContent = escapeHtml(app.description);
+      descEl.textContent = app.description;
       infoEl.appendChild(descEl);
     }
 
@@ -466,13 +466,13 @@
     var headerInfo = document.createElement('div');
     var nameEl = document.createElement('div');
     nameEl.className = 'detail-app-name';
-    nameEl.textContent = escapeHtml(app.name || app.id || '');
+    nameEl.textContent = app.name || app.id || '';
     headerInfo.appendChild(nameEl);
 
     if (app.version) {
       var verEl = document.createElement('div');
       verEl.className = 'detail-app-version';
-      verEl.textContent = 'v' + escapeHtml(app.version);
+      verEl.textContent = 'v' + app.version;
       headerInfo.appendChild(verEl);
     }
     headerDiv.appendChild(headerInfo);
@@ -508,7 +508,7 @@
     var descText = document.createElement('div');
     descText.className = 'detail-description-text';
     descText.textContent = app.description
-      ? escapeHtml(app.description)
+      ? app.description
       : zylI18n.t('store.no_description');
     detailContentEl.appendChild(descText);
 
@@ -590,7 +590,7 @@
 
     var valueEl = document.createElement('span');
     valueEl.className = 'detail-meta-value';
-    valueEl.textContent = escapeHtml(value);
+    valueEl.textContent = value;
     row.appendChild(valueEl);
 
     return row;

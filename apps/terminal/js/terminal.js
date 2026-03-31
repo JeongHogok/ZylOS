@@ -315,7 +315,8 @@
   }
 
   function updatePrompt() {
-    document.getElementById('prompt').textContent = getPrompt();
+    var el = document.getElementById('prompt');
+    if (el) el.textContent = getPrompt();
   }
 
   /* ─── Output Helpers ─── */
@@ -324,6 +325,12 @@
     line.className = 'line ' + (className || '');
     line.textContent = text;
     outputContent.appendChild(line);
+  }
+
+  function escapeHtml(str) {
+    var el = document.createElement('span');
+    el.textContent = str || '';
+    return el.innerHTML;
   }
 
   function addHtml(html, className) {
@@ -397,8 +404,8 @@
           var date = months[now.getMonth()] + ' ' + strPadStart(String(now.getDate()), 2, ' ') + ' ' + strPadStart(String(now.getHours()), 2, '0') + ':' + strPadStart(String(now.getMinutes()), 2, '0');
           var line = perms + '  1 user user ' + strPadStart(size, 8) + ' ' + date + ' ';
           addHtml(line + (isDir
-            ? '<span class="line-info">' + name + '</span>'
-            : '<span class="line-output">' + name + '</span>'));
+            ? '<span class="line-info">' + escapeHtml(name) + '</span>'
+            : '<span class="line-output">' + escapeHtml(name) + '</span>'));
         });
       } else {
         var output = '';
@@ -406,9 +413,9 @@
           var isDir = strEndsWith(entry, '/') || (filesystem[target + '/' + entry] !== undefined);
           var name = entry.replace(/\/$/, '');
           if (isDir) {
-            output += '<span class="line-info">' + name + '</span>  ';
+            output += '<span class="line-info">' + escapeHtml(name) + '</span>  ';
           } else {
-            output += '<span class="line-output">' + name + '</span>  ';
+            output += '<span class="line-output">' + escapeHtml(name) + '</span>  ';
           }
         });
         addHtml(output);
@@ -548,18 +555,18 @@
       var d = deviceData || {};
       var info = [
         '',
-        '<span class="line-bold">' + username + '@' + hostname + '</span>',
+        '<span class="line-bold">' + escapeHtml(username) + '@' + escapeHtml(hostname) + '</span>',
         '──────────────────',
-        '<span class="line-bold">OS:</span> ' + (d.osVersion || 'Zyl OS 0.1.0') + ' riscv64',
-        '<span class="line-bold">Host:</span> ' + (d.deviceName || 'Banana Pi BPI-F3'),
-        '<span class="line-bold">Kernel:</span> ' + (d.kernel ? d.kernel.replace('Linux ', '') : '6.6.63'),
+        '<span class="line-bold">OS:</span> ' + escapeHtml(d.osVersion || 'Zyl OS 0.1.0') + ' riscv64',
+        '<span class="line-bold">Host:</span> ' + escapeHtml(d.deviceName || 'Banana Pi BPI-F3'),
+        '<span class="line-bold">Kernel:</span> ' + escapeHtml(d.kernel ? d.kernel.replace('Linux ', '') : '6.6.63'),
         '<span class="line-bold">Uptime:</span> ' + formatUptime(d),
         '<span class="line-bold">Shell:</span> bash 5.2.26',
-        '<span class="line-bold">Resolution:</span> ' + (d.resolution || '720x1280'),
+        '<span class="line-bold">Resolution:</span> ' + escapeHtml(d.resolution || '720x1280'),
         '<span class="line-bold">DE:</span> Zyl OS Shell',
         '<span class="line-bold">WM:</span> Wayland',
         '<span class="line-bold">Terminal:</span> zyl-terminal',
-        '<span class="line-bold">CPU:</span> ' + (d.soc || 'SpacemiT K1 (RISC-V)').replace(' (RISC-V)', '') + ' (8) @ 1.6GHz',
+        '<span class="line-bold">CPU:</span> ' + escapeHtml((d.soc || 'SpacemiT K1 (RISC-V)').replace(' (RISC-V)', '')) + ' (8) @ 1.6GHz',
         '<span class="line-bold">Memory:</span> ' + formatMemory(d),
         '',
         '<span style="color:#ff4444">███</span><span style="color:#ff8800">███</span><span style="color:#ffff00">███</span><span style="color:#00ff41">███</span><span style="color:#4a9eff">███</span><span style="color:#a78bfa">███</span>',
@@ -749,7 +756,7 @@
           commandInput.value += result.text;
         }
         commandInput.focus();
-      });
+      }).catch(function () { commandInput.focus(); });
     }
   }
 
@@ -776,7 +783,7 @@
       var selectedText = selection.toString();
       if (!selectedText) return;
       if (typeof ZylBridge !== 'undefined') {
-        ZylBridge.requestService('clipboard', 'copy', { text: selectedText });
+        ZylBridge.requestService('clipboard', 'copy', { text: selectedText }).catch(function () { /* ignore */ });
       }
     }
 
@@ -849,8 +856,7 @@
 
       /* fs 응답 (getAllData — 시뮬레이션 명령용) */
       if (msg.service === 'fs' && msg.method === 'getAllData' && msg.data) {
-        fileSystem = msg.data.tree || {};
-        var unixView = msg.data.unixTree || {};
+        filesystem = msg.data.unixTree || {};
         fileContents = msg.data.fileContents || {};
       }
     } catch (err) { /* ignore parse errors from non-JSON messages */ }
