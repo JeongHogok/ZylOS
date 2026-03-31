@@ -171,11 +171,97 @@ static void webkit_load_uri(ZylWebEngine *self,
 
 #define WAM_MAX_APPS_WARN 5
 
+/* ─── #7: LMK (Low Memory Killer) ─────────────────────────────────────────
+ * /proc/meminfo의 MemAvailable과 MemTotal을 읽어 메모리 압박을 판단한다.
+ *   - 10% 미만: 가장 오래된 백그라운드 앱을 lifecycle_close로 종료
+ *   - 20% 미만: 경고 로그
+ * 앱 실행 순서는 lru_order GQueue로 LRU 방식으로 관리된다.
+ * ─────────────────────────────────────────────────────────────────────── */
+
+/* LRU 앱 순서 목록 (가장 앞이 가장 오래된 백그라운드 앱) */
+static GQueue *lmk_lru_order = NULL;
+
+static void lmk_init(void) {
+    if (!lmk_lru_order) lmk_lru_order = g_queue_new();
+}
+
+/* 앱 활성화 시 LRU 업데이트 — 앱을 큐 끝(가장 최근)으로 이동 */
+static void lmk_touch(const char *app_id) {
+    if (!lmk_lru_order || !app_id) return;
+    GList *existing = NULL;
+    for (GList *l = lmk_lru_order->head; l; l = l->next) {
+        if (g_strcmp0((const char *)l->data, app_id) == 0) {
+            existing = l;
+            break;
+        }
+    }
+    if (existing) {
+        char *id = existing->data;
+        g_queue_delete_link(lmk_lru_order, existing);
+        g_queue_push_tail(lmk_lru_order, id);
+    } else {
+        g_queue_push_tail(lmk_lru_order, g_strdup(app_id));
+    }
+}
+
+/* 앱 종료 시 LRU에서 제거 */
+static void lmk_remove(const char *app_id) {
+    if (!lmk_lru_order || !app_id) return;
+    for (GList *l = lmk_lru_order->head; l; l = l->next) {
+        if (g_strcmp0((const char *)l->data, app_id) == 0) {
+            g_free(l->data);
+            g_queue_delete_link(lmk_lru_order, l);
+            return;
+        }
+    }
+}
+
+/* /proc/meminfo 파싱 — MemTotal, MemAvailable 읽기 (kB 단위) */
+static bool lmk_read_meminfo(unsigned long *total_kb, unsigned long *avail_kb) {
+    FILE *f = fopen("/proc/meminfo", "r");
+    if (!f) return false;
+
+    *total_kb = 0;
+    *avail_kb = 0;
+    char line[128];
+    int  found  = 0;
+
+    while (fgets(line, sizeof(line), f) && found < 2) {
+        if (sscanf(line, "MemTotal: %lu kB", total_kb) == 1)  found++;
+        if (sscanf(line, "MemAvailable: %lu kB", avail_kb) == 1) found++;
+    }
+    fclose(f);
+    return (*total_kb > 0);
+}
+
 static void check_memory_pressure(ZylWam *wam) {
     int count = zyl_lifecycle_get_running_count(&wam->iface);
     if (count > WAM_MAX_APPS_WARN) {
         g_warning("Memory pressure: %d apps running (threshold %d)",
                   count, WAM_MAX_APPS_WARN);
+    }
+
+    /* #7: LMK — /proc/meminfo 기반 메모리 압박 처리 */
+    unsigned long total_kb = 0, avail_kb = 0;
+    if (!lmk_read_meminfo(&total_kb, &avail_kb) || total_kb == 0) return;
+
+    int pct = (int)((avail_kb * 100UL) / total_kb);
+
+    if (pct < 10) {
+        /* 임계값 10% 미만 — 가장 오래된 백그라운드 앱 종료 */
+        lmk_init();
+        if (!g_queue_is_empty(lmk_lru_order)) {
+            char *oldest = g_queue_pop_head(lmk_lru_order);
+            g_warning("[LMK] MemAvailable %d%% < 10%% — killing oldest bg app: %s",
+                      pct, oldest);
+            zyl_lifecycle_close(&wam->iface, oldest);
+            g_free(oldest);
+        } else {
+            g_warning("[LMK] MemAvailable %d%% < 10%% — no background app to kill", pct);
+        }
+    } else if (pct < 20) {
+        /* 임계값 20% 미만 — 경고 로그만 */
+        g_warning("[LMK] MemAvailable %d%% < 20%% — low memory warning", pct);
     }
 }
 
@@ -186,7 +272,12 @@ static void dbus_launch(GVariant *params, GDBusMethodInvocation *inv,
     g_variant_get(params, "(&s)", &app_id);
     ZylAppInstance *inst = zyl_lifecycle_launch(&wam->iface,
                                                &wam->engine, app_id);
-    if (inst) check_memory_pressure(wam);
+    if (inst) {
+        check_memory_pressure(wam);
+        /* #7: LRU 업데이트 — 방금 실행한 앱을 최근 사용으로 표시 */
+        lmk_init();
+        lmk_touch(app_id);
+    }
     g_dbus_method_invocation_return_value(inv,
         g_variant_new("(b)", inst != NULL));
 }
@@ -197,6 +288,8 @@ static void dbus_close(GVariant *params, GDBusMethodInvocation *inv,
     const gchar *app_id;
     g_variant_get(params, "(&s)", &app_id);
     zyl_lifecycle_close(&wam->iface, app_id);
+    /* #7: 종료된 앱을 LRU 큐에서 제거 */
+    lmk_remove(app_id);
     g_dbus_method_invocation_return_value(inv, NULL);
 }
 
@@ -265,6 +358,9 @@ static const ZylDbusMethodEntry dbus_methods[] = {
 
 static void on_activate(GApplication *app, gpointer user_data) {
     ZylWam *wam = user_data;
+
+    /* #7: LMK LRU 큐 초기화 */
+    lmk_init();
 
     zyl_manifest_scan_dir(wam->manifests, WAM_APP_DIR,  TRUE);
     zyl_manifest_scan_dir(wam->manifests, WAM_USER_DIR, FALSE);
