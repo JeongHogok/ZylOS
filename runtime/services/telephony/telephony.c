@@ -226,7 +226,7 @@ static void read_modem_state(ZylTelephonyService *svc) {
                     MM_DBUS_NAME, sim_path_str, MM_SIM_IFACE,
                     "EmergencyNumbers");
                 /* OwnNumbers 프로퍼티 대체 시도 */
-                (void)numbers;
+                if (numbers) g_variant_unref(numbers);
             }
             g_variant_unref(sim_obj);
         }
@@ -441,9 +441,11 @@ static void on_telephony_bus_acquired(GDBusConnection *conn, const gchar *name,
     svc->session_bus = conn;
 
     GDBusNodeInfo *info = g_dbus_node_info_new_for_xml(telephony_introspection_xml, NULL);
-    g_dbus_connection_register_object(conn, ZYL_TELEPHONY_DBUS_PATH,
-        info->interfaces[0], &telephony_vtable, svc, NULL, NULL);
-    g_dbus_node_info_unref(info);
+    if (info && info->interfaces && info->interfaces[0]) {
+        g_dbus_connection_register_object(conn, ZYL_TELEPHONY_DBUS_PATH,
+            info->interfaces[0], &telephony_vtable, svc, NULL, NULL);
+    }
+    if (info) g_dbus_node_info_unref(info);
     g_message("[Telephony] D-Bus registered: %s", ZYL_TELEPHONY_DBUS_NAME);
 }
 
@@ -552,11 +554,14 @@ int zyl_telephony_dial(ZylTelephonyService *svc, const char *number) {
         g_warning("[Telephony] Call Start failed: %s", err->message);
         g_clear_error(&err);
         transition_call_state(svc, ZYL_CALL_STATE_IDLE, number);
+        if (start_result) g_variant_unref(start_result);
+        g_variant_unref(result);
+        return -1;
     }
 
     if (start_result) g_variant_unref(start_result);
     g_variant_unref(result);
-    return err ? -1 : 0;
+    return 0;
 }
 
 int zyl_telephony_answer(ZylTelephonyService *svc) {
