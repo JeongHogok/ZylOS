@@ -84,7 +84,7 @@ static void emit_location_signal(ZylLocationService *svc,
         ZYL_LOCATION_DBUS_PATH,
         ZYL_LOCATION_DBUS_NAME,
         "LocationUpdated",
-        g_variant_new("(ddddddt&s)",
+        g_variant_new("(ddddddts)",
                        loc->latitude, loc->longitude, loc->altitude_m,
                        (double)loc->accuracy_m, (double)loc->speed_mps,
                        (double)loc->bearing_deg,
@@ -130,18 +130,20 @@ static void *location_poll_thread(void *arg) {
                 snprintf(svc->last_known.provider,
                          sizeof(svc->last_known.provider), "fused");
             }
+            /* Take a local copy for use outside the lock */
+            ZylLocation loc_copy = svc->last_known;
             pthread_mutex_unlock(&svc->lock);
 
-            /* 지오펜스 체크 */
-            check_geofences(svc, &svc->last_known);
+            /* 지오펜스 체크 — use local copy to avoid data race */
+            check_geofences(svc, &loc_copy);
 
             /* 콜백 호출 */
             if (svc->cb) {
-                svc->cb(&svc->last_known, svc->cb_data);
+                svc->cb(&loc_copy, svc->cb_data);
             }
 
             /* D-Bus 시그널 */
-            emit_location_signal(svc, &svc->last_known);
+            emit_location_signal(svc, &loc_copy);
         }
 
         /* 대기 */
@@ -216,7 +218,7 @@ static void handle_location_method(GDBusConnection *conn, const gchar *sender,
         pthread_mutex_unlock(&svc->lock);
 
         g_dbus_method_invocation_return_value(inv,
-            g_variant_new("(ddddddt&s)",
+            g_variant_new("(ddddddts)",
                            loc.latitude, loc.longitude, loc.altitude_m,
                            (double)loc.accuracy_m, (double)loc.speed_mps,
                            (double)loc.bearing_deg,
@@ -233,10 +235,11 @@ static void handle_location_method(GDBusConnection *conn, const gchar *sender,
 
     } else if (g_strcmp0(method, "AddGeofence") == 0) {
         gdouble lat, lon, radius;
-        const gchar *tag = NULL;
+        gchar *tag = NULL;
         g_variant_get(params, "(ddds)", &lat, &lon, &radius, &tag);
         ZylGeofence fence = { lat, lon, radius, (char *)tag };
         gint32 r = (gint32)zyl_location_add_geofence(svc, &fence);
+        g_free(tag);
         g_dbus_method_invocation_return_value(inv, g_variant_new("(i)", r));
 
     } else if (g_strcmp0(method, "RemoveGeofence") == 0) {
@@ -257,9 +260,11 @@ static void on_location_bus_acquired(GDBusConnection *conn, const gchar *name,
     svc->dbus = conn;
 
     GDBusNodeInfo *info = g_dbus_node_info_new_for_xml(location_introspection_xml, NULL);
-    g_dbus_connection_register_object(conn, ZYL_LOCATION_DBUS_PATH,
-        info->interfaces[0], &location_vtable, svc, NULL, NULL);
-    g_dbus_node_info_unref(info);
+    if (info && info->interfaces && info->interfaces[0]) {
+        g_dbus_connection_register_object(conn, ZYL_LOCATION_DBUS_PATH,
+            info->interfaces[0], &location_vtable, svc, NULL, NULL);
+    }
+    if (info) g_dbus_node_info_unref(info);
     g_message("[Location] D-Bus registered: %s", ZYL_LOCATION_DBUS_NAME);
 }
 
