@@ -121,16 +121,13 @@ window.ZylPermissionDialog = (function () {
     dialog.appendChild(btnRow);
     overlay.appendChild(dialog);
 
-    /* Insert into the compositor/emulator document (not the app iframe) */
-    var target = (window.parent && window.parent !== window)
-      ? window.parent.document.body : document.body;
-    target.appendChild(overlay);
+    /* 이 스크립트는 컴포지터(index.html)에서 로드되므로 document.body 직접 사용.
+     * window.parent.document 접근은 아키텍처 경계 위반 (CLAUDE.md §1). */
+    document.body.appendChild(overlay);
   }
 
   function handleResponse(granted) {
-    var el = (window.parent && window.parent !== window)
-      ? window.parent.document.getElementById('zyl-permission-dialog')
-      : document.getElementById('zyl-permission-dialog');
+    var el = document.getElementById('zyl-permission-dialog');
     if (el) el.parentNode.removeChild(el);
 
     if (_pendingGrant) {
