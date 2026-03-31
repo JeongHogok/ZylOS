@@ -50,13 +50,35 @@ static bool ensure_dir(const char *path) {
     return mkdir(path, 0700) == 0 || errno == EEXIST;
 }
 
-static void build_path(char *out, size_t out_len,
+/**
+ * Validate that a D-Bus-supplied name contains no path traversal characters.
+ * Only allows alphanumeric, dash, underscore, and dot (but not ".." sequences).
+ */
+static bool is_safe_name(const char *name) {
+    if (!name || !name[0]) return false;
+    for (const char *p = name; *p; p++) {
+        char c = *p;
+        if (c == '/' || c == '\\' || c == '\0') return false;
+    }
+    /* Reject ".." path traversal */
+    if (strstr(name, "..") != NULL) return false;
+    return true;
+}
+
+static bool build_path(char *out, size_t out_len,
                         const char *store, const char *service,
                         const char *account) {
+    if (!is_safe_name(service) || !is_safe_name(account)) {
+        fprintf(stderr, "[Credential] Rejected unsafe name: service='%s' account='%s'\n",
+                service ? service : "(null)", account ? account : "(null)");
+        out[0] = '\0';
+        return false;
+    }
     snprintf(out, out_len, "%s/%s", store, service);
     ensure_dir(out);
     size_t len = strlen(out);
     snprintf(out + len, out_len - len, "/%s.enc", account);
+    return true;
 }
 
 /* ─── AES-256-GCM 암호화 ─── */
@@ -388,7 +410,8 @@ int zyl_credential_store(ZylCredentialStore *store,
     }
 
     char path[512];
-    build_path(path, sizeof(path), store->store_path, service, account);
+    if (!build_path(path, sizeof(path), store->store_path, service, account))
+        return -1;
 
     /* Generate random salt per file */
     uint8_t salt[SALT_LEN];
@@ -447,7 +470,8 @@ int zyl_credential_lookup(ZylCredentialStore *store,
     }
 
     char path[512];
-    build_path(path, sizeof(path), store->store_path, service, account);
+    if (!build_path(path, sizeof(path), store->store_path, service, account))
+        return -1;
 
     FILE *f = fopen(path, "rb");
     if (!f) return -1;
@@ -496,7 +520,8 @@ int zyl_credential_delete(ZylCredentialStore *store,
     if (!store || !service || !account) return -1;
 
     char path[512];
-    build_path(path, sizeof(path), store->store_path, service, account);
+    if (!build_path(path, sizeof(path), store->store_path, service, account))
+        return -1;
 
     /* Overwrite file with random data before unlinking (secure delete) */
     FILE *f = fopen(path, "r+b");
@@ -507,7 +532,7 @@ int zyl_credential_delete(ZylCredentialStore *store,
             fseek(f, 0, SEEK_SET);
             uint8_t *noise = malloc((size_t)len);
             if (noise) {
-                RAND_bytes(noise, (int)len);
+                RAND_bytes(noise, len > INT_MAX ? INT_MAX : (int)len);
                 fwrite(noise, 1, (size_t)len, f);
                 fflush(f);
                 free(noise);
