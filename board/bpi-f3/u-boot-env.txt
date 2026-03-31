@@ -1,0 +1,56 @@
+# ──────────────────────────────────────────────────────────
+# [Clean Architecture] Infrastructure Layer - Bootloader Config
+#
+# 역할: U-Boot 환경 변수 — Verified Boot + A/B 파티션 전환
+# 수행범위: 부트 명령, 파티션 선택, 롤백 카운터
+# 의존방향: U-Boot FIT 서명 검증
+# ──────────────────────────────────────────────────────────
+
+# A/B slot selection
+zyl_active_slot=a
+zyl_retry_count=0
+zyl_max_retries=3
+
+# Partition layout (eMMC / SD)
+# p1: U-Boot env + FIT image (boot)
+# p2: rootfs slot A
+# p3: verity hash tree slot A
+# p4: rootfs slot B
+# p5: verity hash tree slot B
+# p6: userdata (ext4)
+zyl_boot_part=1
+zyl_rootfs_a=2
+zyl_verity_a=3
+zyl_rootfs_b=4
+zyl_verity_b=5
+zyl_data=6
+
+# FIT image load address
+fit_addr=0x10000000
+
+# Boot command — verified boot with A/B fallback
+bootcmd=\
+  if test "${zyl_active_slot}" = "b"; then \
+    setenv rootfs_part ${zyl_rootfs_b}; \
+    setenv verity_part ${zyl_verity_b}; \
+  else \
+    setenv rootfs_part ${zyl_rootfs_a}; \
+    setenv verity_part ${zyl_verity_a}; \
+  fi; \
+  load mmc 0:${zyl_boot_part} ${fit_addr} fit-image.itb; \
+  bootm ${fit_addr}
+
+# Rollback: if boot fails 3 times, switch slot
+altbootcmd=\
+  if test "${zyl_active_slot}" = "a"; then \
+    setenv zyl_active_slot b; \
+  else \
+    setenv zyl_active_slot a; \
+  fi; \
+  setenv zyl_retry_count 0; \
+  saveenv; \
+  echo "ZylOS: Rolled back to slot ${zyl_active_slot}"; \
+  run bootcmd
+
+# Boot count management (called by bootcount mechanism)
+bootlimit=3

@@ -1,0 +1,2 @@
+# Boot signing private keys — NEVER commit
+*.key

@@ -1,0 +1,79 @@
+/*
+ * [Clean Architecture] Infrastructure Layer - Boot Configuration
+ *
+ * 역할: U-Boot FIT(Flattened Image Tree) 이미지 소스 — Verified Boot
+ * 수행범위: 커널 + DTB + 램디스크를 단일 서명 이미지로 패키징
+ * 의존방향: U-Boot mkimage, RSA-2048 서명 키
+ * SOLID: SRP — 부트 이미지 정의만 담당
+ *
+ * 사용법:
+ *   mkimage -f fit-image.its -k keys/ -K u-boot.dtb -r fit-image.itb
+ *
+ * 서명 검증 체인:
+ *   U-Boot SPL (ROM) → U-Boot (SPL 서명검증)
+ *     → FIT 이미지 (U-Boot 서명검증: RSA-2048+SHA-256)
+ *       → kernel + dtb + ramdisk
+ */
+
+/dts-v1/;
+
+/ {
+    description = "Zyl OS Verified Boot Image (BPI-F3 SpacemiT K1)";
+    #address-cells = <2>;
+
+    images {
+        kernel-1 {
+            description = "Zyl OS Linux Kernel 6.6 (RISC-V)";
+            data = /incbin/("../../vmlinuz");
+            type = "kernel";
+            arch = "riscv";
+            os = "linux";
+            compression = "gzip";
+            load = <0x0 0x00200000>;
+            entry = <0x0 0x00200000>;
+            hash-1 {
+                algo = "sha256";
+            };
+        };
+
+        fdt-1 {
+            description = "BPI-F3 Device Tree (SpacemiT K1)";
+            data = /incbin/("../../system/dts/bpi-f3-zyl.dtb");
+            type = "flat_dt";
+            arch = "riscv";
+            compression = "none";
+            hash-1 {
+                algo = "sha256";
+            };
+        };
+
+        ramdisk-1 {
+            description = "Zyl OS initramfs";
+            data = /incbin/("../../initramfs.cpio.gz");
+            type = "ramdisk";
+            arch = "riscv";
+            os = "linux";
+            compression = "gzip";
+            hash-1 {
+                algo = "sha256";
+            };
+        };
+    };
+
+    configurations {
+        default = "conf-1";
+
+        conf-1 {
+            description = "Zyl OS Standard Boot (BPI-F3)";
+            kernel = "kernel-1";
+            fdt = "fdt-1";
+            ramdisk = "ramdisk-1";
+
+            signature-1 {
+                algo = "sha256,rsa2048";
+                key-name-hint = "zylos-boot-key";
+                sign-images = "kernel", "fdt", "ramdisk";
+            };
+        };
+    };
+};
