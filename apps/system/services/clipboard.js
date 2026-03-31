@@ -201,8 +201,17 @@
         if (!p || typeof p.callback !== 'function') {
           return { error: 'callback is required' };
         }
-        var id = _listeners.length;
-        _listeners.push({ appId: p.appId || '', callback: p.callback });
+        /* Reuse nullified slots to prevent unbounded growth */
+        var id = -1;
+        for (var j = 0; j < _listeners.length; j++) {
+          if (_listeners[j].callback === null) { id = j; break; }
+        }
+        if (id === -1) {
+          id = _listeners.length;
+          _listeners.push({ appId: p.appId || '', callback: p.callback });
+        } else {
+          _listeners[id] = { appId: p.appId || '', callback: p.callback };
+        }
         return { listenerId: id };
       },
 

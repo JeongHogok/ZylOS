@@ -95,13 +95,17 @@
         if (!list) return;
         list.innerHTML = '';
         if (msg.data.length === 0) {
-          list.innerHTML = '<div class="oobe-option">No networks found</div>';
+          var emptyEl = document.createElement('div');
+          emptyEl.className = 'oobe-option';
+          emptyEl.textContent = (typeof zylI18n !== 'undefined') ? zylI18n.t('oobe.no_networks') : 'No networks found';
+          list.appendChild(emptyEl);
           return;
         }
         msg.data.forEach(function (net) {
           var el = document.createElement('div');
           el.className = 'oobe-option' + (net.connected ? ' selected' : '');
-          el.textContent = net.ssid + (net.connected ? ' (Connected)' : '');
+          var connectedLabel = (typeof zylI18n !== 'undefined') ? zylI18n.t('oobe.connected') : '(Connected)';
+          el.textContent = net.ssid + (net.connected ? ' ' + connectedLabel : '');
           addButtonKeyHandler(el);
           el.addEventListener('click', function () {
             list.querySelectorAll('.oobe-option').forEach(function (o) { o.classList.remove('selected'); });

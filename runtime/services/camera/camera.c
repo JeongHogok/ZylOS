@@ -301,6 +301,13 @@ int zyl_camera_capture(ZylCameraService *cam, const char *output_path) {
         return -1;
     }
 
+    /* Whitelist: only allow writes under /data/camera/ */
+    if (strncmp(output_path, "/data/camera/", 13) != 0) {
+        fprintf(stderr, "[Camera] Rejected output path outside /data/camera/: %s\n",
+                output_path);
+        return -1;
+    }
+
     /* Ensure streaming for capture */
     bool was_streaming = cam->streaming;
     if (!was_streaming) {

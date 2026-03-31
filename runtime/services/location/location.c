@@ -12,12 +12,7 @@
 
 #include "location_internal.h"
 
-/* ─── 현재 시각 밀리초 ─── */
-uint64_t now_ms(void) {
-    struct timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts);
-    return (uint64_t)ts.tv_sec * 1000ULL + (uint64_t)ts.tv_nsec / 1000000ULL;
-}
+/* now_ms() — moved to location_internal.h as static inline */
 
 /* ─── 지오펜스: Haversine 거리 계산 ─── */
 #define DEG2RAD(d)  ((d) * M_PI / 180.0)

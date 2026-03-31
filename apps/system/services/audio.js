@@ -35,6 +35,14 @@
       if (s.silentMode !== undefined) audioState.silentMode = !!s.silentMode;
     }
 
+    /* AudioContext singleton — avoid re-creating per sound */
+    var _audioCtx = null;
+    function getAudioCtx() {
+      if (_audioCtx && _audioCtx.state !== 'closed') return _audioCtx;
+      _audioCtx = getAudioCtx();
+      return _audioCtx;
+    }
+
     return {
       _loadFromSettings: loadFromSettings,
       _getAudioState: function () { return audioState; },
@@ -86,7 +94,7 @@
       playNotificationSound: function () {
         if (audioState.silentMode) return Promise.resolve(false);
         try {
-          var ctx = new (window.AudioContext || window.webkitAudioContext)();
+          var ctx = getAudioCtx();
           var osc = ctx.createOscillator();
           var gain = ctx.createGain();
           gain.gain.value = (audioState.notifVolume / 100) * 0.5;
@@ -110,7 +118,7 @@
         var dur = parseInt(p.duration, 10) || 200;
         var rep = parseInt(p.repeat, 10) || 1;
         try {
-          var ctx = new (window.AudioContext || window.webkitAudioContext)();
+          var ctx = getAudioCtx();
           var gain = ctx.createGain();
           gain.gain.value = (audioState.alarmVolume / 100) * 0.5;
           gain.connect(ctx.destination);
@@ -129,7 +137,7 @@
       playKeyClick: function () {
         if (audioState.silentMode) return Promise.resolve(false);
         try {
-          var ctx = new (window.AudioContext || window.webkitAudioContext)();
+          var ctx = getAudioCtx();
           var osc = ctx.createOscillator();
           var g = ctx.createGain();
           g.gain.value = (audioState.systemVolume / 100) * 0.1;

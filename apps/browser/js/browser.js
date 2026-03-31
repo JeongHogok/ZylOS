@@ -126,8 +126,16 @@
       var el = document.createElement('div');
       el.className = 'tab' + (tab.id === activeTabId ? ' active' : '');
       el.dataset.tab = tab.id;
-      el.innerHTML = '<span class="tab-title">' + escapeHtml(tab.title) + '</span>' +
-        (tabs.length > 1 ? '<button class="tab-close">&times;</button>' : '');
+      var titleSpan = document.createElement('span');
+      titleSpan.className = 'tab-title';
+      titleSpan.textContent = tab.title;
+      el.appendChild(titleSpan);
+      if (tabs.length > 1) {
+        var closeBtn = document.createElement('button');
+        closeBtn.className = 'tab-close';
+        closeBtn.textContent = '\u00d7';
+        el.appendChild(closeBtn);
+      }
       addButtonKeyHandler(el);
       el.addEventListener('click', function (e) {
         if (e.target.classList.contains('tab-close')) {
@@ -337,13 +345,18 @@
     var notice = document.createElement('div');
     notice.id = 'blocked-notice';
     notice.style.cssText = 'position:absolute;inset:0;background:#f8f9fa;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;text-align:center;color:#333;z-index:2';
-    notice.innerHTML =
-      '<div style="font-size:48px;margin-bottom:16px">🔒</div>' +
-      '<div style="font-size:16px;font-weight:600;margin-bottom:8px">' + escapeHtml(domain || url) + '</div>' +
-      '<div style="font-size:13px;color:#666;line-height:1.6;max-width:280px">' +
-        'This site blocks iframe embedding (X-Frame-Options).<br>' +
-        'On real hardware, pages load via native WebKitGTK.' +
-      '</div>';
+    var iconDiv = document.createElement('div');
+    iconDiv.style.cssText = 'font-size:48px;margin-bottom:16px';
+    iconDiv.textContent = '\uD83D\uDD12';
+    var domainDiv = document.createElement('div');
+    domainDiv.style.cssText = 'font-size:16px;font-weight:600;margin-bottom:8px';
+    domainDiv.textContent = domain || url;
+    var msgDiv = document.createElement('div');
+    msgDiv.style.cssText = 'font-size:13px;color:#666;line-height:1.6;max-width:280px';
+    msgDiv.textContent = zylI18n.t('browser.blocked_iframe');
+    notice.appendChild(iconDiv);
+    notice.appendChild(domainDiv);
+    notice.appendChild(msgDiv);
     webPage.appendChild(notice);
   }
 
@@ -413,7 +426,10 @@
     if (!list) return;
     list.innerHTML = '';
     if (bookmarksData.length === 0) {
-      list.innerHTML = '<div style="padding:16px;opacity:0.5;text-align:center">No bookmarks</div>';
+      var emptyDiv = document.createElement('div');
+      emptyDiv.style.cssText = 'padding:16px;opacity:0.5;text-align:center';
+      emptyDiv.textContent = zylI18n.t('browser.no_bookmarks');
+      list.appendChild(emptyDiv);
       return;
     }
     bookmarksData.forEach(function (bm) {
@@ -473,7 +489,7 @@
     if (typeof ZylBridge !== 'undefined') {
       ZylBridge.requestService('clipboard', 'copy', { text: tab.url });
     }
-    showToast('URL copied');
+    showToast(zylI18n.t('browser.url_copied'));
   }
 
   /* URL 입력 필드 더블탭 시 복사 */

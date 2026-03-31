@@ -33,6 +33,7 @@
 #define IV_LEN           12   /* GCM recommended IV length */
 #define TAG_LEN          16   /* GCM authentication tag */
 #define PBKDF2_ITER      100000
+#define MAX_NAME_LEN     255
 
 struct ZylCredentialStore {
     char *store_path;
@@ -56,6 +57,7 @@ static bool ensure_dir(const char *path) {
  */
 static bool is_safe_name(const char *name) {
     if (!name || !name[0]) return false;
+    if (strlen(name) > MAX_NAME_LEN) return false;
     for (const char *p = name; *p; p++) {
         char c = *p;
         if (c == '/' || c == '\\' || c == '\0') return false;

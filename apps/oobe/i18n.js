@@ -31,7 +31,9 @@
     'oobe.complete_desc': 'Zyl OS\uB97C \uC990\uACA8\uBCF4\uC138\uC694!',
     'oobe.start': '\uC2DC\uC791',
     'oobe.pin_format': 'PIN\uC740 4\uC790\uB9AC \uC22B\uC790\uC5EC\uC57C \uD569\uB2C8\uB2E4',
-    'oobe.pin_mismatch': 'PIN\uC774 \uC77C\uCE58\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4'
+    'oobe.pin_mismatch': 'PIN\uC774 \uC77C\uCE58\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4',
+    'oobe.no_networks': '\uB124\uD2B8\uC6CC\uD06C\uB97C \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4',
+    'oobe.connected': '(\uC5F0\uACB0\uB428)'
   });
 
   zylI18n.addTranslations('en', {
@@ -56,7 +58,9 @@
     'oobe.complete_desc': 'Enjoy Zyl OS!',
     'oobe.start': 'Start',
     'oobe.pin_format': 'PIN must be 4 digits',
-    'oobe.pin_mismatch': 'PINs do not match'
+    'oobe.pin_mismatch': 'PINs do not match',
+    'oobe.no_networks': 'No networks found',
+    'oobe.connected': '(Connected)'
   });
 
   zylI18n.addTranslations('ja', {
@@ -81,7 +85,9 @@
     'oobe.complete_desc': 'Zyl OS\u3092\u304A\u697D\u3057\u307F\u304F\u3060\u3055\u3044\uFF01',
     'oobe.start': '\u958B\u59CB',
     'oobe.pin_format': 'PIN\u306F4\u6841\u306E\u6570\u5B57\u3067\u3059',
-    'oobe.pin_mismatch': 'PIN\u304C\u4E00\u81F4\u3057\u307E\u305B\u3093'
+    'oobe.pin_mismatch': 'PIN\u304C\u4E00\u81F4\u3057\u307E\u305B\u3093',
+    'oobe.no_networks': '\u30CD\u30C3\u30C8\u30EF\u30FC\u30AF\u304C\u898B\u3064\u304B\u308A\u307E\u305B\u3093',
+    'oobe.connected': '(\u63A5\u7D9A\u6E08\u307F)'
   });
 
   zylI18n.addTranslations('zh', {
@@ -106,7 +112,9 @@
     'oobe.complete_desc': '\u5C3D\u60C5\u4EAB\u53D7Zyl OS\uFF01',
     'oobe.start': '\u5F00\u59CB',
     'oobe.pin_format': 'PIN\u5FC5\u987B\u662F4\u4F4D\u6570\u5B57',
-    'oobe.pin_mismatch': 'PIN\u4E0D\u4E00\u81F4'
+    'oobe.pin_mismatch': 'PIN\u4E0D\u4E00\u81F4',
+    'oobe.no_networks': '\u672A\u627E\u5230\u7F51\u7EDC',
+    'oobe.connected': '(\u5DF2\u8FDE\u63A5)'
   });
 
   zylI18n.addTranslations('es', {
@@ -131,6 +139,8 @@
     'oobe.complete_desc': '\u00A1Disfruta de Zyl OS!',
     'oobe.start': 'Iniciar',
     'oobe.pin_format': 'El PIN debe ser de 4 d\u00EDgitos',
-    'oobe.pin_mismatch': 'Los PIN no coinciden'
+    'oobe.pin_mismatch': 'Los PIN no coinciden',
+    'oobe.no_networks': 'No se encontraron redes',
+    'oobe.connected': '(Conectado)'
   });
 })();
