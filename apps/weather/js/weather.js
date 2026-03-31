@@ -62,6 +62,9 @@
           }
           setRefreshing(false);
         }
+      }).catch(function (err) {
+        if (typeof console !== 'undefined') console.error('[Weather] permission check failed:', err);
+        setRefreshing(false);
       });
     } else {
       /* ZylPermissionDialog 미로드 시 폴백 */

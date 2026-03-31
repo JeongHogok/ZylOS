@@ -46,9 +46,14 @@ static int run_cmd(const char *cmd, char *out, size_t out_len) {
 
 /* ─── Helper: check if command exists ─── */
 static bool cmd_exists(const char *cmd) {
-    char buf[512];
-    snprintf(buf, sizeof(buf), "command -v %s >/dev/null 2>&1", cmd);
-    return system(buf) == 0;
+    /* Check common paths directly instead of using shell */
+    const char *dirs[] = {"/usr/bin/", "/usr/sbin/", "/bin/", "/sbin/", NULL};
+    char path[512];
+    for (int i = 0; dirs[i]; i++) {
+        snprintf(path, sizeof(path), "%s%s", dirs[i], cmd);
+        if (access(path, X_OK) == 0) return true;
+    }
+    return false;
 }
 
 /* ─── Settings persistence ─── */
@@ -63,6 +68,8 @@ static void save_audio_settings(void) {
     fprintf(f, "call=%d\n", g_audio.call_volume);
     fprintf(f, "vibration=%d\n", g_audio.vibration ? 1 : 0);
     fprintf(f, "silent=%d\n", g_audio.silent_mode ? 1 : 0);
+    fflush(f);
+    fsync(fileno(f));
     fclose(f);
 }
 

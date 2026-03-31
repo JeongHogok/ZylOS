@@ -77,20 +77,18 @@ static void speak_text(const char *text, int priority) {
     if (!text || !text[0]) return;
     (void)priority;
 
-    /* Use espeak-ng for TTS */
-    char cmd[1024];
-    /* Sanitize: remove shell-special characters */
-    char safe[512];
-    int j = 0;
-    for (int i = 0; text[i] && j < (int)sizeof(safe) - 1; i++) {
-        if (text[i] != '\'' && text[i] != '\\' && text[i] != '"' && text[i] != '`') {
-            safe[j++] = text[i];
+    /* Use g_spawn_async with argv to avoid shell injection */
+    gchar *argv[] = { "espeak-ng", (gchar *)text, NULL };
+    GError *err = NULL;
+    gboolean ok = g_spawn_async(NULL, argv, NULL,
+        G_SPAWN_SEARCH_PATH | G_SPAWN_STDOUT_TO_DEV_NULL | G_SPAWN_STDERR_TO_DEV_NULL,
+        NULL, NULL, NULL, &err);
+    if (!ok) {
+        if (err) {
+            g_message("[A11y] espeak-ng failed: %s", err->message);
+            g_error_free(err);
         }
     }
-    safe[j] = '\0';
-
-    snprintf(cmd, sizeof(cmd), "espeak-ng '%s' 2>/dev/null &", safe);
-    (void)system(cmd);
 }
 
 static void handle_a11y_method(GDBusConnection *conn, const gchar *sender,
@@ -151,7 +149,13 @@ int main(int argc, char *argv[]) {
     (void)argc; (void)argv;
 
     /* Ensure AT-SPI2 registry is running */
-    (void)system("/usr/libexec/at-spi2-registryd &");
+    /* Start AT-SPI2 registry via g_spawn_async (no shell) */
+    {
+        gchar *reg_argv[] = { "/usr/libexec/at-spi2-registryd", NULL };
+        g_spawn_async(NULL, reg_argv, NULL,
+            G_SPAWN_STDOUT_TO_DEV_NULL | G_SPAWN_STDERR_TO_DEV_NULL,
+            NULL, NULL, NULL, NULL);
+    }
 
     g_bus_own_name(G_BUS_TYPE_SESSION,
         A11Y_DBUS_NAME, G_BUS_NAME_OWNER_FLAGS_NONE,

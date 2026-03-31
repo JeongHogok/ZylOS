@@ -17,6 +17,8 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <time.h>
+#include <spawn.h>
+#include <sys/wait.h>
 
 #include <openssl/evp.h>
 #include <openssl/pem.h>
@@ -83,6 +85,8 @@ static bool write_file_string(const char *path, const char *content) {
     FILE *f = fopen(path, "w");
     if (!f) return false;
     fputs(content, f);
+    fflush(f);
+    fsync(fileno(f));
     fclose(f);
     return true;
 }
@@ -90,6 +94,34 @@ static bool write_file_string(const char *path, const char *content) {
 static void report_progress(ZylUpdater *u, int pct, const char *msg) {
     if (u->progress_cb)
         u->progress_cb(u->state, pct, msg, u->progress_data);
+}
+
+/* ─── 유틸리티: 경로 안전성 검증 (shell metacharacter 거부) ─── */
+static bool is_safe_path(const char *path) {
+    if (!path || path[0] == '\0') return false;
+    for (const char *p = path; *p; p++) {
+        switch (*p) {
+        case ';': case '&': case '|': case '$':
+        case '`': case '(': case ')': case '{':
+        case '}': case '<': case '>': case '!':
+        case '\n': case '\r':
+            return false;
+        default:
+            break;
+        }
+    }
+    return true;
+}
+
+/* posix_spawn helper — system() 사용 금지 (command injection 방지) */
+static int safe_exec(const char *const argv[]) {
+    pid_t pid;
+    char *envp[] = {"PATH=/usr/sbin:/usr/bin:/sbin:/bin", NULL};
+    int rc = posix_spawn(&pid, argv[0], NULL, NULL, (char *const *)argv, envp);
+    if (rc != 0) return -1;
+    int status = 0;
+    waitpid(pid, &status, 0);
+    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 }
 
 /* ─── 유틸리티: 파일 내용 전체 읽기 ─── */
@@ -638,17 +670,23 @@ bool zyl_updater_apply(ZylUpdater *u,
             inactive);
 
     /* 2. 업데이트 유형별 적용 */
-    char cmd[1024];
     int ret = 0;
 
     switch (u->pending->type) {
-    case ZYL_UPDATE_TYPE_FULL:
+    case ZYL_UPDATE_TYPE_FULL: {
         /* 비활성 파티션에 전체 이미지 기록 (dd) */
         report_progress(u, 10, "Writing full image to partition...");
-        snprintf(cmd, sizeof(cmd),
-                 "dd if='%s' of=/dev/mmcblk0p%s bs=4M conv=fsync 2>/dev/null",
-                 pkg_path, inactive_part);
-        ret = system(cmd);
+        if (!is_safe_path(pkg_path)) {
+            fprintf(stderr, "[UPDATER] Unsafe pkg_path rejected\n");
+            u->state = ZYL_UPDATE_FAILED;
+            return false;
+        }
+        const char *dd_argv[] = {"/bin/dd", NULL, NULL, "bs=4M", "conv=fsync", NULL};
+        char dd_if[512], dd_of[128];
+        snprintf(dd_if, sizeof(dd_if), "if=%s", pkg_path);
+        snprintf(dd_of, sizeof(dd_of), "of=/dev/mmcblk0p%s", inactive_part);
+        dd_argv[1] = dd_if; dd_argv[2] = dd_of;
+        ret = safe_exec(dd_argv);
         if (ret != 0) {
             fprintf(stderr, "[UPDATER] dd failed (exit %d)\n", ret);
             u->state = ZYL_UPDATE_FAILED;
@@ -657,14 +695,21 @@ bool zyl_updater_apply(ZylUpdater *u,
         }
         report_progress(u, 60, "Image written successfully");
         break;
+    }
 
-    case ZYL_UPDATE_TYPE_DELTA:
+    case ZYL_UPDATE_TYPE_DELTA: {
         /* bspatch로 델타 패치 적용 */
         report_progress(u, 10, "Applying delta patch...");
-        snprintf(cmd, sizeof(cmd),
-                 "bspatch /dev/mmcblk0p%s /dev/mmcblk0p%s '%s' 2>/dev/null",
-                 active_part, inactive_part, pkg_path);
-        ret = system(cmd);
+        if (!is_safe_path(pkg_path)) {
+            fprintf(stderr, "[UPDATER] Unsafe pkg_path rejected\n");
+            u->state = ZYL_UPDATE_FAILED;
+            return false;
+        }
+        char bsp_src[64], bsp_dst[64];
+        snprintf(bsp_src, sizeof(bsp_src), "/dev/mmcblk0p%s", active_part);
+        snprintf(bsp_dst, sizeof(bsp_dst), "/dev/mmcblk0p%s", inactive_part);
+        const char *bsp_argv[] = {"/usr/bin/bspatch", bsp_src, bsp_dst, pkg_path, NULL};
+        ret = safe_exec(bsp_argv);
         if (ret != 0) {
             fprintf(stderr, "[UPDATER] bspatch failed (exit %d)\n", ret);
             u->state = ZYL_UPDATE_FAILED;
@@ -673,18 +718,29 @@ bool zyl_updater_apply(ZylUpdater *u,
         }
         report_progress(u, 60, "Delta patch applied");
         break;
+    }
 
-    case ZYL_UPDATE_TYPE_APPS_ONLY:
+    case ZYL_UPDATE_TYPE_APPS_ONLY: {
         /* 시스템 앱만 추출 및 업데이트 */
         report_progress(u, 10, "Extracting app updates...");
-        snprintf(cmd, sizeof(cmd),
-                 "mkdir -p /tmp/zyl-app-update && "
-                 "unzip -o -q '%s' -d /tmp/zyl-app-update 2>/dev/null && "
-                 "cp -a /tmp/zyl-app-update/apps/* /usr/share/zyl-os/apps/ "
-                 "2>/dev/null && "
-                 "rm -rf /tmp/zyl-app-update",
-                 pkg_path);
-        ret = system(cmd);
+        if (!is_safe_path(pkg_path)) {
+            fprintf(stderr, "[UPDATER] Unsafe pkg_path rejected\n");
+            u->state = ZYL_UPDATE_FAILED;
+            return false;
+        }
+        const char *mkdir_argv[] = {"/bin/mkdir", "-p", "/tmp/zyl-app-update", NULL};
+        ret = safe_exec(mkdir_argv);
+        if (ret == 0) {
+            const char *unzip_argv[] = {"/usr/bin/unzip", "-o", "-q", pkg_path, "-d", "/tmp/zyl-app-update", NULL};
+            ret = safe_exec(unzip_argv);
+        }
+        if (ret == 0) {
+            const char *cp_argv[] = {"/bin/cp", "-a", "/tmp/zyl-app-update/apps/.", "/usr/share/zyl-os/apps/", NULL};
+            ret = safe_exec(cp_argv);
+        }
+        /* Cleanup regardless */
+        const char *rm_argv[] = {"/bin/rm", "-rf", "/tmp/zyl-app-update", NULL};
+        safe_exec(rm_argv);
         if (ret != 0) {
             fprintf(stderr, "[UPDATER] App update extraction failed\n");
             u->state = ZYL_UPDATE_FAILED;
@@ -693,14 +749,24 @@ bool zyl_updater_apply(ZylUpdater *u,
         }
         report_progress(u, 60, "Apps updated");
         break;
+    }
 
-    case ZYL_UPDATE_TYPE_KERNEL:
+    case ZYL_UPDATE_TYPE_KERNEL: {
         /* 커널 이미지 교체 */
         report_progress(u, 10, "Updating kernel image...");
-        snprintf(cmd, sizeof(cmd),
-                 "cp '%s' /boot/Image.%s 2>/dev/null && sync",
-                 pkg_path, inactive);
-        ret = system(cmd);
+        if (!is_safe_path(pkg_path)) {
+            fprintf(stderr, "[UPDATER] Unsafe pkg_path rejected\n");
+            u->state = ZYL_UPDATE_FAILED;
+            return false;
+        }
+        char kern_dst[128];
+        snprintf(kern_dst, sizeof(kern_dst), "/boot/Image.%s", inactive);
+        const char *cp_argv[] = {"/bin/cp", pkg_path, kern_dst, NULL};
+        ret = safe_exec(cp_argv);
+        if (ret == 0) {
+            const char *sync_argv[] = {"/bin/sync", NULL};
+            ret = safe_exec(sync_argv);
+        }
         if (ret != 0) {
             fprintf(stderr, "[UPDATER] Kernel copy failed\n");
             u->state = ZYL_UPDATE_FAILED;
@@ -710,29 +776,33 @@ bool zyl_updater_apply(ZylUpdater *u,
         report_progress(u, 60, "Kernel image updated");
         break;
     }
+    }
 
     /* 3. U-Boot 환경변수 설정 via fw_setenv */
     report_progress(u, 70, "Setting boot flags...");
 
-    snprintf(cmd, sizeof(cmd),
-             "fw_setenv zyl_next_slot %s 2>/dev/null", inactive);
-    ret = system(cmd);
-    if (ret != 0) {
-        fprintf(stderr, "[UPDATER] fw_setenv zyl_next_slot failed (exit %d), using file fallback\n", ret);
+    {
+        const char *fwse_slot[] = {"/usr/sbin/fw_setenv", "zyl_next_slot", inactive, NULL};
+        ret = safe_exec(fwse_slot);
+        if (ret != 0) {
+            fprintf(stderr, "[UPDATER] fw_setenv zyl_next_slot failed (exit %d), using file fallback\n", ret);
+        }
     }
 
-    snprintf(cmd, sizeof(cmd),
-             "fw_setenv zyl_slot_verified 0 2>/dev/null");
-    ret = system(cmd);
-    if (ret != 0) {
-        fprintf(stderr, "[UPDATER] fw_setenv zyl_slot_verified failed (exit %d)\n", ret);
+    {
+        const char *fwse_verified[] = {"/usr/sbin/fw_setenv", "zyl_slot_verified", "0", NULL};
+        ret = safe_exec(fwse_verified);
+        if (ret != 0) {
+            fprintf(stderr, "[UPDATER] fw_setenv zyl_slot_verified failed (exit %d)\n", ret);
+        }
     }
 
-    snprintf(cmd, sizeof(cmd),
-             "fw_setenv zyl_boot_count 0 2>/dev/null");
-    ret = system(cmd);
-    if (ret != 0) {
-        fprintf(stderr, "[UPDATER] fw_setenv zyl_boot_count failed (exit %d)\n", ret);
+    {
+        const char *fwse_bootcnt[] = {"/usr/sbin/fw_setenv", "zyl_boot_count", "0", NULL};
+        ret = safe_exec(fwse_bootcnt);
+        if (ret != 0) {
+            fprintf(stderr, "[UPDATER] fw_setenv zyl_boot_count failed (exit %d)\n", ret);
+        }
     }
 
     /* 파일 기반 폴백 (fw_setenv가 없는 환경용) */
@@ -781,7 +851,7 @@ bool zyl_updater_mark_verified(ZylUpdater *u) {
     fprintf(stderr, "[UPDATER] Running system health checks...\n");
 
     /* 1. 핵심 서비스 실행 상태 확인: compositor */
-    int ret = system("systemctl is-active --quiet zyl-compositor 2>/dev/null");
+    int ret = safe_exec((const char *[]){"/usr/bin/systemctl", "is-active", "--quiet", "zyl-compositor", NULL});
     if (ret != 0) {
         fprintf(stderr, "[UPDATER] Health check FAILED: "
                 "zyl-compositor not running (exit %d)\n", ret);
@@ -790,7 +860,7 @@ bool zyl_updater_mark_verified(ZylUpdater *u) {
     fprintf(stderr, "[UPDATER] Health: zyl-compositor OK\n");
 
     /* 2. 핵심 서비스 실행 상태 확인: WAM */
-    ret = system("systemctl is-active --quiet zyl-wam 2>/dev/null");
+    ret = safe_exec((const char *[]){"/usr/bin/systemctl", "is-active", "--quiet", "zyl-wam", NULL});
     if (ret != 0) {
         fprintf(stderr, "[UPDATER] Health check FAILED: "
                 "zyl-wam not running (exit %d)\n", ret);
@@ -799,19 +869,20 @@ bool zyl_updater_mark_verified(ZylUpdater *u) {
     fprintf(stderr, "[UPDATER] Health: zyl-wam OK\n");
 
     /* 3. fw_setenv으로 슬롯 검증 완료 마킹 */
-    char cmd[256];
-    snprintf(cmd, sizeof(cmd),
-             "fw_setenv zyl_slot_verified 1 2>/dev/null");
-    ret = system(cmd);
-    if (ret != 0) {
-        fprintf(stderr, "[UPDATER] fw_setenv zyl_slot_verified failed (exit %d)\n", ret);
+    {
+        const char *fwse_ver[] = {"/usr/sbin/fw_setenv", "zyl_slot_verified", "1", NULL};
+        ret = safe_exec(fwse_ver);
+        if (ret != 0) {
+            fprintf(stderr, "[UPDATER] fw_setenv zyl_slot_verified failed (exit %d)\n", ret);
+        }
     }
 
-    snprintf(cmd, sizeof(cmd),
-             "fw_setenv zyl_active_slot %s 2>/dev/null", u->active_slot);
-    ret = system(cmd);
-    if (ret != 0) {
-        fprintf(stderr, "[UPDATER] fw_setenv zyl_active_slot failed (exit %d)\n", ret);
+    {
+        const char *fwse_slot[] = {"/usr/sbin/fw_setenv", "zyl_active_slot", u->active_slot, NULL};
+        ret = safe_exec(fwse_slot);
+        if (ret != 0) {
+            fprintf(stderr, "[UPDATER] fw_setenv zyl_active_slot failed (exit %d)\n", ret);
+        }
     }
 
     /* 파일 기반 폴백 */
@@ -832,10 +903,8 @@ bool zyl_updater_rollback(ZylUpdater *u) {
     const char *previous = strcmp(u->active_slot, "a") == 0 ? "b" : "a";
 
     /* fw_setenv으로 부트로더에 이전 슬롯 지정 */
-    char cmd[256];
-    snprintf(cmd, sizeof(cmd),
-             "fw_setenv zyl_next_slot %s 2>/dev/null", previous);
-    int ret = system(cmd);
+    const char *fwse_argv[] = {"/usr/sbin/fw_setenv", "zyl_next_slot", previous, NULL};
+    int ret = safe_exec(fwse_argv);
     if (ret != 0) {
         fprintf(stderr, "[UPDATER] fw_setenv zyl_next_slot failed (exit %d), using file fallback\n", ret);
     }

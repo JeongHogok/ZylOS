@@ -15,11 +15,26 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <stdbool.h>
+#include <spawn.h>
+#include <sys/wait.h>
 
 /* 앱 UID 범위: 10000~19999 (Android 호환 범위) */
 #define APP_UID_MIN  10000
 #define APP_UID_MAX  19999
 #define APP_DATA_DIR "/data/apps"
+
+/**
+ * 앱 ID 유효성 검사 — [a-z0-9._] 문자만 허용 (command injection 방지).
+ */
+static bool is_valid_app_id(const char *id) {
+    if (!id || !id[0]) return false;
+    for (const char *p = id; *p; p++) {
+        if (!((*p >= 'a' && *p <= 'z') || (*p >= '0' && *p <= '9') || *p == '.' || *p == '_'))
+            return false;
+    }
+    return true;
+}
 
 /**
  * 앱 ID → 유닉스 사용자명 변환.
@@ -49,6 +64,7 @@ static uid_t find_next_uid(void) {
  */
 int zyl_app_uid_create(const char *app_id) {
     if (!app_id) return -1;
+    if (!is_valid_app_id(app_id)) return -1;
 
     char username[128];
     app_id_to_username(app_id, username, sizeof(username));
@@ -64,13 +80,16 @@ int zyl_app_uid_create(const char *app_id) {
         return -1;
     }
 
-    /* useradd — 시스템 사용자, 로그인 불가, 홈 = 앱 데이터 디렉토리 */
-    char cmd[512];
-    snprintf(cmd, sizeof(cmd),
-             "useradd -r -M -d %s/%s -s /usr/sbin/nologin -u %d %s 2>/dev/null",
-             APP_DATA_DIR, app_id, uid, username);
-
-    int ret = system(cmd);
+    /* useradd — posix_spawn으로 실행 (command injection 방지) */
+    char home_dir[256];
+    snprintf(home_dir, sizeof(home_dir), "%s/%s", APP_DATA_DIR, app_id);
+    char uid_str[16];
+    snprintf(uid_str, sizeof(uid_str), "%d", uid);
+    char *argv[] = {"useradd", "-r", "-M", "-d", home_dir, "-s", "/usr/sbin/nologin", "-u", uid_str, username, NULL};
+    char *envp[] = {"PATH=/usr/sbin:/usr/bin:/sbin:/bin", NULL};
+    pid_t pid;
+    int ret = posix_spawn(&pid, "/usr/sbin/useradd", NULL, NULL, argv, envp);
+    if (ret == 0) waitpid(pid, &ret, 0);
     if (ret != 0) {
         /* useradd 실패 — /etc/passwd 직접 추가 폴백 */
         FILE *pw = fopen("/etc/passwd", "a");
@@ -101,14 +120,17 @@ int zyl_app_uid_create(const char *app_id) {
  */
 int zyl_app_uid_remove(const char *app_id) {
     if (!app_id) return -1;
+    if (!is_valid_app_id(app_id)) return -1;
 
     char username[128];
     app_id_to_username(app_id, username, sizeof(username));
 
-    /* userdel */
-    char cmd[256];
-    snprintf(cmd, sizeof(cmd), "userdel %s 2>/dev/null", username);
-    system(cmd);
+    /* userdel — posix_spawn으로 실행 (command injection 방지) */
+    char *argv[] = {"userdel", username, NULL};
+    char *envp[] = {"PATH=/usr/sbin:/usr/bin:/sbin:/bin", NULL};
+    pid_t pid;
+    int rc = posix_spawn(&pid, "/usr/sbin/userdel", NULL, NULL, argv, envp);
+    if (rc == 0) waitpid(pid, &rc, 0);
 
     /* 데이터 디렉토리 삭제는 appstore가 담당 */
     fprintf(stderr, "[AppUID] Removed user %s for %s\n", username, app_id);

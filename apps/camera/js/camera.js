@@ -81,6 +81,8 @@
             viewfinder.appendChild(overlay);
           }
         }
+      }).catch(function (err) {
+        if (typeof console !== 'undefined') console.error('[Camera] permission check failed:', err);
       });
     } else {
       /* ZylPermissionDialog 미로드 시 폴백: 기존 OS 서비스 요청 */

@@ -418,6 +418,8 @@ int zyl_credential_store(ZylCredentialStore *store,
     int fd = fileno(f);
     if (fd >= 0) fchmod(fd, 0600);
     size_t written = fwrite(encrypted, 1, enc_len, f);
+    fflush(f);
+    fsync(fileno(f));
     fclose(f);
     free(encrypted);
 

@@ -292,7 +292,7 @@ window.ZylSystemServices = (function () {
         if (s && _modules.audio && _modules.audio._loadFromSettings) {
           _modules.audio._loadFromSettings(s);
         }
-      });
+      }).catch(function () { /* audio settings load failed — use defaults */ });
       /* Load permission overrides from settings */
       _modules.settings._loadFromBackend().then(function () {
         var perms = _modules.settings._getState().app_permissions;
@@ -302,7 +302,7 @@ window.ZylSystemServices = (function () {
             ZylPermissions.setAppOverride(appId, revoked);
           });
         }
-      });
+      }).catch(function () { /* permission overrides load failed — use defaults */ });
     }
 
     /* Pre-load app list */

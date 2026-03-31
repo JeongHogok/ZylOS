@@ -134,6 +134,8 @@
             contactList.innerHTML = '<div class="empty-state">Contacts permission denied</div>';
           }
         }
+      }).catch(function (err) {
+        if (typeof console !== 'undefined') console.error('[Contacts] permission check failed:', err);
       });
     } else {
       /* ZylPermissionDialog 미로드 시 폴백 */

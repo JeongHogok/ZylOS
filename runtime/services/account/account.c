@@ -15,6 +15,8 @@
 #include <string.h>
 #include <time.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
+#include <spawn.h>
 #include <gio/gio.h>
 
 #define ACCOUNT_DIR "/data/accounts"
@@ -185,15 +187,27 @@ int zyl_account_login_local(ZylAccountService *svc, const char *pin) {
 int zyl_account_login_oauth(ZylAccountService *svc,
                              const char *provider, const char *auth_code) {
     if (!svc || !provider || !auth_code) return -1;
-    /* OAuth 토큰 교환: auth_code → access_token + refresh_token */
-    /* 실제 구현: HTTPS POST → provider token endpoint */
-    g_message("[Account] OAuth login: provider=%s", provider);
+    /* TODO(auth): OAuth 토큰 교환 미구현 — 현재 스텁.
+     * 필요 작업:
+     * 1. HTTPS POST → provider token endpoint (auth_code → access_token + refresh_token)
+     * 2. 토큰을 credential 서비스에 암호화 저장
+     * 3. 계정 정보를 accounts[] 배열에 추가 (type = ZYL_ACCOUNT_CLOUD)
+     * 4. refresh_token 만료 전 자동 갱신 타이머 설정
+     */
+    g_message("[Account] OAuth login: provider=%s (STUB — not implemented)", provider);
     return 0;
 }
 
 int zyl_account_refresh_token(ZylAccountService *svc) {
     if (!svc) return -1;
-    g_message("[Account] Token refresh requested");
+    /* TODO(auth): 토큰 갱신 미구현 — 현재 스텁.
+     * 필요 작업:
+     * 1. credential 서비스에서 refresh_token 로드
+     * 2. HTTPS POST → provider token endpoint (grant_type=refresh_token)
+     * 3. 새 access_token + refresh_token 저장
+     * 4. 실패 시 재인증 요구 (로그아웃 또는 재로그인 알림)
+     */
+    g_message("[Account] Token refresh requested (STUB — not implemented)");
     return 0;
 }
 
@@ -240,24 +254,56 @@ int zyl_account_set_auto_sync(ZylAccountService *svc, bool enabled, int interval
     return 0;
 }
 
+/* Reject paths containing shell metacharacters to prevent injection */
+static bool is_safe_path(const char *path) {
+    const char *dangerous = ";|&`$\n\r\"'\\(){}[]<>?*~!#";
+    for (const char *p = path; *p; p++) {
+        if (strchr(dangerous, *p)) return false;
+    }
+    return true;
+}
+
+/* Helper: spawn a process and wait for it, returning 0 on success */
+static int spawn_and_wait(char *const argv[]) {
+    extern char **environ;
+    pid_t pid;
+    int status;
+
+    if (posix_spawn(&pid, "/usr/bin/tar", NULL, NULL, argv, environ) != 0) {
+        g_warning("[Account] posix_spawn failed");
+        return -1;
+    }
+    if (waitpid(pid, &status, 0) == -1) {
+        g_warning("[Account] waitpid failed");
+        return -1;
+    }
+    return (WIFEXITED(status) && WEXITSTATUS(status) == 0) ? 0 : -1;
+}
+
 int zyl_account_backup(ZylAccountService *svc, const char *output_path) {
     if (!svc || !output_path) return -1;
+    if (!is_safe_path(output_path)) {
+        g_warning("[Account] Backup rejected: unsafe path characters");
+        return -1;
+    }
     /* 백업: 설정 + 연락처 + 메시지 → 암호화 아카이브 */
     g_message("[Account] Backup → %s", output_path);
     /* tar + AES-256-GCM 암호화 (credential 서비스의 마스터키 사용) */
-    char cmd[512];
-    snprintf(cmd, sizeof(cmd),
-             "tar czf '%s' -C /data apps/*/Documents/ 2>/dev/null", output_path);
-    return system(cmd) == 0 ? 0 : -1;
+    char *argv[] = {"tar", "czf", (char *)output_path,
+                    "-C", "/data", "apps/*/Documents/", NULL};
+    return spawn_and_wait(argv);
 }
 
 int zyl_account_restore(ZylAccountService *svc, const char *backup_path) {
     if (!svc || !backup_path) return -1;
+    if (!is_safe_path(backup_path)) {
+        g_warning("[Account] Restore rejected: unsafe path characters");
+        return -1;
+    }
     g_message("[Account] Restore ← %s", backup_path);
-    char cmd[512];
-    snprintf(cmd, sizeof(cmd),
-             "tar xzf '%s' -C /data 2>/dev/null", backup_path);
-    return system(cmd) == 0 ? 0 : -1;
+    char *argv[] = {"tar", "xzf", (char *)backup_path,
+                    "-C", "/data", NULL};
+    return spawn_and_wait(argv);
 }
 
 /* ─── 데몬 진입점 ─── */

@@ -54,6 +54,8 @@ static void load_or_create_uuid(void) {
     f = fopen(DEVICE_UUID_FILE, "w");
     if (f) {
         fprintf(f, "%s\n", g_device_uuid);
+        fflush(f);
+        fsync(fileno(f));
         fclose(f);
     }
 }
@@ -65,7 +67,7 @@ static int increment_boot_count(void) {
     if (f) { fscanf(f, "%d", &count); fclose(f); }
     count++;
     f = fopen(BOOT_COUNT_FILE, "w");
-    if (f) { fprintf(f, "%d\n", count); fclose(f); }
+    if (f) { fprintf(f, "%d\n", count); fflush(f); fsync(fileno(f)); fclose(f); }
     return count;
 }
 
@@ -83,6 +85,8 @@ static int queue_event(const char *event_type, const char *payload) {
         fprintf(f, ",\"data\":%s", payload);
     }
     fprintf(f, "}\n");
+    fflush(f);
+    fsync(fileno(f));
     fclose(f);
     return 0;
 }

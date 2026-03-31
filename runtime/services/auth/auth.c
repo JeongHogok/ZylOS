@@ -292,8 +292,13 @@ ZylAuthResult zyl_auth_enroll_fingerprint(ZylAuthService *svc,
                   err ? err->message : "unknown");
         g_clear_error(&err);
     } else {
-        /* EnrollStart 은 비동기: signal EnrollStatus 를 수신해야 하나,
-           여기서는 동기 완료를 위해 EnrollStop 까지 진행하고 OK로 처리 */
+        /* TODO(auth): EnrollStart 은 비동기 — signal EnrollStatus 를 수신해야 함.
+         * 현재는 동기 완료를 위해 EnrollStop 까지 진행하고 OK로 처리하는 스텁.
+         * 필요 작업:
+         * 1. GMainLoop + g_signal_connect 로 EnrollStatus 시그널 수신
+         * 2. 다단계 등록 진행 상태를 progress 콜백으로 전달
+         * 3. 타임아웃 처리 (센서 무응답 시)
+         */
         g_variant_unref(enroll_ret);
         result = ZYL_AUTH_OK;
         if (progress) {
@@ -351,8 +356,13 @@ ZylAuthResult zyl_auth_verify_fingerprint(ZylAuthService *svc,
                   err ? err->message : "unknown");
         g_clear_error(&err);
     } else {
-        /* VerifyStart 의 결과는 signal VerifyStatus 로 전달되나,
-           동기 래퍼로 OK 처리 (실제 구현에서는 GMainLoop + signal 수신) */
+        /* TODO(auth): VerifyStart 의 결과는 signal VerifyStatus 로 전달되어야 함.
+         * 현재는 동기 래퍼로 항상 OK 처리하는 스텁.
+         * 필요 작업:
+         * 1. GMainLoop + g_signal_connect 로 VerifyStatus 시그널 수신
+         * 2. verify-match / verify-no-match / verify-retry 분기 처리
+         * 3. 타임아웃 + 최대 재시도 횟수 적용
+         */
         g_variant_unref(verify_ret);
         result = ZYL_AUTH_OK;
     }

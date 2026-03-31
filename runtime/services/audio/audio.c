@@ -14,6 +14,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <spawn.h>
+#include <sys/wait.h>
 #include <gio/gio.h>
 #include <glib-unix.h>
 
@@ -31,11 +33,17 @@ struct ZylAudioService {
 /* ─── PipeWire volume via wpctl ─── */
 
 static int pw_set_volume(int percent) {
-    char cmd[128];
     float vol = (float)percent / 100.0f;
-    snprintf(cmd, sizeof(cmd), "wpctl set-volume @DEFAULT_AUDIO_SINK@ %.2f",
-             vol);
-    return system(cmd); /* wpctl is safe — no user input in args */
+    char vol_str[16];
+    snprintf(vol_str, sizeof(vol_str), "%.2f", vol);
+    pid_t pid;
+    char *argv[] = {"wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", vol_str, NULL};
+    char *envp[] = {"PATH=/usr/bin:/bin", NULL};
+    int rc = posix_spawn(&pid, "/usr/bin/wpctl", NULL, NULL, argv, envp);
+    if (rc != 0) return -1;
+    int status;
+    waitpid(pid, &status, 0);
+    return status;
 }
 
 static int pw_get_volume(void) {
@@ -56,10 +64,14 @@ static int pw_get_volume(void) {
 }
 
 static void pw_set_mute(bool mute) {
-    char cmd[128];
-    snprintf(cmd, sizeof(cmd), "wpctl set-mute @DEFAULT_AUDIO_SINK@ %s",
-             mute ? "1" : "0");
-    system(cmd);
+    pid_t pid;
+    char *argv[] = {"wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", mute ? "1" : "0", NULL};
+    char *envp[] = {"PATH=/usr/bin:/bin", NULL};
+    int rc = posix_spawn(&pid, "/usr/bin/wpctl", NULL, NULL, argv, envp);
+    if (rc == 0) {
+        int status;
+        waitpid(pid, &status, 0);
+    }
 }
 
 /* ─── Tone generation via PipeWire (pw-play fallback) ─── */
@@ -255,11 +267,16 @@ int zyl_audio_play_tone(ZylAudioService *svc, int freq_hz,
         return -1;
     }
 
-    /* Play via pw-play (PipeWire) or aplay (ALSA fallback) */
-    char cmd[256];
-    snprintf(cmd, sizeof(cmd),
-             "pw-play '%s' 2>/dev/null || aplay '%s' 2>/dev/null &", tmp, tmp);
-    system(cmd);
+    /* Play via pw-play (PipeWire) using posix_spawn (no shell) */
+    pid_t play_pid;
+    char *play_argv[] = {"pw-play", tmp, NULL};
+    char *play_envp[] = {"PATH=/usr/bin:/bin", NULL};
+    int play_rc = posix_spawn(&play_pid, "/usr/bin/pw-play", NULL, NULL, play_argv, play_envp);
+    if (play_rc != 0) {
+        /* ALSA fallback */
+        char *aplay_argv[] = {"aplay", tmp, NULL};
+        posix_spawn(&play_pid, "/usr/bin/aplay", NULL, NULL, aplay_argv, play_envp);
+    }
 
     /* Schedule cleanup */
     /* Note: in production, use g_timeout_add for cleanup.

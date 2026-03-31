@@ -78,6 +78,11 @@ var ZylBridge = (function () {
                   type: 'service.response', service: payload.service,
                   method: payload.method, data: data
                 }), '*');
+              }).catch(function (err) {
+                window.postMessage(JSON.stringify({
+                  type: 'service.response', service: payload.service,
+                  method: payload.method, data: null, error: String(err)
+                }), '*');
               });
             }
           }

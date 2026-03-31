@@ -24,6 +24,8 @@
 #include <seccomp.h>       /* libseccomp API */
 #include <pwd.h>           /* getpwnam for privilege drop */
 #include <grp.h>           /* setgroups for privilege drop */
+#include <spawn.h>         /* posix_spawn */
+#include <sys/wait.h>      /* waitpid, WIFEXITED, WEXITSTATUS */
 
 /* ─── 내부 구조체 ─── */
 struct ZylSandbox {
@@ -357,7 +359,11 @@ int zyl_sandbox_apply(ZylSandbox *sb, const ZylSandboxPolicy *policy,
     if (!(policy->permissions & ZYL_PERM_NETWORK)) {
         if (unshare(CLONE_NEWNET) == 0) {
             /* Bring up loopback in the new namespace so localhost works */
-            int lo_up = system("ip link set lo up 2>/dev/null");
+            pid_t lo_pid;
+            char *lo_argv[] = {"ip", "link", "set", "lo", "up", NULL};
+            char *lo_envp[] = {"PATH=/usr/sbin:/usr/bin:/sbin:/bin", NULL};
+            int lo_up = posix_spawn(&lo_pid, "/sbin/ip", NULL, NULL, lo_argv, lo_envp);
+            if (lo_up == 0) { int st; waitpid(lo_pid, &st, 0); lo_up = WIFEXITED(st) ? WEXITSTATUS(st) : -1; }
             if (lo_up != 0) {
                 fprintf(stderr, "[Sandbox] loopback up failed "
                         "(ip command may be unavailable)\n");
@@ -386,9 +392,15 @@ int zyl_sandbox_apply(ZylSandbox *sb, const ZylSandboxPolicy *policy,
                 fputs(dbus_xml, pf);
                 fclose(pf);
                 /* Reload D-Bus configuration */
-                system("dbus-send --system --type=method_call "
-                       "--dest=org.freedesktop.DBus /org/freedesktop/DBus "
-                       "org.freedesktop.DBus.ReloadConfig 2>/dev/null");
+                {
+                    pid_t dbus_pid;
+                    char *dbus_argv[] = {"dbus-send", "--system", "--type=method_call",
+                                         "--dest=org.freedesktop.DBus", "/org/freedesktop/DBus",
+                                         "org.freedesktop.DBus.ReloadConfig", NULL};
+                    char *dbus_envp[] = {"PATH=/usr/bin:/bin", NULL};
+                    int dbus_rc = posix_spawn(&dbus_pid, "/usr/bin/dbus-send", NULL, NULL, dbus_argv, dbus_envp);
+                    if (dbus_rc == 0) { int st; waitpid(dbus_pid, &st, 0); }
+                }
                 fprintf(stderr, "[Sandbox] D-Bus policy applied: %s\n",
                         policy_path);
             }
