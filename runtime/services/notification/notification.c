@@ -29,6 +29,16 @@ static const char *introspection_xml =
     "      <arg direction='in'  type='i' name='priority'/>"
     "      <arg direction='out' type='t' name='id'/>"
     "    </method>"
+    "    <method name='PostWithActions'>"
+    "      <arg direction='in'  type='s'      name='app_id'/>"
+    "      <arg direction='in'  type='s'      name='channel_id'/>"
+    "      <arg direction='in'  type='s'      name='title'/>"
+    "      <arg direction='in'  type='s'      name='body'/>"
+    "      <arg direction='in'  type='s'      name='icon'/>"
+    "      <arg direction='in'  type='i'      name='priority'/>"
+    "      <arg direction='in'  type='a(ss)'  name='actions'/>"
+    "      <arg direction='out' type='t'      name='id'/>"
+    "    </method>"
     "    <method name='Cancel'>"
     "      <arg direction='in'  type='t' name='id'/>"
     "    </method>"
@@ -45,6 +55,12 @@ static const char *introspection_xml =
     "      <arg direction='in'  type='s' name='channel_id'/>"
     "      <arg direction='in'  type='b' name='enabled'/>"
     "    </method>"
+    "    <method name='SetDndMode'>"
+    "      <arg direction='in'  type='b' name='enabled'/>"
+    "    </method>"
+    "    <method name='GetDndMode'>"
+    "      <arg direction='out' type='b' name='enabled'/>"
+    "    </method>"
     "    <signal name='NotificationPosted'>"
     "      <arg type='t' name='id'/>"
     "      <arg type='s' name='app_id'/>"
@@ -54,6 +70,9 @@ static const char *introspection_xml =
     "    </signal>"
     "    <signal name='NotificationDismissed'>"
     "      <arg type='t' name='id'/>"
+    "    </signal>"
+    "    <signal name='DndModeChanged'>"
+    "      <arg type='b' name='enabled'/>"
     "    </signal>"
     "  </interface>"
     "</node>";
@@ -68,6 +87,7 @@ struct _ZylNotificationService {
     guint              bus_owner_id;
     guint              registration_id;
     uint64_t           next_id;
+    ZylDndState        dnd;             /* Do Not Disturb state */
 };
 
 /* ── Forward Declarations ─────────────────────────────────── */
@@ -108,6 +128,15 @@ static ZylNotification notification_dup(const ZylNotification *src)
     copy.read        = src->read;
     copy.persistent  = src->persistent;
     copy.priority    = src->priority;
+    copy.num_actions = src->num_actions;
+    copy.actions     = NULL;
+    if (src->num_actions > 0 && src->actions) {
+        copy.actions = g_new0(ZylNotifAction, src->num_actions);
+        for (int i = 0; i < src->num_actions; i++) {
+            copy.actions[i].label     = g_strdup(src->actions[i].label);
+            copy.actions[i].action_id = g_strdup(src->actions[i].action_id);
+        }
+    }
     return copy;
 }
 
@@ -125,6 +154,15 @@ static void notification_clear(ZylNotification *n)
     n->title      = NULL;
     n->body       = NULL;
     n->icon       = NULL;
+    if (n->actions) {
+        for (int i = 0; i < n->num_actions; i++) {
+            g_free(n->actions[i].label);
+            g_free(n->actions[i].action_id);
+        }
+        g_free(n->actions);
+        n->actions     = NULL;
+        n->num_actions = 0;
+    }
 }
 
 /* ── Helper: Free a heap-allocated channel ────────────────── */
@@ -188,6 +226,10 @@ static void handle_post(ZylNotificationService *service,
                         GVariant               *parameters,
                         GDBusMethodInvocation  *invocation);
 
+static void handle_post_with_actions(ZylNotificationService *service,
+                                     GVariant               *parameters,
+                                     GDBusMethodInvocation  *invocation);
+
 static void handle_cancel(ZylNotificationService *service,
                           GVariant               *parameters,
                           GDBusMethodInvocation  *invocation);
@@ -208,18 +250,29 @@ static void handle_set_channel_enabled(ZylNotificationService *service,
                                        GVariant               *parameters,
                                        GDBusMethodInvocation  *invocation);
 
+static void handle_set_dnd_mode(ZylNotificationService *service,
+                                GVariant               *parameters,
+                                GDBusMethodInvocation  *invocation);
+
+static void handle_get_dnd_mode(ZylNotificationService *service,
+                                GVariant               *parameters,
+                                GDBusMethodInvocation  *invocation);
+
 typedef struct {
     const char    *name;
     MethodHandler  handler;
 } DispatchEntry;
 
 static const DispatchEntry dispatch_table[] = {
-    { "Post",              handle_post               },
-    { "Cancel",            handle_cancel             },
-    { "GetActive",         handle_get_active         },
-    { "ClearAll",          handle_clear_all          },
-    { "RegisterChannel",   handle_register_channel   },
+    { "Post",              handle_post                },
+    { "PostWithActions",   handle_post_with_actions   },
+    { "Cancel",            handle_cancel              },
+    { "GetActive",         handle_get_active          },
+    { "ClearAll",          handle_clear_all           },
+    { "RegisterChannel",   handle_register_channel    },
     { "SetChannelEnabled", handle_set_channel_enabled },
+    { "SetDndMode",        handle_set_dnd_mode        },
+    { "GetDndMode",        handle_get_dnd_mode        },
     { NULL, NULL }
 };
 
@@ -283,6 +336,68 @@ static void handle_post(ZylNotificationService *service,
                                         (ZylNotificationPriority)priority);
 
     g_dbus_method_invocation_return_value(invocation, g_variant_new("(t)", id));
+}
+
+static void handle_post_with_actions(ZylNotificationService *service,
+                                     GVariant               *parameters,
+                                     GDBusMethodInvocation  *invocation)
+{
+    const char *app_id, *channel_id, *title, *body, *icon;
+    gint32 priority;
+    GVariant *actions_variant;
+
+    g_variant_get(parameters, "(&s&s&s&s&si@a(ss))",
+                  &app_id, &channel_id, &title, &body, &icon,
+                  &priority, &actions_variant);
+
+    /* Parse action array */
+    gsize num_actions = g_variant_n_children(actions_variant);
+    ZylNotifAction *actions = NULL;
+
+    if (num_actions > 0) {
+        actions = g_new0(ZylNotifAction, num_actions);
+        for (gsize i = 0; i < num_actions; i++) {
+            const char *label, *action_id;
+            g_variant_get_child(actions_variant, i, "(&s&s)", &label, &action_id);
+            actions[i].label     = g_strdup(label);
+            actions[i].action_id = g_strdup(action_id);
+        }
+    }
+    g_variant_unref(actions_variant);
+
+    uint64_t id = zyl_notification_post_with_actions(
+        service, app_id, channel_id, title, body, icon,
+        (ZylNotificationPriority)priority,
+        (const ZylNotifAction *)actions, (int)num_actions);
+
+    /* Free temporary action copies */
+    for (gsize i = 0; i < num_actions; i++) {
+        g_free(actions[i].label);
+        g_free(actions[i].action_id);
+    }
+    g_free(actions);
+
+    g_dbus_method_invocation_return_value(invocation, g_variant_new("(t)", id));
+}
+
+static void handle_set_dnd_mode(ZylNotificationService *service,
+                                GVariant               *parameters,
+                                GDBusMethodInvocation  *invocation)
+{
+    gboolean enabled;
+    g_variant_get(parameters, "(b)", &enabled);
+    zyl_notification_set_dnd(service, (bool)enabled);
+    g_dbus_method_invocation_return_value(invocation, NULL);
+}
+
+static void handle_get_dnd_mode(ZylNotificationService *service,
+                                GVariant               *parameters,
+                                GDBusMethodInvocation  *invocation)
+{
+    (void)parameters;
+    ZylDndState state = zyl_notification_get_dnd(service);
+    g_dbus_method_invocation_return_value(invocation,
+                                          g_variant_new("(b)", (gboolean)state.enabled));
 }
 
 static void handle_cancel(ZylNotificationService *service,
@@ -482,7 +597,28 @@ uint64_t zyl_notification_post(ZylNotificationService *service,
                                const char             *icon,
                                ZylNotificationPriority priority)
 {
+    return zyl_notification_post_with_actions(service, app_id, channel_id,
+                                              title, body, icon, priority,
+                                              NULL, 0);
+}
+
+uint64_t zyl_notification_post_with_actions(ZylNotificationService *service,
+                                            const char             *app_id,
+                                            const char             *channel_id,
+                                            const char             *title,
+                                            const char             *body,
+                                            const char             *icon,
+                                            ZylNotificationPriority priority,
+                                            const ZylNotifAction   *actions,
+                                            int                     num_actions)
+{
     if (!service || !app_id || !title) return 0;
+
+    /* ── DND filter: block priority < URGENT when DND is active ── */
+    if (service->dnd.enabled && (int)priority < (int)ZYL_NOTIFICATION_PRIORITY_URGENT) {
+        g_debug("zyl-notification: DND active, dropping priority=%d notification", (int)priority);
+        return 0;
+    }
 
     /* ── Channel-based filtering ──────────────────────────── */
     ZylNotificationChannel *ch = channel_lookup(service, channel_id);
@@ -500,32 +636,43 @@ uint64_t zyl_notification_post(ZylNotificationService *service,
     }
 
     /* ── Build notification ───────────────────────────────── */
-    ZylNotification notif = {
-        .id         = service->next_id++,
-        .app_id     = g_strdup(app_id),
-        .channel_id = g_strdup(channel_id ? channel_id : ""),
-        .title      = g_strdup(title),
-        .body       = g_strdup(body ? body : ""),
-        .icon       = g_strdup(icon ? icon : ""),
-        .timestamp  = now_timestamp(),
-        .read       = false,
-        .persistent = (priority == ZYL_NOTIFICATION_PRIORITY_URGENT),
-        .priority   = (int)priority
-    };
+    ZylNotification notif = {0};
+    notif.id          = service->next_id++;
+    notif.app_id      = g_strdup(app_id);
+    notif.channel_id  = g_strdup(channel_id ? channel_id : "");
+    notif.title       = g_strdup(title);
+    notif.body        = g_strdup(body ? body : "");
+    notif.icon        = g_strdup(icon ? icon : "");
+    notif.timestamp   = now_timestamp();
+    notif.read        = false;
+    notif.persistent  = (priority == ZYL_NOTIFICATION_PRIORITY_URGENT);
+    notif.priority    = (int)priority;
+    notif.num_actions = 0;
+    notif.actions     = NULL;
+
+    /* Deep-copy actions */
+    if (num_actions > 0 && actions) {
+        notif.actions     = g_new0(ZylNotifAction, num_actions);
+        notif.num_actions = num_actions;
+        for (int i = 0; i < num_actions; i++) {
+            notif.actions[i].label     = g_strdup(actions[i].label     ? actions[i].label     : "");
+            notif.actions[i].action_id = g_strdup(actions[i].action_id ? actions[i].action_id : "");
+        }
+    }
 
     g_array_append_val(service->notifications, notif);
 
     /* ── Emit D-Bus signal ────────────────────────────────── */
     emit_signal(service, "NotificationPosted",
-                g_variant_new("(tssi)",
+                g_variant_new("(tsssi)",
                               notif.id,
                               notif.app_id,
                               notif.title,
                               notif.body,
                               notif.priority));
 
-    g_info("zyl-notification: posted id=%" G_GUINT64_FORMAT " app=%s title='%s'",
-           notif.id, notif.app_id, notif.title);
+    g_info("zyl-notification: posted id=%" G_GUINT64_FORMAT " app=%s title='%s' actions=%d",
+           notif.id, notif.app_id, notif.title, notif.num_actions);
 
     return notif.id;
 }
@@ -670,6 +817,39 @@ void zyl_notification_free(ZylNotification *notif)
     notif->title      = NULL;
     notif->body       = NULL;
     notif->icon       = NULL;
+    if (notif->actions) {
+        for (int i = 0; i < notif->num_actions; i++) {
+            g_free(notif->actions[i].label);
+            g_free(notif->actions[i].action_id);
+        }
+        g_free(notif->actions);
+        notif->actions     = NULL;
+        notif->num_actions = 0;
+    }
+}
+
+/* ══════════════════════════════════════════════════════════════
+ * Public API — DND Operations
+ * ══════════════════════════════════════════════════════════════ */
+
+void zyl_notification_set_dnd(ZylNotificationService *service, bool enabled)
+{
+    if (!service) return;
+    service->dnd.enabled = enabled;
+
+    emit_signal(service, "DndModeChanged",
+                g_variant_new("(b)", (gboolean)enabled));
+
+    g_info("zyl-notification: DND mode %s", enabled ? "enabled" : "disabled");
+}
+
+ZylDndState zyl_notification_get_dnd(ZylNotificationService *service)
+{
+    if (!service) {
+        ZylDndState empty = { false };
+        return empty;
+    }
+    return service->dnd;
 }
 
 void zyl_notification_channel_free(ZylNotificationChannel *channel)

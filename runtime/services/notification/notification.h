@@ -130,6 +130,20 @@ void zyl_notification_get_active(ZylNotificationService  *service,
 /** Clear all non-persistent notifications. */
 void zyl_notification_clear_all(ZylNotificationService *service);
 
+/* ── DND Operations ───────────────────────────────────────── */
+
+/**
+ * Enable or disable Do Not Disturb mode.
+ * When enabled, all notifications with priority < 3 (URGENT) are dropped.
+ */
+void zyl_notification_set_dnd(ZylNotificationService *service, bool enabled);
+
+/**
+ * Query the current DND state.
+ * Returns a ZylDndState snapshot (value-type, safe to copy).
+ */
+ZylDndState zyl_notification_get_dnd(ZylNotificationService *service);
+
 /* ── Channel Operations ───────────────────────────────────── */
 
 /** Register (or update) a notification channel. */
