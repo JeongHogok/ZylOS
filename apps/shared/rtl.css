@@ -70,4 +70,109 @@
   direction: ltr;
 }
 
+/* ─── Float mirroring ─── */
+.zyl-rtl .float-left  { float: right; }
+.zyl-rtl .float-right { float: left;  }
+
+/* ─── Extended margin/padding utility classes ─── */
+.zyl-rtl .ml-1 { margin-left: 0;          margin-right: 0.25rem; }
+.zyl-rtl .mr-1 { margin-right: 0;         margin-left:  0.25rem; }
+.zyl-rtl .ml-2 { margin-left: 0;          margin-right: 0.5rem;  }
+.zyl-rtl .mr-2 { margin-right: 0;         margin-left:  0.5rem;  }
+.zyl-rtl .ml-3 { margin-left: 0;          margin-right: 0.75rem; }
+.zyl-rtl .mr-3 { margin-right: 0;         margin-left:  0.75rem; }
+.zyl-rtl .ml-4 { margin-left: 0;          margin-right: 1rem;    }
+.zyl-rtl .mr-4 { margin-right: 0;         margin-left:  1rem;    }
+.zyl-rtl .pl-2 { padding-left: 0;         padding-right: 0.5rem; }
+.zyl-rtl .pr-2 { padding-right: 0;        padding-left:  0.5rem; }
+.zyl-rtl .pl-3 { padding-left: 0;         padding-right: 0.75rem; }
+.zyl-rtl .pr-3 { padding-right: 0;        padding-left:  0.75rem; }
+.zyl-rtl .pl-4 { padding-left: 0;         padding-right: 1rem;   }
+.zyl-rtl .pr-4 { padding-right: 0;        padding-left:  1rem;   }
+
+/* ─── Border mirroring (accent / sidebar borders) ─── */
+.zyl-rtl .border-left  { border-left: none;  border-right: inherit; }
+.zyl-rtl .border-right { border-right: none; border-left:  inherit; }
+
+/* ─── Select element ─── */
+.zyl-rtl select {
+  text-align: right;
+  direction: rtl;
+}
+
+/* ─── Placeholder text alignment ─── */
+.zyl-rtl input::placeholder,
+.zyl-rtl textarea::placeholder {
+  text-align: right;
+}
+
+/* ─── Flex column — align items to end (logical right in RTL) ─── */
+.zyl-rtl .flex-column,
+.zyl-rtl .col {
+  align-items: flex-end;
+}
+
+/* ─── Badge / notification dot — mirror to top-left in RTL ─── */
+.zyl-rtl .badge {
+  left: 0;
+  right: auto;
+}
+
+/* ─── Tooltip — flip horizontal anchor ─── */
+.zyl-rtl .tooltip {
+  left: auto;
+  right: 0;
+}
+
+/* ─── Dropdown / context menu — anchor to right edge ─── */
+.zyl-rtl .dropdown-menu,
+.zyl-rtl .context-menu {
+  left: auto;
+  right: 0;
+  text-align: right;
+}
+
+/* ─── Modal / dialog content alignment ─── */
+.zyl-rtl .modal-header,
+.zyl-rtl .modal-body,
+.zyl-rtl .modal-footer {
+  text-align: right;
+}
+
+.zyl-rtl .modal-footer {
+  flex-direction: row-reverse;
+}
+
+/* ─── Close / dismiss buttons — move to opposite side ─── */
+.zyl-rtl .btn-close,
+.zyl-rtl .dismiss-btn {
+  left: 0;
+  right: auto;
+}
+
+/* ─── Notification panel — text direction (panel slides from top, no positional change) ─── */
+.zyl-rtl .notif-panel {
+  text-align: right;
+}
+
+.zyl-rtl .notif-item {
+  flex-direction: row-reverse;
+}
+
+.zyl-rtl .notif-item .notif-icon {
+  margin-left: 12px;
+  margin-right: 0;
+}
+
+/* ─── Action bar / toolbar button order ─── */
+.zyl-rtl .action-bar,
+.zyl-rtl .toolbar {
+  flex-direction: row-reverse;
+}
+
+/* ─── Progress bar — fill from right in RTL ─── */
+.zyl-rtl .progress-bar {
+  transform-origin: right center;
+}
+
 /* ─── Swipe gestures should be mirrored in JS ─── */

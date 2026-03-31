@@ -2,8 +2,10 @@
 // [Clean Architecture] Shared Layer - Service
 //
 // 역할: 통합 국제화(i18n) 엔진 — 다국어 번역 및 DOM 자동 번역
-// 수행범위: ko/en/ja/zh/es 로케일 지원, 파라미터 치환, 날짜 포맷, data-i18n 속성 번역
-//          앱별 키는 각 앱의 i18n.js에서 addTranslations으로 등록
+// 수행범위: ko/en/ja/zh/es/ar/he 로케일 지원, 파라미터 치환, 날짜 포맷,
+//           복수형(tp), 숫자 포맷(formatNumber), 시간 포맷(formatTime),
+//           RTL 감지(isRtl), data-i18n 속성 번역
+//           앱별 키는 각 앱의 i18n.js에서 addTranslations으로 등록
 // 의존방향: 없음 (다른 앱 모듈이 이 모듈에 의존)
 // SOLID: SRP — 국제화 로직만 담당
 //
@@ -170,8 +172,14 @@ window.zylI18n = (function () {
   /* ─── RTL Language Support ─── */
   var RTL_LOCALES = { ar: true, he: true, fa: true, ur: true };
 
+  /**
+   * isRtl([locale])
+   * When called with no arguments (or undefined), uses currentLocale.
+   * When called with a locale string, tests that locale.
+   */
   function isRtl(locale) {
-    return !!RTL_LOCALES[locale];
+    var loc = (locale !== undefined) ? locale : currentLocale;
+    return !!RTL_LOCALES[loc];
   }
 
   function applyDirection(locale) {
@@ -199,6 +207,75 @@ window.zylI18n = (function () {
     return fallbackLocale;
   }
 
+  /* ─── Plural Rules ──────────────────────────────────────────
+   *
+   * Plural category selection per locale:
+   *   ko / ja / zh : always 'one'  (no grammatical plural in these languages)
+   *   en / es      : count === 1 → 'one', otherwise → 'other'
+   *   ar / he      : fallback to 'other' for count !== 1 (simplified rule)
+   *   unknown      : 'other'
+   *
+   * Convention for translation keys:
+   *   '{key}.one'   — singular form
+   *   '{key}.other' — plural / generic form
+   * ─────────────────────────────────────────────────────────── */
+
+  function _pluralCategory(locale, count) {
+    if (locale === 'ko' || locale === 'ja' || locale === 'zh') {
+      return 'one';
+    }
+    if (locale === 'en' || locale === 'es') {
+      return count === 1 ? 'one' : 'other';
+    }
+    /* ar, he, fa, ur and all other locales: simple singular/plural */
+    return count === 1 ? 'one' : 'other';
+  }
+
+  /**
+   * tp(key, count [, params])
+   * Translate a pluralisable key.
+   *   key    — base translation key; the engine appends '.one' or '.other'
+   *   count  — numeric quantity that drives plural selection
+   *   params — optional substitution object; {count} is always injected
+   *
+   * Example keys in translations:
+   *   'notif.count.one'   → '알림 {count}개'   (ko — same for all counts)
+   *   'notif.count.other' → '{count} notifications'
+   *
+   * Falls back to key+'.other', then key itself, then the key string.
+   */
+  function tp(key, count, params) {
+    var category = _pluralCategory(currentLocale, count);
+    var pluralKey = key + '.' + category;
+
+    /* Build merged params: always inject {count} */
+    var merged = { count: count };
+    if (params) {
+      var k;
+      for (k in params) {
+        if (Object.prototype.hasOwnProperty.call(params, k)) {
+          merged[k] = params[k];
+        }
+      }
+    }
+
+    var dict = translations[currentLocale] || translations[fallbackLocale];
+
+    /* Try locale-specific plural key */
+    if (dict && dict[pluralKey]) {
+      return t(pluralKey, merged);
+    }
+
+    /* Fallback: try '.other' form */
+    var otherKey = key + '.other';
+    if (dict && dict[otherKey]) {
+      return t(otherKey, merged);
+    }
+
+    /* Last resort: base key */
+    return t(key, merged);
+  }
+
   /* ─── Translation Lookup ─── */
   function t(key, params) {
     var dict = translations[currentLocale] || translations[fallbackLocale];
@@ -215,6 +292,96 @@ window.zylI18n = (function () {
       });
     }
     return text;
+  }
+
+  /* ─── Number Formatting ──────────────────────────────────────
+   *
+   * formatNumber(num)
+   * Format a numeric value according to the active locale's conventions.
+   *
+   * Locale rules (decimal separator / thousands separator):
+   *   ko, en, ja, zh, ar, he : decimal='.'  thousands=','   → 1,234.56
+   *   de (future)            : decimal=','  thousands='.'   → 1.234,56
+   *   es                     : decimal=','  thousands='.'   → 1.234,56
+   *                            (standard Castilian, Spain variant)
+   *
+   * Fractional digits are preserved as-is.
+   * Returns a string. Returns '' for non-finite input.
+   * ─────────────────────────────────────────────────────────── */
+
+  function formatNumber(num) {
+    if (typeof num !== 'number' || !isFinite(num)) return '';
+
+    /* Determine separators for the current locale */
+    var decSep = '.';    /* decimal separator  */
+    var grpSep = ',';    /* thousands separator */
+
+    if (currentLocale === 'de' || currentLocale === 'es') {
+      decSep = ',';
+      grpSep = '.';
+    }
+
+    /* Split integer and fractional parts */
+    var parts   = num.toString().split('.');
+    var intPart = parts[0];
+    var fracPart = parts.length > 1 ? parts[1] : '';
+
+    /* Handle negative sign */
+    var sign = '';
+    if (intPart.charAt(0) === '-') {
+      sign    = '-';
+      intPart = intPart.slice(1);
+    }
+
+    /* Insert thousands separator every 3 digits (right to left) */
+    var grouped = '';
+    var i;
+    for (i = 0; i < intPart.length; i++) {
+      var pos = intPart.length - 1 - i;
+      if (i > 0 && i % 3 === 0) {
+        grouped = grpSep + grouped;
+      }
+      grouped = intPart.charAt(pos) + grouped;
+    }
+
+    var result = sign + grouped;
+    if (fracPart) {
+      result += decSep + fracPart;
+    }
+    return result;
+  }
+
+  /* ─── Time Formatting ────────────────────────────────────────
+   *
+   * formatTime(date)
+   * Format a Date object as a locale-aware time string (HH:MM).
+   *
+   * ko / ja / zh / ar / he : 24-hour  →  "14:05"
+   * en                     : 12-hour  →  "2:05 PM"
+   * es / de (future)       : 24-hour  →  "14:05"
+   *
+   * Returns a string.
+   * ─────────────────────────────────────────────────────────── */
+
+  function formatTime(date) {
+    if (!(date instanceof Date) || isNaN(date.getTime())) return '';
+
+    var h   = date.getHours();
+    var min = date.getMinutes();
+
+    /* Zero-pad helper */
+    function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+
+    if (currentLocale === 'en') {
+      /* 12-hour clock with AM/PM */
+      var ampm  = h >= 12 ? 'PM' : 'AM';
+      var h12   = h % 12;
+      if (h12 === 0) { h12 = 12; }
+      return h12 + ':' + pad2(min) + ' ' + ampm;
+    }
+
+    /* 24-hour clock for all other locales */
+    return pad2(h) + ':' + pad2(min);
   }
 
   /* ─── Date Formatting ─── */
@@ -341,7 +508,10 @@ window.zylI18n = (function () {
 
   return {
     t: t,
+    tp: tp,
     formatDate: formatDate,
+    formatNumber: formatNumber,
+    formatTime: formatTime,
     setLocale: setLocale,
     getLocale: getLocale,
     getSupportedLocales: getSupportedLocales,
