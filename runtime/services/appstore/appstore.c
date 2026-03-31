@@ -979,13 +979,70 @@ ZylInstallResult zyl_appstore_uninstall(ZylAppStore *store,
         return ZYL_INSTALL_ERR_IO;
     }
 
-    /* 재귀적 디렉토리 삭제 */
+    /* 재귀적 설치 디렉토리 삭제 */
     if (rm_rf(app_dir) != 0) {
         fprintf(stderr, "[APPSTORE] Failed to remove: %s\n", app_dir);
         return ZYL_INSTALL_ERR_IO;
     }
 
     fprintf(stderr, "[APPSTORE] Uninstalled: %s\n", app_id);
+
+    /* #9: 앱 데이터 디렉토리 삭제 — /data/apps/{app_id}/ */
+    char data_dir[512];
+    snprintf(data_dir, sizeof(data_dir), "/data/apps/%s", app_id);
+    if (file_exists(data_dir)) {
+        if (rm_rf(data_dir) == 0) {
+            fprintf(stderr, "[APPSTORE] Cleaned app data: %s\n", data_dir);
+        } else {
+            /* 데이터 삭제 실패는 경고만 — 앱 제거 자체는 성공으로 처리 */
+            fprintf(stderr, "[APPSTORE] Warning: failed to remove app data: %s\n",
+                    data_dir);
+        }
+    }
+
+    /* #9: Documents/Contacts/{app_id}* 정리 (선택적) */
+    {
+        char contacts_dir[512];
+        snprintf(contacts_dir, sizeof(contacts_dir),
+                 "/data/user/Documents/Contacts");
+        DIR *d = opendir(contacts_dir);
+        if (d) {
+            struct dirent *ent;
+            size_t id_len = strlen(app_id);
+            while ((ent = readdir(d)) != NULL) {
+                if (strncmp(ent->d_name, app_id, id_len) == 0) {
+                    char entry_path[512];
+                    snprintf(entry_path, sizeof(entry_path),
+                             "%s/%s", contacts_dir, ent->d_name);
+                    remove(entry_path);
+                    fprintf(stderr, "[APPSTORE] Cleaned app data: %s\n", entry_path);
+                }
+            }
+            closedir(d);
+        }
+    }
+
+    /* #9: Documents/Messages/{app_id}* 정리 (선택적) */
+    {
+        char messages_dir[512];
+        snprintf(messages_dir, sizeof(messages_dir),
+                 "/data/user/Documents/Messages");
+        DIR *d = opendir(messages_dir);
+        if (d) {
+            struct dirent *ent;
+            size_t id_len = strlen(app_id);
+            while ((ent = readdir(d)) != NULL) {
+                if (strncmp(ent->d_name, app_id, id_len) == 0) {
+                    char entry_path[512];
+                    snprintf(entry_path, sizeof(entry_path),
+                             "%s/%s", messages_dir, ent->d_name);
+                    remove(entry_path);
+                    fprintf(stderr, "[APPSTORE] Cleaned app data: %s\n", entry_path);
+                }
+            }
+            closedir(d);
+        }
+    }
 
     /* Notify WAM about app removal via D-Bus */
     {
