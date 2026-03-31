@@ -8,6 +8,20 @@ BusName=org.zylos.AudioService
 ExecStart=/usr/bin/zyl-audio
 Restart=on-failure
 RestartSec=2
+TimeoutStopSec=5
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=false
+PrivateNetwork=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=false
 
 [Install]
 WantedBy=zyl-os.target

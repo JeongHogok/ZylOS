@@ -9,6 +9,21 @@ BusName=org.zylos.CameraService
 ExecStart=/usr/bin/zyl-camera
 Restart=on-failure
 RestartSec=2
+TimeoutStopSec=5
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/data/camera
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=false
+PrivateNetwork=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
 
 [Install]
 WantedBy=zyl-os.target

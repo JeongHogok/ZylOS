@@ -9,6 +9,19 @@ BusName=org.zylos.Telephony
 ExecStart=/usr/bin/zyl-telephony
 Restart=on-failure
 RestartSec=2
+TimeoutStopSec=5
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=false
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
 
 [Install]
 WantedBy=multi-user.target

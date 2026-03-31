@@ -9,5 +9,18 @@ Type=oneshot
 RemainAfterExit=yes
 ExecStart=/bin/sh -c 'for p in /etc/apparmor.d/zyl-*; do apparmor_parser -r "$p" 2>/dev/null || true; done'
 
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+PrivateNetwork=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+
 [Install]
 WantedBy=zyl-os.target

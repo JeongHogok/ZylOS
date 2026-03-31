@@ -14,5 +14,16 @@ ExecStart=/usr/bin/zyl-wam
 Restart=on-failure
 RestartSec=2
 
+# Security hardening — root required for Wayland/XDG_RUNTIME_DIR session
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=false
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+
 [Install]
 WantedBy=graphical.target

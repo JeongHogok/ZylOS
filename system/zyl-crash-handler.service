@@ -9,6 +9,21 @@ BusName=org.zylos.CrashHandler
 ExecStart=/usr/bin/zyl-crash-handler
 Restart=on-failure
 RestartSec=2
+TimeoutStopSec=5
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/data/crash
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+PrivateNetwork=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
 
 [Install]
 WantedBy=zyl-os.target

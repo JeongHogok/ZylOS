@@ -14,5 +14,15 @@ ExecStart=/usr/bin/zyl-compositor
 Restart=on-failure
 RestartSec=3
 
+# Security hardening — root required for DRM/logind session
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+
 [Install]
 WantedBy=graphical.target
