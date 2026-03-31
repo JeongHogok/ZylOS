@@ -55,6 +55,15 @@
     notes.forEach(function (n) {
       var el = document.createElement('div'); el.className = 'note-item';
       el.textContent = n.name.replace('.txt', '');
+      el.setAttribute('role', 'listitem');
+      el.setAttribute('aria-label', n.name.replace('.txt', ''));
+      el.setAttribute('tabindex', '0');
+      el.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          el.click();
+        }
+      });
       el.addEventListener('click', function () { openNote(n.name); });
       list.appendChild(el);
     });

@@ -17,6 +17,17 @@
 (function () {
   'use strict';
 
+  /* ─── a11y: keyboard handler for button-like elements ─── */
+  function addButtonKeyHandler(el) {
+    el.setAttribute('tabindex', '0');
+    el.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        el.click();
+      }
+    });
+  }
+
   /* ─── SVG Icon Helper ─── */
   /* Icons are loaded from app.iconSvg (sourced from each app's app.json).
      OS policy (default dock, hidden-from-grid, undeletable) comes from ZylAppRegistry. */
@@ -144,6 +155,11 @@
     el.appendChild(iconWrap);
     el.appendChild(nameEl);
 
+    /* a11y */
+    el.setAttribute('role', 'button');
+    el.setAttribute('aria-label', zylI18n.t(app.nameKey));
+    addButtonKeyHandler(el);
+
     el.addEventListener('click', function () {
       if (editMode || appDrag.active) return;
       launchApp(app.id, el);
@@ -269,6 +285,12 @@
 
         el.appendChild(iconWrap);
         el.appendChild(nameEl);
+
+        /* a11y */
+        el.setAttribute('role', 'button');
+        el.setAttribute('aria-label', name);
+        addButtonKeyHandler(el);
+
         page.appendChild(el);
       }
       pagesTrack.appendChild(page);

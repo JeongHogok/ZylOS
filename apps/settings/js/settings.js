@@ -26,6 +26,17 @@
     document.getElementById('current-lang').textContent = LANG_NAMES[zylI18n.getLocale()];
   }
 
+  /* ─── a11y: keyboard handler for button-like elements ─── */
+  function addButtonKeyHandler(el) {
+    el.setAttribute('tabindex', '0');
+    el.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        el.click();
+      }
+    });
+  }
+
   /* ─── 네비게이션 ─── */
   var mainMenu = document.getElementById('main-menu');
   var btnBack = document.getElementById('btn-back');
@@ -51,6 +62,7 @@
 
   /* 메뉴 항목 클릭 → 서브 페이지 */
   document.querySelectorAll('.setting-item[data-page]').forEach(function (item) {
+    addButtonKeyHandler(item);
     item.addEventListener('click', function () {
       var pageId = item.dataset.page;
       var page = document.getElementById('page-' + pageId);
@@ -102,6 +114,7 @@
   }
 
   document.querySelectorAll('.lang-option').forEach(function (opt) {
+    addButtonKeyHandler(opt);
     opt.addEventListener('click', function () {
       var newLocale = opt.dataset.lang;
       zylI18n.setLocale(newLocale);

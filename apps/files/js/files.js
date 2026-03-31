@@ -102,6 +102,87 @@
 
   requestFileSystem();
 
+  /* ─── a11y: keyboard handler for button-like elements ─── */
+  function addButtonKeyHandler(el) {
+    el.setAttribute('tabindex', '0');
+    el.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        el.click();
+      }
+    });
+  }
+
+  /* ─── Custom Modal Dialog (replaces native confirm/prompt) ─── */
+  var modalOverlay = null;
+  var modalEl = null;
+
+  function createModal() {
+    if (modalOverlay) return;
+    modalOverlay = document.createElement('div');
+    modalOverlay.className = 'files-modal-overlay';
+    modalOverlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9000;display:none;align-items:center;justify-content:center';
+    modalEl = document.createElement('div');
+    modalEl.className = 'files-modal';
+    modalEl.setAttribute('role', 'dialog');
+    modalEl.setAttribute('aria-modal', 'true');
+    modalEl.style.cssText = 'background:#1e1e2e;border-radius:16px;padding:24px;width:280px;max-width:90%;color:#fff';
+    modalOverlay.appendChild(modalEl);
+    document.body.appendChild(modalOverlay);
+  }
+
+  function showConfirmModal(title, message, onConfirm) {
+    createModal();
+    var t = typeof zylI18n !== 'undefined' ? zylI18n : null;
+    var cancelText = t ? t.t('common.cancel') : 'Cancel';
+    var okText = t ? t.t('common.ok') : 'OK';
+    modalEl.setAttribute('aria-label', title);
+    modalEl.innerHTML =
+      '<div style="font-size:16px;font-weight:600;margin-bottom:12px">' + escapeHtml(title) + '</div>' +
+      '<div style="font-size:14px;opacity:0.8;margin-bottom:20px">' + escapeHtml(message) + '</div>' +
+      '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+        '<button class="modal-cancel-btn" style="padding:8px 16px;border:none;border-radius:8px;background:#333;color:#fff;cursor:pointer">' + escapeHtml(cancelText) + '</button>' +
+        '<button class="modal-ok-btn" style="padding:8px 16px;border:none;border-radius:8px;background:#4a9eff;color:#fff;cursor:pointer">' + escapeHtml(okText) + '</button>' +
+      '</div>';
+    modalOverlay.style.display = 'flex';
+    var cancelBtn = modalEl.querySelector('.modal-cancel-btn');
+    var okBtn = modalEl.querySelector('.modal-ok-btn');
+    cancelBtn.addEventListener('click', function () { modalOverlay.style.display = 'none'; });
+    okBtn.addEventListener('click', function () { modalOverlay.style.display = 'none'; onConfirm(); });
+    okBtn.focus();
+  }
+
+  function showPromptModal(title, defaultValue, onConfirm) {
+    createModal();
+    var t = typeof zylI18n !== 'undefined' ? zylI18n : null;
+    var cancelText = t ? t.t('common.cancel') : 'Cancel';
+    var okText = t ? t.t('common.ok') : 'OK';
+    modalEl.setAttribute('aria-label', title);
+    modalEl.innerHTML =
+      '<div style="font-size:16px;font-weight:600;margin-bottom:12px">' + escapeHtml(title) + '</div>' +
+      '<input class="modal-input" type="text" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #444;border-radius:8px;background:#2a2a3e;color:#fff;font-size:14px;margin-bottom:16px" />' +
+      '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+        '<button class="modal-cancel-btn" style="padding:8px 16px;border:none;border-radius:8px;background:#333;color:#fff;cursor:pointer">' + escapeHtml(cancelText) + '</button>' +
+        '<button class="modal-ok-btn" style="padding:8px 16px;border:none;border-radius:8px;background:#4a9eff;color:#fff;cursor:pointer">' + escapeHtml(okText) + '</button>' +
+      '</div>';
+    var input = modalEl.querySelector('.modal-input');
+    input.value = defaultValue || '';
+    modalOverlay.style.display = 'flex';
+    var cancelBtn = modalEl.querySelector('.modal-cancel-btn');
+    var okBtn = modalEl.querySelector('.modal-ok-btn');
+    cancelBtn.addEventListener('click', function () { modalOverlay.style.display = 'none'; });
+    okBtn.addEventListener('click', function () {
+      var val = input.value;
+      modalOverlay.style.display = 'none';
+      if (val) onConfirm(val);
+    });
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { okBtn.click(); }
+    });
+    input.focus();
+    input.select();
+  }
+
   /* ─── State ─── */
   var currentPath = '/';
   var currentSort = 'name';
@@ -192,8 +273,11 @@
     var homeEl = document.createElement('span');
     homeEl.className = 'crumb' + (currentPath === '/' ? ' active' : '');
     homeEl.dataset.path = '/';
+    homeEl.setAttribute('role', 'link');
+    homeEl.setAttribute('aria-label', 'Home');
     homeEl.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>';
     homeEl.addEventListener('click', function () { navigateTo('/'); });
+    addButtonKeyHandler(homeEl);
     breadcrumb.appendChild(homeEl);
 
     if (currentPath !== '/') {
@@ -210,8 +294,11 @@
         el.className = 'crumb' + (i === parts.length - 1 ? ' active' : '');
         el.dataset.path = path;
         el.textContent = part;
+        el.setAttribute('role', 'link');
+        el.setAttribute('aria-label', part);
         var p = path;
         el.addEventListener('click', function () { navigateTo(p); });
+        addButtonKeyHandler(el);
         breadcrumb.appendChild(el);
       });
     }
@@ -242,6 +329,8 @@
       el.className = 'file-item';
       el.dataset.name = file.name;
       el.dataset.type = file.type;
+      el.setAttribute('role', 'listitem');
+      el.setAttribute('aria-label', file.name);
 
       var meta = formatDate(file.date);
       if (file.size !== null) meta += ' \u00B7 ' + formatSize(file.size);
@@ -337,6 +426,7 @@
 
   /* Context menu actions */
   document.querySelectorAll('.ctx-item').forEach(function (item) {
+    addButtonKeyHandler(item);
     item.addEventListener('click', function () {
       var action = item.dataset.action;
       if (!contextTarget) { hideContextMenu(); return; }
@@ -349,34 +439,40 @@
           openFileWithApp(contextTarget);
         }
       } else if (action === 'delete') {
-        var filePath = currentPath === '/' ? '/' + contextTarget.name : currentPath + '/' + contextTarget.name;
-        if (confirm('Delete "' + contextTarget.name + '"?')) {
-          requestService('fs', 'remove', { path: filePath });
+        var deleteTarget = contextTarget;
+        var deleteFilePath = currentPath === '/' ? '/' + deleteTarget.name : currentPath + '/' + deleteTarget.name;
+        var deleteTitle = typeof zylI18n !== 'undefined' ? zylI18n.t('files.delete_title') : 'Delete';
+        var deleteMsg = typeof zylI18n !== 'undefined' ? zylI18n.t('files.delete_confirm') : 'Are you sure you want to delete this file?';
+        showConfirmModal(deleteTitle, deleteMsg + ' (' + deleteTarget.name + ')', function () {
+          requestService('fs', 'remove', { path: deleteFilePath });
           var files = fileSystem[currentPath];
           if (files) {
             var idx = -1;
             for (var di = 0; di < files.length; di++) {
-              if (files[di].name === contextTarget.name) { idx = di; break; }
+              if (files[di].name === deleteTarget.name) { idx = di; break; }
             }
             if (idx !== -1) {
               files.splice(idx, 1);
               renderFiles();
             }
           }
-        }
+        });
       } else if (action === 'rename') {
-        var oldName = contextTarget.name;
-        var newName = prompt('Rename:', oldName);
-        if (newName && newName !== oldName) {
-          var oldPath = currentPath === '/' ? '/' + oldName : currentPath + '/' + oldName;
-          var newPath = currentPath === '/' ? '/' + newName : currentPath + '/' + newName;
-          requestService('fs', 'rename', { oldPath: oldPath, newPath: newPath });
-          contextTarget.name = newName;
-          renderFiles();
-        }
+        var renameTarget = contextTarget;
+        var oldName = renameTarget.name;
+        var renameTitle = typeof zylI18n !== 'undefined' ? zylI18n.t('files.rename_title') : 'Rename';
+        showPromptModal(renameTitle, oldName, function (newName) {
+          if (newName !== oldName) {
+            var oldPath = currentPath === '/' ? '/' + oldName : currentPath + '/' + oldName;
+            var newPath = currentPath === '/' ? '/' + newName : currentPath + '/' + newName;
+            requestService('fs', 'rename', { oldPath: oldPath, newPath: newPath });
+            renameTarget.name = newName;
+            renderFiles();
+          }
+        });
       } else if (action === 'share') {
-        /* In emulator, show a toast-like message */
-        alert('Share: ' + contextTarget.name);
+        var shareTitle = typeof zylI18n !== 'undefined' ? zylI18n.t('files.share_title') : 'Share';
+        showConfirmModal(shareTitle, contextTarget.name, function () {});
       }
 
       hideContextMenu();
@@ -419,16 +515,19 @@
   var fabBtn = document.getElementById('fab');
   if (fabBtn) {
     fabBtn.addEventListener('click', function () {
-      var folderName = prompt('New folder name:');
-      if (folderName && folderName.trim()) {
-        var newPath = currentPath === '/' ? '/' + folderName.trim() : currentPath + '/' + folderName.trim();
-        requestService('fs', 'mkdir', { path: newPath });
-        /* Optimistic update */
-        var files = fileSystem[currentPath] || [];
-        files.push({ name: folderName.trim(), type: 'folder', size: 0 });
-        fileSystem[currentPath] = files;
-        renderFiles();
-      }
+      var title = typeof zylI18n !== 'undefined' ? zylI18n.t('files.new_folder_title') : 'New Folder';
+      showPromptModal(title, '', function (folderName) {
+        if (folderName.trim()) {
+          var trimmed = folderName.trim();
+          var newPath = currentPath === '/' ? '/' + trimmed : currentPath + '/' + trimmed;
+          requestService('fs', 'mkdir', { path: newPath });
+          /* Optimistic update */
+          var files = fileSystem[currentPath] || [];
+          files.push({ name: trimmed, type: 'folder', size: 0 });
+          fileSystem[currentPath] = files;
+          renderFiles();
+        }
+      });
     });
   }
 

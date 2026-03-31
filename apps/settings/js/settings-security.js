@@ -28,6 +28,10 @@
   var lockTypeItem = document.getElementById('lock-type-item');
   var pinDialog = document.getElementById('pin-change-dialog');
   if (lockTypeItem && pinDialog) {
+    lockTypeItem.setAttribute('tabindex', '0');
+    lockTypeItem.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); lockTypeItem.click(); }
+    });
     lockTypeItem.addEventListener('click', function () {
       pinDialog.classList.toggle('hidden');
       /* Clear inputs on open */

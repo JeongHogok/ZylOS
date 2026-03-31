@@ -49,6 +49,10 @@
           '<span class="setting-value">' + (app.version || '') + '</span>' +
         '</div>' +
         '<svg class="chevron" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>';
+      el.setAttribute('tabindex', '0');
+      el.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); el.click(); }
+      });
       el.addEventListener('click', function () {
         openAppDetail(app);
       });

@@ -70,6 +70,10 @@
   /* ─── Font Size Cycle ─── */
   var fontsizeItem = document.getElementById('fontsize-item');
   if (fontsizeItem) {
+    fontsizeItem.setAttribute('tabindex', '0');
+    fontsizeItem.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fontsizeItem.click(); }
+    });
     fontsizeItem.addEventListener('click', function () {
       var current = core.settingsCache.display ? core.settingsCache.display.fontSize : 'medium';
       var idx = FONT_SIZES.indexOf(current);

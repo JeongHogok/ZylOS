@@ -75,6 +75,35 @@
     "no_notifications": "没有通知"
   },
 
+  "files": {
+    "delete_title": "删除",
+    "delete_confirm": "确定要删除此文件吗？",
+    "rename_title": "重命名",
+    "rename_placeholder": "新名称",
+    "new_folder_title": "新建文件夹",
+    "new_folder_placeholder": "文件夹名称",
+    "share_title": "分享",
+    "loading": "加载中...",
+    "empty_folder": "空文件夹"
+  },
+
+  "gallery": {
+    "delete_title": "删除",
+    "confirm_delete": "删除此文件？",
+    "no_media": "没有照片或视频"
+  },
+
+  "notes": {
+    "no_notes": "暂无备忘录"
+  },
+
+  "contacts": {
+    "no_contacts": "暂无联系人",
+    "add": "添加联系人",
+    "edit": "编辑联系人",
+    "permission_denied": "权限被拒绝"
+  },
+
   "date": {
     "format": "{y}年{m}月{d}日 {day}",
     "days": ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"],

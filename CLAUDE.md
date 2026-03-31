@@ -5,7 +5,7 @@
 ## 코드베이스 현황 (2026-03-31)
 
 - **파일 수**: 415개
-- **LoC**: ~62,800줄
+- **LoC**: ~63,200줄
 - **C 서비스 디렉토리**: 26개 (runtime/services/)
 - **systemd 서비스**: 25개 (system/*.service)
 - **JS 서비스 모듈**: 29개 (apps/system/services/)

@@ -44,8 +44,20 @@
     });
   }
 
+  /* ─── a11y: keyboard handler for button-like elements ─── */
+  function addButtonKeyHandler(el) {
+    el.setAttribute('tabindex', '0');
+    el.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        el.click();
+      }
+    });
+  }
+
   /* ─── Language Selection ─── */
   document.querySelectorAll('.oobe-option[data-lang]').forEach(function (opt) {
+    addButtonKeyHandler(opt);
     opt.addEventListener('click', function () {
       document.querySelectorAll('.oobe-option[data-lang]').forEach(function (o) {
         o.classList.remove('selected');
@@ -90,6 +102,7 @@
           var el = document.createElement('div');
           el.className = 'oobe-option' + (net.connected ? ' selected' : '');
           el.textContent = net.ssid + (net.connected ? ' (Connected)' : '');
+          addButtonKeyHandler(el);
           el.addEventListener('click', function () {
             list.querySelectorAll('.oobe-option').forEach(function (o) { o.classList.remove('selected'); });
             el.classList.add('selected');

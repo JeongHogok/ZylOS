@@ -15,6 +15,17 @@
 
   var core = window.ZylSettingsCore;
 
+  /* ─── a11y: keyboard handler for button-like elements ─── */
+  function addButtonKeyHandler(el) {
+    el.setAttribute('tabindex', '0');
+    el.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        el.click();
+      }
+    });
+  }
+
   /* Wallpaper color map for swatches */
   var WALLPAPER_COLORS = {
     'default':          'linear-gradient(135deg, #1a1a2e, #16213e)',
@@ -42,6 +53,9 @@
         ';display:flex;align-items:center;justify-content:center;font-size:11px;color:rgba(255,255,255,0.7);transition:border-color 0.2s;';
       swatch.textContent = opt === 'default' ? 'Default' : opt.replace('gradient-', '').charAt(0).toUpperCase() + opt.replace('gradient-', '').slice(1);
       swatch.dataset.wallpaper = opt;
+      swatch.setAttribute('role', 'button');
+      swatch.setAttribute('aria-label', opt === 'default' ? 'Default' : opt.replace('gradient-', ''));
+      addButtonKeyHandler(swatch);
 
       swatch.addEventListener('click', function () {
         core.updateSetting('wallpaper', 'current', opt);

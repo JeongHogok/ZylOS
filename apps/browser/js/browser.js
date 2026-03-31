@@ -13,6 +13,17 @@
 (function () {
   'use strict';
 
+  /* ─── a11y: keyboard handler for button-like elements ─── */
+  function addButtonKeyHandler(el) {
+    el.setAttribute('tabindex', '0');
+    el.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        el.click();
+      }
+    });
+  }
+
   /* ─── Constants ─── */
   var MAX_TABS = 5;
 
@@ -103,6 +114,7 @@
       el.dataset.tab = tab.id;
       el.innerHTML = '<span class="tab-title">' + escapeHtml(tab.title) + '</span>' +
         (tabs.length > 1 ? '<button class="tab-close">&times;</button>' : '');
+      addButtonKeyHandler(el);
       el.addEventListener('click', function (e) {
         if (e.target.classList.contains('tab-close')) {
           closeTab(tab.id);
@@ -401,6 +413,9 @@
           '<span class="bookmark-name">' + escapeHtml(bm.name) + '</span>' +
           '<span class="bookmark-url">' + escapeHtml(domain) + '</span>' +
         '</div>';
+      el.setAttribute('role', 'link');
+      el.setAttribute('aria-label', bm.name);
+      addButtonKeyHandler(el);
       el.addEventListener('click', function () {
         urlInput.value = bm.url;
         showWebPage(bm.url);
@@ -426,6 +441,9 @@
           '<svg viewBox="0 0 24 24" width="24" height="24"><path' + fillAttr + ' d="' + ql.svgPath + '"/></svg>' +
         '</div>' +
         '<span>' + ql.name + '</span>';
+      el.setAttribute('role', 'link');
+      el.setAttribute('aria-label', ql.name);
+      addButtonKeyHandler(el);
       el.addEventListener('click', function () {
         urlInput.value = ql.url;
         showWebPage(ql.url);

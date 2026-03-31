@@ -75,6 +75,35 @@
     "no_notifications": "Sin notificaciones"
   },
 
+  "files": {
+    "delete_title": "Eliminar",
+    "delete_confirm": "¿Seguro que desea eliminar este archivo?",
+    "rename_title": "Renombrar",
+    "rename_placeholder": "Nuevo nombre",
+    "new_folder_title": "Nueva carpeta",
+    "new_folder_placeholder": "Nombre de carpeta",
+    "share_title": "Compartir",
+    "loading": "Cargando...",
+    "empty_folder": "Carpeta vacía"
+  },
+
+  "gallery": {
+    "delete_title": "Eliminar",
+    "confirm_delete": "¿Eliminar este archivo?",
+    "no_media": "No hay fotos ni videos"
+  },
+
+  "notes": {
+    "no_notes": "No hay notas"
+  },
+
+  "contacts": {
+    "no_contacts": "No hay contactos",
+    "add": "Agregar contacto",
+    "edit": "Editar contacto",
+    "permission_denied": "Permiso denegado"
+  },
+
   "date": {
     "format": "{day}, {d} de {monthName} de {y}",
     "days": ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"],

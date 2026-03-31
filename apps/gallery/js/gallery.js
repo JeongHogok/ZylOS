@@ -44,6 +44,46 @@
     return 'image/jpeg';
   }
 
+  /* ─── a11y: keyboard handler for button-like elements ─── */
+  function addButtonKeyHandler(el) {
+    el.setAttribute('tabindex', '0');
+    el.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        el.click();
+      }
+    });
+  }
+
+  /* ─── Custom Confirm Modal (replaces native confirm) ─── */
+  var galleryModalOverlay = null;
+
+  function showGalleryConfirm(title, message, onConfirm) {
+    if (!galleryModalOverlay) {
+      galleryModalOverlay = document.createElement('div');
+      galleryModalOverlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9000;display:none;align-items:center;justify-content:center';
+      document.body.appendChild(galleryModalOverlay);
+    }
+    var t = typeof zylI18n !== 'undefined' ? zylI18n : null;
+    var cancelText = t ? t.t('common.cancel') : 'Cancel';
+    var okText = t ? t.t('common.ok') : 'OK';
+    galleryModalOverlay.innerHTML =
+      '<div role="dialog" aria-modal="true" aria-label="' + title + '" style="background:#1e1e2e;border-radius:16px;padding:24px;width:280px;max-width:90%;color:#fff">' +
+        '<div style="font-size:16px;font-weight:600;margin-bottom:12px">' + title + '</div>' +
+        '<div style="font-size:14px;opacity:0.8;margin-bottom:20px">' + message + '</div>' +
+        '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+          '<button class="gm-cancel" style="padding:8px 16px;border:none;border-radius:8px;background:#333;color:#fff;cursor:pointer">' + cancelText + '</button>' +
+          '<button class="gm-ok" style="padding:8px 16px;border:none;border-radius:8px;background:#ef4444;color:#fff;cursor:pointer">' + okText + '</button>' +
+        '</div>' +
+      '</div>';
+    galleryModalOverlay.style.display = 'flex';
+    var cancelBtn = galleryModalOverlay.querySelector('.gm-cancel');
+    var okBtn = galleryModalOverlay.querySelector('.gm-ok');
+    cancelBtn.addEventListener('click', function () { galleryModalOverlay.style.display = 'none'; });
+    okBtn.addEventListener('click', function () { galleryModalOverlay.style.display = 'none'; onConfirm(); });
+    okBtn.focus();
+  }
+
   function requestService(service, method, params) {
     ZylBridge.sendToSystem({
       type: 'service.request', service: service, method: method, params: params || {}
@@ -101,6 +141,9 @@
       el.className = 'photo-thumb';
       el.dataset.name = name;
       el.dataset.type = isVideo(name) ? 'video' : 'image';
+      el.setAttribute('role', 'img');
+      el.setAttribute('aria-label', name);
+      addButtonKeyHandler(el);
 
       /* 비디오 오버레이 아이콘 */
       if (isVideo(name)) {
@@ -303,14 +346,16 @@
   if (viewerDeleteBtn) {
     viewerDeleteBtn.addEventListener('click', function () {
       if (!currentViewingFile) return;
-      if (confirm(typeof zylI18n !== 'undefined' ? zylI18n.t('gallery.confirm_delete') : 'Delete this file?')) {
-        requestService('fs', 'remove', { path: 'Pictures/' + currentViewingFile });
-        /* Remove from local list */
-        mediaFiles = mediaFiles.filter(function (f) { return f.name !== currentViewingFile; });
-        delete dataCache[currentViewingFile];
+      var deleteTitle = typeof zylI18n !== 'undefined' ? zylI18n.t('gallery.delete_title') : 'Delete';
+      var deleteMsg = typeof zylI18n !== 'undefined' ? zylI18n.t('gallery.confirm_delete') : 'Delete this file?';
+      var fileToDelete = currentViewingFile;
+      showGalleryConfirm(deleteTitle, deleteMsg, function () {
+        requestService('fs', 'remove', { path: 'Pictures/' + fileToDelete });
+        mediaFiles = mediaFiles.filter(function (f) { return f.name !== fileToDelete; });
+        delete dataCache[fileToDelete];
         closeViewer();
         renderMediaList(mediaFiles);
-      }
+      });
     });
   }
 

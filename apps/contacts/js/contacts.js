@@ -197,6 +197,15 @@
       var row = document.createElement('div');
       row.className = 'contact-row';
       row.setAttribute('data-id', c.id || '');
+      row.setAttribute('role', 'listitem');
+      row.setAttribute('aria-label', c.name || '');
+      row.setAttribute('tabindex', '0');
+      row.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          row.click();
+        }
+      });
 
       var avatar = document.createElement('div');
       avatar.className = 'avatar ' + getAvatarClass(c.name);

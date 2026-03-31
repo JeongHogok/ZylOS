@@ -75,6 +75,35 @@
     "no_notifications": "알림이 없습니다"
   },
 
+  "files": {
+    "delete_title": "삭제",
+    "delete_confirm": "이 파일을 삭제하시겠습니까?",
+    "rename_title": "이름 변경",
+    "rename_placeholder": "새 이름",
+    "new_folder_title": "새 폴더",
+    "new_folder_placeholder": "폴더 이름",
+    "share_title": "공유",
+    "loading": "로딩 중...",
+    "empty_folder": "빈 폴더"
+  },
+
+  "gallery": {
+    "delete_title": "삭제",
+    "confirm_delete": "이 파일을 삭제하시겠습니까?",
+    "no_media": "사진이나 동영상이 없습니다"
+  },
+
+  "notes": {
+    "no_notes": "메모가 없습니다"
+  },
+
+  "contacts": {
+    "no_contacts": "연락처가 없습니다",
+    "add": "연락처 추가",
+    "edit": "연락처 편집",
+    "permission_denied": "권한이 거부되었습니다"
+  },
+
   "date": {
     "format": "{y}년 {m}월 {d}일 {day}",
     "days": ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"],

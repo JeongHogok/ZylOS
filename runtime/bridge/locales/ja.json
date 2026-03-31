@@ -75,6 +75,35 @@
     "no_notifications": "通知はありません"
   },
 
+  "files": {
+    "delete_title": "削除",
+    "delete_confirm": "このファイルを削除しますか？",
+    "rename_title": "名前変更",
+    "rename_placeholder": "新しい名前",
+    "new_folder_title": "新しいフォルダ",
+    "new_folder_placeholder": "フォルダ名",
+    "share_title": "共有",
+    "loading": "読み込み中...",
+    "empty_folder": "空のフォルダ"
+  },
+
+  "gallery": {
+    "delete_title": "削除",
+    "confirm_delete": "このファイルを削除しますか？",
+    "no_media": "写真や動画がありません"
+  },
+
+  "notes": {
+    "no_notes": "メモがありません"
+  },
+
+  "contacts": {
+    "no_contacts": "連絡先がありません",
+    "add": "連絡先を追加",
+    "edit": "連絡先を編集",
+    "permission_denied": "権限が拒否されました"
+  },
+
   "date": {
     "format": "{y}年{m}月{d}日 {day}",
     "days": ["日曜日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日"],
