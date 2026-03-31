@@ -4,13 +4,13 @@
 
 ## 코드베이스 현황 (2026-03-31)
 
-- **파일 수**: 391개
-- **LoC**: ~63,200줄
+- **파일 수**: 418개
+- **LoC**: ~63,700줄
 - **C 서비스 디렉토리**: 26개 (runtime/services/)
 - **systemd 서비스**: 25개 (system/*.service)
 - **JS 서비스 모듈**: 29개 (apps/system/services/)
-- **HAL 구현체**: 9개 (runtime/hal/)
-- **시스템 앱**: 21개 (apps/)
+- **HAL 구현체**: 8개 (runtime/hal/)
+- **시스템 앱**: 22개 (apps/, shared 포함)
 - **에뮬레이터**: Tauri 2.x (Rust), aes-gcm 암호화
 
 ## 아키텍처 경계 — 절대 규칙

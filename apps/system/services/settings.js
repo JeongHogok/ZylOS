@@ -60,7 +60,7 @@
               category: category,
               key: k,
               value: snapshot[k]
-            }).catch(function () {});
+            }).catch(function () { /* fire-and-forget: non-critical persist */ });
           })(keys[i]);
         }
       }, 200);

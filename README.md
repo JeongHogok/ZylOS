@@ -10,7 +10,7 @@
 - **Wayland 컴포지터**: wlroots 0.18 기반 모바일 전용 (제스처, 풀스크린)
 - **웹 앱 런타임**: WebKitGTK 기반 — HTML/CSS/JS로 앱 개발
 - **26개 C 서비스 디렉토리 / 29개 JS 서비스 모듈**: OS 이미지 소유, 에뮬레이터는 IPC 라우터만 담당
-- **21개 시스템 앱**: 홈, 잠금, 설정, 브라우저, 파일, 터미널, 카메라, 갤러리, 전화, 메시지, 연락처, 날씨, 시계, 음악, 계산기, 메모, 앱스토어, OOBE, 상태바, 키보드, 공유 라이브러리
+- **22개 시스템 앱**: 홈, 잠금, 설정, 브라우저, 파일, 터미널, 카메라, 갤러리, 전화, 메시지, 연락처, 날씨, 시계, 음악, 계산기, 메모, 앱스토어, OOBE, 상태바, 키보드, 공유 라이브러리, 가상 키보드
 - **디바이스 독립 아키텍처**: OS 이미지(apps/)가 에뮬레이터 없이 실제 디바이스에서 독립 동작
 - **ZylBridge IPC**: requestId + Promise 매칭 방식, 4모드 자동 감지 (native/webkit/iframe/standalone)
 - **ZylAppRegistry**: 동적 앱 로딩 — app.json 메타데이터 기반 앱 레지스트리 (단일 진실 소스)
@@ -26,7 +26,7 @@
 - **Verified Boot**: FIT 이미지 서명 + dm-verity (rootfs 무결성)
 - **zyl SDK CLI**: init/validate/package/sign/keygen 개발자 워크플로우
 - **코드 품질 보증**: verify-all.sh (11섹션 자동 검증) + pre-commit hook
-- **코드베이스 규모**: 391개 파일, ~63,200 LoC
+- **코드베이스 규모**: 418개 파일, ~63,700 LoC
 
 ## 기술 스택
 
@@ -40,7 +40,7 @@
 | **디스플레이** | wlroots 0.18 + Wayland | 모바일 컴포지터 (제스처, 풀스크린) |
 | **앱 런타임** | WebKitGTK 6.0 | 앱별 독립 WebView 프로세스 |
 | **IPC** | D-Bus | C 서비스 간 통신 (~22개 D-Bus 데몬) |
-| **앱 프레임워크** | HTML/CSS/JS (ES5) | 시스템 앱 21개 |
+| **앱 프레임워크** | HTML/CSS/JS (ES5) | 시스템 앱 22개 |
 | **HAL** | C (sysfs, wpa_supplicant, BlueZ, PipeWire) | 하드웨어 추상화 (9개 구현체) |
 | **샌드박싱** | namespace + libseccomp BPF (3프로필 46규칙) + cgroup v2 | 앱 격리 |
 | **크리덴셜** | OpenSSL AES-256-GCM + PBKDF2-HMAC-SHA256 | 인증 정보 암호화 |
@@ -130,7 +130,7 @@
 | user | 사용자 프로필 |
 | wifi | WiFi 스캔/연결 (비동기) |
 
-### HAL 구현체 (9개 — runtime/hal/)
+### HAL 구현체 (8개 — runtime/hal/)
 
 | 파일 | 역할 |
 |------|------|
@@ -211,7 +211,7 @@ docker run --rm -v $(pwd)/output:/output zylos-build
 1. **디바이스 선택** — F3 Gesture / F3 Lite / F3 Classic 중 선택
 2. **OS 이미지** — 자동 생성 또는 기존 이미지 불러오기
 3. **부팅** → **OOBE** (언어 선택, WiFi, PIN 설정) → **홈 화면**
-4. 21개 시스템 앱 자유롭게 사용
+4. 22개 시스템 앱 자유롭게 사용
 
 #### 릴리즈 빌드 산출물
 ```
@@ -329,7 +329,7 @@ GitHub Actions 파이프라인 (`.github/workflows/`):
 ## 프로젝트 구조
 
 ```
-apps/                          시스템 앱 21개 (HTML/CSS/JS, ES5)
+apps/                          시스템 앱 22개 (HTML/CSS/JS, ES5)
   apps/system/                 OS 서비스 프레임워크
     services.js                  서비스 라우터 + 비즈니스 로직
     intent.js                    Android 스타일 인텐트 시스템
@@ -352,7 +352,7 @@ emulator-app/                  Tauri 2.x 네이티브 에뮬레이터
 
 compositor/                    Wayland 모바일 컴포지터 (C, wlroots)
 runtime/wam/                   Web Application Manager (C, WebKitGTK)
-runtime/hal/                   Hardware Abstraction Layer (C, 8개 구현체)
+runtime/hal/                   Hardware Abstraction Layer (C, 8개)
 runtime/services/              시스템 서비스 26개 C 디렉토리 (D-Bus)
 system/                        systemd (25개 서비스), Plymouth, DTS, AppArmor, 복구
 tools/                         빌드/개발 도구

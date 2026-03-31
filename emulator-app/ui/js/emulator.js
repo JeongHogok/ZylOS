@@ -748,7 +748,7 @@
   function broadcastToCurrentApp(type, data) {
     try {
       appFrame.contentWindow.postMessage(JSON.stringify({ type: type, data: data }), '*');
-    } catch(e) {}
+    } catch(e) { /* iframe may be cross-origin or detached */ }
   }
 
   /* ═══ Toast Banner ═══ */

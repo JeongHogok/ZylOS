@@ -135,8 +135,8 @@ openssl dgst -sha256 -sign developer.key -out SIGNATURE manifest.hash
 - 마운트 포인트 내에서만 명령 실행 허용
 
 ### 시스템 앱 보호 (SYSTEM_APPS)
-- 21개 시스템 앱은 App Store에서 삭제 불가
-- 보호 대상: home, lockscreen, statusbar, oobe, settings, browser, files, terminal, camera, gallery, music, clock, calc, notes, weather, store, phone, messages, contacts, keyboard
+- 22개 시스템 앱은 App Store에서 삭제 불가
+- 보호 대상: home, lockscreen, statusbar, oobe, settings, browser, files, terminal, camera, gallery, music, clock, calc, notes, weather, store, phone, messages, contacts, keyboard, shared
 - OS 서비스(`apps/system/services.js`)에서 SYSTEM_APPS 리스트 확인 후 uninstall 차단
 
 ### 파일시스템 보호 (Rust 백엔드)
@@ -154,9 +154,18 @@ openssl dgst -sha256 -sign developer.key -out SIGNATURE manifest.hash
 - 타임아웃 시 자동 release (power 서비스 타이머 관리)
 - 무한 웨이크락으로 인한 배터리 소진 방지
 
-### LMK (Low Memory Killer)
-- cgroup v2 memory.pressure 이벤트 기반
+### OOM Killer (cgroup v2)
+- cgroup v2 `memory.max` 기반 앱별 메모리 상한 적용
+- `memory.pressure` 이벤트 기반 Low Memory Killer (LMK)
 - 백그라운드 앱 → 캐시 앱 → 사용자 앱 순으로 OOM 처리
+- 앱별 UID + cgroup v2 조합으로 메모리 격리 강제
+
+### systemd 서비스 보안 하드닝
+- 25개 systemd 서비스 유닛에 보안 하드닝 전체 적용
+- `ProtectSystem=strict`, `ProtectHome=yes`, `PrivateTmp=yes`
+- `NoNewPrivileges=yes`, `CapabilityBoundingSet=` 최소 권한
+- `SystemCallFilter=@system-service` seccomp 필터
+- 서비스별 `ReadWritePaths=` 최소 범위 지정
 
 ### OOBE 격리
 - OOBE 앱은 최근 앱(Recents) 목록에서 제외

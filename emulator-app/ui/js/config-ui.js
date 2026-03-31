@@ -166,7 +166,7 @@ var ZylConfigUI = (function () {
       if (info.available_storage_gb) parts.push('Available storage: ' + info.available_storage_gb + ' GB');
       if (info.total_ram_mb) parts.push('Host RAM: ' + Math.round(info.total_ram_mb / 1024) + ' GB');
       el.textContent = parts.join(' | ') || 'Host resource info unavailable';
-    }).catch(function () {});
+    }).catch(function () { /* host info unavailable — non-critical */ });
   }
 
   // ── 저장된 디바이스 ──
@@ -211,7 +211,7 @@ var ZylConfigUI = (function () {
 
         list.appendChild(card);
       });
-    }).catch(function () {});
+    }).catch(function () { /* saved devices unavailable — non-critical */ });
   }
 
   // ── 단계 전환 ──
