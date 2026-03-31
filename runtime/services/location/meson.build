@@ -20,7 +20,7 @@ if libcurl.found()
 endif
 
 executable('zyl-location',
-  'location.c',
+  ['location.c', 'location_gps.c', 'location_geoip.c', 'location_wifi.c'],
   c_args: location_c_args,
   dependencies: location_deps,
   install: true,
