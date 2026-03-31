@@ -14,6 +14,7 @@
 #include <string.h>
 #include <signal.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <time.h>
 #include <sys/stat.h>
 #include <sys/resource.h>
@@ -40,73 +41,119 @@ static const char *signal_name(int sig) {
     }
 }
 
+/*
+ * Async-signal-safe write helpers.
+ * Signal handlers must NOT call stdio (fopen/fprintf/fclose), malloc,
+ * localtime, or backtrace_symbols — they can deadlock or corrupt state.
+ * We use only raw fd I/O: open/write/close, and backtrace_symbols_fd.
+ */
+static void write_str(int fd, const char *s) {
+    if (!s) return;
+    size_t len = 0;
+    while (s[len]) len++;
+    (void)write(fd, s, len);
+}
+
+static void write_int(int fd, int val) {
+    char buf[32];
+    int neg = 0;
+    if (val < 0) { neg = 1; val = -val; }
+    int i = 0;
+    do { buf[i++] = '0' + (val % 10); val /= 10; } while (val > 0);
+    if (neg) buf[i++] = '-';
+    /* Reverse */
+    for (int a = 0, b = i - 1; a < b; a++, b--) {
+        char t = buf[a]; buf[a] = buf[b]; buf[b] = t;
+    }
+    (void)write(fd, buf, i);
+}
+
+static void write_ptr(int fd, const void *p) {
+    char buf[20] = "0x";
+    unsigned long v = (unsigned long)p;
+    int i = 18;
+    buf[i--] = '\0';
+    do { int d = v & 0xF; buf[i--] = d < 10 ? '0' + d : 'a' + d - 10; v >>= 4; } while (v && i >= 2);
+    (void)write(fd, buf + i + 1, 18 - i - 1);
+}
+
 static void crash_handler(int sig, siginfo_t *info, void *context) {
     (void)context;
 
-    /* Ensure crash directory exists */
+    /* Ensure crash directory exists (async-signal-safe) */
     mkdir(CRASH_DIR, 0700);
 
-    /* Generate crash report filename */
-    time_t now = time(NULL);
-    struct tm *tm = localtime(&now);
+    /* Build filename using only pid (avoid localtime — not signal-safe) */
     char filename[256];
-    snprintf(filename, sizeof(filename),
-             "%s/crash_%04d%02d%02d_%02d%02d%02d_%d.txt",
-             CRASH_DIR,
-             tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
-             tm->tm_hour, tm->tm_min, tm->tm_sec,
-             getpid());
+    /* Use a fixed format: crash_<pid>_<sig>.txt */
+    int pos = 0;
+    const char *prefix = CRASH_DIR "/crash_";
+    while (*prefix && pos < 200) filename[pos++] = *prefix++;
+    /* Write pid digits */
+    {
+        int pid = getpid();
+        char digits[16]; int nd = 0;
+        do { digits[nd++] = '0' + (pid % 10); pid /= 10; } while (pid > 0);
+        for (int i = nd - 1; i >= 0 && pos < 220; i--) filename[pos++] = digits[i];
+    }
+    filename[pos++] = '_';
+    /* Write signal number */
+    {
+        int s = sig;
+        char digits[8]; int nd = 0;
+        do { digits[nd++] = '0' + (s % 10); s /= 10; } while (s > 0);
+        for (int i = nd - 1; i >= 0 && pos < 240; i--) filename[pos++] = digits[i];
+    }
+    const char *suffix = ".txt";
+    while (*suffix && pos < 250) filename[pos++] = *suffix++;
+    filename[pos] = '\0';
 
-    FILE *f = fopen(filename, "w");
-    if (f) {
-        fprintf(f, "═══════════════════════════════════\n");
-        fprintf(f, "  ZylOS Crash Report\n");
-        fprintf(f, "═══════════════════════════════════\n\n");
-        fprintf(f, "Signal:    %s (%d)\n", signal_name(sig), sig);
-        fprintf(f, "PID:       %d\n", getpid());
-        fprintf(f, "Timestamp: %04d-%02d-%02d %02d:%02d:%02d\n",
-                tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
-                tm->tm_hour, tm->tm_min, tm->tm_sec);
+    /* Use open/write/close instead of fopen/fprintf/fclose (signal-safe) */
+    int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (fd >= 0) {
+        write_str(fd, "=== ZylOS Crash Report ===\n");
+        write_str(fd, "Signal: "); write_str(fd, signal_name(sig));
+        write_str(fd, " ("); write_int(fd, sig); write_str(fd, ")\n");
+        write_str(fd, "PID: "); write_int(fd, getpid()); write_str(fd, "\n");
 
         if (info) {
-            fprintf(f, "Fault addr: %p\n", info->si_addr);
-            fprintf(f, "si_code:    %d\n", info->si_code);
+            write_str(fd, "Fault addr: "); write_ptr(fd, info->si_addr); write_str(fd, "\n");
+            write_str(fd, "si_code: "); write_int(fd, info->si_code); write_str(fd, "\n");
         }
 
-        /* Backtrace */
+        /* Backtrace — use backtrace_symbols_fd (async-signal-safe variant) */
 #if HAS_BACKTRACE
-        fprintf(f, "\nBacktrace:\n");
+        write_str(fd, "\nBacktrace:\n");
         void *frames[MAX_FRAMES];
         int nframes = backtrace(frames, MAX_FRAMES);
-        char **symbols = backtrace_symbols(frames, nframes);
-        if (symbols) {
-            for (int i = 0; i < nframes; i++) {
-                fprintf(f, "  #%d %s\n", i, symbols[i]);
-            }
-            free(symbols);
-        }
+        backtrace_symbols_fd(frames, nframes, fd);
 #else
-        fprintf(f, "\nBacktrace: not available (non-glibc)\n");
+        write_str(fd, "\nBacktrace: not available (non-glibc)\n");
 #endif
 
-        /* /proc/self/maps for address mapping */
-        fprintf(f, "\nMemory maps:\n");
-        FILE *maps = fopen("/proc/self/maps", "r");
-        if (maps) {
-            char line[512];
-            while (fgets(line, sizeof(line), maps)) {
-                fputs(line, f);
+        /* /proc/self/maps — raw fd copy */
+        write_str(fd, "\nMemory maps:\n");
+        int maps_fd = open("/proc/self/maps", O_RDONLY);
+        if (maps_fd >= 0) {
+            char buf[1024];
+            ssize_t n;
+            while ((n = read(maps_fd, buf, sizeof(buf))) > 0) {
+                (void)write(fd, buf, n);
             }
-            fclose(maps);
+            close(maps_fd);
         }
 
-        fclose(f);
+        close(fd);
     }
 
-    /* Write to stderr as well */
-    fprintf(stderr, "\n[CRASH] %s (signal %d) at %p\n",
-            signal_name(sig), sig, info ? info->si_addr : NULL);
-    fprintf(stderr, "[CRASH] Report saved to %s\n", filename);
+    /* Write to stderr (fd 2 — signal-safe) */
+    write_str(2, "\n[CRASH] ");
+    write_str(2, signal_name(sig));
+    write_str(2, " at ");
+    write_ptr(2, info ? info->si_addr : NULL);
+    write_str(2, "\n[CRASH] Report saved to ");
+    write_str(2, filename);
+    write_str(2, "\n");
 
     /* Enable coredump: set RLIMIT_CORE to unlimited for this process */
     struct rlimit rl;
@@ -175,6 +222,8 @@ static void handle_crash_method(GDBusConnection *conn, const gchar *sender,
         if (dir) {
             const gchar *name;
             while ((name = g_dir_read_name(dir)) != NULL) {
+                /* Only delete crash reports (same prefix as GetReports) */
+                if (!g_str_has_prefix(name, "crash_")) continue;
                 char full[512];
                 snprintf(full, sizeof(full), "%s/%s", CRASH_DIR, name);
                 unlink(full);
