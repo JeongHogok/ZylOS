@@ -227,18 +227,15 @@ static void crash_signal_handler(int sig)
     void *bt_buf[64];
     int bt_count = backtrace(bt_buf, 64);
 
-    /* Write crash info to log via fd (signal-safe) */
+    /* Write crash info to log via fd using only async-signal-safe calls */
     if (svc && svc->log_fp) {
         int fd = fileno(svc->log_fp);
         if (fd >= 0) {
-            char buf[512];
-            int len = snprintf(buf, sizeof(buf),
-                "{\"ts\":%lld,\"level\":\"CRASH\",\"source\":\"signal\","
-                "\"msg\":\"Signal %d received, pid=%d\"}\n",
-                (long long)time(NULL) * 1000LL, sig, (int)getpid());
-            if (len > 0 && (size_t)len < sizeof(buf)) {
-                (void)write(fd, buf, (size_t)len);
-            }
+            /* snprintf is NOT async-signal-safe — use raw write instead */
+            static const char crash_prefix[] =
+                "{\"level\":\"CRASH\",\"source\":\"signal\","
+                "\"msg\":\"Fatal signal received\"}\n";
+            (void)write(fd, crash_prefix, sizeof(crash_prefix) - 1);
 
             /* Write backtrace symbols to stderr and log */
             backtrace_symbols_fd(bt_buf, bt_count, STDERR_FILENO);

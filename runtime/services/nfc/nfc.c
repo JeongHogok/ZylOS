@@ -166,11 +166,11 @@ static void on_interfaces_added(GDBusConnection *conn, const gchar *sender,
 
     if (cb) {
         ZylNfcTag tag = {0};
-        tag.path = obj_path;  /* caller 에게 넘기고 해제 */
+        tag.path = obj_path;
         tag.type = ZYL_NFC_TAG_UNKNOWN;
         cb(&tag, cb_data);
-        /* obj_path 는 tag.path 이므로 cb 내부에서 복사 사용 필요 */
     }
+    /* Free after callback returns — callback must copy if it needs the path */
     g_free(obj_path);
 }
 

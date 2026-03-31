@@ -209,8 +209,9 @@ void zyl_dbus_monitor_connection(GDBusConnection *conn,
     /* Do not exit on close — allow reconnection logic */
     g_dbus_connection_set_exit_on_close(conn, FALSE);
 
-    g_signal_connect(conn, "closed",
-                     G_CALLBACK(on_connection_closed), ctx);
+    g_signal_connect_data(conn, "closed",
+                          G_CALLBACK(on_connection_closed), ctx,
+                          (GClosureNotify)g_free, 0);
 }
 
 /* ════════════════════════════════════════════════════════════════
