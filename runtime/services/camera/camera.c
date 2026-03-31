@@ -209,17 +209,28 @@ static int setup_mmap_buffers(ZylCameraService *cam) {
         buf.memory = V4L2_MEMORY_MMAP;
         buf.index  = i;
 
-        if (xioctl(cam->fd, VIDIOC_QUERYBUF, &buf) < 0) return -1;
+        if (xioctl(cam->fd, VIDIOC_QUERYBUF, &buf) < 0) goto fail_cleanup;
 
         cam->buffers[i].length = buf.length;
         cam->buffers[i].start = mmap(NULL, buf.length,
             PROT_READ | PROT_WRITE, MAP_SHARED, cam->fd, buf.m.offset);
         if (cam->buffers[i].start == MAP_FAILED) {
             cam->buffers[i].start = NULL;
-            return -1;
+            goto fail_cleanup;
         }
     }
     return 0;
+
+fail_cleanup:
+    /* Unmap any successfully mapped buffers */
+    for (uint32_t j = 0; j < cam->n_buffers; j++) {
+        if (cam->buffers[j].start) {
+            munmap(cam->buffers[j].start, cam->buffers[j].length);
+            cam->buffers[j].start = NULL;
+        }
+    }
+    cam->n_buffers = 0;
+    return -1;
 }
 
 int zyl_camera_start_preview(ZylCameraService *cam,
@@ -284,6 +295,12 @@ void zyl_camera_stop_preview(ZylCameraService *cam) {
 int zyl_camera_capture(ZylCameraService *cam, const char *output_path) {
     if (!cam || cam->fd < 0 || !output_path) return -1;
 
+    /* Reject path traversal attempts from D-Bus callers */
+    if (strstr(output_path, "..") != NULL) {
+        fprintf(stderr, "[Camera] Rejected path traversal: %s\n", output_path);
+        return -1;
+    }
+
     /* Ensure streaming for capture */
     bool was_streaming = cam->streaming;
     if (!was_streaming) {
@@ -304,19 +321,33 @@ int zyl_camera_capture(ZylCameraService *cam, const char *output_path) {
         return -1;
     }
 
+    /* Validate buffer index from kernel */
+    if (buf.index >= cam->n_buffers) {
+        fprintf(stderr, "[Camera] Invalid buffer index %u (max %u)\n",
+                buf.index, cam->n_buffers);
+        xioctl(cam->fd, VIDIOC_QBUF, &buf);
+        if (!was_streaming) zyl_camera_stop_preview(cam);
+        return -1;
+    }
+
     /* Write raw frame to file (YUYV — apps convert to JPEG) */
+    int ret = 0;
     FILE *f = fopen(output_path, "wb");
     if (f) {
         fwrite(cam->buffers[buf.index].start, 1, buf.bytesused, f);
         fclose(f);
         g_message("[Camera] Captured frame → %s (%u bytes)",
                   output_path, buf.bytesused);
+    } else {
+        fprintf(stderr, "[Camera] Failed to open %s: %s\n",
+                output_path, strerror(errno));
+        ret = -1;
     }
 
     /* Re-queue buffer */
     xioctl(cam->fd, VIDIOC_QBUF, &buf);
     if (!was_streaming) zyl_camera_stop_preview(cam);
-    return 0;
+    return ret;
 }
 
 int zyl_camera_get_supported_resolutions(ZylCameraService *cam,
