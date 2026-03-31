@@ -87,6 +87,7 @@ install_data('system/zyl-nfc.service',           install_dir: get_option('prefix
 install_data('system/zyl-account.service',       install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
 install_data('system/zyl-os.target',             install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
 install_data('system/zyl-apparmor.service',      install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
+install_data('system/zyl-telemetry.service',     install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
 install_data('system/timesyncd.conf',            install_dir: get_option('sysconfdir') / 'systemd')
 install_data('system/zyl-crash-handler.service', install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
 

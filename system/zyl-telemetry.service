@@ -1,0 +1,12 @@
+[Unit]
+Description=Zyl OS Telemetry Service
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/zyl-telemetry
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=zyl-os.target
