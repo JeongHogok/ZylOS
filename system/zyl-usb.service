@@ -1,7 +1,6 @@
 [Unit]
 Description=Zyl OS USB/MTP Manager Service
 After=dbus.service
-Wants=dbus.service
 
 [Service]
 Type=dbus

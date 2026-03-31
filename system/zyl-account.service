@@ -1,6 +1,7 @@
 [Unit]
 Description=Zyl OS Account Service
 After=zyl-credential.service
+Requires=zyl-credential.service
 
 [Service]
 Type=dbus

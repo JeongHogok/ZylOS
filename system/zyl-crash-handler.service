@@ -7,7 +7,7 @@ Before=zyl-os.target
 Type=dbus
 BusName=org.zylos.CrashHandler
 ExecStart=/usr/bin/zyl-crash-handler
-Restart=always
+Restart=on-failure
 RestartSec=2
 
 [Install]

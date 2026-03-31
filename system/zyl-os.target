@@ -1,7 +1,7 @@
 [Unit]
 Description=Zyl OS User Session
 Requires=zyl-compositor.service zyl-wam.service
-Wants=zyl-apparmor.service zyl-notification.service zyl-power.service zyl-sensors.service systemd-timesyncd.service
+Wants=zyl-apparmor.service zyl-notification.service zyl-power.service zyl-sensors.service systemd-timesyncd.service zyl-account.service zyl-audio.service zyl-auth.service zyl-bluetooth.service zyl-camera.service zyl-crash-handler.service zyl-input.service zyl-nfc.service zyl-telemetry.service zyl-wifi.service
 After=zyl-apparmor.service zyl-compositor.service zyl-wam.service systemd-timesyncd.service
 
 [Install]
