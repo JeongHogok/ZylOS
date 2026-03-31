@@ -343,6 +343,45 @@
     notifList.prepend(el);
   }
 
-  /* 목 알림 제거됨 — 알림은 에뮬레이터/시스템에서 postMessage로 전달됨 */
+  /* ════════════════════════════════════════════
+   *  긴급전화 + 카메라 바로가기
+   * ════════════════════════════════════════════ */
+  var btnEmergency = document.getElementById('btn-emergency');
+  var btnCamera = document.getElementById('btn-camera');
+
+  if (btnEmergency) {
+    btnEmergency.addEventListener('click', function (e) {
+      e.stopPropagation();
+      /* Launch phone app with emergency dial intent */
+      ZylBridge.sendToSystem({
+        type: 'app.launch',
+        appId: 'com.zylos.phone',
+        intent: {
+          action: 'zyl.intent.action.DIAL',
+          data: 'tel:emergency',
+          extras: { emergency: true }
+        }
+      });
+    });
+  }
+
+  if (btnCamera) {
+    btnCamera.addEventListener('click', function (e) {
+      e.stopPropagation();
+      /* Unlock + launch camera without PIN for quick capture */
+      document.body.classList.add('unlocking');
+      unlockFlash.classList.add('flash');
+      setTimeout(function () {
+        ZylBridge.sendToSystem({
+          type: 'app.launch',
+          appId: 'com.zylos.camera',
+          intent: {
+            action: 'zyl.intent.action.CAPTURE',
+            extras: { fromLockscreen: true }
+          }
+        });
+      }, 500);
+    });
+  }
 
 })();

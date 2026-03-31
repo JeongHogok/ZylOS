@@ -26,10 +26,25 @@
     <!-- 알림 미리보기 -->
     <div id="lock-notifications"></div>
 
-    <!-- 하단 스와이프 인디케이터 -->
-    <div id="swipe-hint">
-      <div class="swipe-line"></div>
-      <span data-i18n="lock.swipe">Swipe up to unlock</span>
+    <!-- 하단 바로가기 (긴급전화 + 카메라) -->
+    <div id="lock-shortcuts">
+      <button id="btn-emergency" aria-label="Emergency call">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="white" aria-hidden="true">
+          <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
+        </svg>
+        <span data-i18n="lock.emergency">Emergency</span>
+      </button>
+      <div id="swipe-hint">
+        <div class="swipe-line"></div>
+        <span data-i18n="lock.swipe">Swipe up to unlock</span>
+      </div>
+      <button id="btn-camera" aria-label="Camera">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="white" aria-hidden="true">
+          <circle cx="12" cy="12" r="3.2"/>
+          <path d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/>
+        </svg>
+        <span data-i18n="lock.camera">Camera</span>
+      </button>
     </div>
   </div>
 

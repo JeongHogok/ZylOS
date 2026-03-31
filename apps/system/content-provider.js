@@ -2,10 +2,10 @@
 // [Clean Architecture] Domain Layer - Content Provider
 //
 // Role: Android-style ContentProvider — structured inter-app data sharing
-// Scope: 앱이 자신의 데이터를 다른 앱에 노출하는 게이트웨이.
-//        직접 파일 접근 대신 쿼리 기반 접근 제어.
-// Dependency Direction: Domain -> ZylPermissions (권한 체크)
-// SOLID: SRP — 데이터 공유 라우팅만, OCP — 새 프로바이더 등록으로 확장
+// Scope: Full CRUD (query/insert/update/delete), URI parsing,
+//        permission-gated access, change observers
+// Dependency Direction: Domain -> ZylPermissions (permission check)
+// SOLID: SRP — data sharing routing only, OCP — new providers via registration
 //
 // ES5 only. No let/const/arrow.
 // ----------------------------------------------------------
@@ -15,9 +15,13 @@ window.ZylContentProvider = (function () {
 
   var _providers = {}; /* authority → { query, insert, update, delete, getType } */
 
+  /* ─── Change observers ─── */
+  var _observers = []; /* { id, uri, callback, active } */
+  var _nextObserverId = 1;
+
   /**
-   * 프로바이더 등록. 각 앱이 자신의 데이터를 공유할 때 호출.
-   * @param {string} authority - "com.zylos.contacts" 같은 고유 식별자
+   * Register a provider. Each app exposes its data through this.
+   * @param {string} authority - "com.zylos.contacts" unique identifier
    * @param {Object} impl - { query, insert, update, delete, getType }
    */
   function registerProvider(authority, impl) {
@@ -26,7 +30,7 @@ window.ZylContentProvider = (function () {
   }
 
   /**
-   * URI 파싱: "content://authority/path?query"
+   * URI parsing: "content://authority/path?query"
    */
   function parseUri(uri) {
     if (!uri || uri.indexOf('content://') !== 0) return null;
@@ -42,11 +46,46 @@ window.ZylContentProvider = (function () {
   }
 
   /**
-   * 데이터 쿼리 — 권한 체크 후 프로바이더에 위임.
-   * @param {string} callerAppId - 호출하는 앱 ID (권한 체크)
+   * Check permission for caller app against authority.
+   * @returns {string|null} error string, or null if allowed
+   */
+  function _checkPermission(callerAppId, authority) {
+    if (typeof ZylPermissions === 'undefined' || !callerAppId) return null;
+    var requiredPerm = _getRequiredPermission(authority);
+    if (requiredPerm && !ZylPermissions.hasPermission(callerAppId, requiredPerm)) {
+      return 'Permission denied';
+    }
+    return null;
+  }
+
+  /**
+   * Notify change observers for a URI.
+   */
+  function _notifyChange(uri) {
+    var parsed = parseUri(uri);
+    if (!parsed) return;
+    for (var i = 0; i < _observers.length; i++) {
+      var obs = _observers[i];
+      if (!obs.active) continue;
+      var obsParsed = parseUri(obs.uri);
+      if (!obsParsed) continue;
+      /* Match by authority, and optionally by path prefix */
+      if (obsParsed.authority === parsed.authority) {
+        if (!obsParsed.path || parsed.path.indexOf(obsParsed.path) === 0) {
+          try {
+            obs.callback({ uri: uri, timestamp: Date.now() });
+          } catch (e) { /* ignore observer errors */ }
+        }
+      }
+    }
+  }
+
+  /**
+   * Query data — permission check then delegate to provider.
+   * @param {string} callerAppId - Caller app ID (for permission check)
    * @param {string} uri - "content://com.zylos.contacts/all"
-   * @param {Object} [projection] - 반환할 필드 목록
-   * @returns {Promise} query 결과
+   * @param {Object} [projection] - Fields to return
+   * @returns {Promise}
    */
   function query(callerAppId, uri, projection) {
     var parsed = parseUri(uri);
@@ -57,19 +96,18 @@ window.ZylContentProvider = (function () {
       return Promise.resolve({ error: 'Provider not found: ' + parsed.authority });
     }
 
-    /* 권한 체크: 호출 앱이 해당 데이터에 접근 가능한지 */
-    if (typeof ZylPermissions !== 'undefined' && callerAppId) {
-      var requiredPerm = _getRequiredPermission(parsed.authority);
-      if (requiredPerm && !ZylPermissions.hasPermission(callerAppId, requiredPerm)) {
-        return Promise.resolve({ error: 'Permission denied', permission: requiredPerm });
-      }
-    }
+    var permErr = _checkPermission(callerAppId, parsed.authority);
+    if (permErr) return Promise.resolve({ error: permErr });
 
     return provider.query(parsed.path, parsed.query, projection);
   }
 
   /**
-   * 데이터 삽입.
+   * Insert data.
+   * @param {string} callerAppId
+   * @param {string} uri
+   * @param {Object} values
+   * @returns {Promise}
    */
   function insert(callerAppId, uri, values) {
     var parsed = parseUri(uri);
@@ -77,17 +115,108 @@ window.ZylContentProvider = (function () {
     var provider = _providers[parsed.authority];
     if (!provider || !provider.insert) return Promise.resolve({ error: 'Not supported' });
 
-    var requiredPerm = _getRequiredPermission(parsed.authority);
-    if (typeof ZylPermissions !== 'undefined' && callerAppId && requiredPerm) {
-      if (!ZylPermissions.hasPermission(callerAppId, requiredPerm)) {
-        return Promise.resolve({ error: 'Permission denied' });
-      }
-    }
+    var permErr = _checkPermission(callerAppId, parsed.authority);
+    if (permErr) return Promise.resolve({ error: permErr });
 
-    return provider.insert(parsed.path, values);
+    var result = provider.insert(parsed.path, values);
+    /* Notify observers of data change */
+    Promise.resolve(result).then(function () { _notifyChange(uri); });
+    return result;
   }
 
-  /* ─── 권한 매핑 ─── */
+  /**
+   * Update data.
+   * @param {string} callerAppId
+   * @param {string} uri
+   * @param {Object} values - Fields to update
+   * @param {Object} [selection] - Filter criteria { where, args }
+   * @returns {Promise}
+   */
+  function update(callerAppId, uri, values, selection) {
+    var parsed = parseUri(uri);
+    if (!parsed) return Promise.resolve({ error: 'Invalid URI' });
+    var provider = _providers[parsed.authority];
+    if (!provider || !provider.update) return Promise.resolve({ error: 'Not supported' });
+
+    var permErr = _checkPermission(callerAppId, parsed.authority);
+    if (permErr) return Promise.resolve({ error: permErr });
+
+    var result = provider.update(parsed.path, values, selection);
+    Promise.resolve(result).then(function () { _notifyChange(uri); });
+    return result;
+  }
+
+  /**
+   * Delete data.
+   * @param {string} callerAppId
+   * @param {string} uri
+   * @param {Object} [selection] - Filter criteria { where, args }
+   * @returns {Promise}
+   */
+  function del(callerAppId, uri, selection) {
+    var parsed = parseUri(uri);
+    if (!parsed) return Promise.resolve({ error: 'Invalid URI' });
+    var provider = _providers[parsed.authority];
+    if (!provider || !provider['delete']) return Promise.resolve({ error: 'Not supported' });
+
+    var permErr = _checkPermission(callerAppId, parsed.authority);
+    if (permErr) return Promise.resolve({ error: permErr });
+
+    var result = provider['delete'](parsed.path, selection);
+    Promise.resolve(result).then(function () { _notifyChange(uri); });
+    return result;
+  }
+
+  /**
+   * Get MIME type for a URI.
+   * @param {string} uri
+   * @returns {string|null}
+   */
+  function getType(uri) {
+    var parsed = parseUri(uri);
+    if (!parsed) return null;
+    var provider = _providers[parsed.authority];
+    if (!provider || !provider.getType) return null;
+    return provider.getType(parsed.path);
+  }
+
+  /* ─── Change Observer API ─── */
+
+  /**
+   * Register a content change observer.
+   * @param {string} uri - URI pattern to observe (authority + optional path prefix)
+   * @param {Function} callback - function({ uri, timestamp }) called on change
+   * @returns {number} observerId for unregistration
+   */
+  function registerContentObserver(uri, callback) {
+    var id = _nextObserverId++;
+    _observers.push({ id: id, uri: uri, callback: callback, active: true });
+    return id;
+  }
+
+  /**
+   * Unregister a content change observer.
+   * @param {number} observerId
+   */
+  function unregisterContentObserver(observerId) {
+    for (var i = 0; i < _observers.length; i++) {
+      if (_observers[i].id === observerId) {
+        _observers[i].active = false;
+        return;
+      }
+    }
+  }
+
+  /**
+   * Manually notify observers of a content change.
+   * Providers can call this after batch operations.
+   * @param {string} uri
+   */
+  function notifyChange(uri) {
+    _notifyChange(uri);
+  }
+
+  /* ─── Permission mapping ─── */
   var _permissionMap = {
     'com.zylos.contacts':  'contacts',
     'com.zylos.messaging': 'messaging',
@@ -104,6 +233,12 @@ window.ZylContentProvider = (function () {
     registerProvider: registerProvider,
     query: query,
     insert: insert,
-    parseUri: parseUri
+    update: update,
+    'delete': del,
+    getType: getType,
+    parseUri: parseUri,
+    registerContentObserver: registerContentObserver,
+    unregisterContentObserver: unregisterContentObserver,
+    notifyChange: notifyChange
   };
 })();

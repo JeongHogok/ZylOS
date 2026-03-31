@@ -239,17 +239,57 @@ body {
   margin-bottom: 1px;
 }
 
+/* ─── 하단 바로가기 (긴급전화 + 카메라) ─── */
+#lock-shortcuts {
+  position: fixed;
+  bottom: 24px;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 0 32px;
+  z-index: 2;
+}
+
+#btn-emergency,
+#btn-camera {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  color: white;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 12px;
+  transition: background 0.2s;
+}
+
+#btn-emergency:active,
+#btn-camera:active {
+  background: rgba(255,255,255,0.15);
+}
+
+#btn-emergency span,
+#btn-camera span {
+  font-size: 10px;
+  opacity: 0.5;
+  font-weight: 300;
+}
+
+#btn-emergency svg,
+#btn-camera svg {
+  opacity: 0.6;
+}
+
 /* ─── 스와이프 힌트 ─── */
 #swipe-hint {
-  position: fixed;
-  bottom: 36px;
-  left: 50%;
-  transform: translateX(-50%);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  z-index: 2;
 }
 
 #swipe-hint span {

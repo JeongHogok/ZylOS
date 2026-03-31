@@ -2,10 +2,11 @@
 // [Clean Architecture] Presentation Layer - Permission Dialog
 //
 // Role: Runtime permission request UI — Android-style grant/deny dialog
-// Scope: 앱이 위험 권한을 요청할 때 OS 수준 다이얼로그 표시,
-//        사용자 승인/거부 → 권한 상태 업데이트
+//       with "Don't ask again" permanent denial support
+// Scope: Dangerous permission dialog, permanent denial tracking,
+//        user approval/denial → permission state update
 // Dependency Direction: Presentation -> ZylPermissions (Domain)
-// SOLID: SRP — 권한 다이얼로그만 담당
+// SOLID: SRP — permission dialog only
 //
 // ES5 only. No let/const/arrow.
 // ----------------------------------------------------------
@@ -13,13 +14,13 @@
 window.ZylPermissionDialog = (function () {
   'use strict';
 
-  /* ─── 위험 권한 (런타임 요청 필요) ─── */
+  /* ─── Dangerous permissions (runtime request needed) ─── */
   var DANGEROUS_PERMISSIONS = [
     'camera', 'location', 'contacts', 'messaging',
     'telephony', 'storage', 'microphone', 'bluetooth'
   ];
 
-  /* ─── 권한 → 사용자 표시 문구 (i18n 키) ─── */
+  /* ─── Permission → display label (i18n key) ─── */
   var PERMISSION_LABELS = {
     camera:      'permission.camera',
     location:    'permission.location',
@@ -33,24 +34,65 @@ window.ZylPermissionDialog = (function () {
 
   var _pendingGrant = null; /* { appId, permission, resolve } */
 
+  /* ─── Permanent denial tracking ─── */
+  var _permanentDenials = {}; /* "appId:permission" → true */
+  var _denialCounts = {};     /* "appId:permission" → number of denials */
+
   /**
-   * 앱이 위험 권한을 요청할 때 호출.
-   * Promise를 반환: true(승인) / false(거부).
+   * Check if a permission has been permanently denied for an app.
+   */
+  function isPermanentlyDenied(appId, permission) {
+    return !!_permanentDenials[appId + ':' + permission];
+  }
+
+  /**
+   * Clear permanent denial for an app + permission.
+   * Called from Settings when user manually re-enables a permission.
+   */
+  function clearPermanentDenial(appId, permission) {
+    delete _permanentDenials[appId + ':' + permission];
+    delete _denialCounts[appId + ':' + permission];
+  }
+
+  /**
+   * Get all permanent denials for an app.
+   * Returns array of permission strings.
+   */
+  function getPermanentDenials(appId) {
+    var result = [];
+    var keys = Object.keys(_permanentDenials);
+    for (var i = 0; i < keys.length; i++) {
+      if (keys[i].indexOf(appId + ':') === 0) {
+        result.push(keys[i].substring(appId.length + 1));
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Request a dangerous permission from the user.
+   * Returns Promise<true> (granted), Promise<false> (denied),
+   * or Promise<false> immediately if permanently denied.
    */
   function requestPermission(appId, permission) {
-    /* 이미 승인된 권한이면 즉시 resolve */
+    /* Already granted → resolve immediately */
     if (typeof ZylPermissions !== 'undefined') {
       if (ZylPermissions.hasPermission(appId, permission)) {
         return Promise.resolve(true);
       }
     }
 
-    /* 위험 권한이 아니면 앱에 선언되어 있으면 자동 승인 */
+    /* Not a dangerous permission → auto-grant */
     if (DANGEROUS_PERMISSIONS.indexOf(permission) === -1) {
       return Promise.resolve(true);
     }
 
-    /* 다이얼로그 표시 */
+    /* Permanently denied → reject immediately */
+    if (isPermanentlyDenied(appId, permission)) {
+      return Promise.resolve(false);
+    }
+
+    /* Show dialog */
     return new Promise(function (resolve) {
       _pendingGrant = { appId: appId, permission: permission, resolve: resolve };
       showDialog(appId, permission);
@@ -58,7 +100,7 @@ window.ZylPermissionDialog = (function () {
   }
 
   /**
-   * OS 수준 다이얼로그 표시 (에뮬레이터에서는 DOM, 실기기에서는 컴포지터 오버레이).
+   * OS-level permission dialog with "Don't ask again" checkbox.
    */
   function showDialog(appId, permission) {
     var appName = appId;
@@ -71,6 +113,10 @@ window.ZylPermissionDialog = (function () {
     var permLabel = (typeof zylI18n !== 'undefined')
       ? zylI18n.t(labelKey) || permission
       : permission;
+
+    var key = appId + ':' + permission;
+    var denied = _denialCounts[key] || 0;
+    var showDontAsk = denied >= 1; /* Show "don't ask again" after first denial */
 
     /* Create dialog overlay */
     var overlay = document.createElement('div');
@@ -94,6 +140,30 @@ window.ZylPermissionDialog = (function () {
         || appName + ' wants to access ' + permLabel
       : appName + ' wants to access ' + permLabel;
 
+    /* "Don't ask again" checkbox — shown after first denial */
+    var checkRow = null;
+    var checkbox = null;
+    if (showDontAsk) {
+      checkRow = document.createElement('div');
+      checkRow.style.cssText = 'display:flex;align-items:center;justify-content:center;' +
+        'gap:8px;margin-bottom:16px;';
+
+      checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.id = 'zyl-perm-dontask';
+      checkbox.style.cssText = 'width:16px;height:16px;accent-color:#4a90d9;';
+
+      var checkLabel = document.createElement('label');
+      checkLabel.htmlFor = 'zyl-perm-dontask';
+      checkLabel.style.cssText = 'font-size:12px;opacity:0.7;cursor:pointer;';
+      checkLabel.textContent = (typeof zylI18n !== 'undefined')
+        ? zylI18n.t('permission.dont_ask_again') || "Don't ask again"
+        : "Don't ask again";
+
+      checkRow.appendChild(checkbox);
+      checkRow.appendChild(checkLabel);
+    }
+
     var btnRow = document.createElement('div');
     btnRow.style.cssText = 'display:flex;gap:12px;justify-content:center;';
 
@@ -111,38 +181,64 @@ window.ZylPermissionDialog = (function () {
       ? zylI18n.t('permission.allow') || 'Allow' : 'Allow';
     allowBtn.setAttribute('aria-label', 'Allow permission');
 
-    denyBtn.onclick = function () { handleResponse(false); };
-    allowBtn.onclick = function () { handleResponse(true); };
+    denyBtn.onclick = function () {
+      var dontAsk = checkbox ? checkbox.checked : false;
+      handleResponse(false, dontAsk);
+    };
+    allowBtn.onclick = function () { handleResponse(true, false); };
 
     btnRow.appendChild(denyBtn);
     btnRow.appendChild(allowBtn);
     dialog.appendChild(title);
     dialog.appendChild(body);
+    if (checkRow) dialog.appendChild(checkRow);
     dialog.appendChild(btnRow);
     overlay.appendChild(dialog);
 
-    /* 이 스크립트는 컴포지터(index.html)에서 로드되므로 document.body 직접 사용.
-     * window.parent.document 접근은 아키텍처 경계 위반 (CLAUDE.md §1). */
     document.body.appendChild(overlay);
   }
 
-  function handleResponse(granted) {
+  function handleResponse(granted, dontAskAgain) {
     var el = document.getElementById('zyl-permission-dialog');
     if (el) el.parentNode.removeChild(el);
 
     if (_pendingGrant) {
-      if (granted && typeof ZylPermissions !== 'undefined') {
-        /* 실제로는 permission override에 추가하지 않음 — app.json에 선언된 권한만 유효.
-           런타임 grant는 "사용자가 동의함"을 의미하며, 이후 동일 권한 재요청 시 다이얼로그 스킵. */
+      var key = _pendingGrant.appId + ':' + _pendingGrant.permission;
+
+      if (granted) {
+        /* Reset denial count on grant */
+        _denialCounts[key] = 0;
+        delete _permanentDenials[key];
+      } else {
+        /* Track denial count */
+        _denialCounts[key] = (_denialCounts[key] || 0) + 1;
+
+        /* Permanent denial if checkbox checked */
+        if (dontAskAgain) {
+          _permanentDenials[key] = true;
+          /* Also update user overrides so the permission is revoked */
+          if (typeof ZylPermissions !== 'undefined') {
+            var existing = ZylPermissions.getEffectivePermissions(_pendingGrant.appId);
+            var revoked = [];
+            var declared = ZylPermissions.getDeclaredPermissions(_pendingGrant.appId);
+            for (var i = 0; i < declared.length; i++) {
+              if (existing.indexOf(declared[i]) === -1) revoked.push(declared[i]);
+            }
+            if (revoked.indexOf(_pendingGrant.permission) === -1) {
+              revoked.push(_pendingGrant.permission);
+            }
+            ZylPermissions.setAppOverride(_pendingGrant.appId, revoked);
+          }
+        }
       }
+
       _pendingGrant.resolve(granted);
       _pendingGrant = null;
     }
   }
 
   /**
-   * 앱이 위험 권한을 요청하는 서비스 호출 전에 호출되어야 하는 미들웨어.
-   * 권한이 없으면 다이얼로그 표시 → 승인 시 서비스 호출 진행.
+   * Middleware for service calls — check and request permission before proceeding.
    */
   function checkAndRequest(appId, permission) {
     return requestPermission(appId, permission);
@@ -151,6 +247,9 @@ window.ZylPermissionDialog = (function () {
   return {
     requestPermission: requestPermission,
     checkAndRequest: checkAndRequest,
+    isPermanentlyDenied: isPermanentlyDenied,
+    clearPermanentDenial: clearPermanentDenial,
+    getPermanentDenials: getPermanentDenials,
     DANGEROUS_PERMISSIONS: DANGEROUS_PERMISSIONS
   };
 })();

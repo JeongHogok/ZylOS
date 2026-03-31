@@ -131,10 +131,10 @@ body {
   margin: 12px auto 24px;
 }
 
-/* ─── 빠른 설정 ─── */
+/* ─── 빠른 설정 (2행 그리드) ─── */
 #quick-settings {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 10px;
   margin-bottom: 20px;
 }

@@ -30,7 +30,10 @@
     bt: false,
     silent: false,
     rotate: false,
-    flashlight: false
+    flashlight: false,
+    airplane: false,
+    dnd: false,
+    location: true
   };
 
   /* ─── Clock (shared ZylClock) ─── */
@@ -55,7 +58,10 @@
     bt:         document.getElementById('qs-bt'),
     silent:     document.getElementById('qs-silent'),
     rotate:     document.getElementById('qs-rotate'),
-    flashlight: document.getElementById('qs-flashlight')
+    flashlight: document.getElementById('qs-flashlight'),
+    airplane:   document.getElementById('qs-airplane'),
+    dnd:        document.getElementById('qs-dnd'),
+    location:   document.getElementById('qs-location')
   };
 
   Object.keys(qsBtns).forEach(function (key) {
@@ -70,14 +76,35 @@
 
   function sendQsSetting(key, value) {
     var categoryMap = {
-      wifi: { category: 'wifi', key: 'enabled' },
-      bt: { category: 'bluetooth', key: 'enabled' },
-      silent: { category: 'sound', key: 'silent' },
-      rotate: { category: 'display', key: 'autoRotate' },
-      flashlight: { category: 'display', key: 'flashlight' }
+      wifi:       { category: 'wifi',         key: 'enabled' },
+      bt:         { category: 'bluetooth',    key: 'enabled' },
+      silent:     { category: 'sound',        key: 'silent' },
+      rotate:     { category: 'display',      key: 'autoRotate' },
+      flashlight: { category: 'display',      key: 'flashlight' },
+      airplane:   { category: 'connectivity', key: 'airplaneMode' },
+      dnd:        { category: 'notification', key: 'dndEnabled' },
+      location:   { category: 'location',     key: 'enabled' }
     };
     var mapping = categoryMap[key];
     if (!mapping) return;
+
+    /* Airplane mode: also disable wifi and bluetooth */
+    if (key === 'airplane') {
+      if (value) {
+        qsState.wifi = false;
+        qsState.bt = false;
+        if (qsBtns.wifi) qsBtns.wifi.classList.remove('active');
+        if (qsBtns.bt) qsBtns.bt.classList.remove('active');
+        sendServiceRequest('settings', 'update', { category: 'wifi', key: 'enabled', value: false });
+        sendServiceRequest('settings', 'update', { category: 'bluetooth', key: 'enabled', value: false });
+      }
+    }
+
+    /* DND mode: also call notification service */
+    if (key === 'dnd') {
+      sendServiceRequest('notification', 'setDndMode', { enabled: value });
+    }
+
     sendServiceRequest('settings', 'update', {
       category: mapping.category,
       key: mapping.key,
