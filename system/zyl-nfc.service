@@ -1,0 +1,27 @@
+[Unit]
+Description=Zyl OS NFC Service (neard D-Bus proxy)
+Documentation=https://github.com/zylos-project/ZylOS
+After=dbus.service neard.service
+Requires=dbus.service
+Wants=neard.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/zyl-nfc
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=5
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+PrivateDevices=false
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+
+[Install]
+WantedBy=zyl-os.target
