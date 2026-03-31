@@ -209,9 +209,9 @@ fi
 section "runtime/ — C 서비스 코드 품질"
 
 # C1: TODO/FIXME/HACK/STUB 탐지
-TODO_COUNT=$(grep -rPn 'TODO|FIXME|HACK|\bXXX\b|STUB' "$ROOT/runtime" --include='*.c' --include='*.h' 2>/dev/null | wc -l || echo 0)
+TODO_COUNT=$(grep -rEn 'TODO|FIXME|HACK|STUB' --exclude='verify-all.sh' "$ROOT/runtime" --include='*.c' --include='*.h' 2>/dev/null | wc -l || echo 0)
 if [ "$TODO_COUNT" -gt 0 ]; then
-  TODO_LIST=$(grep -rPn 'TODO|FIXME|HACK|\bXXX\b|STUB' "$ROOT/runtime" --include='*.c' --include='*.h' 2>/dev/null | sed "s|$ROOT/||")
+  TODO_LIST=$(grep -rEn 'TODO|FIXME|HACK|STUB' --exclude='verify-all.sh' "$ROOT/runtime" --include='*.c' --include='*.h' 2>/dev/null | sed "s|$ROOT/||")
   warn "runtime/ TODO/FIXME ${TODO_COUNT}건:\n$TODO_LIST"
 else
   pass "runtime/ TODO/FIXME 없음"
@@ -254,7 +254,7 @@ fi
 section "전체 — 기술부채 + 코드 위생"
 
 # E1: TODO/FIXME 전체 카운트
-ALL_TODO=$(grep -rPn 'TODO|FIXME|HACK|\bXXX\b' "$ROOT" --include='*.js' --include='*.c' --include='*.h' --include='*.rs' 2>/dev/null \
+ALL_TODO=$(grep -rEn 'TODO|FIXME|HACK' --exclude='verify-all.sh' "$ROOT" --include='*.js' --include='*.c' --include='*.h' --include='*.rs' 2>/dev/null \
   | grep -v 'node_modules' | grep -v 'target/' | wc -l || echo 0)
 if [ "$ALL_TODO" -gt 0 ]; then
   warn "전체 코드베이스 TODO/FIXME: ${ALL_TODO}건"

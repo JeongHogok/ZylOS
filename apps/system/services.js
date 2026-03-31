@@ -55,6 +55,9 @@ window.ZylSystemServices = (function () {
       if (cmd === 'fs_write_file') return Promise.resolve(false);
       if (cmd === 'get_wifi_networks') return Promise.resolve([]);
       if (cmd === 'get_bluetooth_devices') return Promise.resolve([]);
+      if (cmd === 'location_request_updates' || cmd === 'location_stop_updates') {
+        return Promise.resolve(true);
+      }
       if (cmd === 'location_get_last_known') {
         if (navigator.geolocation) {
           return new Promise(function (resolve) {

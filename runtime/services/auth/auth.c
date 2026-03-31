@@ -18,6 +18,11 @@
 #include <string.h>
 #include <gio/gio.h>
 
+/* ─── 타임아웃 상수 ─── */
+#define ENROLL_TIMEOUT_SEC   120   /* 등록 타임아웃 (센서 무응답 대비) */
+#define VERIFY_TIMEOUT_SEC    30   /* 검증 타임아웃 */
+#define VERIFY_MAX_RETRIES     3   /* 최대 재시도 횟수 */
+
 /* ─── 내부 구조체 ─── */
 struct ZylAuthService {
     GDBusConnection *system_bus;    /* 시스템 버스 (fprintd 접근) */
@@ -25,6 +30,117 @@ struct ZylAuthService {
     guint            dbus_owner_id;
     GDBusProxy      *fprint_manager; /* net.reactivated.Fprint.Manager */
 };
+
+/* ─── 비동기 시그널 수신 컨텍스트 ─── */
+typedef struct {
+    GMainLoop *loop;
+    ZylAuthResult result;
+    int percent;
+    zyl_auth_enroll_progress_fn progress;
+    void *user_data;
+    guint timeout_id;
+    gulong signal_id;
+} EnrollContext;
+
+typedef struct {
+    GMainLoop *loop;
+    ZylAuthResult result;
+    int retries;
+    guint timeout_id;
+    gulong signal_id;
+} VerifyContext;
+
+/* ─── EnrollStatus 시그널 핸들러 ─── */
+static void on_enroll_status(GDBusProxy *proxy, const gchar *sender,
+                              const gchar *signal_name, GVariant *params,
+                              gpointer data) {
+    EnrollContext *ctx = data;
+    (void)proxy; (void)sender;
+
+    if (g_strcmp0(signal_name, "EnrollStatus") != 0) return;
+
+    const gchar *status = NULL;
+    gboolean done = FALSE;
+    g_variant_get(params, "(&sb)", &status, &done);
+
+    if (g_strcmp0(status, "enroll-completed") == 0) {
+        ctx->result = ZYL_AUTH_OK;
+        if (ctx->progress)
+            ctx->progress(ZYL_ENROLL_STEP_COMPLETE, 100, ctx->user_data);
+        g_main_loop_quit(ctx->loop);
+    } else if (g_strcmp0(status, "enroll-failed") == 0 ||
+               g_strcmp0(status, "enroll-data-full") == 0) {
+        ctx->result = ZYL_AUTH_ERR_GENERAL;
+        if (ctx->progress)
+            ctx->progress(ZYL_ENROLL_STEP_FAIL, ctx->percent, ctx->user_data);
+        g_main_loop_quit(ctx->loop);
+    } else if (g_strcmp0(status, "enroll-stage-passed") == 0) {
+        ctx->percent += 20;
+        if (ctx->percent > 95) ctx->percent = 95;
+        if (ctx->progress)
+            ctx->progress(ZYL_ENROLL_STEP_AGAIN, ctx->percent, ctx->user_data);
+    } else if (g_strcmp0(status, "enroll-retry-scan") == 0) {
+        if (ctx->progress)
+            ctx->progress(ZYL_ENROLL_STEP_AGAIN, ctx->percent, ctx->user_data);
+    } else if (g_strcmp0(status, "enroll-swipe-too-short") == 0) {
+        if (ctx->progress)
+            ctx->progress(ZYL_ENROLL_STEP_SWIPE, ctx->percent, ctx->user_data);
+    }
+    /* done 플래그가 true이면 fprintd가 완료를 알림 */
+    if (done && ctx->result != ZYL_AUTH_OK)
+        g_main_loop_quit(ctx->loop);
+}
+
+static gboolean on_enroll_timeout(gpointer data) {
+    EnrollContext *ctx = data;
+    ctx->result = ZYL_AUTH_ERR_TIMEOUT;
+    if (ctx->progress)
+        ctx->progress(ZYL_ENROLL_STEP_FAIL, ctx->percent, ctx->user_data);
+    g_main_loop_quit(ctx->loop);
+    return G_SOURCE_REMOVE;
+}
+
+/* ─── VerifyStatus 시그널 핸들러 ─── */
+static void on_verify_status(GDBusProxy *proxy, const gchar *sender,
+                              const gchar *signal_name, GVariant *params,
+                              gpointer data) {
+    VerifyContext *ctx = data;
+    (void)proxy; (void)sender;
+
+    if (g_strcmp0(signal_name, "VerifyStatus") != 0) return;
+
+    const gchar *status = NULL;
+    gboolean done = FALSE;
+    g_variant_get(params, "(&sb)", &status, &done);
+
+    if (g_strcmp0(status, "verify-match") == 0) {
+        ctx->result = ZYL_AUTH_OK;
+        g_main_loop_quit(ctx->loop);
+    } else if (g_strcmp0(status, "verify-no-match") == 0) {
+        ctx->retries++;
+        if (ctx->retries >= VERIFY_MAX_RETRIES || done) {
+            ctx->result = ZYL_AUTH_ERR_NO_MATCH;
+            g_main_loop_quit(ctx->loop);
+        }
+        /* 재시도 가능 — 루프 계속 */
+    } else if (g_strcmp0(status, "verify-retry-scan") == 0) {
+        /* 다시 스캔 요청 — 루프 계속 */
+    } else if (g_strcmp0(status, "verify-swipe-too-short") == 0 ||
+               g_strcmp0(status, "verify-finger-not-centered") == 0) {
+        /* 센서 힌트 — 루프 계속 */
+    } else if (done) {
+        /* 알 수 없는 완료 상태 */
+        ctx->result = ZYL_AUTH_ERR_GENERAL;
+        g_main_loop_quit(ctx->loop);
+    }
+}
+
+static gboolean on_verify_timeout(gpointer data) {
+    VerifyContext *ctx = data;
+    ctx->result = ZYL_AUTH_ERR_TIMEOUT;
+    g_main_loop_quit(ctx->loop);
+    return G_SOURCE_REMOVE;
+}
 
 /* ─── fprintd 매니저 프록시 취득 ─── */
 static GDBusProxy *get_fprint_manager(ZylAuthService *svc) {
@@ -292,18 +408,31 @@ ZylAuthResult zyl_auth_enroll_fingerprint(ZylAuthService *svc,
                   err ? err->message : "unknown");
         g_clear_error(&err);
     } else {
-        /* TODO(auth): EnrollStart 은 비동기 — signal EnrollStatus 를 수신해야 함.
-         * 현재는 동기 완료를 위해 EnrollStop 까지 진행하고 OK로 처리하는 스텁.
-         * 필요 작업:
-         * 1. GMainLoop + g_signal_connect 로 EnrollStatus 시그널 수신
-         * 2. 다단계 등록 진행 상태를 progress 콜백으로 전달
-         * 3. 타임아웃 처리 (센서 무응답 시)
-         */
         g_variant_unref(enroll_ret);
-        result = ZYL_AUTH_OK;
-        if (progress) {
-            progress(ZYL_ENROLL_STEP_COMPLETE, 100, user_data);
-        }
+
+        /* EnrollStatus 시그널 비동기 수신 — GMainLoop 이벤트 루프 */
+        EnrollContext ectx = {
+            .loop = g_main_loop_new(NULL, FALSE),
+            .result = ZYL_AUTH_ERR_GENERAL,
+            .percent = 0,
+            .progress = progress,
+            .user_data = user_data,
+            .timeout_id = 0,
+            .signal_id = 0
+        };
+
+        ectx.signal_id = g_signal_connect(dev, "g-signal",
+                                            G_CALLBACK(on_enroll_status), &ectx);
+        ectx.timeout_id = g_timeout_add_seconds(ENROLL_TIMEOUT_SEC,
+                                                  on_enroll_timeout, &ectx);
+
+        g_main_loop_run(ectx.loop);
+
+        if (ectx.signal_id) g_signal_handler_disconnect(dev, ectx.signal_id);
+        if (ectx.timeout_id) g_source_remove(ectx.timeout_id);
+        g_main_loop_unref(ectx.loop);
+
+        result = ectx.result;
     }
 
     /* fprintd: EnrollStop */
@@ -356,15 +485,29 @@ ZylAuthResult zyl_auth_verify_fingerprint(ZylAuthService *svc,
                   err ? err->message : "unknown");
         g_clear_error(&err);
     } else {
-        /* TODO(auth): VerifyStart 의 결과는 signal VerifyStatus 로 전달되어야 함.
-         * 현재는 동기 래퍼로 항상 OK 처리하는 스텁.
-         * 필요 작업:
-         * 1. GMainLoop + g_signal_connect 로 VerifyStatus 시그널 수신
-         * 2. verify-match / verify-no-match / verify-retry 분기 처리
-         * 3. 타임아웃 + 최대 재시도 횟수 적용
-         */
         g_variant_unref(verify_ret);
-        result = ZYL_AUTH_OK;
+
+        /* VerifyStatus 시그널 비동기 수신 — GMainLoop 이벤트 루프 */
+        VerifyContext vctx = {
+            .loop = g_main_loop_new(NULL, FALSE),
+            .result = ZYL_AUTH_ERR_GENERAL,
+            .retries = 0,
+            .timeout_id = 0,
+            .signal_id = 0
+        };
+
+        vctx.signal_id = g_signal_connect(dev, "g-signal",
+                                            G_CALLBACK(on_verify_status), &vctx);
+        vctx.timeout_id = g_timeout_add_seconds(VERIFY_TIMEOUT_SEC,
+                                                  on_verify_timeout, &vctx);
+
+        g_main_loop_run(vctx.loop);
+
+        if (vctx.signal_id) g_signal_handler_disconnect(dev, vctx.signal_id);
+        if (vctx.timeout_id) g_source_remove(vctx.timeout_id);
+        g_main_loop_unref(vctx.loop);
+
+        result = vctx.result;
     }
 
     /* VerifyStop */
