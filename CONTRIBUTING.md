@@ -160,9 +160,9 @@ bash tests/verify-all.sh    # 11섹션 전체 검증 — 에러 0건 필수
 ```
 compositor/        Wayland 컴포지터
 runtime/wam/       Web Application Manager
-runtime/hal/       Hardware Abstraction Layer (7개 구현체)
+runtime/hal/       Hardware Abstraction Layer (9개 구현체)
 runtime/services/  시스템 서비스 (26개 C 디렉토리)
-apps/              시스템 앱 20개 (HTML/CSS/JS, ES5)
+apps/              시스템 앱 21개 (HTML/CSS/JS, ES5)
 apps/system/       OS 서비스 프레임워크
   services.js        서비스 라우터 (29개 모듈 조립)
   intent.js          인텐트 시스템

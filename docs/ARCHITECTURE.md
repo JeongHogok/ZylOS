@@ -10,7 +10,7 @@
 
 Zyl OS는 BPI-F3 (SpacemiT K1 RISC-V) 보드를 위한 커스텀 모바일 운영체제입니다.
 Linux 커널 위에 Wayland 컴포지터 + WebKitGTK 앱 런타임으로 구성됩니다.
-415개 파일, ~62,800 LoC 규모의 코드베이스입니다.
+391개 파일, ~63,200 LoC 규모의 코드베이스입니다.
 
 ## 시스템 스택
 
@@ -197,7 +197,7 @@ URI 기반 앱 간 데이터 공유 게이트웨이.
 
 에뮬레이터 구현: 브라우저 Web API (hal-browser.js)
 
-### Apps (apps/ — 20개 시스템 앱)
+### Apps (apps/ — 21개 시스템 앱)
 - 모든 앱은 HTML/CSS/JS (ES5, WebKitGTK에서 실행)
 - 시스템 앱: home, lockscreen, statusbar, oobe, settings, browser, files, terminal, camera, gallery, music, clock, calc, notes, weather, store, phone, messages, contacts, keyboard
 

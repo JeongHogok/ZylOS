@@ -9,6 +9,18 @@ BusName=org.zylos.LocationService
 ExecStart=/usr/bin/zyl-location
 Restart=on-failure
 RestartSec=2
+TimeoutStopSec=5
+
+# Security hardening — handles sensitive location data
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+PrivateDevices=false
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
 
 [Install]
 WantedBy=multi-user.target

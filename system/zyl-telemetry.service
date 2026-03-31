@@ -7,6 +7,18 @@ Type=simple
 ExecStart=/usr/bin/zyl-telemetry
 Restart=on-failure
 RestartSec=10
+TimeoutStopSec=5
+
+# Security hardening — sends data over network
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
 
 [Install]
 WantedBy=zyl-os.target

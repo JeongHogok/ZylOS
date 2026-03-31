@@ -1,6 +1,7 @@
 [Unit]
 Description=Zyl OS Camera Service (V4L2)
 After=zyl-wam.service
+Requires=zyl-wam.service
 
 [Service]
 Type=dbus
