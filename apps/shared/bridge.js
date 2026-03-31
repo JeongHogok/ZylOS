@@ -86,14 +86,52 @@ var ZylBridge = (function () {
     }
   }
 
+  /* ─── Request-Response Matching ─── */
+  var _nextRequestId = 1;
+  var _pendingRequests = {}; /* requestId → { resolve, reject, timer } */
+  var REQUEST_TIMEOUT_MS = 15000;
+
   /**
    * Request a system service via IPC.
-   * Universal API that works in all runtime environments.
+   * Returns a Promise that resolves with the service response data.
+   * Automatically generates requestId for response matching.
+   *
    * @param {string} service - Service name (e.g. 'fs', 'network', 'contacts')
    * @param {string} method - Method name (e.g. 'fetch', 'getAll')
    * @param {Object} [params] - Parameters
+   * @returns {Promise} resolves with response data
    */
   function requestService(service, method, params) {
+    var reqId = _nextRequestId++;
+    var promise = new Promise(function (resolve, reject) {
+      _pendingRequests[reqId] = {
+        resolve: resolve,
+        reject: reject,
+        service: service,
+        method: method,
+        timer: setTimeout(function () {
+          delete _pendingRequests[reqId];
+          reject({ error: 'Request timeout', service: service, method: method, requestId: reqId });
+        }, REQUEST_TIMEOUT_MS)
+      };
+    });
+
+    sendToSystem({
+      type: 'service.request',
+      service: service,
+      method: method,
+      params: params || {},
+      requestId: reqId
+    });
+
+    return promise;
+  }
+
+  /**
+   * Fire-and-forget service request (no response expected).
+   * Backward compatibility for code that doesn't need responses.
+   */
+  function requestServiceFire(service, method, params) {
     sendToSystem({
       type: 'service.request',
       service: service,
@@ -283,6 +321,20 @@ var ZylBridge = (function () {
       return;
     }
 
+    /* ─── Service response matching (requestId → pending Promise) ─── */
+    if (msg.type === 'service.response' && msg.requestId) {
+      var pending = _pendingRequests[msg.requestId];
+      if (pending) {
+        clearTimeout(pending.timer);
+        delete _pendingRequests[msg.requestId];
+        if (msg.data && msg.data.error) {
+          pending.reject(msg.data);
+        } else {
+          pending.resolve(msg.data);
+        }
+      }
+    }
+
     /* Virtual keyboard input relay: emulator forwards key events */
     if (msg.type === 'input.key' && msg.data) {
       var focused = document.activeElement;
@@ -334,6 +386,7 @@ var ZylBridge = (function () {
     getIpcMode: getIpcMode,
     sendToSystem: sendToSystem,
     requestService: requestService,
+    requestServiceFire: requestServiceFire,
     launch: launch,
     closeApp: closeApp,
     setLocale: setLocale,
