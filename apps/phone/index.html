@@ -15,6 +15,7 @@
     <button class="tab active" data-tab="keypad" role="tab" data-i18n="phone.keypad"></button>
     <button class="tab" data-tab="recents" role="tab" data-i18n="phone.recents"></button>
     <button class="tab" data-tab="contacts" role="tab" data-i18n="phone.contacts_tab"></button>
+    <button class="tab" data-tab="favorites" role="tab" data-i18n="phone.favorites"></button>
   </div>
 
   <!-- Keypad Tab -->
@@ -60,6 +61,15 @@
     <div id="contacts-list" class="scroll-area zyl-scroll"></div>
   </div>
 
+  <!-- Favorites Tab -->
+  <div id="tab-favorites" class="tab-content hidden">
+    <div id="favorites-list" class="scroll-area zyl-scroll"></div>
+    <div id="favorites-empty" class="empty-state hidden">
+      <svg viewBox="0 0 24 24" width="48" height="48"><path fill="rgba(255,255,255,0.15)" d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+      <span data-i18n="phone.no_favorites"></span>
+    </div>
+  </div>
+
   <!-- In-Call Overlay -->
   <div id="incall-overlay" class="hidden">
     <div id="incall-bg"></div>
@@ -68,6 +78,7 @@
         <svg viewBox="0 0 24 24" width="48" height="48"><path fill="rgba(255,255,255,0.7)" d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
       </div>
       <div id="incall-name">--</div>
+      <div id="incall-number"></div>
       <div id="incall-status" data-i18n="phone.calling"></div>
       <div id="incall-timer" class="hidden">00:00</div>
       <div id="incall-actions">
@@ -84,9 +95,39 @@
           <span data-i18n="phone.keypad"></span>
         </button>
       </div>
+      <!-- DTMF In-Call Keypad Overlay -->
+      <div id="dtmf-overlay" class="hidden">
+        <div id="dtmf-grid">
+          <button class="dtmf-btn" data-digit="1">1</button>
+          <button class="dtmf-btn" data-digit="2">2</button>
+          <button class="dtmf-btn" data-digit="3">3</button>
+          <button class="dtmf-btn" data-digit="4">4</button>
+          <button class="dtmf-btn" data-digit="5">5</button>
+          <button class="dtmf-btn" data-digit="6">6</button>
+          <button class="dtmf-btn" data-digit="7">7</button>
+          <button class="dtmf-btn" data-digit="8">8</button>
+          <button class="dtmf-btn" data-digit="9">9</button>
+          <button class="dtmf-btn" data-digit="*">*</button>
+          <button class="dtmf-btn" data-digit="0">0</button>
+          <button class="dtmf-btn" data-digit="#">#</button>
+        </div>
+        <div id="dtmf-digits"></div>
+      </div>
       <button id="btn-end-call" class="btn-hangup" aria-label="End call">
         <svg viewBox="0 0 24 24" width="32" height="32"><path fill="#fff" d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08c-.18-.17-.29-.42-.29-.7 0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28-.79-.74-1.69-1.36-2.67-1.85-.33-.16-.56-.5-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/></svg>
       </button>
+    </div>
+  </div>
+
+  <!-- Delete Call Log Confirmation Modal -->
+  <div id="delete-log-modal" class="hidden">
+    <div id="delete-log-backdrop"></div>
+    <div id="delete-log-dialog">
+      <div id="delete-log-message" data-i18n="phone.confirm_delete_log"></div>
+      <div id="delete-log-actions">
+        <button id="btn-delete-cancel" class="delete-dialog-btn" data-i18n="phone.cancel"></button>
+        <button id="btn-delete-confirm" class="delete-dialog-btn delete-confirm" data-i18n="phone.delete_log"></button>
+      </div>
     </div>
   </div>
 

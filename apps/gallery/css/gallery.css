@@ -11,16 +11,101 @@
 * { margin:0; padding:0; box-sizing:border-box; }
 body { font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#0a0a1a; color:#e0e0e0; height:100vh; overflow:hidden; display:flex; flex-direction:column; }
 .hidden { display:none !important; }
-#header { padding:20px 16px 12px; }
+#header { padding:20px 16px 8px; }
 #header h1 { font-size:28px; font-weight:700; }
+
+/* ── Header Tabs ── */
+#header-tabs { display:flex; gap:8px; margin-top:10px; }
+.header-tab {
+  padding:6px 16px;
+  border:none;
+  border-radius:16px;
+  background:#1a1a2e;
+  color:#aaa;
+  font-size:14px;
+  font-weight:500;
+  cursor:pointer;
+  transition:background 0.2s, color 0.2s;
+}
+.header-tab.active {
+  background:#6366f1;
+  color:#fff;
+}
+
+/* ── Photo Grid ── */
 #photo-grid { flex:1; display:grid; grid-template-columns:repeat(3,1fr); gap:2px; padding:2px; overflow-y:auto; }
 .photo-thumb { aspect-ratio:1; background:#1a1a2e; display:flex; align-items:center; justify-content:center; font-size:11px; color:#888; cursor:pointer; }
 .photo-thumb:hover { background:#252540; }
+
+/* ── Album Grid ── */
+#album-grid { flex:1; display:grid; grid-template-columns:repeat(2,1fr); gap:12px; padding:12px; overflow-y:auto; }
+.album-card {
+  background:#1a1a2e;
+  border-radius:12px;
+  overflow:hidden;
+  cursor:pointer;
+  transition:background 0.2s;
+}
+.album-card:hover { background:#252540; }
+.album-card-cover {
+  aspect-ratio:1;
+  background:#252540;
+  background-size:cover;
+  background-position:center;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:36px;
+  color:#555;
+}
+.album-card-info {
+  padding:10px 12px;
+}
+.album-card-name {
+  font-size:14px;
+  font-weight:600;
+  color:#e0e0e0;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.album-card-count {
+  font-size:12px;
+  color:#888;
+  margin-top:2px;
+}
+
+/* ── Album Back Bar ── */
+#album-back-bar {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:8px 12px;
+  background:rgba(26,26,46,0.95);
+  /* backdrop-filter with opaque fallback */
+  background-color:rgba(26,26,46,0.95);
+}
+#album-back-bar button {
+  background:none;
+  border:none;
+  color:#6366f1;
+  font-size:16px;
+  cursor:pointer;
+  padding:4px 8px;
+}
+#album-back-bar span {
+  font-size:16px;
+  font-weight:600;
+  color:#e0e0e0;
+}
+
+/* ── Viewer ── */
 #viewer { position:fixed; inset:0; background:rgba(0,0,0,0.95); display:flex; align-items:center; justify-content:center; z-index:100; }
-#viewer-img { max-width:90%; max-height:90%; object-fit:contain; }
+#viewer-img { max-width:90%; max-height:90%; object-fit:contain; transition:transform 0.3s; }
 #viewer-close { position:absolute; top:16px; right:16px; background:none; border:none; color:#fff; font-size:32px; cursor:pointer; z-index:10; }
 .video-badge { position:absolute; width:32px; height:32px; background:rgba(0,0,0,0.6); border-radius:50%; display:flex; align-items:center; justify-content:center; color:#fff; font-size:14px; z-index:2; }
 .thumb-label { position:absolute; bottom:4px; left:4px; right:4px; font-size:9px; color:#aaa; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
 /* ── 비디오 플레이어 컨트롤 ── */
 #video-controls { position:absolute; bottom:0; left:0; right:0; background:linear-gradient(transparent,rgba(0,0,0,0.85)); padding:12px 16px 16px; }
 #vc-progress-bar { position:relative; height:4px; background:rgba(255,255,255,0.2); border-radius:2px; margin-bottom:10px; }
@@ -31,3 +116,51 @@ body { font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#0a0a
 #vc-play { font-size:24px; }
 #vc-time { flex:1; font-size:12px; color:#aaa; }
 #vc-speed { background:#252535; border:1px solid #333; color:#fff; border-radius:6px; padding:4px 8px; font-size:12px; cursor:pointer; }
+
+/* ── Slideshow Controls ── */
+#slideshow-controls {
+  position:absolute;
+  top:16px;
+  left:50%;
+  transform:translateX(-50%);
+  background:rgba(0,0,0,0.75);
+  background-color:rgba(0,0,0,0.88);
+  border-radius:20px;
+  padding:6px 16px;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  z-index:10;
+}
+#slideshow-progress-bar {
+  width:80px;
+  height:3px;
+  background:rgba(255,255,255,0.2);
+  border-radius:2px;
+  overflow:hidden;
+}
+#slideshow-progress-fill {
+  height:100%;
+  background:#22c55e;
+  border-radius:2px;
+  width:0%;
+  transition:width 0.1s linear;
+}
+#slideshow-status {
+  font-size:12px;
+  color:#aaa;
+  white-space:nowrap;
+}
+
+/* ── Viewer Action Buttons ── */
+#viewer-rotate,
+#viewer-slideshow,
+#viewer-delete {
+  z-index:10;
+  transition:opacity 0.2s;
+}
+#viewer-rotate:active,
+#viewer-slideshow:active,
+#viewer-delete:active {
+  opacity:0.7;
+}

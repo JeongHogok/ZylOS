@@ -10,8 +10,15 @@
   <link rel="stylesheet" href="css/gallery.css">
 </head>
 <body>
-  <div id="header" role="navigation"><h1>Gallery</h1></div>
+  <div id="header" role="navigation">
+    <h1 data-i18n="gallery.title">Gallery</h1>
+    <div id="header-tabs">
+      <button id="tab-all" class="header-tab active" aria-label="All"></button>
+      <button id="tab-albums" class="header-tab" aria-label="Albums"></button>
+    </div>
+  </div>
   <div id="photo-grid" role="main"></div>
+  <div id="album-grid" class="hidden" role="main"></div>
   <div id="viewer" class="hidden">
     <img id="viewer-img" src="" alt="Viewed media">
     <!-- 비디오 플레이어 (동적 생성 시 컨트롤 영역) -->
@@ -35,7 +42,15 @@
         </select>
       </div>
     </div>
-    <button id="viewer-delete" title="Delete" aria-label="Delete" style="position:absolute;bottom:20px;right:20px;background:rgba(239,68,68,0.8);border:none;color:white;width:44px;height:44px;border-radius:22px;font-size:20px;cursor:pointer;">🗑</button>
+    <!-- Slideshow controls -->
+    <div id="slideshow-controls" class="hidden">
+      <div id="slideshow-progress-bar"><div id="slideshow-progress-fill"></div></div>
+      <span id="slideshow-status"></span>
+    </div>
+    <!-- Viewer action buttons -->
+    <button id="viewer-rotate" aria-label="Rotate" style="position:absolute;bottom:20px;right:124px;background:rgba(99,102,241,0.8);border:none;color:white;width:44px;height:44px;border-radius:22px;font-size:20px;cursor:pointer;">↻</button>
+    <button id="viewer-slideshow" aria-label="Slideshow" style="position:absolute;bottom:20px;right:176px;background:rgba(34,197,94,0.8);border:none;color:white;width:44px;height:44px;border-radius:22px;font-size:20px;cursor:pointer;">▶</button>
+    <button id="viewer-delete" aria-label="Delete" style="position:absolute;bottom:20px;right:20px;background:rgba(239,68,68,0.8);border:none;color:white;width:44px;height:44px;border-radius:22px;font-size:20px;cursor:pointer;">🗑</button>
     <button id="viewer-close" aria-label="Close viewer">&times;</button>
   </div>
   <script src="../shared/i18n.js"></script>

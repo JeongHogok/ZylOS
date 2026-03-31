@@ -2,7 +2,7 @@
 // [Clean Architecture] Presentation Layer - Page
 //
 // 역할: 메모 앱 — 텍스트 노트 생성/편집/삭제 (FS 저장)
-// 수행범위: 노트 목록, 편집기, fs 서비스 연동
+// 수행범위: 노트 목록, 편집기, 검색, 정렬, 서식 도구, fs 서비스 연동
 // 의존방향: fs 서비스 (postMessage IPC)
 // SOLID: SRP — 노트 관리 UI만 담당
 //
@@ -16,8 +16,13 @@
   var editor = document.getElementById('editor');
   var titleEl = document.getElementById('note-title');
   var bodyEl = document.getElementById('note-body');
+  var searchInput = document.getElementById('search-input');
+  var btnSortDate = document.getElementById('btn-sort-date');
+  var btnSortName = document.getElementById('btn-sort-name');
+  var listControls = document.getElementById('list-controls');
   var notes = [];
   var currentNote = null;
+  var sortMode = 'date'; /* 'date' | 'name' */
 
   function t(key) {
     return typeof zylI18n !== 'undefined' ? zylI18n.t(key) : key;
@@ -51,12 +56,51 @@
     } catch (err) { if (typeof console !== 'undefined') console.error('[Notes] message parse error:', err); }
   });
 
+  /* ── Sort helpers ── */
+  function sortNotes(arr) {
+    var sorted = arr.slice();
+    if (sortMode === 'name') {
+      sorted.sort(function (a, b) {
+        var nameA = (a.name || '').toLowerCase();
+        var nameB = (b.name || '').toLowerCase();
+        if (nameA < nameB) return -1;
+        if (nameA > nameB) return 1;
+        return 0;
+      });
+    } else {
+      /* date: newest first — use modifiedAt or fallback to reverse order */
+      sorted.sort(function (a, b) {
+        var tA = a.modifiedAt || a.modified || 0;
+        var tB = b.modifiedAt || b.modified || 0;
+        return tB - tA;
+      });
+    }
+    return sorted;
+  }
+
+  /* ── Search filter ── */
+  function filterNotes(arr, query) {
+    if (!query) return arr;
+    var q = query.toLowerCase();
+    return arr.filter(function (n) {
+      return (n.name || '').toLowerCase().indexOf(q) !== -1;
+    });
+  }
+
   function renderNotes(entries) {
     if (!list) return;
     list.innerHTML = '';
     notes = (entries || []).filter(function (e) { return (e.name || '').indexOf('.txt') !== -1; });
-    if (notes.length === 0) { list.innerHTML = '<div style="text-align:center;opacity:0.5;padding:40px">' + (typeof zylI18n !== 'undefined' ? zylI18n.t('notes.no_notes') : 'No notes yet') + '</div>'; return; }
-    notes.forEach(function (n) {
+
+    var query = searchInput ? searchInput.value.trim() : '';
+    var filtered = filterNotes(notes, query);
+    var sorted = sortNotes(filtered);
+
+    if (sorted.length === 0) {
+      list.innerHTML = '<div style="text-align:center;opacity:0.5;padding:40px">' + t('notes.no_notes') + '</div>';
+      return;
+    }
+    sorted.forEach(function (n) {
       var el = document.createElement('div'); el.className = 'note-item';
       el.textContent = n.name.replace('.txt', '');
       el.setAttribute('role', 'listitem');
@@ -73,6 +117,57 @@
     });
   }
 
+  /* ── Re-render from cached notes (for search/sort changes) ── */
+  function reRenderList() {
+    if (!list) return;
+    list.innerHTML = '';
+    var query = searchInput ? searchInput.value.trim() : '';
+    var filtered = filterNotes(notes, query);
+    var sorted = sortNotes(filtered);
+
+    if (sorted.length === 0) {
+      list.innerHTML = '<div style="text-align:center;opacity:0.5;padding:40px">' + t('notes.no_notes') + '</div>';
+      return;
+    }
+    sorted.forEach(function (n) {
+      var el = document.createElement('div'); el.className = 'note-item';
+      el.textContent = n.name.replace('.txt', '');
+      el.setAttribute('role', 'listitem');
+      el.setAttribute('aria-label', n.name.replace('.txt', ''));
+      el.setAttribute('tabindex', '0');
+      el.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          el.click();
+        }
+      });
+      el.addEventListener('click', function () { openNote(n.name); });
+      list.appendChild(el);
+    });
+  }
+
+  /* ── Search input handler ── */
+  if (searchInput) {
+    searchInput.addEventListener('input', function () {
+      reRenderList();
+    });
+  }
+
+  /* ── Sort button handlers ── */
+  function setSortMode(mode) {
+    sortMode = mode;
+    if (btnSortDate) btnSortDate.classList.toggle('active', mode === 'date');
+    if (btnSortName) btnSortName.classList.toggle('active', mode === 'name');
+    reRenderList();
+  }
+
+  if (btnSortDate) {
+    btnSortDate.addEventListener('click', function () { setSortMode('date'); });
+  }
+  if (btnSortName) {
+    btnSortName.addEventListener('click', function () { setSortMode('name'); });
+  }
+
   function openNote(filename) {
     currentNote = filename;
     if (titleEl) titleEl.value = filename.replace('.txt', '');
@@ -80,6 +175,7 @@
     if (list) list.classList.add('hidden');
     if (editor) editor.classList.remove('hidden');
     if (document.getElementById('header')) document.getElementById('header').classList.add('hidden');
+    if (listControls) listControls.classList.add('hidden');
     /* 파일 내용 요청 */
     ZylBridge.sendToSystem({
       type: 'service.request', service: 'fs', method: 'getFileContent', params: { path: 'Documents/Notes/' + filename }
@@ -90,6 +186,7 @@
     if (list) list.classList.remove('hidden');
     if (editor) editor.classList.add('hidden');
     if (document.getElementById('header')) document.getElementById('header').classList.remove('hidden');
+    if (listControls) listControls.classList.remove('hidden');
     currentNote = null;
     requestNotes();
   }
@@ -144,7 +241,66 @@
     if (list) list.classList.add('hidden');
     if (editor) editor.classList.remove('hidden');
     if (document.getElementById('header')) document.getElementById('header').classList.add('hidden');
+    if (listControls) listControls.classList.add('hidden');
   });
+
+  /* ── Formatting toolbar ── */
+  function insertMarkdown(prefix, suffix) {
+    if (!bodyEl) return;
+    var start = bodyEl.selectionStart;
+    var end = bodyEl.selectionEnd;
+    var text = bodyEl.value;
+    var selected = text.substring(start, end);
+
+    if (selected) {
+      bodyEl.value = text.substring(0, start) + prefix + selected + suffix + text.substring(end);
+      bodyEl.selectionStart = start + prefix.length;
+      bodyEl.selectionEnd = end + prefix.length;
+    } else {
+      bodyEl.value = text.substring(0, start) + prefix + suffix + text.substring(end);
+      bodyEl.selectionStart = start + prefix.length;
+      bodyEl.selectionEnd = start + prefix.length;
+    }
+    bodyEl.focus();
+  }
+
+  if (document.getElementById('btn-bold')) {
+    document.getElementById('btn-bold').addEventListener('click', function () {
+      insertMarkdown('**', '**');
+    });
+  }
+
+  if (document.getElementById('btn-italic')) {
+    document.getElementById('btn-italic').addEventListener('click', function () {
+      insertMarkdown('*', '*');
+    });
+  }
+
+  if (document.getElementById('btn-heading')) {
+    document.getElementById('btn-heading').addEventListener('click', function () {
+      if (!bodyEl) return;
+      var start = bodyEl.selectionStart;
+      var text = bodyEl.value;
+      /* Find start of current line */
+      var lineStart = text.lastIndexOf('\n', start - 1) + 1;
+      var lineEnd = text.indexOf('\n', start);
+      if (lineEnd === -1) lineEnd = text.length;
+      var line = text.substring(lineStart, lineEnd);
+
+      if (line.indexOf('# ') === 0) {
+        /* Already has heading — remove it */
+        bodyEl.value = text.substring(0, lineStart) + line.substring(2) + text.substring(lineEnd);
+        bodyEl.selectionStart = start - 2;
+        bodyEl.selectionEnd = start - 2;
+      } else {
+        /* Add heading prefix */
+        bodyEl.value = text.substring(0, lineStart) + '# ' + text.substring(lineStart);
+        bodyEl.selectionStart = start + 2;
+        bodyEl.selectionEnd = start + 2;
+      }
+      bodyEl.focus();
+    });
+  }
 
   /* ── 클립보드: 텍스트 선택 후 복사 (마우스업 / 터치엔드) ── */
   (function () {

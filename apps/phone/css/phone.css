@@ -1,7 +1,7 @@
 /* ──────────────────────────────────────────────────────────
    [Clean Architecture] Presentation Layer - Style
    역할: 전화 앱 스타일 — 프리미엄 다이얼러 디자인
-   수행범위: phone 앱 레이아웃 — 키패드, 통화기록, 연락처, 통화화면
+   수행범위: phone 앱 레이아웃 — 키패드, 통화기록, 연락처, 즐겨찾기, 통화화면, DTMF
    의존방향: phone/index.html
    SOLID: SRP — phone 앱 스타일만 담당
 
@@ -199,8 +199,10 @@ body {
   -webkit-tap-highlight-color: transparent;
   transition: background 0.15s;
   border-bottom: 1px solid rgba(255,255,255,0.04);
+  position: relative;
 }
 .recent-item:active { background: rgba(255,255,255,0.05); }
+.recent-item.longpress-active { background: rgba(239,68,68,0.08); }
 
 .recent-direction {
   width: 28px;
@@ -283,6 +285,49 @@ body {
   white-space: nowrap;
 }
 
+/* ── Star / Favorite Toggle ── */
+.btn-star {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: none;
+  color: rgba(255,255,255,0.25);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.2s;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn-star:active { transform: scale(0.85); }
+.btn-star.starred { color: #facc15; }
+.btn-star svg { width: 20px; height: 20px; }
+
+/* ── Favorites Tab ── */
+.favorite-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  gap: 12px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.favorite-item:active { background: rgba(255,255,255,0.05); }
+.favorite-star {
+  color: #facc15;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+}
+.favorite-star svg { width: 20px; height: 20px; }
+
 /* ── In-Call Overlay ── */
 #incall-overlay {
   position: fixed;
@@ -337,6 +382,13 @@ body {
   font-weight: 300;
   color: #fff;
   text-align: center;
+}
+#incall-number {
+  font-size: 16px;
+  font-weight: 400;
+  color: rgba(255,255,255,0.55);
+  text-align: center;
+  margin-bottom: 4px;
 }
 #incall-status {
   font-size: 14px;
@@ -396,6 +448,57 @@ body {
   background: rgba(255,255,255,0.15);
 }
 
+/* ── DTMF In-Call Overlay ── */
+#dtmf-overlay {
+  width: 100%;
+  max-width: 280px;
+  margin: 8px auto;
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(15,23,42,0.92);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: fadeInUp 0.25s ease;
+}
+#dtmf-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.dtmf-btn {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255,255,255,0.08);
+  color: #e2e8f0;
+  font-size: 22px;
+  font-weight: 300;
+  cursor: pointer;
+  justify-self: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.dtmf-btn:active {
+  background: rgba(255,255,255,0.2);
+  transform: scale(0.92);
+}
+#dtmf-digits {
+  text-align: center;
+  margin-top: 8px;
+  font-size: 18px;
+  font-weight: 300;
+  color: rgba(255,255,255,0.6);
+  letter-spacing: 2px;
+  min-height: 24px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ── Hangup Button ── */
 .btn-hangup {
   width: 64px;
@@ -416,6 +519,63 @@ body {
 .btn-hangup:active {
   transform: scale(0.92);
   box-shadow: 0 2px 12px rgba(239, 68, 68, 0.5);
+}
+
+/* ── Delete Call Log Confirmation Modal ── */
+#delete-log-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#delete-log-modal.hidden { display: none !important; }
+#delete-log-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+}
+#delete-log-dialog {
+  position: relative;
+  z-index: 1;
+  background: #1e293b;
+  border-radius: 16px;
+  padding: 24px;
+  width: 280px;
+  text-align: center;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
+#delete-log-message {
+  font-size: 15px;
+  color: #e2e8f0;
+  margin-bottom: 20px;
+  line-height: 1.4;
+}
+#delete-log-actions {
+  display: flex;
+  gap: 12px;
+}
+.delete-dialog-btn {
+  flex: 1;
+  padding: 10px 0;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  background: rgba(255,255,255,0.08);
+  color: #e2e8f0;
+}
+.delete-dialog-btn:active { background: rgba(255,255,255,0.15); }
+.delete-dialog-btn.delete-confirm {
+  background: rgba(239,68,68,0.2);
+  color: #ef4444;
+}
+.delete-dialog-btn.delete-confirm:active {
+  background: rgba(239,68,68,0.35);
 }
 
 /* ── Avatar color palette ── */

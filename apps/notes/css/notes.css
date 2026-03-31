@@ -23,3 +23,19 @@ body { font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#0a0a
 #editor-header button { background:#252535; border:none; color:#ccc; padding:8px 16px; border-radius:8px; cursor:pointer; }
 #note-title { padding:12px 16px; background:transparent; border:none; border-bottom:1px solid #1a1a2e; color:#fff; font-size:18px; font-weight:600; outline:none; }
 #note-body { flex:1; padding:12px 16px; background:transparent; border:none; color:#ccc; font-size:15px; line-height:1.6; resize:none; outline:none; }
+
+/* ── Search bar ── */
+#list-controls { padding:0 16px 8px; }
+#search-input { width:100%; padding:10px 12px; background:#151525; border:1px solid #252540; border-radius:8px; color:#e0e0e0; font-size:14px; outline:none; }
+#search-input:focus { border-color:#6366f1; }
+
+/* ── Sort buttons ── */
+#sort-buttons { display:flex; gap:8px; margin-top:8px; }
+.sort-btn { background:#1a1a2e; border:1px solid #252540; color:#999; padding:6px 14px; border-radius:6px; font-size:12px; cursor:pointer; }
+.sort-btn.active { background:#6366f1; border-color:#6366f1; color:#fff; }
+
+/* ── Formatting toolbar ── */
+#formatting-toolbar { display:flex; gap:8px; padding:8px 16px; border-bottom:1px solid #1a1a2e; background:rgba(21,21,37,0.95); background-color:#151525; }
+.fmt-btn { background:#252535; border:1px solid #333350; color:#ccc; width:36px; height:32px; border-radius:6px; font-size:14px; font-weight:700; cursor:pointer; }
+.fmt-btn:hover { background:#333350; color:#fff; }
+.fmt-btn:active { background:#6366f1; border-color:#6366f1; }

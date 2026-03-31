@@ -1,7 +1,8 @@
 /* ──────────────────────────────────────────────────────────
    [Clean Architecture] Presentation Layer - Style
    역할: 앱스토어 스타일
-   수행범위: store 앱 레이아웃, 앱 카드, 탭, 버튼, 검색바, 상태 표시
+   수행범위: store 앱 레이아웃, 앱 카드, 탭, 버튼, 검색바, 상태 표시,
+             카테고리 칩, 상세 패널, 진행 상태, 업데이트 배지
    의존방향: store/index.html
    SOLID: SRP — store 앱 스타일만 담당
 
@@ -65,6 +66,40 @@ body {
   color: #fff;
 }
 
+/* ─── Category bar ─── */
+#category-bar {
+  padding: 0 16px 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+#category-bar::-webkit-scrollbar { display: none; }
+#category-bar:empty { display: none; }
+
+.category-chip {
+  display: inline-block;
+  padding: 6px 14px;
+  margin-right: 8px;
+  background: #111118;
+  border: 1px solid #252535;
+  border-radius: 16px;
+  color: #999;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.category-chip:last-child { margin-right: 0; }
+.category-chip.active {
+  background: #1a1a3e;
+  border-color: #3b82f6;
+  color: #fff;
+}
+
 /* ─── App list ─── */
 #app-list {
   flex: 1;
@@ -80,6 +115,10 @@ body {
   gap: 12px;
   padding: 14px 0;
   border-bottom: 1px solid #1a1a2e;
+  cursor: pointer;
+}
+.app-card:active {
+  background: rgba(255, 255, 255, 0.03);
 }
 
 /* Icon placeholder */
@@ -143,6 +182,20 @@ body {
   white-space: nowrap;
 }
 
+/* Update badge */
+.badge-update {
+  display: inline-block;
+  padding: 1px 6px;
+  background: #2a2a1a;
+  border: 1px solid #4a4a2d;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #facc15;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
 /* ─── Action buttons ─── */
 .app-action {
   flex-shrink: 0;
@@ -154,6 +207,8 @@ body {
   cursor: pointer;
   transition: opacity 0.2s;
   white-space: nowrap;
+  min-width: 72px;
+  text-align: center;
 }
 .app-action:active { opacity: 0.7; }
 
@@ -166,11 +221,41 @@ body {
   border: 1px solid #ef4444;
   color: #ef4444;
 }
+.btn-update {
+  background: #f59e0b;
+  color: #fff;
+}
 .btn-system {
   background: transparent;
   border: 1px solid #333;
   color: #555;
   cursor: default;
+}
+
+/* Progress state */
+.btn-progress {
+  background: #333;
+  color: #aaa;
+  cursor: wait;
+  position: relative;
+}
+.btn-progress .spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-top-color: #fff;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: middle;
+  -webkit-animation: spin 0.8s linear infinite;
+  animation: spin 0.8s linear infinite;
+}
+@-webkit-keyframes spin {
+  to { -webkit-transform: rotate(360deg); }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 /* ─── Empty / Loading states ─── */
@@ -187,4 +272,163 @@ body {
 .empty-text, .loading-text {
   font-size: 15px;
   color: #666;
+}
+
+/* ─── Detail overlay ─── */
+#detail-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+#detail-panel {
+  background: #111118;
+  border-radius: 16px 16px 0 0;
+  max-height: 85vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+#detail-header {
+  display: flex;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid #252535;
+  position: -webkit-sticky;
+  position: sticky;
+  top: 0;
+  background: #111118;
+  z-index: 1;
+}
+
+#detail-back {
+  background: none;
+  border: none;
+  color: #3b82f6;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 8px;
+  margin-right: 12px;
+}
+
+#detail-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: #fff;
+}
+
+#detail-content {
+  padding: 20px 16px;
+}
+
+/* Detail content elements */
+.detail-app-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.detail-app-icon {
+  flex-shrink: 0;
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #1e3a5f, #2a1a4e);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  font-weight: 700;
+  color: #7eb8ff;
+}
+.detail-app-name {
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 4px;
+}
+.detail-app-version {
+  font-size: 13px;
+  color: #888;
+}
+.detail-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 20px;
+  padding: 14px;
+  background: #0d0d1a;
+  border-radius: 10px;
+  border: 1px solid #1a1a2e;
+}
+.detail-meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.detail-meta-label {
+  font-size: 13px;
+  color: #888;
+  font-weight: 500;
+}
+.detail-meta-value {
+  font-size: 13px;
+  color: #e0e0e0;
+  font-weight: 600;
+}
+.detail-description-label {
+  font-size: 14px;
+  color: #888;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.detail-description-text {
+  font-size: 14px;
+  color: #ccc;
+  line-height: 1.5;
+  margin-bottom: 20px;
+}
+.detail-action-area {
+  padding-top: 4px;
+}
+.detail-action-btn {
+  width: 100%;
+  padding: 12px 0;
+  border-radius: 10px;
+  border: none;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  transition: opacity 0.2s;
+}
+.detail-action-btn:active { opacity: 0.7; }
+.detail-action-btn.btn-install {
+  background: #3b82f6;
+  color: #fff;
+}
+.detail-action-btn.btn-uninstall {
+  background: transparent;
+  border: 1px solid #ef4444;
+  color: #ef4444;
+}
+.detail-action-btn.btn-update {
+  background: #f59e0b;
+  color: #fff;
+}
+.detail-action-btn.btn-system {
+  background: transparent;
+  border: 1px solid #333;
+  color: #555;
+  cursor: default;
+}
+.detail-action-btn.btn-progress {
+  background: #333;
+  color: #aaa;
+  cursor: wait;
 }

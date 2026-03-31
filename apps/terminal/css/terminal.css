@@ -2,7 +2,7 @@
  * [Clean Architecture] Presentation Layer - Style
  *
  * 역할: 터미널 에뮬레이터 스타일 — 그린온블랙 테마, 모노스페이스 폰트
- * 수행범위: 터미널 출력 영역, 명령 입력줄, 퀵 키 바, 스크롤백 스타일링
+ * 수행범위: 터미널 출력 영역, 명령 입력줄, 퀵 키 바, 탭 바, 테마 토글 스타일링
  * 의존방향: terminal.js
  * SOLID: SRP — 터미널 시각적 표현만 담당
 
@@ -31,6 +31,7 @@
   --border: rgba(0,255,65,0.1);
   --safe-top: 36px;
   --header-h: 48px;
+  --tab-h: 32px;
   --input-h: 44px;
   --qkeys-h: 38px;
 }
@@ -54,7 +55,7 @@ body {
   padding-top: var(--safe-top);
   padding-left: 16px;
   padding-right: 8px;
-  background: rgba(10, 10, 10, 0.9);
+  background: rgba(10, 10, 10, 0.95);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-bottom: 1px solid var(--border);
@@ -94,6 +95,100 @@ body {
   width: 20px;
   height: 20px;
   fill: currentColor;
+}
+
+/* ─── Tab Bar ─── */
+#tab-bar {
+  display: flex;
+  align-items: center;
+  height: var(--tab-h);
+  padding: 0 8px;
+  background: rgba(15, 15, 15, 0.95);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  z-index: 9;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+#tab-bar::-webkit-scrollbar { display: none; }
+
+#tab-list {
+  display: flex;
+  gap: 2px;
+  flex: 1;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+#tab-list::-webkit-scrollbar { display: none; }
+
+.term-tab {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 10px;
+  height: 26px;
+  background: rgba(0,255,65,0.04);
+  border: 1px solid rgba(0,255,65,0.08);
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.1s;
+}
+
+.term-tab:active { background: rgba(0,255,65,0.12); }
+
+.term-tab.active {
+  background: rgba(0,255,65,0.12);
+  color: var(--text);
+  border-color: rgba(0,255,65,0.25);
+}
+
+.tab-close-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+  opacity: 0.5;
+}
+
+.tab-close-btn:hover,
+.tab-close-btn:active {
+  opacity: 1;
+  color: var(--text-error);
+}
+
+.tab-add-btn {
+  background: none;
+  border: 1px solid rgba(0,255,65,0.08);
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 16px;
+  line-height: 1;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+
+.tab-add-btn:active {
+  background: rgba(0,255,65,0.12);
+  color: var(--text);
 }
 
 /* ─── Terminal Output ─── */

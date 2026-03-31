@@ -26,7 +26,7 @@
 - **Verified Boot**: FIT 이미지 서명 + dm-verity (rootfs 무결성)
 - **zyl SDK CLI**: init/validate/package/sign/keygen 개발자 워크플로우
 - **코드 품질 보증**: verify-all.sh (11섹션 자동 검증) + pre-commit hook
-- **코드베이스 규모**: 418개 파일, ~63,700 LoC
+- **코드베이스 규모**: 360개 파일, ~68,400 LoC
 
 ## 기술 스택
 

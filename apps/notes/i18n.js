@@ -20,7 +20,15 @@
     'notes.save_success': '\uBA54\uBAA8\uAC00 \uC800\uC7A5\uB418\uC5C8\uC2B5\uB2C8\uB2E4',
     'notes.save_error': '\uBA54\uBAA8 \uC800\uC7A5\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4',
     'notes.delete_success': '\uBA54\uBAA8\uAC00 \uC0AD\uC81C\uB418\uC5C8\uC2B5\uB2C8\uB2E4',
-    'notes.delete_error': '\uBA54\uBAA8 \uC0AD\uC81C\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4'
+    'notes.delete_error': '\uBA54\uBAA8 \uC0AD\uC81C\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4',
+    'notes.search_placeholder': '\uBA54\uBAA8 \uAC80\uC0C9...',
+    'notes.sort_date': '\uB0A0\uC9DC',
+    'notes.sort_name': '\uC774\uB984',
+    'notes.title_placeholder': '\uC81C\uBAA9',
+    'notes.body_placeholder': '\uB0B4\uC6A9\uC744 \uC785\uB825\uD558\uC138\uC694...',
+    'notes.bold': '\uAD75\uAC8C',
+    'notes.italic': '\uAE30\uC6B8\uC784',
+    'notes.heading': '\uC81C\uBAA9'
   });
 
   zylI18n.addTranslations('en', {
@@ -34,7 +42,15 @@
     'notes.save_success': 'Note saved',
     'notes.save_error': 'Failed to save note',
     'notes.delete_success': 'Note deleted',
-    'notes.delete_error': 'Failed to delete note'
+    'notes.delete_error': 'Failed to delete note',
+    'notes.search_placeholder': 'Search notes...',
+    'notes.sort_date': 'Date',
+    'notes.sort_name': 'Name',
+    'notes.title_placeholder': 'Title',
+    'notes.body_placeholder': 'Start writing...',
+    'notes.bold': 'Bold',
+    'notes.italic': 'Italic',
+    'notes.heading': 'Heading'
   });
 
   zylI18n.addTranslations('ja', {
@@ -48,7 +64,15 @@
     'notes.save_success': '\u30E1\u30E2\u3092\u4FDD\u5B58\u3057\u307E\u3057\u305F',
     'notes.save_error': '\u30E1\u30E2\u306E\u4FDD\u5B58\u306B\u5931\u6557\u3057\u307E\u3057\u305F',
     'notes.delete_success': '\u30E1\u30E2\u3092\u524A\u9664\u3057\u307E\u3057\u305F',
-    'notes.delete_error': '\u30E1\u30E2\u306E\u524A\u9664\u306B\u5931\u6557\u3057\u307E\u3057\u305F'
+    'notes.delete_error': '\u30E1\u30E2\u306E\u524A\u9664\u306B\u5931\u6557\u3057\u307E\u3057\u305F',
+    'notes.search_placeholder': '\u30E1\u30E2\u3092\u691C\u7D22...',
+    'notes.sort_date': '\u65E5\u4ED8',
+    'notes.sort_name': '\u540D\u524D',
+    'notes.title_placeholder': '\u30BF\u30A4\u30C8\u30EB',
+    'notes.body_placeholder': '\u5165\u529B\u3092\u958B\u59CB...',
+    'notes.bold': '\u592A\u5B57',
+    'notes.italic': '\u659C\u4F53',
+    'notes.heading': '\u898B\u51FA\u3057'
   });
 
   zylI18n.addTranslations('zh', {
@@ -62,7 +86,15 @@
     'notes.save_success': '\u7B14\u8BB0\u5DF2\u4FDD\u5B58',
     'notes.save_error': '\u4FDD\u5B58\u7B14\u8BB0\u5931\u8D25',
     'notes.delete_success': '\u7B14\u8BB0\u5DF2\u5220\u9664',
-    'notes.delete_error': '\u5220\u9664\u7B14\u8BB0\u5931\u8D25'
+    'notes.delete_error': '\u5220\u9664\u7B14\u8BB0\u5931\u8D25',
+    'notes.search_placeholder': '\u641C\u7D22\u7B14\u8BB0...',
+    'notes.sort_date': '\u65E5\u671F',
+    'notes.sort_name': '\u540D\u79F0',
+    'notes.title_placeholder': '\u6807\u9898',
+    'notes.body_placeholder': '\u5F00\u59CB\u8F93\u5165...',
+    'notes.bold': '\u52A0\u7C97',
+    'notes.italic': '\u659C\u4F53',
+    'notes.heading': '\u6807\u9898'
   });
 
   zylI18n.addTranslations('es', {
@@ -76,6 +108,14 @@
     'notes.save_success': 'Nota guardada',
     'notes.save_error': 'Error al guardar nota',
     'notes.delete_success': 'Nota eliminada',
-    'notes.delete_error': 'Error al eliminar nota'
+    'notes.delete_error': 'Error al eliminar nota',
+    'notes.search_placeholder': 'Buscar notas...',
+    'notes.sort_date': 'Fecha',
+    'notes.sort_name': 'Nombre',
+    'notes.title_placeholder': 'T\u00EDtulo',
+    'notes.body_placeholder': 'Empieza a escribir...',
+    'notes.bold': 'Negrita',
+    'notes.italic': 'Cursiva',
+    'notes.heading': 'Encabezado'
   });
 })();

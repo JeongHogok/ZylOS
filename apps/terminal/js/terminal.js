@@ -2,7 +2,7 @@
 // [Clean Architecture] Presentation Layer - Page
 //
 // 역할: 터미널 에뮬레이터 UI — 셸 명령 실행 및 출력 표시
-// 수행범위: 명령 입력/실행, 명령 히스토리, 출력 스크롤백
+// 수행범위: 명령 입력/실행, 명령 히스토리, 출력 스크롤백, 탭 관리, 테마 전환
 // 의존방향: 없음 (독립 앱)
 // SOLID: SRP — 터미널 UI와 명령 처리만 담당
 //
@@ -43,11 +43,12 @@
   var commandInput = document.getElementById('command-input');
   var btnClear = document.getElementById('btn-clear');
   var btnInfo = document.getElementById('btn-info');
+  var btnTheme = document.getElementById('btn-theme');
+  var btnNewTab = document.getElementById('btn-new-tab');
+  var tabListEl = document.getElementById('tab-list');
+  var qkeyPaste = document.getElementById('qkey-paste');
 
-  /* ─── State ─── */
-  var commandHistory = [];
-  var historyIndex = -1;
-  var currentDir = '/home/user';
+  /* ─── Shared State ─── */
   var hostname = 'bpi-f3';
   var username = 'user';
 
@@ -57,6 +58,176 @@
   var deviceData = null;
   var _asyncCallbacks = {};
   var _asyncId = 0;
+
+  /* ─── Tab System ─── */
+  var MAX_TABS = 4;
+  var tabs = [];
+  var activeTabIndex = 0;
+  var nextTabId = 1;
+
+  function createTabState() {
+    var id = nextTabId++;
+    return {
+      id: id,
+      commandHistory: [],
+      historyIndex: -1,
+      currentDir: '/home/' + username,
+      outputHtml: ''
+    };
+  }
+
+  function getTabName(tabState) {
+    var raw = zylI18n.t('terminal.tab_name');
+    return raw.replace('{n}', String(tabState.id));
+  }
+
+  function saveCurrentTabOutput() {
+    if (tabs[activeTabIndex]) {
+      tabs[activeTabIndex].outputHtml = outputContent.innerHTML;
+    }
+  }
+
+  function restoreTabOutput(tabState) {
+    outputContent.innerHTML = tabState.outputHtml;
+  }
+
+  function renderTabBar() {
+    tabListEl.innerHTML = '';
+    for (var i = 0; i < tabs.length; i++) {
+      (function (idx) {
+        var tab = tabs[idx];
+        var tabEl = document.createElement('button');
+        tabEl.className = 'term-tab' + (idx === activeTabIndex ? ' active' : '');
+        tabEl.setAttribute('role', 'tab');
+        tabEl.setAttribute('aria-selected', idx === activeTabIndex ? 'true' : 'false');
+
+        var nameSpan = document.createElement('span');
+        nameSpan.textContent = getTabName(tab);
+        tabEl.appendChild(nameSpan);
+
+        tabEl.addEventListener('click', function () {
+          switchToTab(idx);
+        });
+
+        if (tabs.length > 1) {
+          var closeBtn = document.createElement('button');
+          closeBtn.className = 'tab-close-btn';
+          closeBtn.textContent = '\u00d7';
+          closeBtn.setAttribute('aria-label', zylI18n.t('terminal.close_tab'));
+          closeBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            closeTab(idx);
+          });
+          tabEl.appendChild(closeBtn);
+        }
+
+        tabListEl.appendChild(tabEl);
+      })(i);
+    }
+
+    /* Show/hide add button */
+    btnNewTab.style.display = tabs.length >= MAX_TABS ? 'none' : '';
+  }
+
+  function switchToTab(idx) {
+    if (idx === activeTabIndex) return;
+    saveCurrentTabOutput();
+    activeTabIndex = idx;
+    var tab = tabs[idx];
+    restoreTabOutput(tab);
+    currentDir = tab.currentDir;
+    commandHistory = tab.commandHistory;
+    historyIndex = tab.historyIndex;
+    updatePrompt();
+    renderTabBar();
+    scrollToBottom();
+    commandInput.focus();
+  }
+
+  function addNewTab() {
+    if (tabs.length >= MAX_TABS) return;
+    saveCurrentTabOutput();
+    var newTab = createTabState();
+    tabs.push(newTab);
+    activeTabIndex = tabs.length - 1;
+    currentDir = newTab.currentDir;
+    commandHistory = newTab.commandHistory;
+    historyIndex = newTab.historyIndex;
+    outputContent.innerHTML = '';
+    showWelcome();
+    updatePrompt();
+    renderTabBar();
+    commandInput.focus();
+  }
+
+  function closeTab(idx) {
+    if (tabs.length <= 1) return;
+    tabs.splice(idx, 1);
+    if (activeTabIndex >= tabs.length) {
+      activeTabIndex = tabs.length - 1;
+    } else if (idx < activeTabIndex) {
+      activeTabIndex--;
+    } else if (idx === activeTabIndex) {
+      activeTabIndex = Math.min(idx, tabs.length - 1);
+    }
+    var tab = tabs[activeTabIndex];
+    restoreTabOutput(tab);
+    currentDir = tab.currentDir;
+    commandHistory = tab.commandHistory;
+    historyIndex = tab.historyIndex;
+    updatePrompt();
+    renderTabBar();
+    scrollToBottom();
+    commandInput.focus();
+  }
+
+  /* Initialize first tab */
+  var firstTab = createTabState();
+  tabs.push(firstTab);
+  var commandHistory = firstTab.commandHistory;
+  var historyIndex = firstTab.historyIndex;
+  var currentDir = firstTab.currentDir;
+
+  /* ─── Color Theme System ─── */
+  var themes = [
+    { name: 'green', text: '#00ff41', bg: '#0a0a0a', dim: '#00cc33', accent: '#00ff41', prompt: '#00cc33', border: 'rgba(0,255,65,0.1)', glow: 'rgba(0,255,65,0.15)' },
+    { name: 'amber', text: '#ffb000', bg: '#0a0800', dim: '#cc8e00', accent: '#ffb000', prompt: '#cc8e00', border: 'rgba(255,176,0,0.1)', glow: 'rgba(255,176,0,0.15)' },
+    { name: 'blue', text: '#4a9eff', bg: '#000a1a', dim: '#3b7ecc', accent: '#4a9eff', prompt: '#3b7ecc', border: 'rgba(74,158,255,0.1)', glow: 'rgba(74,158,255,0.15)' }
+  ];
+  var currentThemeIndex = 0;
+
+  function applyTheme(index) {
+    var theme = themes[index];
+    var root = document.documentElement;
+    root.style.setProperty('--text', theme.text);
+    root.style.setProperty('--bg', theme.bg);
+    root.style.setProperty('--text-dim', theme.dim);
+    root.style.setProperty('--accent', theme.accent);
+    root.style.setProperty('--prompt-color', theme.prompt);
+    root.style.setProperty('--border', theme.border);
+  }
+
+  function cycleTheme() {
+    currentThemeIndex = (currentThemeIndex + 1) % themes.length;
+    applyTheme(currentThemeIndex);
+  }
+
+  /* ─── i18n for quick keys paste button ─── */
+  function applyI18nLabels() {
+    if (typeof zylI18n !== 'undefined') {
+      if (qkeyPaste) {
+        qkeyPaste.textContent = zylI18n.t('terminal.paste');
+      }
+      if (btnNewTab) {
+        btnNewTab.setAttribute('aria-label', zylI18n.t('terminal.new_tab'));
+        btnNewTab.setAttribute('title', zylI18n.t('terminal.new_tab'));
+      }
+      if (btnTheme) {
+        btnTheme.setAttribute('aria-label', zylI18n.t('terminal.theme'));
+        btnTheme.setAttribute('title', zylI18n.t('terminal.theme'));
+      }
+    }
+  }
 
   /* Request data from central service */
   function requestServiceData() {
@@ -132,7 +303,7 @@
         username = msg.data.username || username;
         updatePrompt();
       }
-    } catch (err) { /* ignore */ }
+    } catch (err) { /* ignore parse errors from non-JSON messages */ }
   });
 
   requestServiceData();
@@ -247,12 +418,14 @@
     cd: function (args) {
       if (args.length === 0 || args[0] === '~') {
         currentDir = '/home/' + username;
+        if (tabs[activeTabIndex]) tabs[activeTabIndex].currentDir = currentDir;
         updatePrompt();
         return;
       }
       var target = resolvePath(args[0]);
       if (filesystem[target] !== undefined) {
         currentDir = target;
+        if (tabs[activeTabIndex]) tabs[activeTabIndex].currentDir = currentDir;
         updatePrompt();
       } else {
         addLine('cd: ' + args[0] + ': No such file or directory', 'line-error');
@@ -436,6 +609,11 @@
     commandHistory.push(trimmed);
     historyIndex = commandHistory.length;
 
+    /* Sync historyIndex back to tab state */
+    if (tabs[activeTabIndex]) {
+      tabs[activeTabIndex].historyIndex = historyIndex;
+    }
+
     /* Parse command and args */
     var parts = parseCommand(trimmed);
     var cmd = parts[0];
@@ -493,6 +671,7 @@
       if (historyIndex > 0) {
         historyIndex--;
         commandInput.value = commandHistory[historyIndex];
+        if (tabs[activeTabIndex]) tabs[activeTabIndex].historyIndex = historyIndex;
       }
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -503,6 +682,7 @@
         historyIndex = commandHistory.length;
         commandInput.value = '';
       }
+      if (tabs[activeTabIndex]) tabs[activeTabIndex].historyIndex = historyIndex;
     }
   });
 
@@ -519,6 +699,7 @@
         if (historyIndex > 0) {
           historyIndex--;
           commandInput.value = commandHistory[historyIndex];
+          if (tabs[activeTabIndex]) tabs[activeTabIndex].historyIndex = historyIndex;
         }
         commandInput.focus();
       } else if (key === 'down') {
@@ -529,6 +710,7 @@
           historyIndex = commandHistory.length;
           commandInput.value = '';
         }
+        if (tabs[activeTabIndex]) tabs[activeTabIndex].historyIndex = historyIndex;
         commandInput.focus();
       } else if (key === 'tab') {
         /* Simple tab completion */
@@ -552,8 +734,33 @@
         commandInput.value = '';
         commandInput.focus();
         scrollToBottom();
+      } else if (key === 'paste') {
+        /* Paste from clipboard via service */
+        handlePaste();
       }
     });
+  });
+
+  /* ─── Paste Functionality ─── */
+  function handlePaste() {
+    if (typeof ZylBridge !== 'undefined') {
+      ZylBridge.requestService('clipboard', 'paste', {}).then(function (result) {
+        if (result && result.text) {
+          commandInput.value += result.text;
+        }
+        commandInput.focus();
+      });
+    }
+  }
+
+  /* ─── Theme Toggle ─── */
+  btnTheme.addEventListener('click', function () {
+    cycleTheme();
+  });
+
+  /* ─── Tab Bar Events ─── */
+  btnNewTab.addEventListener('click', function () {
+    addNewTab();
   });
 
   /* ─── Clear Button ─── */
@@ -646,12 +853,14 @@
         var unixView = msg.data.unixTree || {};
         fileContents = msg.data.fileContents || {};
       }
-    } catch (err) { /* ignore */ }
+    } catch (err) { /* ignore parse errors from non-JSON messages */ }
   });
 
   /* ─── Init ─── */
   showWelcome();
   updatePrompt();
+  applyI18nLabels();
+  renderTabBar();
   commandInput.focus();
 
 })();

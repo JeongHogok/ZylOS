@@ -11,8 +11,15 @@
 </head>
 <body>
   <div id="header" role="navigation">
-    <h1>Notes</h1>
+    <h1 data-i18n="notes.title">Notes</h1>
     <button id="btn-new" aria-label="New note">+</button>
+  </div>
+  <div id="list-controls">
+    <input type="text" id="search-input" data-i18n-placeholder="notes.search_placeholder" placeholder="Search notes..." aria-label="Search notes">
+    <div id="sort-buttons">
+      <button id="btn-sort-date" class="sort-btn active" data-i18n="notes.sort_date">Date</button>
+      <button id="btn-sort-name" class="sort-btn" data-i18n="notes.sort_name">Name</button>
+    </div>
   </div>
   <div id="notes-list" role="main"></div>
   <div id="editor" class="hidden">
@@ -21,8 +28,13 @@
       <button id="btn-save" data-i18n="notes.save">Save</button>
       <button id="btn-delete" data-i18n="notes.delete">Delete</button>
     </div>
-    <input type="text" id="note-title" placeholder="Title" aria-label="Note title">
-    <textarea id="note-body" placeholder="Start writing..." aria-label="Note content"></textarea>
+    <input type="text" id="note-title" data-i18n-placeholder="notes.title_placeholder" placeholder="Title" aria-label="Note title">
+    <div id="formatting-toolbar">
+      <button class="fmt-btn" id="btn-bold" data-i18n="notes.bold" aria-label="Bold">B</button>
+      <button class="fmt-btn" id="btn-italic" data-i18n="notes.italic" aria-label="Italic">I</button>
+      <button class="fmt-btn" id="btn-heading" data-i18n="notes.heading" aria-label="Heading">H</button>
+    </div>
+    <textarea id="note-body" data-i18n-placeholder="notes.body_placeholder" placeholder="Start writing..." aria-label="Note content"></textarea>
   </div>
   <script src="../shared/i18n.js"></script>
   <script src="i18n.js"></script>

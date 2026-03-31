@@ -1,8 +1,8 @@
 // ──────────────────────────────────────────────────────────
 // [Clean Architecture] Presentation Layer - Page
 //
-// 역할: 브라우저 앱 UI — 탭 관리, URL 탐색, 북마크
-// 수행범위: 탭 생성/전환/닫기, URL 입력/탐색, 북마크 사이드바, 페이지 렌더링
+// 역할: 브라우저 앱 UI — 탭 관리, URL 탐색, 북마크, 히스토리, 메뉴, 시크릿 모드
+// 수행범위: 탭 생성/전환/닫기, URL 입력/탐색, 북마크 사이드바, 히스토리 사이드바, 메뉴 팝업, 시크릿 모드, 페이지 렌더링
 // 의존방향: 없음 (독립 앱)
 // SOLID: SRP — 브라우저 UI와 탐색 로직만 담당
 //
@@ -40,6 +40,7 @@
 
   /* ─── Constants ─── */
   var MAX_TABS = 5;
+  var PRIVATE_MASK = '\uD83D\uDD76 ';
 
   /* ─── State ─── */
   var tabs = [
@@ -47,6 +48,8 @@
   ];
   var activeTabId = 0;
   var nextTabId = 1;
+  var isPrivateMode = false;
+  var globalHistory = [];
 
   /* ─── DOM References ─── */
   var tabsContainer = document.getElementById('tabs-container');
@@ -64,6 +67,12 @@
   var pageLoading = document.getElementById('page-loading');
   var pageContent = document.getElementById('page-content');
   var ntpSearchInput = document.getElementById('ntp-search-input');
+  var privateIndicator = document.getElementById('private-indicator');
+  var menuPopup = document.getElementById('menu-popup');
+  var menuOverlay = document.getElementById('menu-overlay');
+  var historySidebar = document.getElementById('history-sidebar');
+  var btnCloseHistory = document.getElementById('btn-close-history');
+  var btnClearHistory = document.getElementById('btn-clear-history');
 
   /* 북마크/빠른링크는 서비스에서 로드 — Mock 데이터 금지 (CLAUDE.md §5) */
   var bookmarksData = [];
@@ -77,6 +86,9 @@
     });
     ZylBridge.sendToSystem({
       type: 'service.request', service: 'browser', method: 'getQuickLinks'
+    });
+    ZylBridge.sendToSystem({
+      type: 'service.request', service: 'browser', method: 'getHistory'
     });
   }
 
@@ -107,9 +119,12 @@
         } else if (msg.method === 'getQuickLinks' && msg.data) {
           quickLinksData = msg.data;
           renderQuickLinks();
+        } else if (msg.method === 'getHistory' && msg.data) {
+          globalHistory = msg.data;
+          renderHistory();
         }
       }
-    } catch (err) { /* ignore */ }
+    } catch (err) { /* ignore malformed messages */ }
   });
 
   requestBrowserData();
@@ -117,6 +132,112 @@
   /* ─── Helper: Get active tab ─── */
   function getActiveTab() {
     return arrFind(tabs, function (t) { return t.id === activeTabId; });
+  }
+
+  /* ─── History management ─── */
+  function addHistoryEntry(url, title) {
+    if (isPrivateMode) return;
+    var entry = {
+      url: url,
+      title: title || extractDomain(url) || url,
+      timestamp: Date.now()
+    };
+    globalHistory.unshift(entry);
+    ZylBridge.sendToSystem({
+      type: 'service.request', service: 'browser', method: 'addHistory',
+      data: entry
+    });
+  }
+
+  function clearHistory() {
+    globalHistory = [];
+    ZylBridge.sendToSystem({
+      type: 'service.request', service: 'browser', method: 'clearHistory'
+    });
+    renderHistory();
+    showToast(zylI18n.t('browser.history_cleared'));
+  }
+
+  function formatTime(ts) {
+    var d = new Date(ts);
+    var h = d.getHours();
+    var m = d.getMinutes();
+    return (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
+  }
+
+  function renderHistory() {
+    var list = document.getElementById('history-list');
+    if (!list) return;
+    list.innerHTML = '';
+    if (globalHistory.length === 0) {
+      var emptyDiv = document.createElement('div');
+      emptyDiv.style.cssText = 'padding:16px;opacity:0.5;text-align:center';
+      emptyDiv.textContent = zylI18n.t('browser.no_history');
+      list.appendChild(emptyDiv);
+      return;
+    }
+    globalHistory.forEach(function (entry) {
+      var el = document.createElement('div');
+      el.className = 'history-item';
+      var domain = extractDomain(entry.url);
+      var initial = domain ? domain.charAt(0).toUpperCase() : '?';
+
+      var iconDiv = document.createElement('div');
+      iconDiv.className = 'history-icon';
+      iconDiv.textContent = initial;
+
+      var infoDiv = document.createElement('div');
+      infoDiv.className = 'history-info';
+
+      var titleSpan = document.createElement('span');
+      titleSpan.className = 'history-title';
+      titleSpan.textContent = entry.title || domain || entry.url;
+
+      var timeSpan = document.createElement('span');
+      timeSpan.className = 'history-time';
+      timeSpan.textContent = formatTime(entry.timestamp);
+
+      infoDiv.appendChild(titleSpan);
+      infoDiv.appendChild(timeSpan);
+      el.appendChild(iconDiv);
+      el.appendChild(infoDiv);
+
+      el.setAttribute('role', 'link');
+      el.setAttribute('aria-label', entry.title || entry.url);
+      addButtonKeyHandler(el);
+      el.addEventListener('click', function () {
+        urlInput.value = entry.url;
+        showWebPage(entry.url);
+        historySidebar.classList.add('hidden');
+      });
+      list.appendChild(el);
+    });
+  }
+
+  /* ─── Private mode ─── */
+  function togglePrivateMode() {
+    isPrivateMode = !isPrivateMode;
+    if (isPrivateMode) {
+      document.body.classList.add('private-mode');
+      privateIndicator.classList.remove('hidden');
+      showToast(zylI18n.t('browser.private_on'));
+    } else {
+      document.body.classList.remove('private-mode');
+      privateIndicator.classList.add('hidden');
+      showToast(zylI18n.t('browser.private_off'));
+    }
+    renderTabs();
+  }
+
+  /* ─── Menu popup ─── */
+  function openMenu() {
+    menuPopup.classList.remove('hidden');
+    menuOverlay.classList.remove('hidden');
+  }
+
+  function closeMenu() {
+    menuPopup.classList.add('hidden');
+    menuOverlay.classList.add('hidden');
   }
 
   /* ─── Render Tabs ─── */
@@ -128,7 +249,11 @@
       el.dataset.tab = tab.id;
       var titleSpan = document.createElement('span');
       titleSpan.className = 'tab-title';
-      titleSpan.textContent = tab.title;
+      var displayTitle = tab.title;
+      if (isPrivateMode) {
+        displayTitle = PRIVATE_MASK + displayTitle;
+      }
+      titleSpan.textContent = displayTitle;
       el.appendChild(titleSpan);
       if (tabs.length > 1) {
         var closeBtn = document.createElement('button');
@@ -234,6 +359,7 @@
       tab.history = tab.history.slice(0, tab.historyIndex + 1);
       tab.history.push(url);
       tab.historyIndex = tab.history.length - 1;
+      addHistoryEntry(url, domain);
     }
 
     renderTabs();
@@ -413,6 +539,7 @@
 
   /* ─── Bookmarks ─── */
   btnBookmarks.addEventListener('click', function () {
+    historySidebar.classList.add('hidden');
     bookmarksSidebar.classList.toggle('hidden');
   });
 
@@ -492,14 +619,72 @@
     showToast(zylI18n.t('browser.url_copied'));
   }
 
+  /* ─── Add bookmark for current page ─── */
+  function addBookmarkForCurrentPage() {
+    var tab = getActiveTab();
+    if (!tab || !tab.url) return;
+    ZylBridge.sendToSystem({
+      type: 'service.request', service: 'browser', method: 'addBookmark',
+      data: { name: tab.title, url: tab.url }
+    });
+    showToast(zylI18n.t('browser.bookmark_added'));
+  }
+
   /* URL 입력 필드 더블탭 시 복사 */
   urlInput.addEventListener('dblclick', function () {
     copyCurrentUrl();
   });
 
-  /* ─── Menu Button (placeholder) ─── */
+  /* ─── Menu Button ─── */
   btnMenu.addEventListener('click', function () {
+    openMenu();
+  });
+
+  menuOverlay.addEventListener('click', function () {
+    closeMenu();
+  });
+
+  /* Menu item handlers */
+  document.getElementById('menu-copy-url').addEventListener('click', function () {
+    closeMenu();
     copyCurrentUrl();
+  });
+
+  document.getElementById('menu-add-bookmark').addEventListener('click', function () {
+    closeMenu();
+    addBookmarkForCurrentPage();
+  });
+
+  document.getElementById('menu-history').addEventListener('click', function () {
+    closeMenu();
+    bookmarksSidebar.classList.add('hidden');
+    historySidebar.classList.toggle('hidden');
+    renderHistory();
+  });
+
+  document.getElementById('menu-private').addEventListener('click', function () {
+    closeMenu();
+    togglePrivateMode();
+  });
+
+  document.getElementById('menu-settings').addEventListener('click', function () {
+    closeMenu();
+    /* Settings navigates to system settings via intent */
+    if (typeof ZylIntent !== 'undefined') {
+      ZylIntent.startActivity({
+        action: 'android.intent.action.VIEW',
+        component: 'settings'
+      });
+    }
+  });
+
+  /* ─── History Sidebar ─── */
+  btnCloseHistory.addEventListener('click', function () {
+    historySidebar.classList.add('hidden');
+  });
+
+  btnClearHistory.addEventListener('click', function () {
+    clearHistory();
   });
 
   /* ─── Init ─── */

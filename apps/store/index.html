@@ -23,6 +23,8 @@
     <button class="tab" id="tab-installed" data-tab="installed" data-i18n="store.tab_installed">Installed</button>
   </div>
 
+  <div id="category-bar"></div>
+
   <div id="app-list" role="main"></div>
 
   <div id="empty-state" class="hidden">
@@ -32,6 +34,17 @@
 
   <div id="loading-state">
     <div class="loading-text" data-i18n="store.loading">Loading...</div>
+  </div>
+
+  <!-- App detail overlay -->
+  <div id="detail-overlay" class="hidden">
+    <div id="detail-panel">
+      <div id="detail-header">
+        <button id="detail-back" data-i18n="store.back">Back</button>
+        <span id="detail-title" data-i18n="store.details">Details</span>
+      </div>
+      <div id="detail-content"></div>
+    </div>
   </div>
 
   <script src="../shared/i18n.js"></script>

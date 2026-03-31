@@ -1,8 +1,8 @@
 // ──────────────────────────────────────────────────────────
 // [Clean Architecture] Presentation Layer - Page
 //
-// 역할: 전화 앱 — 키패드, 통화기록, 연락처, 통화화면
-// 수행범위: 키패드 입력, 발신/수신/종료, 통화기록 조회, 연락처 목록
+// 역할: 전화 앱 — 키패드, 통화기록, 연락처, 즐겨찾기, 통화화면, DTMF
+// 수행범위: 키패드 입력, 발신/수신/종료, 통화기록 조회/삭제, 연락처 목록, 즐겨찾기, DTMF 톤
 // 의존방향: shared/bridge.js → postMessage IPC (telephony, contacts)
 // SOLID: SRP — 전화 관련 UI만 담당, OCP — 통화기록 확장 가능
 //
@@ -94,6 +94,10 @@
   /* Contacts */
   var contactsList = document.getElementById('contacts-list');
 
+  /* Favorites */
+  var favoritesList = document.getElementById('favorites-list');
+  var favoritesEmpty = document.getElementById('favorites-empty');
+
   /* In-call */
   var incallOverlay = document.getElementById('incall-overlay');
   var incallStatus = document.getElementById('incall-status');
@@ -103,6 +107,17 @@
   var btnEndCall = document.getElementById('btn-end-call');
   var btnMute = document.getElementById('btn-mute');
   var btnSpeaker = document.getElementById('btn-speaker');
+  var btnKeypadIncall = document.getElementById('btn-keypad-incall');
+
+  /* DTMF */
+  var dtmfOverlay = document.getElementById('dtmf-overlay');
+  var dtmfGrid = document.getElementById('dtmf-grid');
+  var dtmfDigitsEl = document.getElementById('dtmf-digits');
+
+  /* Delete modal */
+  var deleteLogModal = document.getElementById('delete-log-modal');
+  var btnDeleteCancel = document.getElementById('btn-delete-cancel');
+  var btnDeleteConfirm = document.getElementById('btn-delete-confirm');
 
   /* ═══════════════════════════════════════════════════════════
      State
@@ -114,6 +129,11 @@
   var isMuted = false;
   var isSpeaker = false;
   var currentCallNumber = '';
+  var isDtmfVisible = false;
+  var dtmfDigits = '';
+  var pendingDeleteLogId = null;
+  var favoritesSet = {};
+  var longPressTimer = null;
 
   /* ═══════════════════════════════════════════════════════════
      Tab Switching
@@ -142,6 +162,7 @@
 
     if (tabName === 'recents') { loadRecents(); }
     if (tabName === 'contacts') { loadContacts(); }
+    if (tabName === 'favorites') { loadFavorites(); }
   }
 
   for (var i = 0; i < tabs.length; i++) {
@@ -216,8 +237,13 @@
     incallTimer.textContent = '00:00';
     isMuted = false;
     isSpeaker = false;
+    isDtmfVisible = false;
+    dtmfDigits = '';
     btnMute.classList.remove('active');
     btnSpeaker.classList.remove('active');
+    btnKeypadIncall.classList.remove('active');
+    dtmfOverlay.classList.add('hidden');
+    dtmfDigitsEl.textContent = '';
     incallOverlay.classList.remove('hidden');
 
     /* Start call timer */
@@ -248,6 +274,8 @@
     });
 
     incallOverlay.classList.add('hidden');
+    isDtmfVisible = false;
+    dtmfDigits = '';
     currentCallNumber = '';
     callStartTime = 0;
   }
@@ -267,6 +295,31 @@
   });
 
   /* ═══════════════════════════════════════════════════════════
+     DTMF In-Call Keypad
+     ═══════════════════════════════════════════════════════════ */
+
+  btnKeypadIncall.addEventListener('click', function () {
+    isDtmfVisible = !isDtmfVisible;
+    btnKeypadIncall.classList.toggle('active', isDtmfVisible);
+    if (isDtmfVisible) {
+      dtmfOverlay.classList.remove('hidden');
+    } else {
+      dtmfOverlay.classList.add('hidden');
+    }
+  });
+
+  dtmfGrid.addEventListener('click', function (e) {
+    var btn = e.target.closest('.dtmf-btn');
+    if (!btn) return;
+    var digit = btn.getAttribute('data-digit');
+    if (!digit) return;
+    dtmfDigits += digit;
+    dtmfDigitsEl.textContent = dtmfDigits;
+    requestService('telephony', 'sendDTMF', { digit: digit });
+    requestService('audio', 'playKeyClick', {});
+  });
+
+  /* ═══════════════════════════════════════════════════════════
      Incoming Call Handling
      ═══════════════════════════════════════════════════════════ */
 
@@ -280,8 +333,13 @@
     incallTimer.textContent = '00:00';
     isMuted = false;
     isSpeaker = false;
+    isDtmfVisible = false;
+    dtmfDigits = '';
     btnMute.classList.remove('active');
     btnSpeaker.classList.remove('active');
+    btnKeypadIncall.classList.remove('active');
+    dtmfOverlay.classList.add('hidden');
+    dtmfDigitsEl.textContent = '';
     incallOverlay.classList.remove('hidden');
 
     callStartTime = Date.now();
@@ -299,6 +357,8 @@
     if (data.state === 'ended') {
       clearInterval(callTimerInterval);
       incallOverlay.classList.add('hidden');
+      isDtmfVisible = false;
+      dtmfDigits = '';
       currentCallNumber = '';
       loadRecents();
     }
@@ -334,8 +394,6 @@
       var log = logs[i];
       var dirClass = log.type === 'incoming' ? 'incoming' :
                      log.type === 'missed' ? 'missed' : 'outgoing';
-      var dirArrow = log.type === 'incoming' ? '\u2199' :
-                     log.type === 'missed' ? '\u2199' : '\u2197';
       var dirLabel = '';
       if (typeof zylI18n !== 'undefined') {
         dirLabel = log.type === 'incoming' ? zylI18n.t('phone.incoming') :
@@ -345,7 +403,8 @@
       var timeStr = formatRecentTime(log.timestamp);
       var displayName = log.name || log.number || '';
       var nameClass = dirClass === 'missed' ? 'recent-name missed' : 'recent-name';
-      html += '<div class="recent-item" data-number="' + escapeAttr(log.number || '') + '">' +
+      var logId = log.id || '';
+      html += '<div class="recent-item" data-number="' + escapeAttr(log.number || '') + '" data-log-id="' + escapeAttr(logId) + '">' +
         '<div class="recent-direction ' + dirClass + '">' + (DIR_ICONS[dirClass] || '') + '</div>' +
         '<div class="recent-info">' +
           '<div class="' + nameClass + '">' + escapeHtml(displayName) + '</div>' +
@@ -359,7 +418,19 @@
     recentsList.innerHTML = html;
   }
 
+  /* Click to dial from recents */
   recentsList.addEventListener('click', function (e) {
+    /* Ignore if clicking the call button directly */
+    if (e.target.closest('.recent-call-btn')) {
+      var callBtn = e.target.closest('.recent-call-btn');
+      var num = callBtn.getAttribute('data-number');
+      if (num) {
+        dialedNumber = num;
+        updateDisplay();
+        switchTab('keypad');
+      }
+      return;
+    }
     var item = e.target.closest('.recent-item');
     if (!item) return;
     var number = item.getAttribute('data-number');
@@ -370,6 +441,64 @@
     }
   });
 
+  /* Long-press to delete a call log entry */
+  recentsList.addEventListener('touchstart', function (e) {
+    var item = e.target.closest('.recent-item');
+    if (!item) return;
+    var logId = item.getAttribute('data-log-id');
+    if (!logId) return;
+    clearTimeout(longPressTimer);
+    longPressTimer = setTimeout(function () {
+      item.classList.add('longpress-active');
+      setTimeout(function () {
+        item.classList.remove('longpress-active');
+      }, 300);
+      showDeleteLogModal(logId);
+    }, 600);
+  });
+
+  recentsList.addEventListener('touchend', function () {
+    clearTimeout(longPressTimer);
+  });
+
+  recentsList.addEventListener('touchmove', function () {
+    clearTimeout(longPressTimer);
+  });
+
+  /* ═══════════════════════════════════════════════════════════
+     Delete Call Log Modal
+     ═══════════════════════════════════════════════════════════ */
+
+  function showDeleteLogModal(logId) {
+    pendingDeleteLogId = logId;
+    deleteLogModal.classList.remove('hidden');
+    applyI18n();
+  }
+
+  function hideDeleteLogModal() {
+    pendingDeleteLogId = null;
+    deleteLogModal.classList.add('hidden');
+  }
+
+  btnDeleteCancel.addEventListener('click', hideDeleteLogModal);
+
+  document.getElementById('delete-log-backdrop').addEventListener('click', hideDeleteLogModal);
+
+  btnDeleteConfirm.addEventListener('click', function () {
+    if (pendingDeleteLogId) {
+      requestService('telephony', 'deleteCallLog', { id: pendingDeleteLogId });
+    }
+    hideDeleteLogModal();
+    /* Reload recents after deletion */
+    setTimeout(function () {
+      loadRecents();
+    }, 200);
+  });
+
+  onServiceResponse('telephony', 'deleteCallLog', function () {
+    loadRecents();
+  });
+
   function formatRecentTime(ts) {
     if (!ts) return '';
     var d = new Date(ts);
@@ -377,7 +506,7 @@
     var diffMs = now.getTime() - d.getTime();
     var diffMin = Math.floor(diffMs / 60000);
     if (diffMin < 1) {
-      return typeof zylI18n !== 'undefined' ? zylI18n.t('phone.just_now') || 'Just now' : 'Just now';
+      return typeof zylI18n !== 'undefined' ? zylI18n.t('phone.just_now') : '';
     }
     if (diffMin < 60) return diffMin + 'm';
     var diffH = Math.floor(diffMin / 60);
@@ -408,6 +537,9 @@
     return 'avatar-' + (code % 10);
   }
 
+  var STAR_SVG_FILLED = '<svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>';
+  var STAR_SVG_EMPTY = '<svg viewBox="0 0 24 24"><path fill="currentColor" d="M22 9.24l-7.19-.62L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.64-7.03L22 9.24zM12 15.4l-3.76 2.27 1-4.28-3.32-2.88 4.38-.38L12 6.1l1.71 4.04 4.38.38-3.32 2.88 1 4.28L12 15.4z"/></svg>';
+
   function renderContacts(contacts) {
     var html = '';
     for (var i = 0; i < contacts.length; i++) {
@@ -415,15 +547,34 @@
       var initial = (c.name || '?').charAt(0).toUpperCase();
       var phone = c.phone || c.number || '';
       var colorClass = avatarColor(c.name || phone);
-      html += '<div class="contact-item" data-number="' + escapeAttr(phone) + '">' +
+      var contactId = c.id || phone;
+      var isStarred = !!favoritesSet[contactId];
+      var starClass = 'btn-star' + (isStarred ? ' starred' : '');
+      var starTitle = '';
+      if (typeof zylI18n !== 'undefined') {
+        starTitle = isStarred ? zylI18n.t('phone.remove_favorite') : zylI18n.t('phone.add_favorite');
+      }
+      html += '<div class="contact-item" data-number="' + escapeAttr(phone) + '" data-contact-id="' + escapeAttr(contactId) + '">' +
         '<div class="contact-avatar ' + colorClass + '">' + escapeHtml(initial) + '</div>' +
         '<div class="contact-name">' + escapeHtml(c.name || phone) + '</div>' +
+        '<button class="' + starClass + '" data-contact-id="' + escapeAttr(contactId) + '" title="' + escapeAttr(starTitle) + '">' +
+          (isStarred ? STAR_SVG_FILLED : STAR_SVG_EMPTY) +
+        '</button>' +
       '</div>';
     }
     contactsList.innerHTML = html;
   }
 
   contactsList.addEventListener('click', function (e) {
+    /* Star button click */
+    var starBtn = e.target.closest('.btn-star');
+    if (starBtn) {
+      var contactId = starBtn.getAttribute('data-contact-id');
+      if (contactId) {
+        toggleFavorite(contactId);
+      }
+      return;
+    }
     var item = e.target.closest('.contact-item');
     if (!item) return;
     var number = item.getAttribute('data-number');
@@ -433,6 +584,86 @@
       switchTab('keypad');
     }
   });
+
+  /* ═══════════════════════════════════════════════════════════
+     Favorites
+     ═══════════════════════════════════════════════════════════ */
+
+  function loadFavorites() {
+    requestService('telephony', 'getFavorites', {});
+  }
+
+  onServiceResponse('telephony', 'getFavorites', function (data) {
+    if (!data || !Array.isArray(data.favorites) || data.favorites.length === 0) {
+      favoritesList.innerHTML = '';
+      favoritesEmpty.classList.remove('hidden');
+      /* Update favoritesSet */
+      favoritesSet = {};
+      return;
+    }
+    favoritesEmpty.classList.add('hidden');
+    /* Build favoritesSet lookup */
+    favoritesSet = {};
+    for (var i = 0; i < data.favorites.length; i++) {
+      var fav = data.favorites[i];
+      var favId = fav.id || fav.contactId || '';
+      if (favId) {
+        favoritesSet[favId] = true;
+      }
+    }
+    renderFavorites(data.favorites);
+  });
+
+  function renderFavorites(favorites) {
+    var html = '';
+    for (var i = 0; i < favorites.length; i++) {
+      var fav = favorites[i];
+      var phone = fav.phone || fav.number || '';
+      var name = fav.name || phone;
+      var initial = (name || '?').charAt(0).toUpperCase();
+      var colorClass = avatarColor(name);
+      html += '<div class="favorite-item" data-number="' + escapeAttr(phone) + '">' +
+        '<div class="contact-avatar ' + colorClass + '">' + escapeHtml(initial) + '</div>' +
+        '<div class="contact-name">' + escapeHtml(name) + '</div>' +
+        '<div class="favorite-star">' + STAR_SVG_FILLED + '</div>' +
+      '</div>';
+    }
+    favoritesList.innerHTML = html;
+  }
+
+  favoritesList.addEventListener('click', function (e) {
+    var item = e.target.closest('.favorite-item');
+    if (!item) return;
+    var number = item.getAttribute('data-number');
+    if (number) {
+      startCall(number);
+    }
+  });
+
+  function toggleFavorite(contactId) {
+    if (favoritesSet[contactId]) {
+      requestService('telephony', 'removeFavorite', { contactId: contactId });
+      delete favoritesSet[contactId];
+    } else {
+      requestService('telephony', 'addFavorite', { contactId: contactId });
+      favoritesSet[contactId] = true;
+    }
+    /* Refresh contacts to update star icons */
+    loadContacts();
+    /* Refresh favorites list */
+    loadFavorites();
+  }
+
+  onServiceResponse('telephony', 'addFavorite', function () {
+    loadFavorites();
+  });
+
+  onServiceResponse('telephony', 'removeFavorite', function () {
+    loadFavorites();
+  });
+
+  /* Load favorites on init to populate favoritesSet */
+  loadFavorites();
 
   /* ═══════════════════════════════════════════════════════════
      Helpers
