@@ -17,6 +17,17 @@
 #include <fcntl.h>
 #include <gio/gio.h>
 
+/* ─── hal_cpu.c 함수 선언 (HAL CPU 거버너 제어) ─── */
+extern int zyl_cpu_set_governor(const char *governor);
+extern int zyl_cpu_get_core_count(void);
+extern int zyl_cpu_set_core_online(int core, int online);
+extern int zyl_cpu_get_power_profile(void);
+extern int zyl_cpu_set_power_profile(int profile);
+
+/* ─── Forward declarations (함수 정의가 호출보다 뒤에 위치) ─── */
+static gboolean zyl_power_enter_doze(gpointer data);
+static void exit_doze(ZylPowerService *svc);
+
 /* ─── 내부 상수 ─── */
 #define BACKLIGHT_PATH      "/sys/class/backlight"
 #define CPUFREQ_GOV_PATH    "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor"
