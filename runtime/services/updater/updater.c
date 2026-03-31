@@ -108,13 +108,24 @@ static bool is_safe_path(const char *path) {
         case ';': case '&': case '|': case '$':
         case '`': case '(': case ')': case '{':
         case '}': case '<': case '>': case '!':
-        case '\n': case '\r':
+        case '\n': case '\r': case '\'':
             return false;
         default:
             break;
         }
     }
     return true;
+}
+
+/**
+ * Validate URL for safe use in shell commands.
+ * Must start with https:// and contain no shell metacharacters.
+ */
+static bool is_safe_url(const char *url) {
+    if (!url) return false;
+    if (strncmp(url, "https://", 8) != 0 && strncmp(url, "http://", 7) != 0)
+        return false;
+    return is_safe_path(url);
 }
 
 /* posix_spawn helper — system() 사용 금지 (command injection 방지) */
@@ -298,6 +309,12 @@ ZylUpdater *zyl_updater_create(const char *update_server_url,
     u->server_url = strdup(update_server_url ? update_server_url
         : "https://update.zyl-os.dev/v1");
     u->cache_dir = strdup(cache_dir ? cache_dir : UPDATE_CACHE_DEFAULT);
+    if (!u->server_url || !u->cache_dir) {
+        free(u->server_url);
+        free(u->cache_dir);
+        free(u);
+        return NULL;
+    }
     u->state = ZYL_UPDATE_IDLE;
     u->pending = NULL;
 
@@ -339,6 +356,14 @@ ZylUpdateState zyl_updater_check(ZylUpdater *u,
                 u->current_version);
         u->state = ZYL_UPDATE_FAILED;
         report_progress(u, 100, "Invalid version format");
+        return u->state;
+    }
+
+    /* Validate server_url before constructing shell command */
+    if (!is_safe_url(u->server_url)) {
+        fprintf(stderr, "[UPDATER] Unsafe server URL: %s\n", u->server_url);
+        u->state = ZYL_UPDATE_FAILED;
+        report_progress(u, 100, "Invalid server URL");
         return u->state;
     }
 
@@ -463,9 +488,16 @@ bool zyl_updater_download(ZylUpdater *u,
 
     /*
      * curl 명령어로 다운로드 — 진행률을 stderr로 출력하도록 설정.
-     * curl CLI는 인자가 코드에서 생성되므로 injection 위험 없음.
-     * libcurl 전환은 진행률 콜백이 필요할 때 고려.
+     * download_url은 서버 응답에서 파싱되므로 반드시 검증 필요.
      */
+    if (!is_safe_url(u->pending->download_url)) {
+        fprintf(stderr, "[UPDATER] Unsafe download URL: %s\n",
+                u->pending->download_url);
+        u->state = ZYL_UPDATE_FAILED;
+        report_progress(u, 100, "Invalid download URL");
+        return false;
+    }
+
     char cmd[2048];
     snprintf(cmd, sizeof(cmd),
              "curl -f -L --connect-timeout 15 --max-time 3600 "
