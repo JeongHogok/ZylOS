@@ -1,13 +1,10 @@
 #!/bin/bash
 # ──────────────────────────────────────────────────────────
-# OS Image Independence Checker
-#
-# 검증 항목:
-# 1. apps/ 내에 Tauri 직접 참조 없음
-# 2. apps/ 내에 window.parent.postMessage 직접 호출 없음 (bridge.js/i18n.js 제외)
-# 3. apps/ 내에 ES5 위반 없음 (let/const/arrow function)
-# 4. CSS backdrop-filter 사용 시 불투명 폴백 존재
-# 5. 에뮬레이터 경로 참조 없음
+# [Clean Architecture] Infrastructure Layer - Test Script
+# 역할: OS 이미지(apps/)가 에뮬레이터에 독립적인지 검증
+# 수행범위: Tauri 참조, postMessage 직접호출, ES5 위반, CSS 폴백, 에뮬레이터 경로 검사
+# 의존방향: apps/ 디렉토리, grep/find
+# SOLID: SRP — OS 독립성 검증만 담당
 # ──────────────────────────────────────────────────────────
 
 set -e

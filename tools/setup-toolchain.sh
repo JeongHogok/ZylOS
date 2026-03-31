@@ -1,8 +1,9 @@
 #!/bin/bash
-#
-# Zyl OS 개발 환경 설정 스크립트
-# RISC-V 64비트 크로스 컴파일 툴체인 및 의존성 설치
-#
+# [Clean Architecture] Infrastructure Layer - Tool
+# 역할: RISC-V 64비트 크로스 컴파일 툴체인 및 의존성 설치
+# 수행범위: 패키지 설치, 툴체인 다운로드/설정. 빌드 자체는 수행하지 않음
+# 의존방향: 외부 패키지 매니저(apt/dnf), 호스트 OS
+# SOLID: SRP — 개발 환경 설정만 담당
 
 set -e
 

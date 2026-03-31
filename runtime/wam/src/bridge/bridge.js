@@ -12,6 +12,12 @@
  *
  * Copyright (c) 2026 Zyl OS Project
  * SPDX-License-Identifier: MIT
+ *
+ * [Clean Architecture] Platform Layer - Bridge
+ * 역할: 웹앱에 navigator.system API를 주입하여 네이티브 WAM과 통신
+ * 수행범위: IPC 메시지 송수신, 앱 메타데이터 노출. 비즈니스 로직 금지
+ * 의존방향: WAM 데몬(네이티브), WebKit IPC
+ * SOLID: SRP — JS↔네이티브 브릿지 역할만 담당
  */
 
 (function () {

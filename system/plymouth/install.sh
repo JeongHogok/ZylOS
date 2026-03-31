@@ -1,9 +1,10 @@
 #!/bin/bash
 # ──────────────────────────────────────────────────────────
-# Zyl OS Plymouth Theme Installer
-#
-# Copies the boot splash theme to the system plymouth
-# directory and rebuilds initramfs.
+# [Clean Architecture] Infrastructure Layer - Installer
+# 역할: Plymouth 부트 스플래시 테마를 시스템에 설치하고 initramfs 재빌드
+# 수행범위: 테마 파일 복사, initramfs 갱신. 테마 디자인 로직 미포함
+# 의존방향: plymouth, update-initramfs, 호스트 OS
+# SOLID: SRP — Plymouth 테마 설치만 담당
 # ──────────────────────────────────────────────────────────
 
 set -euo pipefail

@@ -1,16 +1,10 @@
 #!/bin/bash
 # ──────────────────────────────────────────────────────────
-# Zyl OS — 전체 코드베이스 검증 스크립트
-#
-# 모든 영역에 대해 Clean Architecture, SOLID, i18n, 기술부채를
-# 자동 검출합니다. 단일 스크립트로 전체 프로젝트 품질을 보증합니다.
-#
-# 영역:
-#   [A] apps/           — OS 이미지 (JS/CSS/HTML)
-#   [B] emulator-app/   — Tauri 에뮬레이터 (Rust + JS)
-#   [C] runtime/        — 실기기 서비스 (C)
-#   [D] system/         — 디바이스 설정 (systemd, DTS, AppArmor)
-#   [E] tests/          — 테스트 자체 무결성
+# [Clean Architecture] Infrastructure Layer - Verification
+# 역할: 전체 코드베이스 품질 검증 (CA, SOLID, i18n, 기술부채)
+# 수행범위: apps/emulator-app/runtime/system/tests 전 영역 자동 검출
+# 의존방향: grep/find/cargo, 프로젝트 소스 전체
+# SOLID: SRP — 코드베이스 검증만 담당
 # ──────────────────────────────────────────────────────────
 
 set -e
