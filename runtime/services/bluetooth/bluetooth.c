@@ -30,19 +30,25 @@ struct ZylBluetoothService {
 
 /* ─── BlueZ D-Bus helpers ─── */
 
-static GVariant *bluez_call(GDBusConnection *conn, const char *path,
-                             const char *iface, const char *method,
-                             GVariant *params) {
+static GVariant *bluez_call_timeout(GDBusConnection *conn, const char *path,
+                                     const char *iface, const char *method,
+                                     GVariant *params, int timeout_ms) {
     GError *err = NULL;
     GVariant *result = g_dbus_connection_call_sync(
         conn, BLUEZ_BUS, path, iface, method, params,
-        NULL, G_DBUS_CALL_FLAGS_NONE, 5000, NULL, &err);
+        NULL, G_DBUS_CALL_FLAGS_NONE, timeout_ms, NULL, &err);
     if (err) {
         fprintf(stderr, "[BT] %s.%s failed: %s\n", iface, method,
                 err->message);
         g_error_free(err);
     }
     return result;
+}
+
+static GVariant *bluez_call(GDBusConnection *conn, const char *path,
+                             const char *iface, const char *method,
+                             GVariant *params) {
+    return bluez_call_timeout(conn, path, iface, method, params, 5000);
 }
 
 static GVariant *bluez_get_prop(GDBusConnection *conn, const char *path,
@@ -209,8 +215,9 @@ int zyl_bt_pair(ZylBluetoothService *svc, const char *address) {
     if (!svc || !svc->system_bus || !address) return -1;
     char *path = addr_to_path(address);
     if (!path) return -1;
-    GVariant *r = bluez_call(svc->system_bus, path,
-        DEVICE_IFACE, "Pair", NULL);
+    /* Pairing can take up to 30 seconds for user confirmation */
+    GVariant *r = bluez_call_timeout(svc->system_bus, path,
+        DEVICE_IFACE, "Pair", NULL, 30000);
     free(path);
     if (r) { g_variant_unref(r); return 0; }
     return -1;
@@ -327,6 +334,9 @@ int zyl_bt_get_devices(ZylBluetoothService *svc, ZylBtDevice **out,
                     d->connected = g_variant_get_boolean(pval);
                 else if (g_strcmp0(pname, "RSSI") == 0)
                     d->rssi = g_variant_get_int16(pval);
+                else if (g_strcmp0(pname, "Icon") == 0)
+                    /* BlueZ Icon property: "audio-headphones", "phone", etc. */
+                    d->device_type = g_variant_dup_string(pval, NULL);
             }
             n++;
         }

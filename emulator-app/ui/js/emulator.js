@@ -658,10 +658,18 @@
   if (sideVolDown) sideVolDown.addEventListener('click', function () { adjustVolume(-5); });
   document.getElementById('btn-reboot').addEventListener('click', function () {
     syslog('Rebooting...', 'warn');
+    /* Clean up persistent timers before reboot to prevent accumulation */
+    if (_clockInterval) { clearInterval(_clockInterval); _clockInterval = null; }
+    if (_volumeOsdTimer) { clearTimeout(_volumeOsdTimer); _volumeOsdTimer = null; }
     state.locked = true;
     state.runningApps = [];
     state.currentApp = null;
+    /* Reset battery watcher flag so bootDevice re-initialises it cleanly */
+    state._batteryStarted = false;
     updateRunningApps();
+    /* Restart clock */
+    updateClock();
+    _clockInterval = setInterval(updateClock, 1000);
     bootDevice(device);
   });
 
@@ -745,9 +753,21 @@
     }
   }
 
+  /* ── postMessage target origin ──
+   * Use window.location.origin so responses are only accepted by same-origin
+   * content. Avoids broadcasting to any cross-origin iframe or page that may
+   * be loaded in the same WebView. Falls back to '*' only when origin is
+   * the opaque 'null' string (e.g. file:// context without a real origin). */
+  var _ipcOrigin = (window.location.origin && window.location.origin !== 'null')
+    ? window.location.origin
+    : '*';
+
   function broadcastToCurrentApp(type, data) {
     try {
-      appFrame.contentWindow.postMessage(JSON.stringify({ type: type, data: data }), '*');
+      appFrame.contentWindow.postMessage(
+        JSON.stringify({ type: type, data: data }),
+        _ipcOrigin
+      );
     } catch(e) { /* iframe may be cross-origin or detached */ }
   }
 
@@ -862,9 +882,9 @@
       });
       try {
         if (source) {
-          source.postMessage(camResponse, '*');
+          source.postMessage(camResponse, _ipcOrigin);
         } else if (appFrame && appFrame.contentWindow) {
-          appFrame.contentWindow.postMessage(camResponse, '*');
+          appFrame.contentWindow.postMessage(camResponse, _ipcOrigin);
         }
       } catch (err) { /* iframe not ready */ }
       return;
@@ -889,9 +909,9 @@
       });
       try {
         if (source) {
-          source.postMessage(response, '*');
+          source.postMessage(response, _ipcOrigin);
         } else if (appFrame && appFrame.contentWindow) {
-          appFrame.contentWindow.postMessage(response, '*');
+          appFrame.contentWindow.postMessage(response, _ipcOrigin);
         }
       } catch (err) { /* iframe not ready */ }
     }

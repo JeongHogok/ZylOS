@@ -49,14 +49,44 @@ bool geoip_query(ZylLocation *loc) {
         return false;
     }
 
-    /* 간단한 JSON 파싱 (GLib JSON 없이) */
+    /*
+     * Robust JSON field extraction: scan for "key": and parse the float
+     * that follows, handling whitespace between ':' and the value.
+     * Avoids false matches from keys that are substrings of other keys.
+     */
     double lat = 0.0, lon = 0.0;
-    const char *p;
 
-    p = strstr(buf.data, "\"lat\":");
-    if (p) lat = atof(p + 6);
-    p = strstr(buf.data, "\"lon\":");
-    if (p) lon = atof(p + 6);
+    /* Find "lat": with word-boundary check (look for '"lat":') */
+    const char *search = buf.data;
+    while ((search = strstr(search, "\"lat\":")) != NULL) {
+        const char *val_start = search + 6;
+        while (*val_start == ' ' || *val_start == '\t') val_start++;
+        char *end = NULL;
+        double v = strtod(val_start, &end);
+        if (end && end != val_start) { lat = v; break; }
+        search++;
+    }
+    search = buf.data;
+    while ((search = strstr(search, "\"lon\":")) != NULL) {
+        const char *val_start = search + 6;
+        while (*val_start == ' ' || *val_start == '\t') val_start++;
+        char *end = NULL;
+        double v = strtod(val_start, &end);
+        if (end && end != val_start) { lon = v; break; }
+        search++;
+    }
+    /* Also try "lng": (Google-style) */
+    if (lon == 0.0) {
+        search = buf.data;
+        while ((search = strstr(search, "\"lng\":")) != NULL) {
+            const char *val_start = search + 6;
+            while (*val_start == ' ' || *val_start == '\t') val_start++;
+            char *end = NULL;
+            double v = strtod(val_start, &end);
+            if (end && end != val_start) { lon = v; break; }
+            search++;
+        }
+    }
 
     free(buf.data);
 

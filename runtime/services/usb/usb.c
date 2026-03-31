@@ -12,6 +12,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <gio/gio.h>
 
 /* ════════════════════════════════════════════════════════════════
@@ -91,12 +94,40 @@ static int read_sysfs_line(const char *path, char *buf, size_t buflen) {
  *  USB gadget configuration via configfs
  * ════════════════════════════════════════════════════════════════ */
 
+/* Remove all function symlinks from the gadget config */
+static void remove_gadget_functions(void) {
+    char config_dir[256];
+    snprintf(config_dir, sizeof(config_dir), "%s/configs/c.1", USB_GADGET_BASE);
+    GDir *dir = g_dir_open(config_dir, 0, NULL);
+    if (!dir) return;
+    const gchar *name;
+    while ((name = g_dir_read_name(dir)) != NULL) {
+        /* Function symlinks don't start with a dot and are typically
+         * something like "ffs.mtp", "rndis.usb0" etc. */
+        if (name[0] == '.') continue;
+        char link_path[512];
+        snprintf(link_path, sizeof(link_path), "%s/%s", config_dir, name);
+        /* Only remove symlinks, not directories */
+        struct stat st;
+        if (lstat(link_path, &st) == 0 && S_ISLNK(st.st_mode)) {
+            if (remove(link_path) != 0) {
+                g_warning("USB: failed to remove symlink %s: %m", link_path);
+            }
+        }
+    }
+    g_dir_close(dir);
+}
+
 static int configure_gadget_function(ZylUsbMode mode) {
+    char udc_path[256];
+    snprintf(udc_path, sizeof(udc_path), "%s/UDC", USB_GADGET_BASE);
+
+    /* Step 1: Detach UDC (required before changing functions) */
+    write_sysfs(udc_path, "");
+
     if (mode == ZYL_USB_MODE_NONE || mode == ZYL_USB_MODE_CHARGING) {
-        /* Disable gadget by clearing UDC */
-        char udc_path[256];
-        snprintf(udc_path, sizeof(udc_path), "%s/UDC", USB_GADGET_BASE);
-        write_sysfs(udc_path, "");
+        /* Just charging / disconnected — UDC already cleared above */
+        remove_gadget_functions();
         return 0;
     }
 
@@ -106,25 +137,39 @@ static int configure_gadget_function(ZylUsbMode mode) {
         return -1;
     }
 
-    /* Write function symlink config — real configfs setup */
-    char config_path[256];
-    snprintf(config_path, sizeof(config_path),
-             "%s/configs/c.1/f1", USB_GADGET_BASE);
-
     g_message("USB: configuring gadget function %s", func);
 
-    /* Enable UDC after function setup */
-    char udc_path[256];
-    snprintf(udc_path, sizeof(udc_path), "%s/UDC", USB_GADGET_BASE);
+    /* Step 2: Remove old function symlinks */
+    remove_gadget_functions();
 
-    /* Read available UDC name */
-    GDir *dir = g_dir_open(USB_STATE_PATH, 0, NULL);
-    if (dir) {
-        const gchar *udc_name = g_dir_read_name(dir);
+    /* Step 3: Create function instance directory if not present */
+    char func_dir[256];
+    snprintf(func_dir, sizeof(func_dir), "%s/functions/%s", USB_GADGET_BASE, func);
+    if (mkdir(func_dir, 0755) != 0 && errno != EEXIST) {
+        g_warning("USB: cannot create function dir %s: %m", func_dir);
+        /* Non-fatal: function may already be registered */
+    }
+
+    /* Step 4: Symlink function into config */
+    char config_link[256];
+    snprintf(config_link, sizeof(config_link),
+             "%s/configs/c.1/%s", USB_GADGET_BASE, func);
+    if (symlink(func_dir, config_link) != 0 && errno != EEXIST) {
+        g_warning("USB: symlink %s -> %s failed: %m", config_link, func_dir);
+        return -1;
+    }
+
+    /* Step 5: Reattach UDC */
+    GDir *udc_dir = g_dir_open(USB_STATE_PATH, 0, NULL);
+    if (udc_dir) {
+        const gchar *udc_name = g_dir_read_name(udc_dir);
         if (udc_name) {
+            g_message("USB: binding to UDC %s", udc_name);
             write_sysfs(udc_path, udc_name);
+        } else {
+            g_warning("USB: no UDC controller found in %s", USB_STATE_PATH);
         }
-        g_dir_close(dir);
+        g_dir_close(udc_dir);
     }
 
     return 0;

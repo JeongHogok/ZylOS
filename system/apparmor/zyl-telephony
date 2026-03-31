@@ -1,0 +1,59 @@
+# ----------------------------------------------------------
+# [Clean Architecture] Infrastructure Layer - Security Policy
+#
+# 역할: Telephony 서비스 AppArmor 프로파일
+# 수행범위: ModemManager D-Bus 접근, SIM/SMS 데이터 파일, 네트워크 소켓
+# 의존방향: /usr/bin/zyl-telephony 바이너리에 적용
+# SOLID: SRP — Telephony 서비스 격리 정책만 담당
+# ----------------------------------------------------------
+
+#include <tunables/global>
+
+profile zyl-telephony /usr/bin/zyl-telephony {
+  #include <abstractions/base>
+  #include <abstractions/dbus-session>
+  #include <abstractions/nameservice>
+
+  # Telephony service binary
+  /usr/bin/zyl-telephony                  mr,
+
+  # Libraries
+  /usr/lib/zyl-os/**                      mr,
+  /usr/lib/@{multiarch}/**                mr,
+
+  # ModemManager D-Bus access (system bus)
+  dbus (send, receive) bus=system
+       peer=(name=org.freedesktop.ModemManager1),
+  dbus (send, receive) bus=system
+       peer=(name=org.freedesktop.ModemManager1.*),
+
+  # Zyl OS D-Bus session bus
+  dbus (send, receive) bus=session
+       peer=(name=org.zylos.*),
+
+  # Modem/serial device access
+  /dev/tty[A-Z][0-9]*                     rw,
+  /dev/ttyUSB*                            rw,
+  /sys/class/tty/**                       r,
+
+  # SIM / SMS / call log persistence
+  owner /var/lib/zyl-os/telephony/**      rw,
+
+  # Shared OS resources (read-only)
+  /usr/share/zyl-os/**                    r,
+
+  # Network for VoLTE / SIP (optional)
+  network inet stream,
+  network inet dgram,
+  network inet6 stream,
+  network inet6 dgram,
+
+  # Deny sensitive paths
+  deny /dev/mem                           rwmlkx,
+  deny /dev/kmem                          rwmlkx,
+  deny /proc/kcore                        rwmlkx,
+  deny /data/users/**                     rwmlkx,
+  deny /usr/**                            w,
+  deny /etc/**                            w,
+  deny /boot/**                           rwmlkx,
+}

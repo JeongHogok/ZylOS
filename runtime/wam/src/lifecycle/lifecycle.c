@@ -140,13 +140,19 @@ static gboolean close_after_cleanup(gpointer data) {
     gpointer *ctx = data;
     ZylAppInterface *iface    = ctx[0];
     ZylAppInstance  *instance = ctx[1];
-    const char      *app_id   = ctx[2];
+    char            *app_id   = ctx[2]; /* strdup'd — we own it */
 
-    gtk_window_close(GTK_WINDOW(instance->window));
+    /* Remove from registry first (uses app_id before we free it) */
     iface->remove_instance(iface, app_id);
+
+    /* Now destroy the window */
+    gtk_window_close(GTK_WINDOW(instance->window));
+
     g_message("Closed app: %s", app_id);
+
+    /* Free instance and the ctx array */
     g_free(instance);
-    g_free(ctx[2]); /* strdup'd app_id */
+    g_free(app_id);
     g_free(ctx);
     return G_SOURCE_REMOVE;
 }
@@ -189,17 +195,11 @@ void zyl_lifecycle_resume(ZylAppInterface *iface,
 /* ─── Running count ─── */
 int zyl_lifecycle_get_running_count(ZylAppInterface *iface) {
     /*
-     * Count instances by iterating through the interface.
-     * We walk a simple counter — every store_instance / remove_instance
-     * keeps the hash table in sync, so we can just ask for its size.
-     * The impl_data points to ZylWam whose layout starts with:
-     *   GApplication*, GHashTable *manifests, GHashTable *instances, ...
+     * Delegate to the vtable count_instances() so lifecycle.c does not need
+     * to know the concrete ZylWam struct layout (DIP compliance).
      */
-    typedef struct {
-        GApplication *app;
-        GHashTable   *manifests;
-        GHashTable   *instances;
-    } WamLike;
-    WamLike *wam = iface->impl_data;
-    return (int)g_hash_table_size(wam->instances);
+    if (!iface) return -1;
+    if (iface->count_instances)
+        return iface->count_instances(iface);
+    return -1;
 }

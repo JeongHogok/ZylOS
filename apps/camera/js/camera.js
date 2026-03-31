@@ -109,14 +109,15 @@
   var recordedChunks = [];
 
   function startVideoRecording() {
-    if (!currentStream) return;
+    /* FIX: was incorrectly referencing undefined `currentStream`; use `_stream` */
+    if (!_stream) return;
     if (typeof MediaRecorder === 'undefined') return; /* WebKitGTK on RISC-V may lack MediaRecorder */
     recordedChunks = [];
     try {
-      mediaRecorder = new MediaRecorder(currentStream, { mimeType: 'video/webm' });
+      mediaRecorder = new MediaRecorder(_stream, { mimeType: 'video/webm' });
     } catch (e) {
       try {
-        mediaRecorder = new MediaRecorder(currentStream);
+        mediaRecorder = new MediaRecorder(_stream);
       } catch (e2) { return; }
     }
     mediaRecorder.ondataavailable = function (e) {
@@ -283,7 +284,9 @@
         method: 'writeFile',
         params: { path: path, content: base64 }
       });
-      showNotice('Saved: ' + filename);
+      /* FIX: use i18n for save notice instead of hardcoded English */
+      var saveMsg = (typeof zylI18n !== 'undefined') ? zylI18n.t('camera.saved', { filename: filename }) : ('Saved: ' + filename);
+      showNotice(saveMsg);
     }
     photoPreview.classList.add('hidden');
   });
@@ -326,6 +329,15 @@
         } else {
           ZylBridge.sendToSystem({ type: 'navigation.exit' });
         }
+        return;
+      }
+
+      /* FIX: Stop camera stream and recording when app is being destroyed */
+      if (msg.type === 'app.destroy') {
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+          mediaRecorder.stop();
+        }
+        stopCamera();
         return;
       }
     } catch (err) { /* ignore */ }

@@ -39,8 +39,24 @@ struct ZylNfcService {
     /* neard 인터페이스 추가 시그널 구독 */
     guint            interfaces_added_id;
 
+    /* Scan timeout GSource ID (0 if no pending timeout) */
+    guint            scan_timeout_id;
+
     pthread_mutex_t  lock;
 };
+
+/* ─── Scan timeout callback ─── */
+static gboolean nfc_scan_timeout_cb(gpointer data) {
+    ZylNfcService *s = (ZylNfcService *)data;
+    if (s) {
+        s->scan_timeout_id = 0;  /* GSource is being removed by GLib */
+        if (s->scanning) {
+            g_message("[NFC] Scan timeout — auto-stopping");
+            zyl_nfc_stop_scan(s);
+        }
+    }
+    return G_SOURCE_REMOVE;
+}
 
 /* ─── neard 어댑터 경로 탐색 ─── */
 static char *find_neard_adapter(ZylNfcService *svc) {
@@ -403,6 +419,13 @@ ZylNfcResult zyl_nfc_start_scan(ZylNfcService *svc,
     }
 
     g_message("[NFC] Scan started (timeout=%ds)", timeout_sec);
+
+    /* If timeout > 0, schedule auto-stop after timeout_sec seconds */
+    if (timeout_sec > 0) {
+        svc->scan_timeout_id = g_timeout_add_seconds((guint)timeout_sec,
+                                                      nfc_scan_timeout_cb, svc);
+    }
+
     return ZYL_NFC_OK;
 }
 
@@ -433,6 +456,12 @@ void zyl_nfc_stop_scan(ZylNfcService *svc) {
         g_dbus_connection_signal_unsubscribe(svc->system_bus,
                                              svc->interfaces_added_id);
         svc->interfaces_added_id = 0;
+    }
+
+    /* Cancel pending timeout GSource to prevent UAF after destroy */
+    if (svc->scan_timeout_id) {
+        g_source_remove(svc->scan_timeout_id);
+        svc->scan_timeout_id = 0;
     }
 
     pthread_mutex_lock(&svc->lock);
@@ -489,8 +518,88 @@ ZylNfcResult zyl_nfc_read_tag(ZylNfcService *svc,
         g_variant_unref(uid_v);
     }
 
+    /* Enumerate neard Record children under this tag and materialize NDEF records. */
+    GVariant *managed = g_dbus_connection_call_sync(
+        svc->system_bus,
+        NEARD_DBUS_NAME,
+        NEARD_DBUS_MANAGER,
+        "org.freedesktop.DBus.ObjectManager",
+        "GetManagedObjects",
+        NULL,
+        G_VARIANT_TYPE("(a{oa{sa{sv}}})"),
+        G_DBUS_CALL_FLAGS_NONE,
+        5000,
+        NULL,
+        NULL);
+    if (managed) {
+        GVariantIter *obj_iter = NULL;
+        g_variant_get(managed, "(a{oa{sa{sv}}})", &obj_iter);
+        const gchar *obj_path = NULL;
+        GVariant *ifaces = NULL;
+
+        int rec_cap = 4;
+        out->records = calloc((size_t)rec_cap, sizeof(ZylNdefRecord));
+        out->record_count = 0;
+
+        while (g_variant_iter_next(obj_iter, "{&o@a{sa{sv}}}", &obj_path, &ifaces)) {
+            bool under_tag = (g_str_has_prefix(obj_path, tag_path) &&
+                              g_strcmp0(obj_path, tag_path) != 0);
+            if (!under_tag) {
+                g_variant_unref(ifaces);
+                continue;
+            }
+
+            GVariant *rec_props = g_variant_lookup_value(ifaces, NEARD_IFACE_RECORD,
+                                                         G_VARIANT_TYPE("a{sv}"));
+            g_variant_unref(ifaces);
+            if (!rec_props) continue;
+
+            if (out->record_count >= rec_cap) {
+                rec_cap *= 2;
+                ZylNdefRecord *tmp = realloc(out->records, (size_t)rec_cap * sizeof(ZylNdefRecord));
+                if (!tmp) {
+                    g_variant_unref(rec_props);
+                    break;
+                }
+                out->records = tmp;
+            }
+
+            ZylNdefRecord *rec = &out->records[out->record_count];
+            memset(rec, 0, sizeof(*rec));
+
+            GVariant *v = g_variant_lookup_value(rec_props, "Type", G_VARIANT_TYPE_STRING);
+            if (v) {
+                rec->type = strdup(g_variant_get_string(v, NULL));
+                g_variant_unref(v);
+            } else {
+                rec->type = strdup("text/plain");
+            }
+
+            v = g_variant_lookup_value(rec_props, "Representation", G_VARIANT_TYPE_STRING);
+            if (v) {
+                const gchar *repr = g_variant_get_string(v, NULL);
+                if (repr) {
+                    rec->payload_len = strlen(repr);
+                    rec->payload = malloc(rec->payload_len + 1);
+                    if (rec->payload) {
+                        memcpy(rec->payload, repr, rec->payload_len + 1);
+                    } else {
+                        rec->payload_len = 0;
+                    }
+                }
+                g_variant_unref(v);
+            }
+
+            out->record_count++;
+            g_variant_unref(rec_props);
+        }
+
+        g_variant_iter_free(obj_iter);
+        g_variant_unref(managed);
+    }
+
     g_object_unref(tag_proxy);
-    g_message("[NFC] Read tag '%s': uid='%s'", tag_path, out->uid);
+    g_message("[NFC] Read tag '%s': uid='%s' records=%d", tag_path, out->uid, out->record_count);
     return ZYL_NFC_OK;
 }
 

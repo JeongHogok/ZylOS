@@ -36,6 +36,13 @@ static const char *introspection_xml =
     "    <method name='GetCrashReports'>"
     "      <arg direction='out' type='s' name='reports_json'/>"
     "    </method>"
+    "    <method name='SetFilterLevel'>"
+    "      <arg direction='in' type='i' name='min_level'/>"
+    "      <arg direction='out' type='b' name='ok'/>"
+    "    </method>"
+    "    <method name='GetFilterLevel'>"
+    "      <arg direction='out' type='i' name='min_level'/>"
+    "    </method>"
     "  </interface>"
     "</node>";
 
@@ -48,6 +55,7 @@ struct _ZylLoggerService {
     guint              registration_id;
     GMutex             log_mutex;
     FILE              *log_fp;
+    ZylLogLevel        min_level;   /* runtime filter: drop logs below this level */
 };
 
 /* Singleton for signal handler access */
@@ -72,6 +80,44 @@ static int64_t now_unix_ms(void)
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
     return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+static bool valid_level(int level)
+{
+    return level >= ZYL_LOG_DEBUG && level <= ZYL_LOG_CRASH;
+}
+
+static void load_filter_level(ZylLoggerService *svc)
+{
+    if (!svc) return;
+    svc->min_level = ZYL_LOG_DEBUG;
+
+    FILE *fp = fopen(ZYL_LOG_FILTER_FILE, "r");
+    if (!fp) return;
+    int level = (int)ZYL_LOG_DEBUG;
+    if (fscanf(fp, "%d", &level) == 1 && valid_level(level)) {
+        svc->min_level = (ZylLogLevel)level;
+    }
+    fclose(fp);
+}
+
+static void save_filter_level(ZylLoggerService *svc)
+{
+    if (!svc) return;
+    struct stat st;
+    if (stat(ZYL_LOG_DIR, &st) != 0) {
+        if (mkdir(ZYL_LOG_DIR, 0750) != 0 && errno != EEXIST) return;
+    }
+    FILE *fp = fopen(ZYL_LOG_FILTER_FILE, "w");
+    if (!fp) return;
+    fprintf(fp, "%d\n", (int)svc->min_level);
+    fflush(fp);
+    int fd = fileno(fp);
+    if (fd >= 0) {
+        fsync(fd);
+        fchmod(fd, 0600);
+    }
+    fclose(fp);
 }
 
 /* -- Log Rotation ------------------------------------------- */
@@ -183,6 +229,9 @@ void zyl_logger_write(ZylLoggerService *svc,
                       const char       *message)
 {
     if (!svc || !source || !message) {
+        return;
+    }
+    if (level < svc->min_level) {
         return;
     }
 
@@ -358,7 +407,8 @@ static void handle_method_call(GDBusConnection       *connection,
     (void)sender;
     (void)object_path;
     (void)interface_name;
-    (void)user_data;
+
+    ZylLoggerService *svc = user_data;
 
     if (g_strcmp0(method_name, "GetLogs") == 0) {
         gint64 since_ts = 0;
@@ -374,6 +424,24 @@ static void handle_method_call(GDBusConnection       *connection,
         g_dbus_method_invocation_return_value(invocation,
             g_variant_new("(s)", reports));
         g_free(reports);
+
+    } else if (g_strcmp0(method_name, "SetFilterLevel") == 0) {
+        gint32 level = (gint32)ZYL_LOG_DEBUG;
+        g_variant_get(parameters, "(i)", &level);
+        if (!valid_level(level)) {
+            g_dbus_method_invocation_return_value(invocation,
+                g_variant_new("(b)", FALSE));
+            return;
+        }
+        svc->min_level = (ZylLogLevel)level;
+        save_filter_level(svc);
+        g_message("Logger: min_level set to %d (%s)", level, level_string(svc->min_level));
+        g_dbus_method_invocation_return_value(invocation,
+            g_variant_new("(b)", TRUE));
+
+    } else if (g_strcmp0(method_name, "GetFilterLevel") == 0) {
+        g_dbus_method_invocation_return_value(invocation,
+            g_variant_new("(i)", (gint32)svc->min_level));
 
     } else {
         g_dbus_method_invocation_return_dbus_error(invocation,
@@ -445,6 +513,8 @@ ZylLoggerService *zyl_logger_service_create(void)
 
     g_mutex_init(&svc->log_mutex);
     svc->log_fp = NULL;
+    svc->min_level = ZYL_LOG_DEBUG;
+    load_filter_level(svc);
 
     svc->introspection_data = g_dbus_node_info_new_for_xml(
         introspection_xml, NULL);

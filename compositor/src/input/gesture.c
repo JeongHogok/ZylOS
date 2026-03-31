@@ -1,10 +1,13 @@
 /* ──────────────────────────────────────────────────────────
  * [Clean Architecture] Infrastructure Layer - Driver
  *
- * 역할: 터치 이벤트를 고수준 제스처(스와이프)로 변환 및 디스패치
- * 수행범위: touchstart/move/end 이벤트 처리, 방향 감지, 콜백 테이블 디스패치
+ * 역할: 터치 이벤트를 고수준 제스처(스와이프)로 변환 및 디스패치,
+ *       키보드/포인터/터치 입력 장치 라이프사이클 관리
+ * 수행범위: touchstart/move/end 이벤트 처리, 방향 감지, 콜백 테이블 디스패치,
+ *           멀티터치 포인트 추적, 키보드 핫플러그 destroy 리스너
  * 의존방향: gesture.h → zyl_compositor.h
- * SOLID: OCP — 함수 포인터 테이블로 제스처 액션을 교체 가능
+ * SOLID: OCP — 함수 포인터 테이블로 제스처 액션을 교체 가능;
+ *        SRP — 입력 장치 라이프사이클 별도 함수로 분리
  * ────────────────────────────────────────────────────────── */
 
 #include "gesture.h"
@@ -69,14 +72,24 @@ static void emit_compositor_signal(struct zyl_server *server,
                                     const char *signal_name,
                                     const char *detail)
 {
-    (void)server;
-    wlr_log(WLR_INFO, "D-Bus signal: %s(%s)", signal_name,
+    wlr_log(WLR_INFO, "compositor signal: %s(%s)", signal_name,
             detail ? detail : "");
-    /* D-Bus signal emission: requires server->dbus_connection
-     * which is set up in main.c after wl_display_run() integration
-     * with GMainLoop. For wlroots-only compositor, gesture signals
-     * are delivered through wlr_signal and handled by the event loop.
-     * D-Bus integration requires GLib main loop bridge (future). */
+
+    /*
+     * Narrow IPC stub interface: if the coordinator has wired a sender
+     * (e.g. D-Bus, Unix socket), delegate to it.  Otherwise the log
+     * line above is the sole delivery path.
+     *
+     * Coordinator follow-up (see zyl_compositor.h::gesture_signal_fn):
+     *   Implement a GLib + wl_event_loop bridge in main.c and assign
+     *   server->gesture_signal_fn before wl_display_run().  The
+     *   sender receives (server, signal_name, detail) and should emit
+     *   the corresponding D-Bus signal on the session bus interface
+     *   com.zylos.Compositor1.
+     */
+    if (server->gesture_signal_fn) {
+        server->gesture_signal_fn(server, signal_name, detail);
+    }
 }
 
 /* ================================================================
@@ -201,6 +214,35 @@ void gesture_init_handlers(struct zyl_server *server)
 }
 
 /* ================================================================
+ * Multi-touch point helpers
+ * ================================================================ */
+
+/**
+ * Return the slot index for the given touch_id, or -1 if not found.
+ */
+static int touch_find_slot(struct touch_state *ts, int32_t id)
+{
+    for (int i = 0; i < ZYL_MAX_TOUCH_POINTS; i++) {
+        if (ts->points[i].active && ts->points[i].id == id)
+            return i;
+    }
+    return -1;
+}
+
+/**
+ * Allocate a free slot for a new touch_id.
+ * Returns the slot index, or -1 if the pool is exhausted.
+ */
+static int touch_alloc_slot(struct touch_state *ts)
+{
+    for (int i = 0; i < ZYL_MAX_TOUCH_POINTS; i++) {
+        if (!ts->points[i].active)
+            return i;
+    }
+    return -1;
+}
+
+/* ================================================================
  * Touch event listeners
  * ================================================================ */
 
@@ -213,13 +255,33 @@ static void handle_touch_down(struct wl_listener *listener, void *data)
     double abs_x = event->x * server->screen_width;
     double abs_y = event->y * server->screen_height;
 
-    server->touch.active        = true;
-    server->touch.start_x       = abs_x;
-    server->touch.start_y       = abs_y;
-    server->touch.current_x     = abs_x;
-    server->touch.current_y     = abs_y;
-    server->touch.start_time_ms = zyl_now_ms();
-    server->touch.pending       = GESTURE_NONE;
+    /* ── Multi-touch: track this finger in the pool ── */
+    int slot = touch_alloc_slot(&server->touch);
+    if (slot >= 0) {
+        struct touch_point *tp = &server->touch.points[slot];
+        tp->active        = true;
+        tp->id            = event->touch_id;
+        tp->start_x       = abs_x;
+        tp->start_y       = abs_y;
+        tp->current_x     = abs_x;
+        tp->current_y     = abs_y;
+        tp->start_time_ms = zyl_now_ms();
+        server->touch.num_active++;
+    } else {
+        wlr_log(WLR_DEBUG, "touch pool exhausted (>%d fingers)",
+                ZYL_MAX_TOUCH_POINTS);
+    }
+
+    /* ── Primary single-touch path (first finger only) ── */
+    if (!server->touch.active) {
+        server->touch.active        = true;
+        server->touch.start_x       = abs_x;
+        server->touch.start_y       = abs_y;
+        server->touch.current_x     = abs_x;
+        server->touch.current_y     = abs_y;
+        server->touch.start_time_ms = zyl_now_ms();
+        server->touch.pending       = GESTURE_NONE;
+    }
 
     wlr_cursor_warp_absolute(server->cursor, NULL, event->x, event->y);
     wlr_seat_pointer_notify_frame(server->seat);
@@ -231,27 +293,57 @@ static void handle_touch_motion(struct wl_listener *listener, void *data)
         wl_container_of(listener, server, touch_motion);
     struct wlr_touch_motion_event *event = data;
 
-    server->touch.current_x = event->x * server->screen_width;
-    server->touch.current_y = event->y * server->screen_height;
+    double abs_x = event->x * server->screen_width;
+    double abs_y = event->y * server->screen_height;
+
+    /* ── Multi-touch: update the tracked finger ── */
+    int slot = touch_find_slot(&server->touch, event->touch_id);
+    if (slot >= 0) {
+        server->touch.points[slot].current_x = abs_x;
+        server->touch.points[slot].current_y = abs_y;
+    }
+
+    /* ── Primary single-touch update (first finger) ── */
+    if (server->touch.active) {
+        /* Only update primary position if this is the first finger
+         * (num_active == 1 or the slot we just updated is slot 0) */
+        if (server->touch.num_active == 1 || slot == 0) {
+            server->touch.current_x = abs_x;
+            server->touch.current_y = abs_y;
+        }
+    }
 }
 
 static void handle_touch_up(struct wl_listener *listener, void *data)
 {
     struct zyl_server *server =
         wl_container_of(listener, server, touch_up);
-    (void)data;
+    struct wlr_touch_up_event *event = data;
 
+    /* ── Multi-touch: release the finger slot ── */
+    int slot = touch_find_slot(&server->touch, event->touch_id);
+    if (slot >= 0) {
+        server->touch.points[slot].active = false;
+        if (server->touch.num_active > 0)
+            server->touch.num_active--;
+    }
+
+    /* ── Primary single-touch: dispatch gesture on last finger lift ── */
     if (!server->touch.active)
         return;
-    server->touch.active = false;
 
-    enum gesture_direction g =
-        gesture_detect(&server->touch, server->screen_height,
-                       &server->config);
+    /* Dispatch gesture only when the primary finger (or last finger) lifts */
+    if (server->touch.num_active == 0) {
+        server->touch.active = false;
 
-    if (g > GESTURE_NONE && g < GESTURE_DIRECTION_COUNT &&
-        server->gesture_handlers[g])
-        server->gesture_handlers[g](server);
+        enum gesture_direction g =
+            gesture_detect(&server->touch, server->screen_height,
+                           &server->config);
+
+        if (g > GESTURE_NONE && g < GESTURE_DIRECTION_COUNT &&
+            server->gesture_handlers[g])
+            server->gesture_handlers[g](server);
+    }
 }
 
 /* ================================================================
@@ -334,6 +426,47 @@ static void handle_request_set_selection(struct wl_listener *listener,
 }
 
 /* ================================================================
+ * Keyboard lifecycle: per-device destroy listener
+ * ================================================================ */
+
+/**
+ * Called when a keyboard device is unplugged or destroyed by wlroots.
+ * Removes the zyl_keyboard from the server list, clears the seat's
+ * keyboard reference if it pointed at this device, and frees the
+ * allocation — preventing dangling pointers and memory leaks.
+ */
+static void handle_keyboard_destroy(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct zyl_keyboard *kb =
+        wl_container_of(listener, kb, destroy);
+    struct zyl_server *server = kb->server;
+
+    wlr_log(WLR_INFO, "Keyboard removed: %s",
+            kb->wlr_keyboard->base.name ? kb->wlr_keyboard->base.name : "(unnamed)");
+
+    /* If this was the active seat keyboard, clear the reference.
+     * wlr_seat_set_keyboard(NULL) notifies clients that no keyboard
+     * is focused, preventing them from accessing a freed object. */
+    if (wlr_seat_get_keyboard(server->seat) == kb->wlr_keyboard) {
+        wlr_seat_set_keyboard(server->seat, NULL);
+
+        /* Promote the next available keyboard, if any */
+        struct zyl_keyboard *other;
+        wl_list_for_each(other, &server->keyboards, link) {
+            if (other != kb) {
+                wlr_seat_set_keyboard(server->seat, other->wlr_keyboard);
+                break;
+            }
+        }
+    }
+
+    wl_list_remove(&kb->destroy.link);
+    wl_list_remove(&kb->link);
+    free(kb);
+}
+
+/* ================================================================
  * New-input listener
  * ================================================================ */
 
@@ -345,21 +478,62 @@ static void handle_new_input(struct wl_listener *listener, void *data)
 
     switch (device->type) {
     case WLR_INPUT_DEVICE_KEYBOARD: {
-        struct wlr_keyboard *keyboard =
+        struct wlr_keyboard *wlr_kb =
             wlr_keyboard_from_input_device(device);
+
+        /* Allocate per-keyboard state with destroy listener */
+        struct zyl_keyboard *kb = calloc(1, sizeof(*kb));
+        if (!kb) {
+            wlr_log(WLR_ERROR, "handle_new_input: OOM for zyl_keyboard");
+            break;
+        }
+        wl_list_init(&kb->link);
+        kb->server       = server;
+        kb->wlr_keyboard = wlr_kb;
+
+        /* Register the destroy listener — prevents dangling pointer
+         * on hot-unplug (the critical bug identified in the audit). */
+        kb->destroy.notify = handle_keyboard_destroy;
+        wl_signal_add(&device->events.destroy, &kb->destroy);
+
+        wl_list_insert(&server->keyboards, &kb->link);
+
+        /* Configure XKB keymap (default layout) */
         struct xkb_context *context =
             xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+        if (!context) {
+            wlr_log(WLR_ERROR, "handle_new_input: xkb_context_new failed");
+            wl_list_remove(&kb->destroy.link);
+            wl_list_remove(&kb->link);
+            free(kb);
+            break;
+        }
+
         struct xkb_keymap *keymap = xkb_keymap_new_from_names(
             context, NULL, XKB_KEYMAP_COMPILE_NO_FLAGS);
-        wlr_keyboard_set_keymap(keyboard, keymap);
+        if (!keymap) {
+            wlr_log(WLR_ERROR, "handle_new_input: xkb_keymap_new_from_names failed");
+            xkb_context_unref(context);
+            wl_list_remove(&kb->destroy.link);
+            wl_list_remove(&kb->link);
+            free(kb);
+            break;
+        }
+
+        wlr_keyboard_set_keymap(wlr_kb, keymap);
         xkb_keymap_unref(keymap);
         xkb_context_unref(context);
-        wlr_keyboard_set_repeat_info(keyboard, 25, 600);
-        wlr_seat_set_keyboard(server->seat, keyboard);
+
+        wlr_keyboard_set_repeat_info(wlr_kb, 25, 600);
+        wlr_seat_set_keyboard(server->seat, wlr_kb);
+
+        wlr_log(WLR_INFO, "Keyboard added: %s",
+                device->name ? device->name : "(unnamed)");
         break;
     }
     case WLR_INPUT_DEVICE_TOUCH:
-        wlr_log(WLR_INFO, "Touch device: %s", device->name);
+        wlr_log(WLR_INFO, "Touch device: %s",
+                device->name ? device->name : "(unnamed)");
         break;
     case WLR_INPUT_DEVICE_POINTER:
         wlr_cursor_attach_input_device(server->cursor, device);

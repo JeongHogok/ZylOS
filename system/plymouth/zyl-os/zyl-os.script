@@ -1,30 +1,34 @@
 # ──────────────────────────────────────────────────────────
 # Zyl OS Boot Splash — Plymouth Script
 #
-# Dark background (#0a0a1a) with centered "Zyl OS" text,
-# pulsing opacity animation, and boot progress bar.
+# Assetless fallback-first theme.
+# Avoid hard dependency on logo.png / progress assets so boot does not fail
+# when image files are missing from the rootfs.
 # ──────────────────────────────────────────────────────────
 
 # ── Background ───────────────────────────────────────────
-# #0a0a1a = (10/255, 10/255, 26/255) = (0.039, 0.039, 0.102)
 Window.SetBackgroundTopColor(0.039, 0.039, 0.102);
 Window.SetBackgroundBottomColor(0.039, 0.039, 0.102);
 
 screen_width  = Window.GetWidth();
 screen_height = Window.GetHeight();
 
-# ── Logo / Brand Text ───────────────────────────────────
-# Uses logo.png if present; Plymouth renders the sprite
-logo.image  = Image("logo.png");
+# ── Brand text (no external image dependency) ───────────
+logo.image  = Image.Text("Zyl OS", 0.92, 0.94, 1.0);
 logo.sprite = Sprite(logo.image);
 logo.x = screen_width  / 2 - logo.image.GetWidth()  / 2;
 logo.y = screen_height / 2 - logo.image.GetHeight() / 2 - 60;
 logo.sprite.SetPosition(logo.x, logo.y, 1);
 
+subtitle.image  = Image.Text("mobile runtime", 0.55, 0.60, 0.78);
+subtitle.sprite = Sprite(subtitle.image);
+subtitle.sprite.SetPosition(
+    screen_width  / 2 - subtitle.image.GetWidth() / 2,
+    logo.y + logo.image.GetHeight() + 12,
+    1
+);
+
 # ── Pulsing Animation State ─────────────────────────────
-# Opacity oscillates 0.4 -> 1.0 -> 0.4 using a sine-like
-# approximation over time. Plymouth lacks math.sin(), so
-# we use a simple triangle wave.
 pulse_direction = 0.02;
 pulse_opacity   = 0.4;
 
@@ -41,44 +45,69 @@ fun refresh_callback() {
     }
 
     logo.sprite.SetOpacity(pulse_opacity);
+    subtitle.sprite.SetOpacity(0.6 + (pulse_opacity * 0.25));
 }
 
 Plymouth.SetRefreshFunction(refresh_callback);
 
-# ── Progress Bar ─────────────────────────────────────────
-# Thin bar at the bottom of the screen showing boot progress.
+# ── Text progress bar (assetless fallback) ───────────────
+progress_slots = 28;
+progress_y     = screen_height - 46;
+progress_label = null;
+progress_bg    = null;
 
-progress_bar_height = 4;
-progress_bar_y      = screen_height - 40;
+fun build_progress_text(progress) {
+    if (progress < 0.0)
+        progress = 0.0;
+    if (progress > 1.0)
+        progress = 1.0;
 
-# Background track (dim)
-progress_bg.image  = Image("progress-bg.png");
-progress_bg.sprite = Sprite(progress_bg.image);
-progress_bg.sprite.SetPosition(0, progress_bar_y, 2);
-progress_bg.sprite.SetOpacity(0.2);
+    filled = progress * progress_slots;
+    if (filled < 0)
+        filled = 0;
+    if (filled > progress_slots)
+        filled = progress_slots;
 
-# Foreground fill (accent colour)
-progress_fill.image  = Image("progress-fill.png");
-progress_fill.sprite = Sprite(progress_fill.image);
-progress_fill.sprite.SetPosition(0, progress_bar_y, 3);
+    bar = "[";
+    for (i = 0; i < progress_slots; i++) {
+        if (i < filled)
+            bar += "#";
+        else
+            bar += "-";
+    }
+    bar += "]";
+    return bar;
+}
 
 fun boot_progress_callback(time, progress) {
-    # Scale progress fill width: progress is 0.0 .. 1.0
-    fill_width = screen_width * progress;
-    if (fill_width < 1)
-        fill_width = 1;
+    if (progress_bg != null)
+        progress_bg.sprite.SetOpacity(0);
+    if (progress_label != null)
+        progress_label.sprite.SetOpacity(0);
 
-    # Create a cropped version to simulate width scaling
-    progress_fill.sprite.SetImage(progress_fill.image.Scale(fill_width, progress_bar_height));
-    progress_fill.sprite.SetPosition(0, progress_bar_y, 3);
-    progress_fill.sprite.SetOpacity(0.9);
+    progress_bg.image  = Image.Text("boot", 0.45, 0.48, 0.62);
+    progress_bg.sprite = Sprite(progress_bg.image);
+    progress_bg.sprite.SetPosition(
+        screen_width / 2 - 170,
+        progress_y,
+        2
+    );
+
+    progress_text = build_progress_text(progress);
+    progress_label.image  = Image.Text(progress_text, 0.85, 0.90, 0.98);
+    progress_label.sprite = Sprite(progress_label.image);
+    progress_label.sprite.SetPosition(
+        screen_width / 2 - progress_label.image.GetWidth() / 2,
+        progress_y,
+        3
+    );
+    progress_label.sprite.SetOpacity(0.95);
 }
 
 Plymouth.SetBootProgressFunction(boot_progress_callback);
 
 # ── Password Prompt (disk encryption) ───────────────────
 fun password_callback(prompt, bullets) {
-    # Minimal password prompt for encrypted boot
     password_label.image  = Image.Text(prompt, 0.8, 0.8, 0.85);
     password_label.sprite = Sprite(password_label.image);
     password_label.sprite.SetPosition(
@@ -105,8 +134,11 @@ Plymouth.SetDisplayPasswordFunction(password_callback);
 # ── Quit callback ────────────────────────────────────────
 fun quit_callback() {
     logo.sprite.SetOpacity(0);
-    progress_fill.sprite.SetOpacity(0);
-    progress_bg.sprite.SetOpacity(0);
+    subtitle.sprite.SetOpacity(0);
+    if (progress_label != null)
+        progress_label.sprite.SetOpacity(0);
+    if (progress_bg != null)
+        progress_bg.sprite.SetOpacity(0);
 }
 
 Plymouth.SetQuitFunction(quit_callback);

@@ -30,6 +30,8 @@ profile zyl-wam /usr/bin/zyl-wam {
 
   # Wayland socket
   owner /run/user/*/wayland-*       rw,
+  owner /run/zyl-wam/**             rw,
+  /run/zyl-session/wayland-*        rw,
 
   # Temporary files (owner-only)
   owner /tmp/zyl-wam-*              rw,

@@ -13,8 +13,13 @@
 #include <string.h>
 #include <gio/gio.h>
 
-#define A11Y_DBUS_NAME "org.zylos.Accessibility"
-#define A11Y_DBUS_PATH "/org/zylos/Accessibility"
+/*
+ * Keep the OS accessibility control plane (accessibility.c) on
+ * org.zylos.Accessibility, and expose the AT-SPI bridge on a dedicated
+ * sub-interface to avoid D-Bus name/path collision.
+ */
+#define A11Y_DBUS_NAME "org.zylos.Accessibility.A11yBridge"
+#define A11Y_DBUS_PATH "/org/zylos/Accessibility/A11yBridge"
 
 /*
  * AT-SPI2 Integration Notes:

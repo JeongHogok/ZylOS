@@ -279,12 +279,32 @@ static const char *cred_introspection_xml =
     "  </interface>"
     "</node>";
 
+/*
+ * Check caller UID via D-Bus GetConnectionUnixUser.
+ * Returns the caller's UID, or (uid_t)-1 on failure.
+ */
+static uid_t get_caller_uid(GDBusConnection *conn, const gchar *sender) {
+    if (!sender) return (uid_t)-1;
+    GError *e = NULL;
+    GVariant *r = g_dbus_connection_call_sync(conn,
+        "org.freedesktop.DBus", "/org/freedesktop/DBus",
+        "org.freedesktop.DBus", "GetConnectionUnixUser",
+        g_variant_new("(s)", sender),
+        G_VARIANT_TYPE("(u)"),
+        G_DBUS_CALL_FLAGS_NONE, 3000, NULL, &e);
+    if (!r) { g_clear_error(&e); return (uid_t)-1; }
+    guint32 uid = 0;
+    g_variant_get(r, "(u)", &uid);
+    g_variant_unref(r);
+    return (uid_t)uid;
+}
+
 static void handle_cred_method(GDBusConnection *conn, const gchar *sender,
                                 const gchar *path, const gchar *iface,
                                 const gchar *method, GVariant *params,
                                 GDBusMethodInvocation *inv, gpointer data) {
     ZylCredentialStore *store = data;
-    (void)conn; (void)sender; (void)path; (void)iface;
+    (void)path; (void)iface;
 
     if (g_strcmp0(method, "Store") == 0) {
         const gchar *service, *account, *secret, *label;
@@ -328,6 +348,20 @@ static void handle_cred_method(GDBusConnection *conn, const gchar *sender,
         g_dbus_method_invocation_return_value(inv, NULL);
 
     } else if (g_strcmp0(method, "SetMasterKey") == 0) {
+        /*
+         * SetMasterKey is a privileged operation — only the device owner
+         * (root, uid 0) or the system credential-setup service may call it.
+         * Reject unprivileged callers to prevent credential key replacement.
+         */
+        uid_t caller_uid = get_caller_uid(conn, sender);
+        if (caller_uid != 0) {
+            g_warning("[Credential] SetMasterKey rejected: caller uid=%u is not root",
+                      (unsigned)caller_uid);
+            g_dbus_method_invocation_return_error(inv, G_DBUS_ERROR,
+                G_DBUS_ERROR_ACCESS_DENIED,
+                "SetMasterKey requires root privileges");
+            return;
+        }
         const gchar *passphrase;
         g_variant_get(params, "(&s)", &passphrase);
         int ret = zyl_credential_set_master_key(
@@ -625,23 +659,58 @@ void zyl_credential_info_free(ZylCredentialInfo *info, int count) {
     free(info);
 }
 
+/* Path to the persisted master-key salt (stored alongside credential store). */
+static void master_salt_path(const ZylCredentialStore *store,
+                               char *out, size_t out_len) {
+    snprintf(out, out_len, "%s/.master_salt", store->store_path);
+}
+
 int zyl_credential_set_master_key(ZylCredentialStore *store,
                                    const void *key, size_t key_len) {
     if (!store || !key || key_len == 0) return -1;
 
     /*
      * Derive a 256-bit master key from the user passphrase via PBKDF2.
-     * We use a fixed service-level salt here (derived from store path)
-     * to ensure the same passphrase always produces the same master key
-     * for the same store instance. Per-credential salts are generated
-     * independently during encryption.
+     * The salt is stored in {store_path}/.master_salt (created on first
+     * call with RAND_bytes; reused on subsequent calls so the same
+     * passphrase always derives the same master key for this store).
+     * This replaces the previous path-derived deterministic salt which
+     * had low entropy and was predictable to an attacker who knows the path.
      */
     uint8_t store_salt[SALT_LEN];
-    /* Derive a deterministic salt from store path */
-    memset(store_salt, 0, SALT_LEN);
-    size_t path_len = strlen(store->store_path);
-    for (size_t i = 0; i < path_len && i < SALT_LEN; i++) {
-        store_salt[i] = (uint8_t)store->store_path[i];
+    char salt_path[512];
+    master_salt_path(store, salt_path, sizeof(salt_path));
+
+    FILE *sf = fopen(salt_path, "rb");
+    if (sf) {
+        size_t rd = fread(store_salt, 1, SALT_LEN, sf);
+        fclose(sf);
+        if (rd != SALT_LEN) {
+            g_warning("[Credential] Master salt file truncated — regenerating");
+            sf = NULL;
+        }
+    }
+
+    if (!sf) {
+        /* Generate a new random salt */
+        if (RAND_bytes(store_salt, SALT_LEN) != 1) {
+            g_warning("[Credential] RAND_bytes failed for master salt");
+            return -1;
+        }
+        /* Persist the salt */
+        sf = fopen(salt_path, "wb");
+        if (!sf) {
+            g_warning("[Credential] Cannot write master salt to %s: %s",
+                      salt_path, strerror(errno));
+            return -1;
+        }
+        int fd2 = fileno(sf);
+        if (fd2 >= 0) fchmod(fd2, 0600);
+        fwrite(store_salt, 1, SALT_LEN, sf);
+        fflush(sf);
+        fsync(fd2 >= 0 ? fd2 : 0);
+        fclose(sf);
+        g_message("[Credential] Generated new master key salt → %s", salt_path);
     }
 
     if (PKCS5_PBKDF2_HMAC((const char *)key, (int)key_len,
@@ -649,13 +718,16 @@ int zyl_credential_set_master_key(ZylCredentialStore *store,
                            PBKDF2_ITER, EVP_sha256(),
                            MASTER_KEY_LEN, store->master_key) != 1) {
         g_warning("[Credential] PBKDF2 master key derivation failed");
-        memset(store->master_key, 0, MASTER_KEY_LEN);
+        OPENSSL_cleanse(store->master_key, MASTER_KEY_LEN);
         return -1;
     }
 
+    /* Wipe stack copy of salt immediately */
+    OPENSSL_cleanse(store_salt, SALT_LEN);
+
     store->key_set = true;
     g_message("[Credential] Master key derived from passphrase "
-              "(%zu bytes input, PBKDF2 %d iterations)",
+              "(%zu bytes input, PBKDF2 %d iterations, random salt)",
               key_len, PBKDF2_ITER);
     return 0;
 }

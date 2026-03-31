@@ -23,6 +23,10 @@
   var notes = [];
   var currentNote = null;
   var sortMode = 'date'; /* 'date' | 'name' */
+  /* FIX: In-memory content cache for content-based search.
+   *      Keys are note filenames; values are loaded body text.
+   *      Populated lazily when a note is opened; used by filterNotes(). */
+  var noteBodyCache = {};
 
   function t(key) {
     return typeof zylI18n !== 'undefined' ? zylI18n.t(key) : key;
@@ -34,6 +38,11 @@
     });
   }
 
+  /* FIX: Consolidated single message listener — previously had two separate
+   *       window.addEventListener('message', ...) registrations (one for navigation/
+   *       getDirectory, one for getFileContent), causing duplicate handler registration
+   *       on every openNote() call. Now all IPC handled in one place.
+   * SOLID: SRP — single responsibility for message dispatch */
   window.addEventListener('message', function (e) {
     if (e.source !== window.parent) return;
     try {
@@ -52,7 +61,20 @@
       }
 
       if (msg.type !== 'service.response') return;
-      if (msg.service === 'fs' && msg.method === 'getDirectory' && msg.data) { renderNotes(msg.data); }
+
+      /* Directory listing → render note list */
+      if (msg.service === 'fs' && msg.method === 'getDirectory' && msg.data) {
+        renderNotes(msg.data);
+        return;
+      }
+
+      /* FIX: File content response handler merged here (was a separate duplicate listener) */
+      if (msg.service === 'fs' && msg.method === 'getFileContent' && msg.data) {
+        if (bodyEl) bodyEl.value = msg.data;
+        /* Populate body cache for content-aware search */
+        if (currentNote) noteBodyCache[currentNote] = msg.data;
+        return;
+      }
     } catch (err) { if (typeof console !== 'undefined') console.error('[Notes] message parse error:', err); }
   });
 
@@ -79,11 +101,17 @@
   }
 
   /* ── Search filter ── */
+  /* FIX: Content-aware search — checks title first, then cached body if available.
+   *      Body cache is populated when notes are opened; first query after loading
+   *      a note will include body content in subsequent searches. */
   function filterNotes(arr, query) {
     if (!query) return arr;
     var q = query.toLowerCase();
     return arr.filter(function (n) {
-      return (n.name || '').toLowerCase().indexOf(q) !== -1;
+      if ((n.name || '').toLowerCase().indexOf(q) !== -1) return true;
+      var body = noteBodyCache[n.name];
+      if (body && body.toLowerCase().indexOf(q) !== -1) return true;
+      return false;
     });
   }
 
@@ -215,6 +243,11 @@
         path: 'Documents/Notes/' + newFileName, content: body
       });
     }).then(function () {
+      /* Update body cache on save (rename may change key) */
+      if (currentNote && currentNote !== newFileName) {
+        delete noteBodyCache[currentNote];
+      }
+      noteBodyCache[newFileName] = body;
       if (typeof ZylToast !== 'undefined') ZylToast.success(t('notes.save_success'));
       closeEditor();
     }).catch(function () {
@@ -224,9 +257,12 @@
 
   if (document.getElementById('btn-delete')) document.getElementById('btn-delete').addEventListener('click', function () {
     if (!currentNote) return;
+    var noteToDelete = currentNote;
     ZylBridge.requestService('fs', 'remove', {
-      path: 'Documents/Notes/' + currentNote
+      path: 'Documents/Notes/' + noteToDelete
     }).then(function () {
+      /* Clean body cache on delete */
+      delete noteBodyCache[noteToDelete];
       if (typeof ZylToast !== 'undefined') ZylToast.success(t('notes.delete_success'));
       closeEditor();
     }).catch(function () {
@@ -327,16 +363,7 @@
     }
   })();
 
-  /* 파일 내용 수신 */
-  window.addEventListener('message', function (e) {
-    if (e.source !== window.parent) return;
-    try {
-      var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-      if (msg && msg.type === 'service.response' && msg.service === 'fs' && msg.method === 'getFileContent' && msg.data) {
-        if (bodyEl) bodyEl.value = msg.data;
-      }
-    } catch (err) { if (typeof console !== 'undefined') console.error('[Notes] file content parse error:', err); }
-  });
+  /* NOTE: getFileContent handler merged into single message listener above (duplicate removed) */
 
   /* Notes 디렉토리 생성 보장 */
   ZylBridge.sendToSystem({

@@ -20,6 +20,51 @@ extern char **environ;
 
 #define SETTINGS_DIR "/data/settings"
 
+/* Safe argv-based command execution with optional stdout capture. */
+static int spawn_capture_first_line(const char *path,
+                                    char *const argv[],
+                                    char *out,
+                                    size_t out_len) {
+    int pipefd[2] = {-1, -1};
+    posix_spawn_file_actions_t acts;
+    posix_spawn_file_actions_init(&acts);
+
+    if (out && out_len > 0) {
+        if (pipe(pipefd) != 0) {
+            posix_spawn_file_actions_destroy(&acts);
+            return -1;
+        }
+        posix_spawn_file_actions_adddup2(&acts, pipefd[1], STDOUT_FILENO);
+        posix_spawn_file_actions_addclose(&acts, pipefd[0]);
+    }
+
+    pid_t pid;
+    char *envp[] = { "PATH=/usr/bin:/usr/sbin:/bin:/sbin", NULL };
+    int rc = posix_spawn(&pid, path, &acts, NULL, argv, envp);
+    posix_spawn_file_actions_destroy(&acts);
+    if (out && out_len > 0) close(pipefd[1]);
+    if (rc != 0) {
+        if (out && out_len > 0) close(pipefd[0]);
+        return -1;
+    }
+
+    if (out && out_len > 0) {
+        ssize_t n = read(pipefd[0], out, out_len - 1);
+        close(pipefd[0]);
+        if (n > 0) {
+            out[n] = '\0';
+            size_t len = strlen(out);
+            if (len > 0 && out[len - 1] == '\n') out[len - 1] = '\0';
+        } else {
+            out[0] = '\0';
+        }
+    }
+
+    int status = 0;
+    if (waitpid(pid, &status, 0) == -1) return -1;
+    return (WIFEXITED(status) && WEXITSTATUS(status) == 0) ? 0 : -1;
+}
+
 static ZylAudioState g_audio = {
     .media_volume        = 70,
     .notification_volume = 80,
@@ -31,18 +76,6 @@ static ZylAudioState g_audio = {
 
 static bool g_has_wpctl = false;
 static bool g_has_amixer = false;
-
-/* ─── Helper: run command, capture first line ─── */
-static int run_cmd(const char *cmd, char *out, size_t out_len) {
-    FILE *p = popen(cmd, "r");
-    if (!p) return -1;
-    if (out && out_len > 0) {
-        if (fgets(out, (int)out_len, p) == NULL) out[0] = '\0';
-        size_t len = strlen(out);
-        if (len > 0 && out[len - 1] == '\n') out[len - 1] = '\0';
-    }
-    return pclose(p);
-}
 
 /* ─── Helper: check if command exists ─── */
 static bool cmd_exists(const char *cmd) {
@@ -94,17 +127,25 @@ static void load_audio_settings(void) {
 /* ─── Apply volume to system mixer ─── */
 static int apply_volume(const char *stream, int percent) {
     (void)stream; /* All streams map to master for now — future: PipeWire node routing */
-    char cmd[256];
 
     if (g_has_wpctl) {
-        /* wpctl: volume is float 0.0-1.0 */
-        snprintf(cmd, sizeof(cmd), "wpctl set-volume @DEFAULT_AUDIO_SINK@ %.2f",
-                 percent / 100.0);
-        return run_cmd(cmd, NULL, 0);
+        char vol_arg[16];
+        snprintf(vol_arg, sizeof(vol_arg), "%.2f", percent / 100.0);
+        char *argv[] = {
+            "/usr/bin/wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", vol_arg, NULL
+        };
+        return spawn_capture_first_line("/usr/bin/wpctl", argv, NULL, 0);
     }
     if (g_has_amixer) {
-        snprintf(cmd, sizeof(cmd), "amixer set Master %d%% 2>/dev/null", percent);
-        return run_cmd(cmd, NULL, 0);
+        char pct_arg[16];
+        snprintf(pct_arg, sizeof(pct_arg), "%d%%", percent);
+        char *argv[] = {
+            "/usr/bin/amixer", "set", "Master", pct_arg, NULL
+        };
+        if (access("/usr/bin/amixer", X_OK) == 0)
+            return spawn_capture_first_line("/usr/bin/amixer", argv, NULL, 0);
+        char *argv2[] = { "/bin/amixer", "set", "Master", pct_arg, NULL };
+        return spawn_capture_first_line("/bin/amixer", argv2, NULL, 0);
     }
     return -1;
 }

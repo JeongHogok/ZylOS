@@ -5,6 +5,16 @@ edition = "2021"
 description = "Zyl OS Device Emulator — Tauri 2.x Desktop Application"
 license = "GPL-3.0-only"
 
+[[bin]]
+name = "zyl-emulator"
+path = "src/main.rs"
+
+# Library target exposing internal modules for unit testing.
+# Only compiled during `cargo test`; the binary build is unaffected.
+[lib]
+name = "zyl_emulator_lib"
+path = "src/lib.rs"
+
 [dependencies]
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }

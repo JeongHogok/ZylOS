@@ -13,9 +13,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <errno.h>
 #include <time.h>
 #include <dirent.h>
+#include <spawn.h>
 #include <gio/gio.h>
 
 struct ZylUserService {
@@ -197,6 +199,36 @@ int zyl_user_add(ZylUserService *svc, const char *name, ZylUserType type,
     return 0;
 }
 
+/* Recursively remove /data/users/{uid} using posix_spawn rm -rf */
+static void remove_user_data(uint32_t uid) {
+    char data_path[256];
+    snprintf(data_path, sizeof(data_path), "%s/%u", ZYL_USER_DATA_ROOT, uid);
+
+    /* Safety check: path must be under ZYL_USER_DATA_ROOT */
+    if (strncmp(data_path, ZYL_USER_DATA_ROOT, strlen(ZYL_USER_DATA_ROOT)) != 0) {
+        g_warning("[User] Refusing to delete unsafe path: %s", data_path);
+        return;
+    }
+    if (strstr(data_path, "..") != NULL) {
+        g_warning("[User] Refusing path traversal in data path: %s", data_path);
+        return;
+    }
+
+    pid_t pid;
+    const char *argv[] = { "/bin/rm", "-rf", "--", data_path, NULL };
+    char *envp[] = { "PATH=/bin:/usr/bin", NULL };
+    int rc = posix_spawn(&pid, "/bin/rm", NULL, NULL,
+                          (char *const *)argv, envp);
+    if (rc == 0) {
+        int status;
+        waitpid(pid, &status, 0);
+        g_message("[User] Deleted user data: %s (exit=%d)", data_path,
+                  WIFEXITED(status) ? WEXITSTATUS(status) : -1);
+    } else {
+        g_warning("[User] Failed to spawn rm for %s", data_path);
+    }
+}
+
 int zyl_user_remove(ZylUserService *svc, uint32_t uid) {
     if (!svc) return -1;
 
@@ -207,7 +239,10 @@ int zyl_user_remove(ZylUserService *svc, uint32_t uid) {
             /* 현재 사용자 삭제 불가 */
             if (uid == svc->current_uid) return -1;
 
-            g_message("[User] Removed: %s (uid=%u)", svc->users[i].name, uid);
+            g_message("[User] Removing: %s (uid=%u)", svc->users[i].name, uid);
+
+            /* Delete user data directory */
+            remove_user_data(uid);
 
             /* 배열에서 제거 (마지막 요소로 교체) */
             svc->users[i] = svc->users[--svc->user_count];

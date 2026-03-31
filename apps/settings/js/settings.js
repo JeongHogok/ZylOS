@@ -54,7 +54,11 @@
     security: 'settings.security',
     storage: 'settings.storage',
     about: 'settings.about',
-    applications: 'settings.applications'
+    applications: 'settings.applications',
+    /* FIX: Added missing placeholder sections that were in the menu but had no routing */
+    battery: 'settings.battery',
+    accessibility: 'settings.accessibility',
+    developer: 'settings.developer_options'
   };
 
   /* ─── Navigation stack for multi-level pages ─── */
@@ -275,6 +279,26 @@
     }
   };
 
+  /* FIX: Battery page — populate from power service response */
+  handlers.power = {
+    onServiceResponse: function (method, data) {
+      if (method === 'getState' && data) {
+        var levelEl = document.getElementById('battery-level-value');
+        var chargingEl = document.getElementById('battery-charging-value');
+        var statusEl = document.getElementById('battery-status');
+        if (levelEl && data.batteryLevel !== undefined) {
+          levelEl.textContent = data.batteryLevel + '%';
+        }
+        if (chargingEl) {
+          chargingEl.textContent = data.charging ? t('settings.charging') : t('settings.not_charging');
+        }
+        if (statusEl && data.batteryLevel !== undefined) {
+          statusEl.textContent = data.batteryLevel + '%';
+        }
+      }
+    }
+  };
+
   /* ─── Expose ZylSettingsCore namespace for domain modules ─── */
   window.ZylSettingsCore = {
     t: t,
@@ -305,6 +329,8 @@
   requestServiceFire('settings', 'get', { category: 'wallpaper' });
   requestServiceFire('settings', 'get', { category: 'app_permissions' });
   requestServiceFire('apps', 'getInstalled');
+  /* FIX: Request battery state for battery status display */
+  requestServiceFire('power', 'getState');
 
   /* ─── 초기화 ─── */
   applyTranslations();

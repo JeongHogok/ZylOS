@@ -452,6 +452,8 @@
   /* ─── Viewer ─── */
   var currentViewingFile = null;
   var currentViewingPrefix = '';
+  /* FIX: Track active video poll so it can be cancelled when viewer closes */
+  var _activeVideoPoll = null;
 
   function openViewer(name, prefix) {
     if (!viewer) return;
@@ -459,6 +461,12 @@
 
     /* Stop slideshow if active */
     stopSlideshow();
+
+    /* FIX: Cancel any pending video poll from a previous openViewer call */
+    if (_activeVideoPoll) {
+      clearInterval(_activeVideoPoll);
+      _activeVideoPoll = null;
+    }
 
     /* Reset rotation */
     rotationDeg = 0;
@@ -482,10 +490,12 @@
       if (!dataCache[fullPath] && !dataCache[name]) {
         requestService('fs', 'readBinary', { path: fsPath });
         var pollCount = 0;
-        var poll = setInterval(function () {
+        /* FIX: Store poll reference so closeViewer() can cancel it */
+        _activeVideoPoll = setInterval(function () {
           pollCount++;
           if (dataCache[fullPath] || dataCache[name] || pollCount > 50) {
-            clearInterval(poll);
+            clearInterval(_activeVideoPoll);
+            _activeVideoPoll = null;
             if (dataCache[fullPath] || dataCache[name]) showVideo(fullPath, name);
           }
         }, 200);
@@ -560,6 +570,8 @@
     video.addEventListener('pause', function () { if (vcPlay) vcPlay.textContent = '\u25B6'; });
     video.addEventListener('ended', function () { if (vcPlay) vcPlay.textContent = '\u25B6'; });
 
+    /* FIX: Use .onclick assignment (not addEventListener) for control handlers so that
+     *       calling showVideo() again replaces handlers rather than accumulating them. */
     if (vcPlay) vcPlay.onclick = function () {
       if (video.paused) video.play(); else video.pause();
     };
@@ -763,6 +775,11 @@
   /* ─── Viewer Close ─── */
   function closeViewer() {
     stopSlideshow();
+    /* FIX: Cancel any pending video-data poll to prevent it firing after viewer close */
+    if (_activeVideoPoll) {
+      clearInterval(_activeVideoPoll);
+      _activeVideoPoll = null;
+    }
     rotationDeg = 0;
     if (viewer) {
       viewer.classList.add('hidden');
@@ -773,6 +790,17 @@
     if (viewerImg) { viewerImg.src = ''; viewerImg.style.display = 'none'; viewerImg.style.transform = 'rotate(0deg)'; }
     var vc = document.getElementById('video-controls');
     if (vc) vc.classList.add('hidden');
+    /* FIX: Clear onclick handlers on video controls to prevent stale closures */
+    var vcPlay = document.getElementById('vc-play');
+    var vcSeek = document.getElementById('vc-seek');
+    var vcSkipBack = document.getElementById('vc-skip-back');
+    var vcSkipFwd = document.getElementById('vc-skip-fwd');
+    var vcSpeed = document.getElementById('vc-speed');
+    if (vcPlay) vcPlay.onclick = null;
+    if (vcSeek) vcSeek.oninput = null;
+    if (vcSkipBack) vcSkipBack.onclick = null;
+    if (vcSkipFwd) vcSkipFwd.onclick = null;
+    if (vcSpeed) vcSpeed.onchange = null;
     currentViewingFile = null;
     currentViewingPrefix = '';
   }

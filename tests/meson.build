@@ -38,3 +38,16 @@ test('notification',
     c_args: ['-DZYL_TEST'],
   )
 )
+
+# Test: bridge dispatch/response routing using the real bridge.c with mock WebKit.
+test('bridge-dispatch',
+  executable('test-bridge-dispatch',
+    'test_bridge_dispatch.c',
+    include_directories: include_directories(
+      '.',
+      'include',
+    ),
+    dependencies: [gio_dep, json_glib_dep],
+    c_args: ['-DZYL_USE_WEBKIT2GTK'],
+  )
+)

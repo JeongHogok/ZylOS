@@ -162,16 +162,50 @@ static void parse_modes(ZylDisplayService *svc) {
         size_t len = strlen(line);
         if (len > 0 && line[len - 1] == '\n') line[len - 1] = '\0';
 
-        int w = 0, h = 0;
-        if (sscanf(line, "%dx%d", &w, &h) == 2 && w > 0 && h > 0) {
-            ZylDisplayMode *m = &svc->modes[svc->mode_count];
-            m->width  = w;
-            m->height = h;
-            m->refresh_hz = 60; /* sysfs default; real rate from EDID */
-            snprintf(m->connector, sizeof(m->connector), "%s",
-                     primary->name);
-            svc->mode_count++;
+        int w = 0, h = 0, hz = 0;
+        /*
+         * Try extended format "WxH@Hz" first (e.g. "1920x1080@60").
+         * Standard sysfs /modes file only has "WxH", so default to 60Hz
+         * and attempt to refine from the connector's preferred_mode or
+         * mode_properties sysfs files when available.
+         */
+        if (sscanf(line, "%dx%d@%d", &w, &h, &hz) == 3 && w > 0 && h > 0 && hz > 0) {
+            /* Extended format with explicit Hz */
+        } else if (sscanf(line, "%dx%d", &w, &h) == 2 && w > 0 && h > 0) {
+            hz = 0; /* Will try sysfs vrr_capable or default below */
+        } else {
+            continue;
         }
+
+        if (hz <= 0) {
+            /*
+             * Attempt to read refresh rate from connector sysfs.
+             * Some kernels expose connector-specific mode/vrr sysfs files.
+             * As a practical fallback, try parsing the connector-local
+             * "mode" file which may contain
+             * "WxH@Hz" on newer kernels.
+             */
+            char mode_detail_path[SYSFS_BUF];
+            snprintf(mode_detail_path, sizeof(mode_detail_path),
+                     "%s/mode", primary->path);
+            char detail_buf[64] = {0};
+            if (sysfs_read_line(mode_detail_path, detail_buf, sizeof(detail_buf)) == 0) {
+                int dw = 0, dh = 0, dhz = 0;
+                if (sscanf(detail_buf, "%dx%d@%d", &dw, &dh, &dhz) == 3
+                    && dw == w && dh == h && dhz > 0) {
+                    hz = dhz;
+                }
+            }
+            if (hz <= 0) hz = 60; /* Safe default */
+        }
+
+        ZylDisplayMode *m = &svc->modes[svc->mode_count];
+        m->width  = w;
+        m->height = h;
+        m->refresh_hz = hz;
+        snprintf(m->connector, sizeof(m->connector), "%s",
+                 primary->name);
+        svc->mode_count++;
     }
     fclose(f);
 

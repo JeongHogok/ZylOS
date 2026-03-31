@@ -363,15 +363,20 @@
         showContextMenu(file, e);
       });
 
-      /* Long press for context menu */
+      /* FIX: Long-press — capture touch coordinates at touchstart time for correct
+       *       context menu positioning. Also: listeners are on each newly created `el`
+       *       so they are naturally scoped to this render cycle (no stale listener leak
+       *       because old elements are removed by fileList.innerHTML = ''). */
       var pressTimer;
       el.addEventListener('touchstart', function (e) {
+        var touch = e.touches && e.touches[0];
+        var savedE = touch ? { clientX: touch.clientX, clientY: touch.clientY } : { clientX: 200, clientY: 300 };
         pressTimer = setTimeout(function () {
-          showContextMenu(file, e);
+          showContextMenu(file, savedE);
         }, 500);
-      });
-      el.addEventListener('touchend', function () { clearTimeout(pressTimer); });
-      el.addEventListener('touchmove', function () { clearTimeout(pressTimer); });
+      }, { passive: true });
+      el.addEventListener('touchend', function () { clearTimeout(pressTimer); }, { passive: true });
+      el.addEventListener('touchmove', function () { clearTimeout(pressTimer); }, { passive: true });
 
       fileList.appendChild(el);
     });
@@ -406,9 +411,11 @@
     contextMenu.classList.remove('hidden');
     overlay.classList.remove('hidden');
 
-    /* Position near the tap/click */
-    var x = e.clientX || (e.touches && e.touches[0] ? e.touches[0].clientX : 200);
-    var y = e.clientY || (e.touches && e.touches[0] ? e.touches[0].clientY : 300);
+    /* FIX: Position near tap/click — e may be a real MouseEvent, a real TouchEvent,
+     *       or the saved plain-object {clientX, clientY} from the long-press handler.
+     *       Priority: plain e.clientX → touch[0].clientX → fallback. */
+    var x = (e && e.clientX) ? e.clientX : (e && e.touches && e.touches[0] ? e.touches[0].clientX : 200);
+    var y = (e && e.clientY) ? e.clientY : (e && e.touches && e.touches[0] ? e.touches[0].clientY : 300);
 
     var menuW = 180;
     var menuH = 220;

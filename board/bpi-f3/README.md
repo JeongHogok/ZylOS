@@ -22,7 +22,7 @@ pacman -S base-devel meson ninja
 
 The BPI-F3 uses a SpacemiT K1 device tree. ZylOS requires these DT nodes:
 
-```
+```dts
 /dts-v1/;
 #include "spacemit-k1.dtsi"
 
@@ -60,6 +60,26 @@ The BPI-F3 uses a SpacemiT K1 device tree. ZylOS requires these DT nodes:
 };
 ```
 
+## Recommended eMMC / SD Partition Layout
+
+ZylOS updater and dm-verity expect an A/B-style layout. This repository does not
+ship the kernel/rootfs images, but the board bring-up should use a partition map
+compatible with `tools/sign-image.sh` and `board/bpi-f3/fit-image.its`.
+
+| Partition | Example device | Size | Purpose |
+|---|---|---:|---|
+| boot | `/dev/mmcblk0p1` | 256 MiB | FIT image (`fit-image.itb`), U-Boot env |
+| system_a | `/dev/mmcblk0p2` | 4–8 GiB | Active rootfs A |
+| verity_a | `/dev/mmcblk0p3` | 256–512 MiB | dm-verity hash tree for A |
+| system_b | `/dev/mmcblk0p4` | 4–8 GiB | Inactive rootfs B for OTA |
+| verity_b | `/dev/mmcblk0p5` | 256–512 MiB | dm-verity hash tree for B |
+| data | `/dev/mmcblk0p6` | remainder | `/data`, user apps, logs |
+
+Minimum updater assumptions:
+- Kernel cmdline points to a dm-verity mapped block device.
+- Bootloader exposes the active slot (`zyl.slot=a|b`).
+- The inactive slot can be written atomically before reboot.
+
 ## Build Verification
 
 ```bash
@@ -70,6 +90,27 @@ ninja -C builddir
 # Deploy to SD card
 sudo dd if=builddir/zylos.img of=/dev/sdX bs=4M
 ```
+
+## QEMU Bring-up Notes (sanity only)
+
+The BPI-F3 hardware is not fully emulated by upstream QEMU. Still, basic RISC-V
+kernel/rootfs validation can be done with the generic `virt` machine before real
+board bring-up:
+
+```bash
+qemu-system-riscv64 \
+  -machine virt -m 4096 -smp 4 \
+  -kernel vmlinuz \
+  -initrd initramfs.cpio.gz \
+  -append 'root=/dev/vda rw console=ttyS0,115200' \
+  -drive file=rootfs.img,format=raw,if=virtio \
+  -serial mon:stdio
+```
+
+Limitations:
+- No BPI-F3-specific GPU/DSI/PMIC modelling.
+- No RTL8852BS SDIO/UART emulation.
+- Use QEMU for early userspace sanity, not board-complete validation.
 
 ## Cross-Compilation File
 

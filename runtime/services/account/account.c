@@ -19,6 +19,8 @@
 #include <sys/wait.h>
 #include <spawn.h>
 #include <gio/gio.h>
+#include <json-glib/json-glib.h>
+#include <openssl/evp.h>
 
 #define ACCOUNT_DIR "/data/accounts"
 #define MAX_ACCOUNTS 8
@@ -154,9 +156,57 @@ void zyl_account_destroy(ZylAccountService *svc) {
     free(svc);
 }
 
+/* Compute SHA-256 hex of input, store in out (must be >= 65 bytes). */
+static bool sha256_hex(const char *input, char *out, size_t out_len) {
+    if (out_len < 65) return false;
+    if (!input || !input[0]) return false;
+    unsigned char hash[32];
+    EVP_MD_CTX *ctx = EVP_MD_CTX_new();
+    if (!ctx) return false;
+    bool ok = (EVP_DigestInit_ex(ctx, EVP_sha256(), NULL) == 1 &&
+               EVP_DigestUpdate(ctx, input, strlen(input)) == 1);
+    unsigned int hlen = 0;
+    ok = ok && (EVP_DigestFinal_ex(ctx, hash, &hlen) == 1);
+    EVP_MD_CTX_free(ctx);
+    if (!ok) return false;
+    for (int i = 0; i < 32; i++) snprintf(out + i * 2, 3, "%02x", hash[i]);
+    out[64] = '\0';
+    return true;
+}
+
+/* Persist PIN hash for account to disk. */
+static void store_pin_hash(const char *account_id, const char *pin_hash) {
+    char path[256];
+    snprintf(path, sizeof(path), "%s/%s.pin", ACCOUNT_DIR, account_id);
+    FILE *f = fopen(path, "w");
+    if (!f) return;
+    fprintf(f, "%s\n", pin_hash);
+    fflush(f); fsync(fileno(f));
+    fclose(f);
+}
+
+/* Load stored PIN hash for account. Returns malloc'd string or NULL. */
+static char *load_pin_hash(const char *account_id) {
+    char path[256];
+    snprintf(path, sizeof(path), "%s/%s.pin", ACCOUNT_DIR, account_id);
+    FILE *f = fopen(path, "r");
+    if (!f) return NULL;
+    char buf[128] = {0};
+    if (fgets(buf, sizeof(buf), f)) {
+        size_t len = strlen(buf);
+        if (len > 0 && buf[len-1] == '\n') buf[len-1] = '\0';
+    }
+    fclose(f);
+    return buf[0] ? strdup(buf) : NULL;
+}
+
 int zyl_account_register_local(ZylAccountService *svc,
                                 const char *name, const char *pin) {
     if (!svc || !name || !pin) return -1;
+    if (strlen(pin) < 4) {
+        g_warning("[Account] PIN too short (minimum 4 digits)");
+        return -1;
+    }
     if (svc->n_accounts >= MAX_ACCOUNTS) return -1;
 
     ZylAccountInfo *acc = &svc->accounts[svc->n_accounts];
@@ -177,19 +227,69 @@ int zyl_account_register_local(ZylAccountService *svc,
     acc->created_at = (uint64_t)time(NULL);
     acc->last_sync = 0;
 
+    /* Hash and persist the PIN */
+    char pin_hash[65];
+    if (!sha256_hex(pin, pin_hash, sizeof(pin_hash))) {
+        g_warning("[Account] Failed to hash PIN");
+        free(acc->account_id); free(acc->display_name); free(acc->email);
+        memset(acc, 0, sizeof(*acc));
+        return -1;
+    }
+    store_pin_hash(id, pin_hash);
+
     svc->active_index = svc->n_accounts;
     svc->n_accounts++;
 
-    /* PIN은 credential 서비스에 저장 */
     g_message("[Account] Registered local account: %s (%s)", name, id);
     return 0;
 }
 
 int zyl_account_login_local(ZylAccountService *svc, const char *pin) {
     if (!svc || !pin) return -1;
-    /* PIN 검증은 credential 서비스에 위임 */
-    if (svc->active_index >= 0) return 0;
-    return -1;
+    if (svc->active_index < 0) return -1;
+
+    ZylAccountInfo *acc = &svc->accounts[svc->active_index];
+    if (acc->type != ZYL_ACCOUNT_LOCAL) return -1;
+
+    /* Load stored PIN hash and compare */
+    char *stored_hash = load_pin_hash(acc->account_id);
+    if (!stored_hash) {
+        g_warning("[Account] No PIN hash found for account %s", acc->account_id);
+        return -1;
+    }
+    char input_hash[65];
+    bool ok = sha256_hex(pin, input_hash, sizeof(input_hash));
+    bool match = ok && (strcmp(stored_hash, input_hash) == 0);
+    free(stored_hash);
+
+    if (!match) {
+        g_warning("[Account] PIN verification failed for account %s", acc->account_id);
+        return -1;
+    }
+    g_message("[Account] Local login succeeded: %s", acc->account_id);
+    return 0;
+}
+
+static char *json_dup_string_field(const char *json, const char *key) {
+    if (!json || !key) return NULL;
+    JsonParser *parser = json_parser_new();
+    if (!json_parser_load_from_data(parser, json, -1, NULL)) {
+        g_object_unref(parser);
+        return NULL;
+    }
+    JsonNode *root = json_parser_get_root(parser);
+    if (!root || !JSON_NODE_HOLDS_OBJECT(root)) {
+        g_object_unref(parser);
+        return NULL;
+    }
+    JsonObject *obj = json_node_get_object(root);
+    char *ret = NULL;
+    if (json_object_has_member(obj, key)) {
+        const char *v = json_object_get_string_member(obj, key);
+        if (v) ret = strdup(v);
+    }
+    g_object_unref(parser);
+    return ret;
 }
 
 /* ─── OAuth token endpoint mapping ─── */
@@ -260,10 +360,10 @@ int zyl_account_login_oauth(ZylAccountService *svc,
         return -1;
     }
 
-    /* Parse access_token from JSON response (simple extraction) */
-    /* In production, use json-glib for robust parsing */
-    char *at_start = strstr(response, "\"access_token\"");
-    if (!at_start) {
+    /* Parse token response robustly */
+    char *access_token = json_dup_string_field(response, "access_token");
+    char *email = json_dup_string_field(response, "email");
+    if (!access_token) {
         g_warning("[Account] OAuth response missing access_token");
         free(response);
         return -1;
@@ -289,7 +389,7 @@ int zyl_account_login_oauth(ZylAccountService *svc,
     snprintf(id, sizeof(id), "%s_%ld", provider, (long)time(NULL));
     acc->account_id = strdup(id);
     acc->display_name = strdup(provider);
-    acc->email = strdup(""); /* Would be extracted from userinfo endpoint */
+    acc->email = email ? email : strdup(""); /* best-effort extraction from token response */
     acc->type = ZYL_ACCOUNT_CLOUD;
     acc->is_active = true;
     acc->created_at = (uint64_t)time(NULL);
@@ -297,8 +397,9 @@ int zyl_account_login_oauth(ZylAccountService *svc,
     svc->active_index = svc->n_accounts;
     svc->n_accounts++;
 
-    g_message("[Account] OAuth login successful: provider=%s account=%s",
-              provider, id);
+    g_message("[Account] OAuth login successful: provider=%s account=%s email=%s",
+              provider, id, acc->email ? acc->email : "");
+    free(access_token);
     free(response);
     return 0;
 }
@@ -331,16 +432,17 @@ int zyl_account_refresh_token(ZylAccountService *svc) {
         return -1;
     }
 
-    const gchar *stored_token;
-    g_variant_get(result, "(&s)", &stored_token);
+    const gchar *stored_token_json;
+    g_variant_get(result, "(&s)", &stored_token_json);
 
-    /* Extract refresh_token and exchange for new access_token */
+    /* Extract refresh_token from stored JSON and exchange for a new access_token */
+    char *refresh_token = json_dup_string_field(stored_token_json, "refresh_token");
     const char *token_url = oauth_token_url(acc->display_name);
-    if (token_url) {
+    if (token_url && refresh_token && refresh_token[0]) {
         char post_data[512];
         snprintf(post_data, sizeof(post_data),
                  "grant_type=refresh_token&refresh_token=%s&client_id=zylos-app",
-                 stored_token);
+                 refresh_token);
         char *response = http_post(token_url, post_data);
         if (response) {
             /* Update stored token */
@@ -354,10 +456,10 @@ int zyl_account_refresh_token(ZylAccountService *svc) {
             g_message("[Account] Token refreshed for %s", acc->display_name);
         }
     }
+    free(refresh_token);
 
     g_variant_unref(result);
     g_object_unref(conn);
-    return 0;
     return 0;
 }
 
@@ -395,10 +497,32 @@ int zyl_account_sync_now(ZylAccountService *svc) {
     return 0;
 }
 
+static gboolean account_auto_sync_cb(gpointer data) {
+    ZylAccountService *svc = data;
+    if (!svc || !svc->auto_sync) return G_SOURCE_REMOVE;
+    if (svc->active_index >= 0) {
+        ZylAccountInfo *acc = &svc->accounts[svc->active_index];
+        if (acc->type == ZYL_ACCOUNT_CLOUD) {
+            zyl_account_sync_now(svc);
+        }
+    }
+    return G_SOURCE_CONTINUE;
+}
+
 int zyl_account_set_auto_sync(ZylAccountService *svc, bool enabled, int interval_min) {
     if (!svc) return -1;
     svc->auto_sync = enabled;
     svc->sync_interval_min = interval_min > 0 ? interval_min : 30;
+
+    if (svc->sync_timer_id) {
+        g_source_remove(svc->sync_timer_id);
+        svc->sync_timer_id = 0;
+    }
+    if (enabled) {
+        svc->sync_timer_id = g_timeout_add_seconds((guint)(svc->sync_interval_min * 60),
+                                                   account_auto_sync_cb, svc);
+    }
+
     g_message("[Account] Auto-sync: %s (every %d min)",
               enabled ? "ON" : "OFF", svc->sync_interval_min);
     return 0;
@@ -439,11 +563,18 @@ int zyl_account_backup(ZylAccountService *svc, const char *output_path) {
         g_warning("[Account] Backup rejected: unsafe path characters");
         return -1;
     }
-    /* 백업: 설정 + 연락처 + 메시지 → 암호화 아카이브 */
-    g_message("[Account] Backup → %s", output_path);
-    /* tar + AES-256-GCM 암호화 (credential 서비스의 마스터키 사용) */
-    char *argv[] = {"tar", "czf", (char *)output_path,
-                    "-C", "/data", "apps/*/Documents/", NULL};
+    /*
+     * Create a compressed backup archive of account-relevant roots.
+     * Do NOT claim encryption here: this path currently produces a plain .tar.gz.
+     * Using explicit directories avoids broken wildcard handling under posix_spawn.
+     */
+    g_message("[Account] Backup → %s (tar.gz, not encrypted)", output_path);
+    char *argv[] = {
+        "tar", "czf", (char *)output_path,
+        "-C", "/data",
+        "accounts", "apps", "users",
+        NULL
+    };
     return spawn_and_wait(argv);
 }
 
@@ -453,7 +584,7 @@ int zyl_account_restore(ZylAccountService *svc, const char *backup_path) {
         g_warning("[Account] Restore rejected: unsafe path characters");
         return -1;
     }
-    g_message("[Account] Restore ← %s", backup_path);
+    g_message("[Account] Restore ← %s (tar.gz input)", backup_path);
     char *argv[] = {"tar", "xzf", (char *)backup_path,
                     "-C", "/data", NULL};
     return spawn_and_wait(argv);

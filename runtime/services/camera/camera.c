@@ -21,6 +21,9 @@
 #include <linux/videodev2.h>
 #include <gio/gio.h>
 #include <glib-unix.h>
+#ifdef HAVE_LIBJPEG
+#include <jpeglib.h>
+#endif
 
 #define MAX_BUFFERS 4
 
@@ -337,19 +340,83 @@ int zyl_camera_capture(ZylCameraService *cam, const char *output_path) {
         return -1;
     }
 
-    /* Write raw frame to file (YUYV — apps convert to JPEG) */
     int ret = 0;
+#ifdef HAVE_LIBJPEG
+    /* Convert YUYV → JPEG using libjpeg */
+    {
+        const uint8_t *yuyv = (const uint8_t *)cam->buffers[buf.index].start;
+        uint32_t width  = cam->config.width;
+        uint32_t height = cam->config.height;
+
+        /* Expand YUYV to RGB888 */
+        uint8_t *rgb = malloc((size_t)width * height * 3);
+        if (rgb) {
+            for (uint32_t i = 0; i < width * height / 2; i++) {
+                int y0 = yuyv[i*4+0];
+                int u  = yuyv[i*4+1] - 128;
+                int y1 = yuyv[i*4+2];
+                int v  = yuyv[i*4+3] - 128;
+#define CLAMP(x) ((x)<0?0:((x)>255?255:(x)))
+                /* pixel 0 */
+                rgb[(i*2+0)*3+0] = (uint8_t)CLAMP(y0 + (int)(1.402f*v));
+                rgb[(i*2+0)*3+1] = (uint8_t)CLAMP(y0 - (int)(0.344f*u) - (int)(0.714f*v));
+                rgb[(i*2+0)*3+2] = (uint8_t)CLAMP(y0 + (int)(1.772f*u));
+                /* pixel 1 */
+                rgb[(i*2+1)*3+0] = (uint8_t)CLAMP(y1 + (int)(1.402f*v));
+                rgb[(i*2+1)*3+1] = (uint8_t)CLAMP(y1 - (int)(0.344f*u) - (int)(0.714f*v));
+                rgb[(i*2+1)*3+2] = (uint8_t)CLAMP(y1 + (int)(1.772f*u));
+#undef CLAMP
+            }
+
+            struct jpeg_compress_struct cinfo;
+            struct jpeg_error_mgr jerr;
+            cinfo.err = jpeg_std_error(&jerr);
+            jpeg_create_compress(&cinfo);
+
+            FILE *jf = fopen(output_path, "wb");
+            if (jf) {
+                jpeg_stdio_dest(&cinfo, jf);
+                cinfo.image_width      = width;
+                cinfo.image_height     = height;
+                cinfo.input_components = 3;
+                cinfo.in_color_space   = JCS_RGB;
+                jpeg_set_defaults(&cinfo);
+                jpeg_set_quality(&cinfo, 90, TRUE);
+                jpeg_start_compress(&cinfo, TRUE);
+                while (cinfo.next_scanline < cinfo.image_height) {
+                    JSAMPROW row = rgb + cinfo.next_scanline * width * 3;
+                    jpeg_write_scanlines(&cinfo, &row, 1);
+                }
+                jpeg_finish_compress(&cinfo);
+                fclose(jf);
+                g_message("[Camera] Captured JPEG → %s (%ux%u)",
+                          output_path, width, height);
+            } else {
+                fprintf(stderr, "[Camera] Failed to open %s: %s\n",
+                        output_path, strerror(errno));
+                ret = -1;
+            }
+            jpeg_destroy_compress(&cinfo);
+            free(rgb);
+        } else {
+            fprintf(stderr, "[Camera] malloc failed for YUYV→RGB conversion\n");
+            ret = -1;
+        }
+    }
+#else
+    /* Fallback: write raw YUYV frame — apps convert to JPEG */
     FILE *f = fopen(output_path, "wb");
     if (f) {
         fwrite(cam->buffers[buf.index].start, 1, buf.bytesused, f);
         fclose(f);
-        g_message("[Camera] Captured frame → %s (%u bytes)",
+        g_message("[Camera] Captured YUYV frame → %s (%u bytes, no JPEG support)",
                   output_path, buf.bytesused);
     } else {
         fprintf(stderr, "[Camera] Failed to open %s: %s\n",
                 output_path, strerror(errno));
         ret = -1;
     }
+#endif
 
     /* Re-queue buffer */
     xioctl(cam->fd, VIDIOC_QBUF, &buf);

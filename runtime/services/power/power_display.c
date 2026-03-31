@@ -10,6 +10,12 @@
 
 #include "power_internal.h"
 
+/* Static wrapper so zyl_power_request_screen_off can be used as GSourceFunc */
+static gboolean screen_off_source_func(gpointer data) {
+    zyl_power_request_screen_off((ZylPowerService *)data);
+    return G_SOURCE_REMOVE;
+}
+
 /* ─── 상태 전환 (내부) ─── */
 void transition_state(ZylPowerService *svc, ZylPowerState new_state) {
     if (svc->state == new_state) return;
@@ -51,7 +57,7 @@ static gboolean on_dim_timeout(gpointer data) {
     int remain = svc->config.screen_timeout_sec - svc->config.dim_timeout_sec;
     if (remain > 0) {
         svc->screen_off_timer_id = g_timeout_add_seconds(remain,
-            (GSourceFunc)zyl_power_request_screen_off, svc);
+            screen_off_source_func, svc);
     }
 
     return G_SOURCE_REMOVE;

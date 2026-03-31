@@ -64,11 +64,18 @@ int main(int argc, char *argv[])
     struct zyl_server server = {0};
     server.config              = zyl_config_defaults();
     server.home_screen_visible = true;
+    server.split_ratio_pct     = 50;   /* Bug fix: 0-init → clamp(0,5,95)=5%; must be 50 */
+    server.gesture_signal_fn   = NULL; /* Coordinator: wire D-Bus sender here */
     wl_list_init(&server.views);
     wl_list_init(&server.outputs);
+    wl_list_init(&server.keyboards);
 
     /* ── Wayland display ── */
     server.wl_display = wl_display_create();
+    if (!server.wl_display) {
+        wlr_log(WLR_ERROR, "Failed to create wl_display");
+        return 1;
+    }
 
     /* ── Backend ── */
     server.backend = wlr_backend_autocreate(
@@ -101,19 +108,68 @@ int main(int argc, char *argv[])
 
     /* ── Scene graph + output layout ── */
     server.output_layout = wlr_output_layout_create(server.wl_display);
-    server.scene         = wlr_scene_create();
-    server.scene_layout  =
+    if (!server.output_layout) {
+        wlr_log(WLR_ERROR, "Failed to create wlr_output_layout");
+        wlr_allocator_destroy(server.allocator);
+        wlr_renderer_destroy(server.renderer);
+        wlr_backend_destroy(server.backend);
+        wl_display_destroy(server.wl_display);
+        return 1;
+    }
+
+    server.scene = wlr_scene_create();
+    if (!server.scene) {
+        wlr_log(WLR_ERROR, "Failed to create wlr_scene");
+        wlr_output_layout_destroy(server.output_layout);
+        wlr_allocator_destroy(server.allocator);
+        wlr_renderer_destroy(server.renderer);
+        wlr_backend_destroy(server.backend);
+        wl_display_destroy(server.wl_display);
+        return 1;
+    }
+
+    server.scene_layout =
         wlr_scene_attach_output_layout(server.scene, server.output_layout);
+    if (!server.scene_layout) {
+        wlr_log(WLR_ERROR, "Failed to attach output layout to scene");
+        wlr_scene_node_destroy(&server.scene->tree.node);
+        wlr_output_layout_destroy(server.output_layout);
+        wlr_allocator_destroy(server.allocator);
+        wlr_renderer_destroy(server.renderer);
+        wlr_backend_destroy(server.backend);
+        wl_display_destroy(server.wl_display);
+        return 1;
+    }
 
     /* ── Outputs (module) ── */
     output_register_listeners(&server);
 
     /* ── XDG Shell + views (module) ── */
     server.xdg_shell = wlr_xdg_shell_create(server.wl_display, 3);
+    if (!server.xdg_shell) {
+        wlr_log(WLR_ERROR, "Failed to create wlr_xdg_shell");
+        wlr_scene_node_destroy(&server.scene->tree.node);
+        wlr_output_layout_destroy(server.output_layout);
+        wlr_allocator_destroy(server.allocator);
+        wlr_renderer_destroy(server.renderer);
+        wlr_backend_destroy(server.backend);
+        wl_display_destroy(server.wl_display);
+        return 1;
+    }
     view_register_listeners(&server);
 
     /* ── Cursor ── */
     server.cursor = wlr_cursor_create();
+    if (!server.cursor) {
+        wlr_log(WLR_ERROR, "Failed to create wlr_cursor");
+        wlr_scene_node_destroy(&server.scene->tree.node);
+        wlr_output_layout_destroy(server.output_layout);
+        wlr_allocator_destroy(server.allocator);
+        wlr_renderer_destroy(server.renderer);
+        wlr_backend_destroy(server.backend);
+        wl_display_destroy(server.wl_display);
+        return 1;
+    }
     wlr_cursor_attach_output_layout(server.cursor, server.output_layout);
 
     /* Load cursor theme from environment or use "default" fallback */
@@ -142,7 +198,7 @@ int main(int argc, char *argv[])
     }
 
     /* Pre-load cursor at scale 1; fallback to "default" theme on failure */
-    if (!wlr_xcursor_manager_load(server.cursor_mgr, 1)) {
+    if (wlr_xcursor_manager_load(server.cursor_mgr, 1)) {
         wlr_log(WLR_INFO, "Cursor theme '%s' loaded at size %d",
                 cursor_theme, cursor_size);
     } else if (strcmp(cursor_theme, "default") != 0) {
@@ -152,15 +208,54 @@ int main(int argc, char *argv[])
         server.cursor_mgr = wlr_xcursor_manager_create("default", 24);
         if (!server.cursor_mgr) {
             wlr_log(WLR_ERROR, "Failed to create fallback xcursor manager");
+            wlr_cursor_destroy(server.cursor);
+            wlr_scene_node_destroy(&server.scene->tree.node);
+            wlr_output_layout_destroy(server.output_layout);
+            wlr_allocator_destroy(server.allocator);
+            wlr_renderer_destroy(server.renderer);
             wlr_backend_destroy(server.backend);
             wl_display_destroy(server.wl_display);
             return 1;
         }
-        wlr_xcursor_manager_load(server.cursor_mgr, 1);
+        if (!wlr_xcursor_manager_load(server.cursor_mgr, 1)) {
+            wlr_log(WLR_ERROR, "Failed to load fallback cursor theme 'default'");
+            wlr_xcursor_manager_destroy(server.cursor_mgr);
+            wlr_cursor_destroy(server.cursor);
+            wlr_scene_node_destroy(&server.scene->tree.node);
+            wlr_output_layout_destroy(server.output_layout);
+            wlr_allocator_destroy(server.allocator);
+            wlr_renderer_destroy(server.renderer);
+            wlr_backend_destroy(server.backend);
+            wl_display_destroy(server.wl_display);
+            return 1;
+        }
+    } else {
+        wlr_log(WLR_ERROR, "Failed to load cursor theme '%s'", cursor_theme);
+        wlr_xcursor_manager_destroy(server.cursor_mgr);
+        wlr_cursor_destroy(server.cursor);
+        wlr_scene_node_destroy(&server.scene->tree.node);
+        wlr_output_layout_destroy(server.output_layout);
+        wlr_allocator_destroy(server.allocator);
+        wlr_renderer_destroy(server.renderer);
+        wlr_backend_destroy(server.backend);
+        wl_display_destroy(server.wl_display);
+        return 1;
     }
 
     /* ── Seat ── */
     server.seat = wlr_seat_create(server.wl_display, "seat0");
+    if (!server.seat) {
+        wlr_log(WLR_ERROR, "Failed to create wlr_seat");
+        wlr_xcursor_manager_destroy(server.cursor_mgr);
+        wlr_cursor_destroy(server.cursor);
+        wlr_scene_node_destroy(&server.scene->tree.node);
+        wlr_output_layout_destroy(server.output_layout);
+        wlr_allocator_destroy(server.allocator);
+        wlr_renderer_destroy(server.renderer);
+        wlr_backend_destroy(server.backend);
+        wl_display_destroy(server.wl_display);
+        return 1;
+    }
 
     /* ── Gestures + input (module) ── */
     gesture_init_handlers(&server);

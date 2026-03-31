@@ -20,6 +20,7 @@
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_scene.h>
+#include <wlr/types/wlr_keyboard.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_shell.h>
@@ -63,13 +64,45 @@ struct zyl_config {
 /* Return a zyl_config populated with sensible defaults. */
 struct zyl_config zyl_config_defaults(void);
 
+/* ─── Multi-touch tracking ─── */
+#define ZYL_MAX_TOUCH_POINTS 10
+
+/**
+ * Per-finger touch point, keyed by hardware touch_id.
+ * Allocated from a fixed pool to avoid per-event heap churn.
+ */
+struct touch_point {
+    bool     active;
+    int32_t  id;            /* wlr touch_id (hardware assigned) */
+    double   start_x, start_y;
+    double   current_x, current_y;
+    uint32_t start_time_ms;
+};
+
 /* ─── Touch tracking state ─── */
 struct touch_state {
+    /* Primary touch — backwards-compatible single-touch path */
     bool     active;
     double   start_x, start_y;
     double   current_x, current_y;
     uint32_t start_time_ms;
     enum gesture_direction pending;
+
+    /* Multi-touch pool (indexed by slot, not touch_id) */
+    struct touch_point points[ZYL_MAX_TOUCH_POINTS];
+    int                num_active;   /* count of active fingers */
+};
+
+/* ─── Per-keyboard lifecycle state ─── */
+/**
+ * Allocated per connected keyboard device.  Holds the destroy listener
+ * so that hot-unplug does not leave dangling pointers in the seat.
+ */
+struct zyl_keyboard {
+    struct wl_list       link;          /* in zyl_server::keyboards */
+    struct zyl_server   *server;
+    struct wlr_keyboard *wlr_keyboard;
+    struct wl_listener   destroy;
 };
 
 /* ─── Per-view (window) state ─── */
@@ -133,6 +166,7 @@ struct zyl_server {
 
     /* Seat */
     struct wlr_seat    *seat;
+    struct wl_list      keyboards;     /* zyl_keyboard::link */
     struct wl_listener  new_input;
     struct wl_listener  request_cursor;
     struct wl_listener  request_set_selection;
@@ -150,9 +184,23 @@ struct zyl_server {
 
     /* Split-screen state */
     enum zyl_split_mode  split_mode;
-    struct zyl_view     *split_primary;     /* Primary pane view   */
-    struct zyl_view     *split_secondary;   /* Secondary pane view */
+    struct zyl_view     *split_primary;     /* Primary pane view            */
+    struct zyl_view     *split_secondary;   /* Secondary pane view          */
     int                  split_ratio_pct;   /* Primary pane share 0-100; default 50 */
+
+    /* Gesture → IPC signal dispatch (narrow stub interface).
+     *
+     * Coordinator follow-up required:
+     *   Wire gesture_signal_fn to an actual D-Bus / GLib or Unix-socket
+     *   sender in main.c after the event-loop integration is resolved.
+     *   Until then the field defaults to NULL and the built-in log
+     *   fallback in emit_compositor_signal() is used.
+     *
+     * Signature: fn(server, signal_name, detail_or_NULL)
+     */
+    void (*gesture_signal_fn)(struct zyl_server *server,
+                              const char *signal_name,
+                              const char *detail);
 
     /* PiP (Picture-in-Picture) */
     struct zyl_pip_config pip;

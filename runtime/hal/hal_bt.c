@@ -177,13 +177,35 @@ static int bt_get_state(ZylBtState *out) {
 static int bt_scan(ZylBtDevice **out_list, int *out_count) {
     if (!g_adapter_path[0] || !out_list || !out_count) return -1;
 
-    /* Start discovery */
-    GVariant *r = dbus_call(g_adapter_path, BLUEZ_ADAPTER_IFACE, "StartDiscovery", NULL);
+    /*
+     * Async-friendly scan window:
+     * - Start discovery
+     * - Pump GLib main context in short intervals instead of a monolithic sleep
+     *   so BlueZ signals and D-Bus dispatch are not starved.
+     * - Stop discovery after ~5s and then enumerate managed objects.
+     */
+    GVariant *r;
+
+    /* Best-effort discovery filter to reduce duplicates / speed convergence */
+    GVariantBuilder filter;
+    g_variant_builder_init(&filter, G_VARIANT_TYPE("a{sv}"));
+    g_variant_builder_add(&filter, "{sv}", "Transport", g_variant_new_string("auto"));
+    r = dbus_call(g_adapter_path, BLUEZ_ADAPTER_IFACE, "SetDiscoveryFilter",
+                  g_variant_new("(a{sv})", &filter));
     if (r) g_variant_unref(r);
 
-    g_usleep(5000000); /* 5 seconds scan window */
+    r = dbus_call(g_adapter_path, BLUEZ_ADAPTER_IFACE, "StartDiscovery", NULL);
+    if (r) g_variant_unref(r);
 
-    /* Stop discovery */
+    gint64 deadline = g_get_monotonic_time() + 5 * G_USEC_PER_SEC;
+    while (g_get_monotonic_time() < deadline) {
+        /* Dispatch pending D-Bus / GLib work instead of hard-blocking. */
+        while (g_main_context_iteration(NULL, FALSE)) {
+            /* drain */
+        }
+        g_usleep(100000); /* 100 ms slices */
+    }
+
     r = dbus_call(g_adapter_path, BLUEZ_ADAPTER_IFACE, "StopDiscovery", NULL);
     if (r) g_variant_unref(r);
 

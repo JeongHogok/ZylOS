@@ -105,12 +105,29 @@ static bool cgroup_setup_app(const char *app_id, unsigned long mem_limit) {
     fprintf(f, "%lu", mem_limit);
     fclose(f);
 
-    /* oom_score_adj 낮춤 — 시스템 OOM killer에서 우선순위 낮추기
-     * (실제 프로세스 PID가 필요하므로 cgroup.procs 추가 시 적용) */
-
     g_message("[OOM] cgroup memory limit %lu MiB set for %s",
               mem_limit / (1024 * 1024), app_id);
     return true;
+}
+
+/**
+ * 앱 프로세스 PID를 cgroup에 등록.
+ * 미등록 시 cgroup_read_app_memory()가 항상 0을 반환한다.
+ */
+static void cgroup_add_pid(const char *app_id, pid_t pid) {
+    char procs_path[576];
+    snprintf(procs_path, sizeof(procs_path),
+             "%s/%s/cgroup.procs", ZYL_CGROUP_BASE, app_id);
+
+    FILE *f = fopen(procs_path, "w");
+    if (!f) {
+        g_warning("[OOM] Failed to add PID %d to cgroup for %s: %s",
+                  (int)pid, app_id, strerror(errno));
+        return;
+    }
+    fprintf(f, "%d\n", (int)pid);
+    fclose(f);
+    g_message("[OOM] Registered PID %d in cgroup for %s", (int)pid, app_id);
 }
 
 /**
@@ -366,17 +383,19 @@ void zyl_oom_destroy(ZylOomKiller *oom) {
 }
 
 void zyl_oom_on_app_launched(ZylOomKiller *oom, const char *app_id,
-                              bool is_system) {
+                              bool is_system, pid_t pid) {
     if (!oom || !app_id) return;
 
     lru_touch(oom->lru_order, app_id);
 
-    /* cgroup v2 메모리 제한 설정 */
+    /* cgroup v2 메모리 제한 설정 + PID 등록 */
     if (oom->cgroup_available) {
         unsigned long limit = is_system
             ? ZYL_OOM_SYS_APP_MEM_LIMIT
             : ZYL_OOM_APP_MEM_LIMIT;
-        cgroup_setup_app(app_id, limit);
+        if (cgroup_setup_app(app_id, limit) && pid > 0) {
+            cgroup_add_pid(app_id, pid);
+        }
     }
 }
 

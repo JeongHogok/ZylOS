@@ -86,12 +86,16 @@ static void xdg_toplevel_unmap(struct wl_listener *listener, void *data)
     if (view == view->server->active_view)
         view->server->active_view = NULL;
     wl_list_remove(&view->link);
+    wl_list_init(&view->link);
 }
 
 static void xdg_toplevel_destroy(struct wl_listener *listener, void *data)
 {
     struct zyl_view *view = wl_container_of(listener, view, destroy);
     (void)data;
+    if (view == view->server->active_view)
+        view->server->active_view = NULL;
+    wl_list_remove(&view->link);
     wl_list_remove(&view->map.link);
     wl_list_remove(&view->unmap.link);
     wl_list_remove(&view->destroy.link);
@@ -120,11 +124,22 @@ static void handle_new_xdg_toplevel(struct wl_listener *listener, void *data)
     struct wlr_xdg_toplevel *toplevel = data;
 
     struct zyl_view *view = calloc(1, sizeof(*view));
+    if (!view) {
+        wlr_log(WLR_ERROR, "handle_new_xdg_toplevel: OOM — cannot allocate zyl_view");
+        return;
+    }
+    wl_list_init(&view->link);
     view->server       = server;
     view->xdg_toplevel = toplevel;
     view->scene_tree   =
         wlr_scene_xdg_surface_create(&server->scene->tree,
                                      toplevel->base);
+    if (!view->scene_tree) {
+        wlr_log(WLR_ERROR,
+                "handle_new_xdg_toplevel: wlr_scene_xdg_surface_create failed");
+        free(view);
+        return;
+    }
     view->scene_tree->node.data = view;
     toplevel->base->data        = view->scene_tree;
 
@@ -155,9 +170,20 @@ static void handle_new_xdg_popup(struct wl_listener *listener, void *data)
         wlr_xdg_surface_try_from_wlr_surface(popup->parent);
     if (!parent)
         return;
+
     struct wlr_scene_tree *parent_tree = parent->data;
+    if (!parent_tree) {
+        wlr_log(WLR_ERROR,
+                "handle_new_xdg_popup: parent scene tree missing");
+        return;
+    }
+
     popup->base->data =
         wlr_scene_xdg_surface_create(parent_tree, popup->base);
+    if (!popup->base->data) {
+        wlr_log(WLR_ERROR,
+                "handle_new_xdg_popup: wlr_scene_xdg_surface_create failed");
+    }
 }
 
 /* ================================================================

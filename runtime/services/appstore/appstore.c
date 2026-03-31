@@ -20,6 +20,7 @@
 #include <errno.h>
 #include <time.h>
 #include <ftw.h>
+#include <gio/gio.h>
 
 #include <openssl/evp.h>
 #include <openssl/pem.h>
@@ -29,6 +30,24 @@
 #ifdef HAVE_LIBZIP
 #include <zip.h>
 #endif
+
+/* Async D-Bus callback for post-install/post-uninstall WAM notifications. */
+static void wam_notify_done(GObject *source,
+                            GAsyncResult *res,
+                            gpointer user_data) {
+    (void)source;
+    const char *op = user_data ? (const char *)user_data : "unknown";
+    GError *err = NULL;
+    GVariant *ret = g_dbus_connection_call_finish(G_DBUS_CONNECTION(source), res, &err);
+    if (!ret) {
+        g_warning("[APPSTORE] WAM %s callback failed: %s",
+                  op, err ? err->message : "unknown");
+        g_clear_error(&err);
+        return;
+    }
+    g_variant_unref(ret);
+    g_message("[APPSTORE] WAM %s callback acknowledged", op);
+}
 
 /* ─── 내부 구현 상수 ─── */
 #define MAX_CERTS            256
@@ -943,10 +962,12 @@ ZylInstallResult zyl_appstore_install(ZylAppStore *store,
         GError *err = NULL;
         GDBusConnection *conn = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &err);
         if (conn) {
+            /* Async callback so install path can observe launch/registration failure */
             g_dbus_connection_call(conn, "org.zylos.WebAppManager",
                 "/org/zylos/WebAppManager", "org.zylos.WebAppManager",
                 "Launch", g_variant_new("(s)", meta->app_id),
-                NULL, G_DBUS_CALL_FLAGS_NONE, 3000, NULL, NULL, NULL);
+                NULL, G_DBUS_CALL_FLAGS_NONE, 3000, NULL,
+                wam_notify_done, (gpointer)"launch");
             g_object_unref(conn);
         }
         if (err) g_error_free(err);
@@ -1054,7 +1075,8 @@ ZylInstallResult zyl_appstore_uninstall(ZylAppStore *store,
             g_dbus_connection_call(conn, "org.zylos.WebAppManager",
                 "/org/zylos/WebAppManager", "org.zylos.WebAppManager",
                 "Close", g_variant_new("(s)", app_id),
-                NULL, G_DBUS_CALL_FLAGS_NONE, 3000, NULL, NULL, NULL);
+                NULL, G_DBUS_CALL_FLAGS_NONE, 3000, NULL,
+                wam_notify_done, (gpointer)"close");
             g_object_unref(conn);
         }
         if (err) g_error_free(err);

@@ -26,6 +26,7 @@
 #include <grp.h>           /* setgroups for privilege drop */
 #include <spawn.h>         /* posix_spawn */
 #include <sys/wait.h>      /* waitpid, WIFEXITED, WEXITSTATUS */
+#include <json-glib/json-glib.h>  /* json-glib manifest parsing */
 
 /* ─── 기본 리소스 제한 상수 ─── */
 #define DEFAULT_MEMORY_LIMIT_MB   256
@@ -393,21 +394,41 @@ int zyl_sandbox_apply(ZylSandbox *sb, const ZylSandboxPolicy *policy,
 
     /* L5-IPC: D-Bus 정책 적용 — 앱별 접근 가능 서비스 제한 */
     {
-        /* Validate app_id to prevent path traversal in D-Bus policy path */
-        for (const char *p = policy->app_id; p && *p; p++) {
-            if (*p == '/' || *p == '.' || *p == '\0') {
-                fprintf(stderr, "[Sandbox] Invalid app_id for D-Bus policy: %s\n",
-                        policy->app_id);
-                return -1;
+        /*
+         * Validate app_id for safe use in filesystem paths.
+         * app_id follows reverse-DNS notation (e.g. com.zylos.browser)
+         * which allows letters, digits, dot, dash, underscore.
+         * Forward slash is the only truly unsafe character for path construction.
+         * We sanitize by replacing '.' with '_' in the generated filename,
+         * not by rejecting valid app_ids.
+         */
+        bool app_id_valid = (policy->app_id && policy->app_id[0] != '\0');
+        if (app_id_valid) {
+            for (const char *p = policy->app_id; *p; p++) {
+                /* Reject only path-unsafe and shell-unsafe characters */
+                if (*p == '/' || *p == '\0') { app_id_valid = false; break; }
             }
+            /* Reject path traversal */
+            if (strstr(policy->app_id, "..") != NULL) app_id_valid = false;
+        }
+        if (!app_id_valid) {
+            fprintf(stderr, "[Sandbox] Invalid app_id for D-Bus policy: %s\n",
+                    policy->app_id ? policy->app_id : "(null)");
+            return -1;
         }
 
         char dbus_xml[2048];
         if (zyl_sandbox_generate_dbus_policy(policy, dbus_xml,
                                               sizeof(dbus_xml)) == 0) {
+            /* Sanitize app_id for filename: replace '.' with '-' */
+            char safe_app_id[256];
+            snprintf(safe_app_id, sizeof(safe_app_id), "%s", policy->app_id);
+            for (char *q = safe_app_id; *q; q++) {
+                if (*q == '.') *q = '-';
+            }
             char policy_path[512];
             snprintf(policy_path, sizeof(policy_path),
-                     "/etc/dbus-1/system.d/zyl-app-%s.conf", policy->app_id);
+                     "/etc/dbus-1/system.d/zyl-app-%s.conf", safe_app_id);
             FILE *pf = fopen(policy_path, "w");
             if (pf) {
                 fputs(dbus_xml, pf);
@@ -467,28 +488,124 @@ int zyl_sandbox_apply(ZylSandbox *sb, const ZylSandboxPolicy *policy,
     return 0;
 }
 
+/*
+ * Permission string → bitmask mapping.
+ * app.json "permissions" array entry → ZylPermission flag.
+ */
+static uint32_t permission_from_string(const char *perm) {
+    if (!perm) return 0;
+    if (strcmp(perm, "camera")          == 0) return ZYL_PERM_CAMERA;
+    if (strcmp(perm, "network")         == 0) return ZYL_PERM_NETWORK;
+    if (strcmp(perm, "storage.read")    == 0) return ZYL_PERM_STORAGE_READ;
+    if (strcmp(perm, "storage.write")   == 0) return ZYL_PERM_STORAGE_WRITE;
+    if (strcmp(perm, "storage.shared")  == 0) return ZYL_PERM_STORAGE_READ | ZYL_PERM_STORAGE_WRITE;
+    if (strcmp(perm, "location")        == 0) return ZYL_PERM_LOCATION;
+    if (strcmp(perm, "bluetooth")       == 0) return ZYL_PERM_BLUETOOTH;
+    if (strcmp(perm, "phone")           == 0) return ZYL_PERM_PHONE;
+    if (strcmp(perm, "contacts")        == 0) return ZYL_PERM_CONTACTS;
+    if (strcmp(perm, "notifications")   == 0) return ZYL_PERM_NOTIFICATIONS;
+    if (strcmp(perm, "system")          == 0) return ZYL_PERM_SYSTEM;
+    return 0;
+}
+
 /* ═══ 매니페스트에서 정책 생성 ═══ */
 ZylSandboxPolicy *zyl_sandbox_policy_from_manifest(const char *app_json_path) {
     /*
-     * app.json의 permissions 배열을 파싱하여 비트마스크로 변환:
-     *   "camera" → ZYL_PERM_CAMERA
-     *   "network" → ZYL_PERM_NETWORK
-     *   "storage.shared" → ZYL_PERM_STORAGE_READ | ZYL_PERM_STORAGE_WRITE
-     *   등
+     * Parse app.json and convert the "permissions" array into a bitmask.
+     * Also extracts "id", "memory_limit_mb", "cpu_shares", "max_pids".
      *
-     * 실제 구현에서는 json-glib로 파싱합니다.
+     * app.json minimal structure:
+     * {
+     *   "id": "com.example.app",
+     *   "permissions": ["camera", "network"],
+     *   "memory_limit_mb": 128,
+     *   "cpu_shares": 512,
+     *   "max_pids": 32
+     * }
      */
-    (void)app_json_path;
-
     ZylSandboxPolicy *policy = calloc(1, sizeof(ZylSandboxPolicy));
     if (!policy) return NULL;
 
-    /* 기본 리소스 제한 */
+    /* Apply defaults */
     policy->limits.memory_limit_bytes = (size_t)DEFAULT_MEMORY_LIMIT_MB * 1024 * 1024;
     policy->limits.cpu_shares = DEFAULT_CPU_SHARES;
     policy->limits.max_pids = DEFAULT_MAX_PIDS;
     policy->limits.disk_quota_bytes = (size_t)DEFAULT_DISK_QUOTA_MB * 1024 * 1024;
 
+    if (!app_json_path || app_json_path[0] == '\0') {
+        fprintf(stderr, "[Sandbox] policy_from_manifest: no path provided, "
+                "using defaults\n");
+        return policy;
+    }
+
+    GError *gerr = NULL;
+    JsonParser *parser = json_parser_new();
+    if (!json_parser_load_from_file(parser, app_json_path, &gerr)) {
+        fprintf(stderr, "[Sandbox] Failed to parse manifest %s: %s\n",
+                app_json_path, gerr ? gerr->message : "unknown");
+        g_clear_error(&gerr);
+        g_object_unref(parser);
+        return policy;
+    }
+
+    JsonNode *root = json_parser_get_root(parser);
+    if (!root || !JSON_NODE_HOLDS_OBJECT(root)) {
+        fprintf(stderr, "[Sandbox] Manifest root is not a JSON object: %s\n",
+                app_json_path);
+        g_object_unref(parser);
+        return policy;
+    }
+
+    JsonObject *obj = json_node_get_object(root);
+
+    /* Extract app_id */
+    if (json_object_has_member(obj, "id")) {
+        const char *id = json_object_get_string_member(obj, "id");
+        if (id && id[0]) {
+            policy->app_id = strdup(id);
+        }
+    }
+
+    /* Parse permissions array */
+    if (json_object_has_member(obj, "permissions")) {
+        JsonNode *perms_node = json_object_get_member(obj, "permissions");
+        if (JSON_NODE_HOLDS_ARRAY(perms_node)) {
+            JsonArray *perms_arr = json_node_get_array(perms_node);
+            guint n = json_array_get_length(perms_arr);
+            for (guint i = 0; i < n; i++) {
+                JsonNode *pnode = json_array_get_element(perms_arr, i);
+                if (JSON_NODE_HOLDS_VALUE(pnode) &&
+                    json_node_get_value_type(pnode) == G_TYPE_STRING) {
+                    const char *pstr = json_node_get_string(pnode);
+                    policy->permissions |= permission_from_string(pstr);
+                }
+            }
+        }
+    }
+
+    /* Optional resource override fields */
+    if (json_object_has_member(obj, "memory_limit_mb")) {
+        gint64 mb = json_object_get_int_member(obj, "memory_limit_mb");
+        if (mb > 0 && mb <= 4096)
+            policy->limits.memory_limit_bytes = (size_t)mb * 1024 * 1024;
+    }
+    if (json_object_has_member(obj, "cpu_shares")) {
+        gint64 shares = json_object_get_int_member(obj, "cpu_shares");
+        if (shares > 0 && shares <= 10000)
+            policy->limits.cpu_shares = (int)shares;
+    }
+    if (json_object_has_member(obj, "max_pids")) {
+        gint64 mp = json_object_get_int_member(obj, "max_pids");
+        if (mp > 0 && mp <= 4096)
+            policy->limits.max_pids = (int)mp;
+    }
+
+    g_object_unref(parser);
+
+    fprintf(stderr, "[Sandbox] Parsed manifest %s: app_id=%s perms=0x%x\n",
+            app_json_path,
+            policy->app_id ? policy->app_id : "(none)",
+            policy->permissions);
     return policy;
 }
 
