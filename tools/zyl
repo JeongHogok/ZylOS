@@ -1,0 +1,312 @@
+#!/bin/bash
+# ──────────────────────────────────────────────────────────
+# [Clean Architecture] Infrastructure Layer - Developer CLI
+#
+# 역할: Zyl OS SDK CLI — 앱 생성, 빌드, 패키징, 서명, 실행
+# 수행범위: 개발자 워크플로우 전체 (init → dev → package → sign → publish)
+# 의존방향: bash, python3, openssl, zip
+# SOLID: SRP — 개발자 도구 CLI만 담당
+#
+# 사용법:
+#   zyl init <app-name>       — 새 앱 프로젝트 생성
+#   zyl dev                    — 에뮬레이터에서 개발 모드 실행
+#   zyl package                — .ospkg 패키지 생성 (서명 없음)
+#   zyl sign <key> <cert>      — 패키지 서명
+#   zyl validate               — app.json + 코드 검증
+#   zyl keygen <name>          — 개발자 키 쌍 생성
+# ──────────────────────────────────────────────────────────
+set -euo pipefail
+
+VERSION="0.1.0"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+cmd_init() {
+    local name="${1:-}"
+    if [ -z "$name" ]; then
+        echo "Usage: zyl init <app-name>"
+        echo "  Creates a new Zyl OS app project with boilerplate files."
+        exit 1
+    fi
+
+    local app_id="com.zylos.${name}"
+    local dir="$name"
+
+    if [ -d "$dir" ]; then
+        echo "✗ Directory already exists: $dir"
+        exit 1
+    fi
+
+    echo "Creating Zyl OS app: $app_id"
+
+    mkdir -p "$dir/js" "$dir/css"
+
+    # app.json
+    cat > "$dir/app.json" <<EOF
+{
+  "id": "$app_id",
+  "name": "$name",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "description": "A Zyl OS app",
+  "permissions": [],
+  "iconSvg": "<svg viewBox='0 0 24 24'><circle cx='12' cy='12' r='10' fill='#4a90d9'/></svg>"
+}
+EOF
+
+    # index.html
+    cat > "$dir/index.html" <<EOF
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>$name</title>
+  <link rel="stylesheet" href="../shared/runtime.css">
+  <link rel="stylesheet" href="css/$name.css">
+  <script src="../shared/i18n.js"></script>
+  <script src="../shared/bridge.js"></script>
+  <script src="../shared/touch-scroll.js"></script>
+</head>
+<body>
+  <header class="app-header">
+    <h1 data-i18n="$name.title">$name</h1>
+  </header>
+  <main id="content" role="main">
+    <p data-i18n="$name.welcome">Welcome to $name</p>
+  </main>
+  <script src="i18n.js"></script>
+  <script src="js/$name.js"></script>
+</body>
+</html>
+EOF
+
+    # CSS
+    cat > "$dir/css/$name.css" <<EOF
+/* [Clean Architecture] Presentation Layer - Stylesheet
+ * 역할: $name 앱 스타일
+ * 수행범위: 레이아웃, 색상, 타이포그래피
+ * SOLID: SRP — 이 앱의 스타일만 담당 */
+
+.app-header {
+  padding: 16px 20px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+#content {
+  padding: 20px;
+}
+EOF
+
+    # JS
+    cat > "$dir/js/$name.js" <<EOF
+// [Clean Architecture] Presentation Layer - Logic
+// 역할: $name 앱 로직
+// 수행범위: UI 이벤트 처리, 서비스 호출
+// 의존방향: ZylBridge (shared)
+// SOLID: SRP — 이 앱의 로직만 담당
+
+(function () {
+  'use strict';
+
+  function init() {
+    // App initialization
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+EOF
+
+    # i18n
+    cat > "$dir/i18n.js" <<EOF
+// [Clean Architecture] Shared Layer - i18n Data
+// 역할: $name 앱 다국어 번역 데이터
+// SOLID: SRP — 이 앱의 번역만 담당
+
+(function () {
+  'use strict';
+  if (typeof zylI18n === 'undefined') return;
+
+  zylI18n.addTranslations('ko', {
+    '$name.title': '$name',
+    '$name.welcome': '$name에 오신 것을 환영합니다'
+  });
+  zylI18n.addTranslations('en', {
+    '$name.title': '$name',
+    '$name.welcome': 'Welcome to $name'
+  });
+  zylI18n.addTranslations('ja', {
+    '$name.title': '$name',
+    '$name.welcome': '$nameへようこそ'
+  });
+  zylI18n.addTranslations('zh', {
+    '$name.title': '$name',
+    '$name.welcome': '欢迎使用$name'
+  });
+  zylI18n.addTranslations('es', {
+    '$name.title': '$name',
+    '$name.welcome': 'Bienvenido a $name'
+  });
+})();
+EOF
+
+    echo "✓ Created app project: $dir/"
+    echo ""
+    echo "Files:"
+    find "$dir" -type f | sed 's/^/  /'
+    echo ""
+    echo "Next steps:"
+    echo "  1. Edit $dir/app.json (permissions, icon)"
+    echo "  2. Develop in $dir/js/$name.js"
+    echo "  3. Run: zyl validate (from $dir/)"
+    echo "  4. Package: zyl package"
+}
+
+cmd_validate() {
+    if [ ! -f "app.json" ]; then
+        echo "✗ app.json not found. Run from app directory."
+        exit 1
+    fi
+
+    echo "═══ Validating Zyl OS App ═══"
+    local errors=0
+
+    # app.json structure
+    echo "▸ app.json..."
+    python3 -c "
+import json, sys
+m = json.load(open('app.json'))
+required = ['id', 'name', 'version', 'entry']
+for f in required:
+    if f not in m or not m[f]:
+        print(f'  ✗ Missing: {f}')
+        sys.exit(1)
+# Version semver check
+import re
+if not re.match(r'^\d+\.\d+\.\d+$', m['version']):
+    print(f'  ✗ Invalid version: {m[\"version\"]} (expected semver)')
+    sys.exit(1)
+# Entry file exists
+if not __import__('os').path.exists(m['entry']):
+    print(f'  ✗ Entry file not found: {m[\"entry\"]}')
+    sys.exit(1)
+print(f'  ✓ {m[\"id\"]} v{m[\"version\"]}')
+" || errors=$((errors + 1))
+
+    # ES5 check
+    echo "▸ ES5 compliance..."
+    local es6_violations=0
+    for f in $(find . -name '*.js' -not -path './node_modules/*'); do
+        if grep -qP '\bconst\b|\blet\b|=>' "$f" 2>/dev/null; then
+            echo "  ✗ ES6+ syntax in $f"
+            es6_violations=$((es6_violations + 1))
+        fi
+    done
+    if [ $es6_violations -eq 0 ]; then
+        echo "  ✓ All JS files are ES5 compatible"
+    else
+        errors=$((errors + es6_violations))
+    fi
+
+    # i18n check
+    echo "▸ i18n completeness..."
+    if [ -f "i18n.js" ]; then
+        for lang in ko en ja zh es; do
+            if ! grep -q "'$lang'" "i18n.js"; then
+                echo "  ✗ Missing language: $lang"
+                errors=$((errors + 1))
+            fi
+        done
+        echo "  ✓ i18n.js has translations"
+    else
+        echo "  ⚠ No i18n.js found"
+    fi
+
+    # HTML check
+    echo "▸ HTML structure..."
+    local entry=$(python3 -c "import json; print(json.load(open('app.json'))['entry'])" 2>/dev/null || echo "index.html")
+    if [ -f "$entry" ]; then
+        if head -1 "$entry" | grep -qi "doctype"; then
+            echo "  ✓ DOCTYPE present"
+        else
+            echo "  ✗ Missing DOCTYPE in $entry"
+            errors=$((errors + 1))
+        fi
+    fi
+
+    echo ""
+    if [ $errors -eq 0 ]; then
+        echo "✓ Validation passed"
+    else
+        echo "✗ $errors error(s) found"
+        exit 1
+    fi
+}
+
+cmd_package() {
+    if [ ! -f "app.json" ]; then
+        echo "✗ app.json not found. Run from app directory."
+        exit 1
+    fi
+
+    local app_id=$(python3 -c "import json; print(json.load(open('app.json'))['id'])")
+    local version=$(python3 -c "import json; print(json.load(open('app.json'))['version'])")
+    local output="${app_id}_${version}.ospkg"
+
+    echo "Packaging: $app_id v$version → $output"
+    zip -r -q "$output" . -x '*.ospkg' -x '.git/*' -x 'node_modules/*'
+    echo "✓ Package created: $output ($(du -h "$output" | cut -f1))"
+    echo ""
+    echo "To sign: zyl sign <key.pem> <cert.pem>"
+}
+
+cmd_sign() {
+    local key="${1:-}"
+    local cert="${2:-}"
+    if [ -z "$key" ] || [ -z "$cert" ]; then
+        echo "Usage: zyl sign <developer-key.pem> <developer-cert.pem>"
+        exit 1
+    fi
+    "$SCRIPT_DIR/sign-ospkg.sh" "." "$key" "$cert"
+}
+
+cmd_keygen() {
+    local name="${1:-developer}"
+    echo "Generating RSA-2048 developer key pair: $name"
+
+    openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \
+        -out "${name}.key"
+    chmod 600 "${name}.key"
+
+    openssl req -new -x509 -key "${name}.key" -out "${name}.crt" \
+        -days 1095 -subj "/CN=$name/O=ZylOS Developer"
+
+    echo "✓ Private key: ${name}.key (KEEP SECRET)"
+    echo "✓ Certificate: ${name}.crt (submit to app store)"
+}
+
+cmd_help() {
+    echo "Zyl OS Developer CLI v$VERSION"
+    echo ""
+    echo "Commands:"
+    echo "  zyl init <name>          Create new app project"
+    echo "  zyl validate             Validate current app"
+    echo "  zyl package              Create .ospkg package"
+    echo "  zyl sign <key> <cert>    Sign package"
+    echo "  zyl keygen [name]        Generate developer keys"
+    echo "  zyl help                 Show this help"
+}
+
+# ─── Dispatch ───
+case "${1:-help}" in
+    init)     shift; cmd_init "$@" ;;
+    validate) cmd_validate ;;
+    package)  cmd_package ;;
+    sign)     shift; cmd_sign "$@" ;;
+    keygen)   shift; cmd_keygen "$@" ;;
+    help|*)   cmd_help ;;
+esac
