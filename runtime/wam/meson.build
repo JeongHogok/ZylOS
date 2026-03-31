@@ -34,6 +34,7 @@ wam_sources = files(
   'src/bridge/bridge.c',
   'src/dbus/dbus_service.c',
   'src/zygote.c',
+  'src/oom/oom.c',
 )
 
 executable('zyl-wam',

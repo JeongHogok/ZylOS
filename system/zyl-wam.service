@@ -22,8 +22,11 @@ PrivateTmp=true
 PrivateDevices=false
 ProtectKernelTunables=true
 ProtectKernelModules=true
-ProtectControlGroups=true
+# ProtectControlGroups=false — WAM OOM killer가 cgroup v2로 앱별 메모리 제한 설정
+ProtectControlGroups=false
 RestrictNamespaces=true
+# OOM killer cgroup 경로 접근 허용
+ReadWritePaths=/sys/fs/cgroup/zylos.apps
 
 [Install]
 WantedBy=graphical.target

@@ -139,17 +139,31 @@ pid_t zyl_zygote_launch(ZylZygote *zyg, const char *app_id,
         /* 풀에서 꺼내기: 파이프로 launch 명령 전송 */
         char cmd[1024];
         int n = snprintf(cmd, sizeof(cmd), "%s\n%s\n", app_id, app_url);
-        write(slot->cmd_fd, cmd, (size_t)n);
+        ssize_t written = write(slot->cmd_fd, cmd, (size_t)n);
         close(slot->cmd_fd);
         slot->in_use = true;
-        result = slot->pid;
-        zyg->available--;
 
-        fprintf(stderr, "[Zygote] Launched %s via pooled process %d "
-                "(pool: %d remaining)\n", app_id, result, zyg->available);
+        if (written < 0 || written != (ssize_t)n) {
+            fprintf(stderr, "[Zygote] write() failed for %s: %s\n",
+                    app_id, written < 0 ? strerror(errno) : "partial write");
+            /* 자식은 이미 파이프 닫힘으로 종료될 것 — 풀 보충으로 복구 */
+            slot->pid = -1;
+            zyg->available--;
+            result = -1;
+        } else {
+            result = slot->pid;
+            zyg->available--;
+            fprintf(stderr, "[Zygote] Launched %s via pooled process %d "
+                    "(pool: %d remaining)\n", app_id, result, zyg->available);
+        }
     } else {
         /* 풀 비었음 — 직접 fork (콜드 스타트) */
         result = fork();
+        if (result < 0) {
+            fprintf(stderr, "[Zygote] Cold-start fork() failed for %s: %s\n",
+                    app_id, strerror(errno));
+            return -1;
+        }
         if (result == 0) {
             fprintf(stderr, "[Zygote] Cold-start fork for %s\n", app_id);
             _exit(0);

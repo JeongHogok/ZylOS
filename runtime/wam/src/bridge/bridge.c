@@ -130,16 +130,23 @@ gboolean zyl_bridge_inject(const char      *bridge_js_path,
         return FALSE;
     }
     gchar *s2, *s3;
+    gchar **parts;
 
-    s2 = g_strjoinv(manifest->id,      g_strsplit(s1, "{{APP_ID}}", -1));
+    parts = g_strsplit(s1, "{{APP_ID}}", -1);
+    s2 = g_strjoinv(manifest->id, parts);
+    g_strfreev(parts);
     g_free(s1);
     if (!s2) { g_free(template); return FALSE; }
 
-    s3 = g_strjoinv(manifest->name,    g_strsplit(s2, "{{APP_NAME}}", -1));
+    parts = g_strsplit(s2, "{{APP_NAME}}", -1);
+    s3 = g_strjoinv(manifest->name, parts);
+    g_strfreev(parts);
     g_free(s2);
     if (!s3) { g_free(template); return FALSE; }
 
-    s1 = g_strjoinv(manifest->version, g_strsplit(s3, "{{APP_VERSION}}", -1));
+    parts = g_strsplit(s3, "{{APP_VERSION}}", -1);
+    s1 = g_strjoinv(manifest->version, parts);
+    g_strfreev(parts);
     g_free(s3);
     if (!s1) { g_free(template); return FALSE; }
 
