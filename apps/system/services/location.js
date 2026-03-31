@@ -24,7 +24,7 @@
             try { cb(pos); } catch (e) { /* listener error — ignore */ }
           });
         }
-      });
+      }).catch(function () { /* poll error — retry next interval */ });
     }
 
     return {

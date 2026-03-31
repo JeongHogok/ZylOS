@@ -167,53 +167,73 @@ static char *read_file_contents(const char *path, size_t *out_len) {
     return buf;
 }
 
-/* ─── 유틸리티: 간이 JSON 문자열 값 추출 ─── */
-static char *json_get_string(const char *json, const char *key) {
-    char pattern[256];
-    snprintf(pattern, sizeof(pattern), "\"%s\"", key);
+/* ─── 유틸리티: JSON 값 추출 (json-glib) ─── */
+#include <json-glib/json-glib.h>
 
-    const char *pos = strstr(json, pattern);
-    if (!pos) return NULL;
-    pos += strlen(pattern);
-    while (*pos == ' ' || *pos == '\t' || *pos == ':') pos++;
-
-    if (*pos != '"') return NULL;
-    pos++;
-
-    const char *end = pos;
-    while (*end && *end != '"') {
-        if (*end == '\\') end++;
-        if (*end) end++;
+static char *json_get_string(const char *json_str, const char *key) {
+    if (!json_str || !key) return NULL;
+    JsonParser *parser = json_parser_new();
+    if (!json_parser_load_from_data(parser, json_str, -1, NULL)) {
+        g_object_unref(parser);
+        return NULL;
     }
-
-    size_t len = (size_t)(end - pos);
-    char *val = malloc(len + 1);
-    if (!val) return NULL;
-    memcpy(val, pos, len);
-    val[len] = '\0';
-    return val;
+    JsonNode *root = json_parser_get_root(parser);
+    if (!root || !JSON_NODE_HOLDS_OBJECT(root)) {
+        g_object_unref(parser);
+        return NULL;
+    }
+    JsonObject *obj = json_node_get_object(root);
+    char *result = NULL;
+    if (json_object_has_member(obj, key)) {
+        const char *val = json_object_get_string_member(obj, key);
+        if (val) result = strdup(val);
+    }
+    g_object_unref(parser);
+    return result;
 }
 
-/* ─── 유틸리티: JSON boolean 값 추출 ─── */
-static bool json_get_bool(const char *json, const char *key) {
-    char pattern[256];
-    snprintf(pattern, sizeof(pattern), "\"%s\"", key);
-    const char *pos = strstr(json, pattern);
-    if (!pos) return false;
-    pos += strlen(pattern);
-    while (*pos == ' ' || *pos == '\t' || *pos == ':') pos++;
-    return strncmp(pos, "true", 4) == 0;
+/* ─── 유틸리티: JSON boolean 값 추출 (json-glib) ─── */
+static bool json_get_bool(const char *json_str, const char *key) {
+    if (!json_str || !key) return false;
+    JsonParser *parser = json_parser_new();
+    if (!json_parser_load_from_data(parser, json_str, -1, NULL)) {
+        g_object_unref(parser);
+        return false;
+    }
+    JsonNode *root = json_parser_get_root(parser);
+    if (!root || !JSON_NODE_HOLDS_OBJECT(root)) {
+        g_object_unref(parser);
+        return false;
+    }
+    JsonObject *obj = json_node_get_object(root);
+    bool result = false;
+    if (json_object_has_member(obj, key)) {
+        result = json_object_get_boolean_member(obj, key);
+    }
+    g_object_unref(parser);
+    return result;
 }
 
-/* ─── 유틸리티: JSON 정수 값 추출 ─── */
-static long json_get_long(const char *json, const char *key) {
-    char pattern[256];
-    snprintf(pattern, sizeof(pattern), "\"%s\"", key);
-    const char *pos = strstr(json, pattern);
-    if (!pos) return -1;
-    pos += strlen(pattern);
-    while (*pos == ' ' || *pos == '\t' || *pos == ':') pos++;
-    return strtol(pos, NULL, 10);
+/* ─── 유틸리티: JSON 정수 값 추출 (json-glib) ─── */
+static long json_get_long(const char *json_str, const char *key) {
+    if (!json_str || !key) return -1;
+    JsonParser *parser = json_parser_new();
+    if (!json_parser_load_from_data(parser, json_str, -1, NULL)) {
+        g_object_unref(parser);
+        return -1;
+    }
+    JsonNode *root = json_parser_get_root(parser);
+    if (!root || !JSON_NODE_HOLDS_OBJECT(root)) {
+        g_object_unref(parser);
+        return -1;
+    }
+    JsonObject *obj = json_node_get_object(root);
+    long result = -1;
+    if (json_object_has_member(obj, key)) {
+        result = (long)json_object_get_int_member(obj, key);
+    }
+    g_object_unref(parser);
+    return result;
 }
 
 /* ─── 유틸리티: 버전 문자열 검증 (숫자와 점만 허용) ─── */

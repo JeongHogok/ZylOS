@@ -21,7 +21,7 @@
       return invoke('fs_read_file', { path: path }).then(function (raw) {
         if (!raw) return [];
         try { return JSON.parse(raw); } catch (e) { return []; }
-      });
+      }).catch(function () { return []; });
     }
 
     function writeJson(path, data) {
@@ -40,7 +40,7 @@
         return readJson(BOOKMARKS_PATH).then(function (list) {
           list.push({ url: url, title: title || url, createdAt: Date.now() });
           return writeJson(BOOKMARKS_PATH, list);
-        });
+        }).catch(function () { return false; });
       },
 
       removeBookmark: function (params) {
@@ -49,7 +49,7 @@
         return readJson(BOOKMARKS_PATH).then(function (list) {
           var filtered = list.filter(function (b) { return b.url !== url; });
           return writeJson(BOOKMARKS_PATH, filtered);
-        });
+        }).catch(function () { return false; });
       },
 
       getQuickLinks: function () {
@@ -63,7 +63,7 @@
         return readJson(QUICKLINKS_PATH).then(function (list) {
           list.push({ url: url, title: title || url, createdAt: Date.now() });
           return writeJson(QUICKLINKS_PATH, list);
-        });
+        }).catch(function () { return false; });
       },
 
       removeQuickLink: function (params) {
@@ -72,7 +72,7 @@
         return readJson(QUICKLINKS_PATH).then(function (list) {
           var filtered = list.filter(function (q) { return q.url !== url; });
           return writeJson(QUICKLINKS_PATH, filtered);
-        });
+        }).catch(function () { return false; });
       }
     };
   };

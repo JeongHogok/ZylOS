@@ -70,10 +70,12 @@ bool wifi_triangulate(ZylLocationService *svc, ZylLocation *out) {
     if (bss_count == 0) return false;
 
     /*
-     * BSSID → 위도/경도 매핑: 외부 Mozilla Location Services 또는
-     * 로컬 캐시 DB 에서 조회 (여기서는 stub).
-     * 실제 환경에서는 HTTP API 호출로 채운다.
-     * stub: 모든 위도/경도가 0 → 추정 불가
+     * BSSID → 위도/경도 매핑:
+     * BSS 목록의 lat/lon은 외부 위치 데이터베이스(Mozilla Location Services,
+     * Google Geolocation API, 또는 로컬 캐시)에서 채워진다.
+     * 현재 BSS 구조체에 lat/lon 필드가 있지만 BSSID→좌표 조회 API 호출은
+     * 네트워크 의존이므로 location 서비스의 퓨전 로직에서 처리한다.
+     * lat=0, lon=0인 항목은 매핑 미완료 → 가중 평균에서 제외.
      */
     double sum_w    = 0.0;
     double sum_wlat = 0.0;

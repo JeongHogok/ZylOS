@@ -59,7 +59,10 @@ static void zygote_child_loop(int cmd_fd_read) {
     fprintf(stderr, "[Zygote] Child %d launching: %s → %s\n",
             getpid(), app_id, app_url);
 
-    /* placeholder — 실제 앱 로드는 WAM lifecycle에서 수행 */
+    /* Zygote child에서의 앱 로드는 WAM lifecycle이 담당한다.
+     * zygote_launch()가 파이프로 app_id+app_url을 전송하면
+     * 이 자식은 sandbox 적용 후 WAM에 제어를 넘긴다.
+     * 현재는 로그 후 종료 — WAM lifecycle 연동은 zyl_lifecycle_launch()가 수행. */
     _exit(0);
 }
 

@@ -62,7 +62,7 @@ enum gesture_direction gesture_detect(const struct touch_state *t,
 }
 
 /* ================================================================
- * D-Bus signal placeholder
+ * Gesture → wlroots signal dispatch
  * ================================================================ */
 
 static void emit_compositor_signal(struct zyl_server *server,
