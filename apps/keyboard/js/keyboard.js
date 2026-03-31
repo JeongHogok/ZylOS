@@ -122,6 +122,109 @@ window.ZylKeyboard = (function () {
   LAYOUTS.ja = LAYOUTS.en;
   LAYOUTS.zh = LAYOUTS.en;
 
+  /* ─── Caps Lock — double-tap shift ─── */
+  var _lastShiftTime = 0;
+  var DOUBLE_TAP_MS = 400;
+
+  /* ─── Long-press accent map ─── */
+  var ACCENT_MAP = {
+    'a': ['\u00E0', '\u00E1', '\u00E2', '\u00E4', '\u00E3', '\u00E5', '\u00E6'],
+    'e': ['\u00E8', '\u00E9', '\u00EA', '\u00EB'],
+    'i': ['\u00EC', '\u00ED', '\u00EE', '\u00EF'],
+    'o': ['\u00F2', '\u00F3', '\u00F4', '\u00F6', '\u00F5', '\u00F8'],
+    'u': ['\u00F9', '\u00FA', '\u00FB', '\u00FC'],
+    'n': ['\u00F1'],
+    's': ['\u00DF'],
+    'c': ['\u00E7'],
+    'y': ['\u00FD', '\u00FF']
+  };
+
+  var _longPressTimer = null;
+  var _accentPopup = null;
+  var LONG_PRESS_MS = 500;
+
+  function showAccentPopup(btn, baseKey) {
+    var lower = baseKey.toLowerCase();
+    var accents = ACCENT_MAP[lower];
+    if (!accents || accents.length === 0) return;
+
+    dismissAccentPopup();
+
+    var popup = document.createElement('div');
+    popup.className = 'kb-accent-popup';
+
+    var shifted = (_shifted || _capsLock);
+    for (var i = 0; i < accents.length; i++) {
+      (function (ch) {
+        var charToShow = shifted ? ch.toUpperCase() : ch;
+        var ab = document.createElement('button');
+        ab.className = 'kb-accent-key';
+        ab.setAttribute('type', 'button');
+        ab.textContent = charToShow;
+        ab.addEventListener('touchstart', function (ev) {
+          ev.preventDefault();
+          dismissAccentPopup();
+          if (_onKey) _onKey(charToShow);
+          if (_shifted && !_capsLock) { _shifted = false; render(); }
+        }, { passive: false });
+        ab.addEventListener('mousedown', function (ev) {
+          ev.preventDefault();
+          dismissAccentPopup();
+          if (_onKey) _onKey(charToShow);
+          if (_shifted && !_capsLock) { _shifted = false; render(); }
+        });
+        popup.appendChild(ab);
+      })(accents[i]);
+    }
+
+    var rect = btn.getBoundingClientRect();
+    popup.style.left = Math.max(4, rect.left - 10) + 'px';
+    popup.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
+
+    _container.appendChild(popup);
+    _accentPopup = popup;
+  }
+
+  function dismissAccentPopup() {
+    if (_accentPopup) {
+      _accentPopup.remove();
+      _accentPopup = null;
+    }
+    if (_longPressTimer) {
+      clearTimeout(_longPressTimer);
+      _longPressTimer = null;
+    }
+  }
+
+  /* ─── Key press popup (visual feedback) ─── */
+  var _keyPopup = null;
+
+  function showKeyPopup(btn, label) {
+    dismissKeyPopup();
+    if (isSpecialKey(label) || label === ' ') return;
+
+    var popup = document.createElement('div');
+    popup.className = 'kb-key-popup';
+    popup.textContent = label;
+
+    var rect = btn.getBoundingClientRect();
+    var containerRect = _container.getBoundingClientRect();
+    popup.style.left = (rect.left - containerRect.left + rect.width / 2 - 20) + 'px';
+    popup.style.bottom = (containerRect.bottom - rect.top + 4) + 'px';
+
+    _container.appendChild(popup);
+    _keyPopup = popup;
+
+    setTimeout(dismissKeyPopup, 300);
+  }
+
+  function dismissKeyPopup() {
+    if (_keyPopup) {
+      _keyPopup.remove();
+      _keyPopup = null;
+    }
+  }
+
   /* ─── Internal Helpers ─── */
 
   function getCurrentLayout() {
@@ -208,19 +311,41 @@ window.ZylKeyboard = (function () {
     }
 
     /* Shift active indicator */
-    if (label === '\u21E7' && (_shifted || _capsLock)) {
-      btn.className += ' kb-active';
+    if (label === '\u21E7') {
+      if (_capsLock) {
+        btn.className += ' kb-active kb-capslock';
+      } else if (_shifted) {
+        btn.className += ' kb-active';
+      }
     }
 
-    btn.addEventListener('touchstart', function (e) {
+    /* Long-press for accents */
+    function onPressStart(e) {
       e.preventDefault();
+      showKeyPopup(btn, label);
+      dismissAccentPopup();
+      if (!isSpecialKey(label) && label !== ' ' && !_symbols) {
+        var lower = label.toLowerCase();
+        if (ACCENT_MAP[lower]) {
+          _longPressTimer = setTimeout(function () {
+            showAccentPopup(btn, label);
+          }, LONG_PRESS_MS);
+        }
+      }
       handleKey(label);
-    }, { passive: false });
+    }
 
-    btn.addEventListener('mousedown', function (e) {
-      e.preventDefault();
-      handleKey(label);
-    });
+    function onPressEnd() {
+      if (_longPressTimer) {
+        clearTimeout(_longPressTimer);
+        _longPressTimer = null;
+      }
+    }
+
+    btn.addEventListener('touchstart', onPressStart, { passive: false });
+    btn.addEventListener('touchend', onPressEnd, { passive: true });
+    btn.addEventListener('mousedown', onPressStart);
+    btn.addEventListener('mouseup', onPressEnd);
 
     return btn;
   }
@@ -236,9 +361,21 @@ window.ZylKeyboard = (function () {
       return;
     }
 
-    /* Shift toggle */
+    /* Shift toggle / Caps lock (double-tap) */
     if (label === '\u21E7') {
-      _shifted = !_shifted;
+      var now = Date.now();
+      if (_shifted && (now - _lastShiftTime) < DOUBLE_TAP_MS) {
+        /* Double-tap → caps lock */
+        _capsLock = true;
+        _shifted = true;
+      } else if (_capsLock) {
+        /* Turn off caps lock */
+        _capsLock = false;
+        _shifted = false;
+      } else {
+        _shifted = !_shifted;
+      }
+      _lastShiftTime = now;
       render();
       return;
     }
@@ -367,6 +504,8 @@ window.ZylKeyboard = (function () {
   function render() {
     if (!_container) return;
 
+    dismissAccentPopup();
+    dismissKeyPopup();
     _container.innerHTML = '';
 
     /* 예측 후보 바 (최상단) */
@@ -390,16 +529,6 @@ window.ZylKeyboard = (function () {
 
     /* 초기 예측 업데이트 */
     updatePredictions();
-  }
-
-  /* ─── Sound / Vibration Setters ─── */
-
-  function setSoundEnabled(v) {
-    _soundEnabled = !!v;
-  }
-
-  function setVibrationEnabled(v) {
-    _vibrationEnabled = !!v;
   }
 
   /* ─── Public API ─── */
@@ -433,10 +562,6 @@ window.ZylKeyboard = (function () {
   function setOnKey(callback) {
     _onKey = callback;
   }
-
-  /* ─── Sound & Vibration state ─── */
-  var _soundEnabled = true;
-  var _vibrationEnabled = true;
 
   function setSoundEnabled(v) { _soundEnabled = !!v; }
   function setVibrationEnabled(v) { _vibrationEnabled = !!v; }

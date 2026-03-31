@@ -225,12 +225,48 @@
   /* ════════════════════════════════════════════
    *  PIN 검증 + 잠금해제
    * ════════════════════════════════════════════ */
+  var lockoutTimerId = null;
+
+  function startLockoutCountdown() {
+    clearLockoutTimer();
+    disableNumpad(true);
+    updateLockoutDisplay();
+    lockoutTimerId = setInterval(function () {
+      if (Date.now() >= lockoutUntil) {
+        clearLockoutTimer();
+        pinError.classList.remove('show');
+        disableNumpad(false);
+      } else {
+        updateLockoutDisplay();
+      }
+    }, 1000);
+  }
+
+  function clearLockoutTimer() {
+    if (lockoutTimerId) {
+      clearInterval(lockoutTimerId);
+      lockoutTimerId = null;
+    }
+  }
+
+  function updateLockoutDisplay() {
+    var remaining = Math.ceil((lockoutUntil - Date.now()) / 1000);
+    if (remaining < 0) remaining = 0;
+    pinError.textContent = zylI18n.t('lock.try_again', { s: remaining });
+    pinError.classList.add('show');
+  }
+
+  function disableNumpad(disabled) {
+    document.querySelectorAll('.num-btn[data-num]').forEach(function (btn) {
+      btn.disabled = disabled;
+      btn.style.opacity = disabled ? '0.3' : '';
+    });
+  }
+
   function verifyPin() {
     /* Lockout check: 5 failed attempts → 30 second wait */
     if (Date.now() < lockoutUntil) {
-      var remaining = Math.ceil((lockoutUntil - Date.now()) / 1000);
-      pinError.textContent = zylI18n.t('lock.try_again', { s: remaining }) || ('Try again in ' + remaining + 's');
-      pinError.classList.add('show');
+      updateLockoutDisplay();
       enteredPin = '';
       updateDots();
       return;
@@ -238,6 +274,7 @@
 
     if (enteredPin === correctPin) {
       failCount = 0;
+      clearLockoutTimer();
       /* Success: zoom-out + flash effect */
       document.body.classList.add('unlocking');
       unlockFlash.classList.add('flash');
@@ -265,8 +302,9 @@
       if (failCount >= 5) {
         lockoutUntil = Date.now() + 30000;
         failCount = 0;
+        startLockoutCountdown();
       }
-      pinError.textContent = (typeof zylI18n !== 'undefined') ? zylI18n.t('lock.wrong_pin') : 'Wrong PIN';
+      pinError.textContent = zylI18n.t('lock.wrong_pin');
       pinError.classList.add('show');
       var dots = document.getElementById('pin-dots');
       dots.classList.add('shake');

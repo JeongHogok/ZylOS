@@ -21,7 +21,13 @@
     'qs.airplane': '\uBE44\uD589\uAE30',
     'qs.dnd': '\uBC29\uD574\uAE08\uC9C0',
     'qs.location': '\uC704\uCE58',
-    'notif.empty': '\uC54C\uB9BC\uC774 \uC5C6\uC2B5\uB2C8\uB2E4'
+    'notif.empty': '\uC54C\uB9BC\uC774 \uC5C6\uC2B5\uB2C8\uB2E4',
+    'notif.title': '\uC54C\uB9BC',
+    'notif.clear_all': '\uBAA8\uB450 \uC9C0\uC6B0\uAE30',
+    'notif.time_now': '\uBC29\uAE08',
+    'notif.time_min': '{n}\uBD84',
+    'notif.time_hour': '{n}\uC2DC\uAC04',
+    'notif.time_day': '{n}\uC77C'
   });
 
   zylI18n.addTranslations('en', {
@@ -33,7 +39,13 @@
     'qs.airplane': 'Airplane',
     'qs.dnd': 'DND',
     'qs.location': 'Location',
-    'notif.empty': 'No notifications'
+    'notif.empty': 'No notifications',
+    'notif.title': 'Notifications',
+    'notif.clear_all': 'Clear all',
+    'notif.time_now': 'now',
+    'notif.time_min': '{n}m',
+    'notif.time_hour': '{n}h',
+    'notif.time_day': '{n}d'
   });
 
   zylI18n.addTranslations('ja', {
@@ -45,7 +57,13 @@
     'qs.airplane': '\u6A5F\u5185\u30E2\u30FC\u30C9',
     'qs.dnd': '\u304A\u3084\u3059\u307F',
     'qs.location': '\u4F4D\u7F6E',
-    'notif.empty': '\u901A\u77E5\u306F\u3042\u308A\u307E\u305B\u3093'
+    'notif.empty': '\u901A\u77E5\u306F\u3042\u308A\u307E\u305B\u3093',
+    'notif.title': '\u901A\u77E5',
+    'notif.clear_all': '\u3059\u3079\u3066\u524A\u9664',
+    'notif.time_now': '\u4ECA',
+    'notif.time_min': '{n}\u5206',
+    'notif.time_hour': '{n}\u6642\u9593',
+    'notif.time_day': '{n}\u65E5'
   });
 
   zylI18n.addTranslations('zh', {
@@ -57,7 +75,13 @@
     'qs.airplane': '\u98DE\u884C\u6A21\u5F0F',
     'qs.dnd': '\u514D\u6253\u6270',
     'qs.location': '\u4F4D\u7F6E',
-    'notif.empty': '\u6CA1\u6709\u901A\u77E5'
+    'notif.empty': '\u6CA1\u6709\u901A\u77E5',
+    'notif.title': '\u901A\u77E5',
+    'notif.clear_all': '\u5168\u90E8\u6E05\u9664',
+    'notif.time_now': '\u521A\u521A',
+    'notif.time_min': '{n}\u5206\u949F',
+    'notif.time_hour': '{n}\u5C0F\u65F6',
+    'notif.time_day': '{n}\u5929'
   });
 
   zylI18n.addTranslations('es', {
@@ -69,6 +93,12 @@
     'qs.airplane': 'Avi\u00F3n',
     'qs.dnd': 'No molestar',
     'qs.location': 'Ubicaci\u00F3n',
-    'notif.empty': 'Sin notificaciones'
+    'notif.empty': 'Sin notificaciones',
+    'notif.title': 'Notificaciones',
+    'notif.clear_all': 'Borrar todo',
+    'notif.time_now': 'ahora',
+    'notif.time_min': '{n}min',
+    'notif.time_hour': '{n}h',
+    'notif.time_day': '{n}d'
   });
 })();

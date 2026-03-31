@@ -171,6 +171,7 @@
 
     var item = document.createElement('div');
     item.className = 'notif-item';
+    item.setAttribute('role', 'button');
     item.innerHTML =
       '<div class="notif-icon">' + escapeHtml(data.icon || '\uD83D\uDD14') + '</div>' +
       '<div class="notif-content">' +
@@ -178,6 +179,17 @@
         '<div class="notif-body">' + escapeHtml(data.body || '') + '</div>' +
       '</div>' +
       '<div class="notif-time">' + formatTimeAgo(data.timestamp || Date.now()) + '</div>';
+
+    /* Tap notification → launch source app */
+    if (data.appId) {
+      item.style.cursor = 'pointer';
+      item.addEventListener('click', function () {
+        ZylBridge.sendToSystem({
+          type: 'app.launch', appId: data.appId
+        });
+        toggleDrawer();
+      });
+    }
 
     /* Swipe to dismiss */
     var startX = 0;
@@ -204,6 +216,23 @@
     notifList.prepend(item);
   }
 
+  /* ─── Clear All Notifications ─── */
+  function clearAllNotifications() {
+    if (!notifList) return;
+    notifCount = 0;
+    if (notifDot) notifDot.classList.add('hidden');
+    var t = (typeof zylI18n !== 'undefined') ? zylI18n.t : function (k) { return k; };
+    var emptyText = t('notif.empty');
+    notifList.innerHTML = '<div class="notif-empty" data-i18n="notif.empty">' + escapeHtml(emptyText) + '</div>';
+    sendServiceRequest('notification', 'clearAll', {});
+  }
+
+  /* Insert clear-all button above notification list */
+  var clearAllBtn = document.getElementById('notif-clear-all');
+  if (clearAllBtn) {
+    clearAllBtn.addEventListener('click', clearAllNotifications);
+  }
+
   /* Expose for external calls */
   window.addNotification = addNotification;
 
@@ -214,11 +243,12 @@
   }
 
   function formatTimeAgo(ts) {
+    var t = (typeof zylI18n !== 'undefined') ? zylI18n.t : function (k) { return k; };
     var diff = Math.floor((Date.now() - ts) / 1000);
-    if (diff < 60) return 'now';
-    if (diff < 3600) return Math.floor(diff / 60) + 'm';
-    if (diff < 86400) return Math.floor(diff / 3600) + 'h';
-    return Math.floor(diff / 86400) + 'd';
+    if (diff < 60) return t('notif.time_now');
+    if (diff < 3600) return t('notif.time_min', { n: Math.floor(diff / 60) });
+    if (diff < 86400) return t('notif.time_hour', { n: Math.floor(diff / 3600) });
+    return t('notif.time_day', { n: Math.floor(diff / 86400) });
   }
 
   /* ════════════════════════════════════════════
@@ -292,6 +322,29 @@
     if (msg.service === 'power' && msg.method === 'getState' && msg.data) {
       if (batteryPct && msg.data.batteryLevel !== undefined) {
         batteryPct.textContent = msg.data.batteryLevel + '%';
+      }
+    }
+
+    /* Sync initial QS toggle states from settings response */
+    if (msg.service === 'settings' && msg.data) {
+      var d = msg.data;
+      if (d.enabled !== undefined) {
+        /* Determine which category based on request context */
+        if (d.category === 'wifi' || msg.params && msg.params.category === 'wifi') {
+          qsState.wifi = !!d.enabled;
+          if (qsBtns.wifi) qsBtns.wifi.classList.toggle('active', qsState.wifi);
+          var wi = document.getElementById('sb-wifi');
+          if (wi) wi.style.opacity = qsState.wifi ? '0.85' : '0.15';
+        }
+        if (d.category === 'bluetooth' || msg.params && msg.params.category === 'bluetooth') {
+          qsState.bt = !!d.enabled;
+          if (qsBtns.bt) qsBtns.bt.classList.toggle('active', qsState.bt);
+          var bi = document.getElementById('sb-bt');
+          if (bi) bi.style.opacity = qsState.bt ? '0.85' : '0.15';
+        }
+      }
+      if (d.brightness !== undefined) {
+        if (brightnessEl) brightnessEl.value = parseInt(d.brightness, 10) || 80;
       }
     }
   }

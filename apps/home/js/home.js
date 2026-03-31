@@ -204,7 +204,7 @@
           return !isHiddenFromGrid(app.id);
         });
         renderDock();
-        renderAppGrid(getGridApps());
+        renderAppGrid(getSortedGridApps());
       }
 
       /* Settings response — dock + grid order config */
@@ -224,7 +224,7 @@
         dockSettingsLoaded = true;
         if (appListReceived) {
           renderDock();
-          renderAppGrid(getGridApps());
+          renderAppGrid(getSortedGridApps());
         }
       }
 
@@ -234,11 +234,31 @@
         var grad = wallpaperGradients[msg.data.wallpaper];
         if (wpEl && grad) wpEl.style.background = grad;
       }
+
+      /* Initial wallpaper from settings response */
+      if (msg.type === 'service.response' && msg.service === 'settings' && msg.data && msg.data.wallpaper) {
+        var wpInit = document.getElementById('wallpaper');
+        var gradInit = wallpaperGradients[msg.data.wallpaper];
+        if (wpInit && gradInit) wpInit.style.background = gradInit;
+      }
+
+      /* Badge count update from notification service */
+      if (msg.type === 'notification.badgeUpdate' && msg.data) {
+        if (msg.data.appId) {
+          badgeCounts[msg.data.appId] = parseInt(msg.data.count, 10) || 0;
+        }
+        applyBadges();
+      }
     } catch (err) { /* ignore */ }
   });
 
   requestDockSettings();
   requestAppList();
+  /* Request wallpaper setting */
+  ZylBridge.sendToSystem({
+    type: 'service.request', service: 'settings', method: 'get',
+    params: { category: 'display' }
+  });
 
   /* ─── Clock (shared ZylClock) ─── */
   var clockTime = document.getElementById('clock-time');
@@ -318,6 +338,8 @@
       pageSwipe.setTotalPages(totalPages);
       pageSwipe.snapTo(currentPage, false);
     }
+
+    applyBadges();
   }
 
   function updatePageIndicator() {
@@ -355,12 +377,9 @@
       delBtn.addEventListener('click', function (ev) {
         ev.stopPropagation();
         if (isUndeletable(appId)) return;
-        ZylBridge.sendToSystem({
-          type: 'service.request', service: 'appstore',
-          method: 'uninstall', params: { appId: appId }
-        });
-        defaultApps = defaultApps.filter(function (a) { return a.id !== appId; });
-        renderAppGrid(getGridApps());
+        var app = findApp(appId);
+        var appName = app ? zylI18n.t(app.nameKey) : appId;
+        showDeleteConfirm(appId, appName);
       });
       el.appendChild(delBtn);
     });
@@ -379,6 +398,134 @@
     dock.classList.remove('edit-mode');
     pagesTrack.classList.remove('edit-mode');
     pagesTrack.querySelectorAll('.app-delete').forEach(function (el) { el.remove(); });
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     Delete Confirmation Dialog
+     ═══════════════════════════════════════════════════════ */
+  function showDeleteConfirm(appId, appName) {
+    /* Remove existing dialog if any */
+    var existing = document.getElementById('delete-confirm-overlay');
+    if (existing) existing.remove();
+
+    var overlay = document.createElement('div');
+    overlay.id = 'delete-confirm-overlay';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', zylI18n.t('home.delete_title'));
+
+    var dialog = document.createElement('div');
+    dialog.className = 'delete-confirm-dialog';
+
+    var title = document.createElement('div');
+    title.className = 'delete-confirm-title';
+    title.textContent = zylI18n.t('home.delete_title');
+
+    var msg = document.createElement('div');
+    msg.className = 'delete-confirm-msg';
+    msg.textContent = zylI18n.t('home.delete_confirm', { name: appName });
+
+    var btnRow = document.createElement('div');
+    btnRow.className = 'delete-confirm-btns';
+
+    var cancelBtn = document.createElement('button');
+    cancelBtn.className = 'delete-confirm-btn delete-confirm-cancel';
+    cancelBtn.textContent = zylI18n.t('home.delete_no');
+    cancelBtn.addEventListener('click', function () { overlay.remove(); });
+
+    var confirmBtn = document.createElement('button');
+    confirmBtn.className = 'delete-confirm-btn delete-confirm-ok';
+    confirmBtn.textContent = zylI18n.t('home.delete_yes');
+    confirmBtn.addEventListener('click', function () {
+      overlay.remove();
+      ZylBridge.sendToSystem({
+        type: 'service.request', service: 'appstore',
+        method: 'uninstall', params: { appId: appId }
+      });
+      dockApps = dockApps.filter(function (id) { return id !== appId; });
+      defaultApps = defaultApps.filter(function (a) { return a.id !== appId; });
+      saveDockSettings();
+      updateGridOrder();
+      renderDock();
+      renderAppGrid(getGridApps());
+    });
+
+    btnRow.appendChild(cancelBtn);
+    btnRow.appendChild(confirmBtn);
+    dialog.appendChild(title);
+    dialog.appendChild(msg);
+    dialog.appendChild(btnRow);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    /* Close on overlay background tap */
+    overlay.addEventListener('click', function (ev) {
+      if (ev.target === overlay) overlay.remove();
+    });
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     Sort Mode — alphabetical vs custom order
+     ═══════════════════════════════════════════════════════ */
+  var sortMode = 'custom'; /* 'custom' | 'alpha' */
+
+  function getSortedGridApps() {
+    var apps = getGridApps();
+    if (sortMode === 'alpha') {
+      apps.sort(function (a, b) {
+        var na = zylI18n.t(a.nameKey).toLowerCase();
+        var nb = zylI18n.t(b.nameKey).toLowerCase();
+        return na < nb ? -1 : (na > nb ? 1 : 0);
+      });
+    }
+    return apps;
+  }
+
+  /* Sort toggle in search bar */
+  var sortBtn = document.getElementById('sort-toggle');
+  if (sortBtn) {
+    sortBtn.addEventListener('click', function () {
+      sortMode = (sortMode === 'custom') ? 'alpha' : 'custom';
+      sortBtn.textContent = (sortMode === 'alpha')
+        ? zylI18n.t('home.sort_alpha')
+        : zylI18n.t('home.sort_custom');
+      sortBtn.classList.toggle('sort-active', sortMode === 'alpha');
+      renderAppGrid(getSortedGridApps());
+    });
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     Badge Counts — notification badges on app icons
+     ═══════════════════════════════════════════════════════ */
+  var badgeCounts = {}; /* { appId: count } */
+
+  function updateBadge(el, count) {
+    var badge = el.querySelector('.app-badge');
+    if (count > 0) {
+      if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'app-badge';
+        var iconWrap = el.querySelector('.app-icon-wrap') || el.querySelector('.dock-icon');
+        if (iconWrap) iconWrap.appendChild(badge);
+      }
+      badge.textContent = count > 99 ? '99+' : String(count);
+    } else if (badge) {
+      badge.remove();
+    }
+  }
+
+  function applyBadges() {
+    var keys = Object.keys(badgeCounts);
+    for (var i = 0; i < keys.length; i++) {
+      var appId = keys[i];
+      var count = badgeCounts[appId];
+      /* Grid items */
+      var gridEl = pagesTrack.querySelector('.app-item[data-app-id="' + appId + '"]');
+      if (gridEl) updateBadge(gridEl, count);
+      /* Dock items */
+      var dockItem = document.querySelector('#dock .dock-app[data-app="' + appId + '"]');
+      if (dockItem) updateBadge(dockItem, count);
+    }
   }
 
   /* Long press detection — unified for grid and dock */
@@ -727,8 +874,8 @@
   if (searchInput) {
     searchInput.addEventListener('input', function () {
       var query = searchInput.value.toLowerCase().trim();
-      if (!query) { renderAppGrid(getGridApps()); return; }
-      var filtered = getGridApps().filter(function (app) {
+      if (!query) { renderAppGrid(getSortedGridApps()); return; }
+      var filtered = getSortedGridApps().filter(function (app) {
         var name = zylI18n.t(app.nameKey).toLowerCase();
         return name.indexOf(query) !== -1 || app.id.toLowerCase().indexOf(query) !== -1;
       });
@@ -739,12 +886,17 @@
   /* ─── Re-render on locale change ─── */
   zylI18n.onLocaleChange(function () {
     renderDock();
-    renderAppGrid(getGridApps());
+    renderAppGrid(getSortedGridApps());
+    if (sortBtn) {
+      sortBtn.textContent = (sortMode === 'alpha')
+        ? zylI18n.t('home.sort_alpha')
+        : zylI18n.t('home.sort_custom');
+    }
   });
 
   /* ─── Initial loading state ─── */
   if (pagesTrack && defaultApps.length === 0) {
-    pagesTrack.innerHTML = '<div class="app-page"><div style="text-align:center;opacity:0.5;padding:32px;grid-column:1/-1">' + (typeof zylI18n !== 'undefined' ? zylI18n.t('home.loading') : 'Loading...') + '</div></div>';
+    pagesTrack.innerHTML = '<div class="app-page"><div style="text-align:center;opacity:0.5;padding:32px;grid-column:1/-1">' + zylI18n.t('home.loading') + '</div></div>';
   }
 
 })();

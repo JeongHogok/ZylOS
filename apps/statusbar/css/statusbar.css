@@ -211,6 +211,37 @@ body {
   box-shadow: 0 2px 6px rgba(0,0,0,0.3);
 }
 
+/* ─── 알림 헤더 ─── */
+#notif-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding: 0 4px;
+}
+
+.notif-header-title {
+  font-size: 15px;
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+.notif-clear-btn {
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: 8px;
+  transition: background 0.15s;
+}
+
+.notif-clear-btn:active {
+  background: rgba(74, 158, 255, 0.15);
+}
+
 /* ─── 알림 목록 ─── */
 #notification-list {
   display: flex;

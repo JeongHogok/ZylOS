@@ -365,3 +365,106 @@ body {
   border: 2px dashed #4a9eff;
   background: rgba(74, 158, 255, 0.1);
 }
+
+/* ─── Sort toggle button ─── */
+.sort-btn {
+  padding: 8px 14px;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 20px;
+  background: rgba(15,23,42,0.7);
+  color: rgba(255,255,255,0.5);
+  font-size: 12px;
+  font-weight: 400;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+.sort-btn.sort-active {
+  background: rgba(74,158,255,0.2);
+  color: #4a9eff;
+  border-color: rgba(74,158,255,0.3);
+}
+
+/* ─── Badge count ─── */
+.app-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  z-index: 5;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+}
+
+/* ─── Delete confirmation dialog ─── */
+#delete-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 20000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fade-in 0.15s ease;
+}
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+.delete-confirm-dialog {
+  background: rgba(30,30,50,0.95);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-radius: 20px;
+  border: 1px solid rgba(255,255,255,0.08);
+  padding: 24px 28px 20px;
+  width: 280px;
+  text-align: center;
+}
+
+.delete-confirm-title {
+  font-size: 17px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.delete-confirm-msg {
+  font-size: 14px;
+  opacity: 0.7;
+  margin-bottom: 20px;
+  line-height: 1.4;
+}
+
+.delete-confirm-btns {
+  display: flex;
+  gap: 10px;
+}
+
+.delete-confirm-btn {
+  flex: 1;
+  padding: 12px;
+  border: none;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: transform 0.1s, opacity 0.15s;
+}
+.delete-confirm-btn:active { transform: scale(0.96); }
+
+.delete-confirm-cancel {
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.7);
+}
+
+.delete-confirm-ok {
+  background: #ef4444;
+  color: #fff;
+}

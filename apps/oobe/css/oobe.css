@@ -14,6 +14,8 @@ body { font-family: -apple-system, 'Noto Sans KR', sans-serif; background: #0a0a
 #oobe-container { width: 100%; height: 100%; position: relative; }
 .oobe-step { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 40px 24px 80px; opacity: 0; pointer-events: none; transition: opacity 0.4s, transform 0.4s; transform: translateX(40px); }
 .oobe-step.active { opacity: 1; pointer-events: auto; transform: translateX(0); }
+.oobe-step.slide-out-left { opacity: 0; pointer-events: none; transform: translateX(-40px); }
+.oobe-step.slide-out-right { opacity: 0; pointer-events: none; transform: translateX(40px); }
 .oobe-logo { font-size: 48px; font-weight: 100; letter-spacing: 4px; margin-bottom: 8px; }
 h1 { font-size: 28px; font-weight: 300; }
 h2 { font-size: 22px; font-weight: 400; }

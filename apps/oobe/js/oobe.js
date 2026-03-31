@@ -16,14 +16,21 @@
   var steps = ['step-welcome', 'step-language', 'step-wifi', 'step-pin', 'step-terms', 'step-complete'];
   var currentStep = 0;
 
-  /* ─── Navigation ─── */
+  /* ─── Navigation with directional slide animation ─── */
   window.nextStep = function () {
     if (currentStep >= steps.length - 1) return;
     var current = document.getElementById(steps[currentStep]);
     current.classList.remove('active');
+    current.classList.add('slide-out-left');
     currentStep++;
     var next = document.getElementById(steps[currentStep]);
+    next.classList.remove('slide-out-left', 'slide-out-right');
+    next.style.transform = 'translateX(40px)';
     next.classList.add('active');
+    /* Force reflow then clear inline transform to trigger CSS transition */
+    next.offsetHeight;
+    next.style.transform = '';
+    setTimeout(function () { current.classList.remove('slide-out-left'); }, 400);
     updateDots();
   };
 
@@ -31,9 +38,16 @@
     if (currentStep <= 0) return;
     var current = document.getElementById(steps[currentStep]);
     current.classList.remove('active');
+    current.classList.add('slide-out-right');
     currentStep--;
     var prev = document.getElementById(steps[currentStep]);
+    prev.classList.remove('slide-out-left', 'slide-out-right');
+    prev.style.transform = 'translateX(-40px)';
     prev.classList.add('active');
+    /* Force reflow then clear inline transform to trigger CSS transition */
+    prev.offsetHeight;
+    prev.style.transform = '';
+    setTimeout(function () { current.classList.remove('slide-out-right'); }, 400);
     updateDots();
   };
 
