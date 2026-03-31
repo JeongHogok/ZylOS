@@ -49,19 +49,40 @@ static int pw_set_volume(int percent) {
 }
 
 static int pw_get_volume(void) {
-    FILE *fp = popen("wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null",
-                     "r");
-    if (!fp) return 50;
-    char buf[128];
+    int pipefd[2];
+    if (pipe(pipefd) < 0) return 50;
+
+    pid_t pid;
+    posix_spawn_file_actions_t acts;
+    posix_spawn_file_actions_init(&acts);
+    posix_spawn_file_actions_adddup2(&acts, pipefd[1], STDOUT_FILENO);
+    posix_spawn_file_actions_addclose(&acts, pipefd[0]);
+
+    const char *argv[] = { "wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@", NULL };
+    char *envp[] = { "PATH=/usr/bin:/bin", NULL };
+
+    int rc = posix_spawn(&pid, "/usr/bin/wpctl", &acts, NULL,
+                         (char *const *)argv, envp);
+    posix_spawn_file_actions_destroy(&acts);
+    close(pipefd[1]);
+
+    if (rc != 0) { close(pipefd[0]); return 50; }
+
+    char buf[128] = {0};
+    ssize_t n = read(pipefd[0], buf, sizeof(buf) - 1);
+    close(pipefd[0]);
+    waitpid(pid, NULL, 0);
+
     int vol = 50;
-    if (fgets(buf, sizeof(buf), fp)) {
-        /* Output: "Volume: 0.70" */
+    if (n > 0) {
+        buf[n] = '\0';
         float v = 0.0f;
         if (sscanf(buf, "Volume: %f", &v) == 1) {
             vol = (int)(v * 100.0f);
+            if (vol < 0) vol = 0;
+            if (vol > 100) vol = 100;
         }
     }
-    pclose(fp);
     return vol;
 }
 

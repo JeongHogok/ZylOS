@@ -52,33 +52,48 @@ static void iface_remove_instance(ZylAppInterface *self,
     g_hash_table_remove(wam->instances, app_id);
 }
 
+static int iface_count_instances(ZylAppInterface *self) {
+    ZylWam *wam = self->impl_data;
+    return (int)g_hash_table_size(wam->instances);
+}
+
 /* ════════════════════════════════════════════════════════════════
  *  Bridge handler registry is managed by bridge.c (H5).
  *  WAM-specific handlers for app lifecycle are registered below.
  * ════════════════════════════════════════════════════════════════ */
 
-static void wam_handle_app_close(const char     *type,
-                                 gpointer        msg_obj,
-                                 ZylAppManifest *manifest,
-                                 gpointer        user_data) {
-    (void)type;
-    (void)msg_obj;
+static void wam_handle_app_close(const char        *type,
+                                 gpointer           msg_obj,
+                                 ZylAppManifest    *manifest,
+                                 ZylBridgeReplyCtx *reply_ctx,
+                                 gpointer           user_data) {
+    (void)type; (void)msg_obj; (void)reply_ctx;
     ZylWam *wam = user_data;
     if (manifest && manifest->id)
         zyl_lifecycle_close(&wam->iface, manifest->id);
 }
 
-static void wam_handle_app_launch(const char     *type,
-                                  gpointer        msg_obj,
-                                  ZylAppManifest *manifest,
-                                  gpointer        user_data) {
-    (void)type;
-    (void)manifest;
+static void wam_handle_app_launch(const char        *type,
+                                  gpointer           msg_obj,
+                                  ZylAppManifest    *manifest,
+                                  ZylBridgeReplyCtx *reply_ctx,
+                                  gpointer           user_data) {
+    (void)type; (void)manifest;
     ZylWam *wam = user_data;
     JsonObject *obj = msg_obj;
     if (json_object_has_member(obj, "appId")) {
         const char *target = json_object_get_string_member(obj, "appId");
-        zyl_lifecycle_launch(&wam->iface, &wam->engine, target);
+        ZylAppInstance *inst = zyl_lifecycle_launch(&wam->iface, &wam->engine, target);
+        /* Acknowledge launch to JS if a callback was requested */
+        if (reply_ctx && reply_ctx->callback_id >= 0) {
+            zyl_bridge_respond(reply_ctx->webview, reply_ctx->callback_id,
+                               inst ? "{\"ok\":true}" : "{\"error\":true,\"message\":\"launch failed\"}");
+        }
+    } else {
+        /* Missing appId — resolve the promise with an error so it doesn't leak */
+        if (reply_ctx && reply_ctx->callback_id >= 0) {
+            zyl_bridge_reply_error(reply_ctx, "missing appId");
+        }
     }
 }
 
@@ -190,7 +205,9 @@ static void dbus_launch(GVariant *params, GDBusMethodInvocation *inv,
         /* OOM: 앱 등록 + 포그라운드 설정 + 즉시 압박 체크 */
         ZylAppManifest *m = wam->iface.get_manifest(&wam->iface, app_id);
         bool is_sys = m ? m->is_system : false;
-        zyl_oom_on_app_launched(g_oom, app_id, is_sys);
+        /* Pass pid=0: WAM runs WebKitGTK in-process, so there's no child PID.
+         * If zygote integration adds a real child PID, pass it here. */
+        zyl_oom_on_app_launched(g_oom, app_id, is_sys, 0);
         zyl_oom_on_app_foreground(g_oom, app_id);
         zyl_oom_check_pressure(g_oom);
     }
@@ -283,8 +300,8 @@ static void on_activate(GApplication *app, gpointer user_data) {
     zyl_manifest_scan_dir(wam->manifests, WAM_USER_DIR, FALSE);
 
     /* Auto-launch home screen */
-    zyl_lifecycle_launch(&wam->iface, &wam->engine, "com.zylos.home");
-    zyl_oom_on_app_launched(g_oom, "com.zylos.home", true);
+    (void)zyl_lifecycle_launch(&wam->iface, &wam->engine, "com.zylos.home");
+    zyl_oom_on_app_launched(g_oom, "com.zylos.home", true, 0);
     zyl_oom_on_app_foreground(g_oom, "com.zylos.home");
 
     g_message("WAM activated, %d apps registered",
@@ -306,11 +323,12 @@ int main(int argc, char *argv[]) {
                                           g_free, NULL);
 
     /* Wire up the app interface */
-    wam.iface.get_manifest    = iface_get_manifest;
-    wam.iface.get_instance    = iface_get_instance;
-    wam.iface.store_instance  = iface_store_instance;
-    wam.iface.remove_instance = iface_remove_instance;
-    wam.iface.impl_data       = &wam;
+    wam.iface.get_manifest     = iface_get_manifest;
+    wam.iface.get_instance     = iface_get_instance;
+    wam.iface.store_instance   = iface_store_instance;
+    wam.iface.remove_instance  = iface_remove_instance;
+    wam.iface.count_instances  = iface_count_instances;
+    wam.iface.impl_data        = &wam;
 
     /* Wire up the WebKitGTK engine */
     wam.engine.create_webview = webkit_create_webview;

@@ -89,6 +89,11 @@ static void handle_new_output(struct wl_listener *listener, void *data)
     wlr_output_state_finish(&state);
 
     struct zyl_output *output = calloc(1, sizeof(*output));
+    if (!output) {
+        wlr_log(WLR_ERROR, "handle_new_output: OOM — cannot allocate zyl_output");
+        return;
+    }
+    wl_list_init(&output->link);
     output->wlr_output = wlr_output;
     output->server     = server;
 

@@ -18,6 +18,20 @@
 #include <gio/gio.h>
 #include <glib-unix.h>
 
+/* Include captive portal detection (forward declaration only — module in captive_portal.c) */
+typedef enum {
+    ZYL_NETWORK_CONNECTED_STATUS = 0,
+    ZYL_NETWORK_CAPTIVE_PORTAL_STATUS = 1,
+    ZYL_NETWORK_NO_INTERNET_STATUS = 2,
+} ZylNetworkConnStatus;
+
+typedef struct {
+    ZylNetworkConnStatus status;
+    char portal_url[512];
+} ZylCaptiveResult;
+
+extern ZylCaptiveResult zyl_captive_portal_check(void);
+
 #define NM_BUS  "org.freedesktop.NetworkManager"
 #define NM_PATH "/org/freedesktop/NetworkManager"
 
@@ -83,6 +97,9 @@ static const char *wifi_introspection_xml =
     "    <method name='SetEnabled'>"
     "      <arg type='b' name='enabled' direction='in'/>"
     "    </method>"
+    "    <signal name='CaptivePortalDetected'>"
+    "      <arg type='s' name='portal_url'/>"
+    "    </signal>"
     "  </interface>"
     "</node>";
 
@@ -185,19 +202,48 @@ int zyl_wifi_get_networks(ZylWifiService *svc, ZylWifiNetwork **out,
         size_t len = strlen(line);
         if (len > 0 && line[len - 1] == '\n') line[len - 1] = '\0';
 
-        /* Parse: SSID:SIGNAL:SECURITY:ACTIVE:BSSID */
-        char *fields[5] = {NULL};
-        int fi = 0;
-        char *tok = line;
-        for (char *p = line; *p && fi < 5; p++) {
+        /*
+         * Parse nmcli -t output: SSID:SIGNAL:SECURITY:ACTIVE:BSSID
+         * SSID may contain ':' — so we parse from the RIGHT for known fields.
+         * Fields in reverse order from end: BSSID (17 chars + colons),
+         * ACTIVE (yes/no), SECURITY, SIGNAL (integer).
+         * Everything before the 4th-from-right ':' separator is SSID.
+         *
+         * Strategy: find the last 4 unescaped ':' separators.
+         * nmcli uses backslash-escaping for ':' in field values.
+         */
+        const char *p = line + strlen(line);
+        const char *seps[4] = {NULL, NULL, NULL, NULL};
+        int found = 0;
+        while (p > line && found < 4) {
+            p--;
             if (*p == ':') {
-                *p = '\0';
-                fields[fi++] = tok;
-                tok = p + 1;
+                /* Check it's not escaped (nmcli escapes with \) */
+                if (p == line || *(p-1) != '\\') {
+                    seps[3 - found] = p;
+                    found++;
+                }
             }
         }
-        if (fi < 4) continue;
-        fields[fi] = tok;
+        if (found < 4) continue;
+
+        /* Extract fields from right */
+        const char *bssid_start    = seps[3] + 1;
+        const char *active_start   = seps[2] + 1;
+        const char *security_start = seps[1] + 1;
+        const char *signal_start   = seps[0] + 1;
+        size_t      ssid_len       = (size_t)(seps[0] - line);
+        size_t      security_len   = (size_t)(seps[2] - security_start);
+        size_t      active_len     = (size_t)(seps[3] - active_start);
+
+        /* Signal: nmcli outputs 0-100; convert to dBm approximation (-100..-30) */
+        int signal_pct = atoi(signal_start);
+        int signal_dbm = (signal_pct <= 0) ? -100 :
+                         (signal_pct >= 100) ? -30 :
+                         (-100 + signal_pct * 70 / 100);
+
+        /* active/inactive */
+        bool connected = (active_len == 3 && strncmp(active_start, "yes", 3) == 0);
 
         if (n >= cap) {
             cap *= 2;
@@ -206,11 +252,28 @@ int zyl_wifi_get_networks(ZylWifiService *svc, ZylWifiNetwork **out,
             nets = tmp;
         }
 
-        nets[n].ssid = strdup(fields[0] ? fields[0] : "");
-        nets[n].signal = fields[1] ? -(100 - atoi(fields[1])) : -80;
-        nets[n].security = strdup(fields[2] ? fields[2] : "Open");
-        nets[n].connected = (fields[3] && strcmp(fields[3], "yes") == 0);
-        nets[n].bssid = strdup(fields[4] ? fields[4] : "");
+        char ssid_buf[256] = {0};
+        if (ssid_len > 0 && ssid_len < sizeof(ssid_buf)) {
+            memcpy(ssid_buf, line, ssid_len);
+        }
+        /* Unescape nmcli backslash-colon sequences in SSID */
+        for (char *sp = ssid_buf; *sp; sp++) {
+            if (*sp == '\\' && *(sp+1) == ':') {
+                memmove(sp, sp+1, strlen(sp+1)+1);
+            }
+        }
+
+        char sec_buf[128] = {0};
+        if (security_len > 0 && security_len < sizeof(sec_buf)) {
+            memcpy(sec_buf, security_start, security_len);
+            sec_buf[security_len] = '\0';
+        }
+
+        nets[n].ssid = strdup(ssid_buf);
+        nets[n].signal = signal_dbm;
+        nets[n].security = strdup(sec_buf[0] ? sec_buf : "Open");
+        nets[n].connected = connected;
+        nets[n].bssid = strdup(bssid_start);
         n++;
     }
     pclose(fp);
@@ -224,7 +287,25 @@ int zyl_wifi_connect(ZylWifiService *svc, const char *ssid,
                       const char *passphrase) {
     if (!svc || !ssid || !svc->enabled) return -1;
     g_message("[WiFi] Connecting to: %s", ssid);
-    return nmcli_connect(ssid, passphrase);
+    int rc = nmcli_connect(ssid, passphrase);
+    if (rc == 0) {
+        /* Post-connect: check for captive portal */
+        ZylCaptiveResult captive = zyl_captive_portal_check();
+        if (captive.status == ZYL_NETWORK_CAPTIVE_PORTAL_STATUS) {
+            g_message("[WiFi] Captive portal detected: %s", captive.portal_url);
+            /* Emit D-Bus signal so apps/UI can show the portal browser */
+            if (svc->session_bus) {
+                g_dbus_connection_emit_signal(svc->session_bus, NULL,
+                    ZYL_WIFI_DBUS_PATH, ZYL_WIFI_DBUS_NAME,
+                    "CaptivePortalDetected",
+                    g_variant_new("(s)", captive.portal_url),
+                    NULL);
+            }
+        } else if (captive.status == ZYL_NETWORK_NO_INTERNET_STATUS) {
+            g_message("[WiFi] Connected but no internet access");
+        }
+    }
+    return rc;
 }
 
 int zyl_wifi_disconnect(ZylWifiService *svc) {

@@ -70,6 +70,13 @@ struct _ZylAppInterface {
     void (*remove_instance)(ZylAppInterface *self,
                             const char      *app_id);
 
+    /*
+     * Optional: return the current number of tracked instances.
+     * If NULL, zyl_lifecycle_get_running_count() returns -1.
+     * Implement this to avoid lifecycle.c depending on the concrete WAM struct.
+     */
+    int (*count_instances)(ZylAppInterface *self);
+
     gpointer impl_data;
 };
 
@@ -101,7 +108,15 @@ void zyl_lifecycle_close(ZylAppInterface *iface,
 void zyl_lifecycle_resume(ZylAppInterface *iface,
                           const char      *app_id);
 
-/* Return the number of currently tracked app instances. */
+/*
+ * Return the number of currently tracked app instances.
+ * The caller must supply a count_fn that returns the current instance count
+ * through the iface->impl_data context, so lifecycle.c need not know the
+ * concrete ZylWam layout (DIP).
+ *
+ * For convenience, ZylAppInterface carries an optional count_instances vtable
+ * slot.  If NULL, returns -1.
+ */
 int zyl_lifecycle_get_running_count(ZylAppInterface *iface);
 
 #endif /* ZYL_WAM_LIFECYCLE_H */

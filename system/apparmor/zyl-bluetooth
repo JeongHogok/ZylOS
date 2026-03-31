@@ -1,0 +1,54 @@
+# ----------------------------------------------------------
+# [Clean Architecture] Infrastructure Layer - Security Policy
+#
+# 역할: Bluetooth 서비스 AppArmor 프로파일
+# 수행범위: BlueZ D-Bus 접근, Bluetooth 소켓, 페어링 데이터 파일
+# 의존방향: /usr/bin/zyl-bluetooth 바이너리에 적용
+# SOLID: SRP — Bluetooth 서비스 격리 정책만 담당
+# ----------------------------------------------------------
+
+#include <tunables/global>
+
+profile zyl-bluetooth /usr/bin/zyl-bluetooth {
+  #include <abstractions/base>
+  #include <abstractions/dbus-session>
+  #include <abstractions/nameservice>
+
+  # Bluetooth service binary
+  /usr/bin/zyl-bluetooth                  mr,
+
+  # Libraries
+  /usr/lib/zyl-os/**                      mr,
+  /usr/lib/@{multiarch}/**                mr,
+
+  # BlueZ D-Bus system bus access
+  dbus (send, receive) bus=system
+       peer=(name=org.bluez),
+  dbus (send, receive) bus=system
+       peer=(name=org.bluez.*),
+
+  # Zyl OS D-Bus session bus
+  dbus (send, receive) bus=session
+       peer=(name=org.zylos.*),
+
+  # Bluetooth device nodes
+  /dev/bluetooth/**                       rw,
+  /sys/class/bluetooth/**                 r,
+  /sys/devices/**/bluetooth/**            r,
+
+  # Persistent pairing / bonding data
+  owner /var/lib/bluetooth/**             rw,
+  owner /var/lib/zyl-os/bluetooth/**      rw,
+
+  # Shared OS resources (read-only)
+  /usr/share/zyl-os/**                    r,
+
+  # Deny sensitive paths
+  deny /dev/mem                           rwmlkx,
+  deny /dev/kmem                          rwmlkx,
+  deny /proc/kcore                        rwmlkx,
+  deny /data/users/**                     rwmlkx,
+  deny /usr/**                            w,
+  deny /etc/**                            w,
+  deny /boot/**                           rwmlkx,
+}

@@ -10,6 +10,12 @@
 
 #include "power_internal.h"
 
+/* Static wrapper so zyl_power_request_suspend can be used as GSourceFunc */
+static gboolean suspend_source_func(gpointer data) {
+    zyl_power_request_suspend((ZylPowerService *)data);
+    return G_SOURCE_REMOVE;
+}
+
 /* ─── Doze 모드 진입 ─── */
 gboolean zyl_power_enter_doze(gpointer data) {
     ZylPowerService *svc = data;
@@ -22,10 +28,14 @@ gboolean zyl_power_enter_doze(gpointer data) {
     /* CPU 절전 거버너 전환 */
     zyl_cpu_set_governor("powersave");
 
-    /* 비활성 코어 오프라인 (코어 4~7) */
+    /* 비활성 코어 오프라인 (상위 절반) */
     int ncores = zyl_cpu_get_core_count();
-    for (int i = ncores / 2; i < ncores; i++) {
-        zyl_cpu_set_core_online(i, 0);
+    if (ncores > 1) {  /* guard: need at least 2 cores; core 0 stays online */
+        int half = ncores / 2;
+        if (half < 1) half = 1;
+        for (int i = half; i < ncores; i++) {
+            zyl_cpu_set_core_online(i, 0);
+        }
     }
 
     /* Doze → Deep Sleep 전환 타이머 (30분) */
@@ -37,7 +47,7 @@ gboolean zyl_power_enter_doze(gpointer data) {
         }
         svc->suspend_timer_id = g_timeout_add_seconds(
             1800, /* 30 minutes in doze → suspend */
-            (GSourceFunc)zyl_power_request_suspend, svc);
+            suspend_source_func, svc);
     }
 
     return G_SOURCE_REMOVE;

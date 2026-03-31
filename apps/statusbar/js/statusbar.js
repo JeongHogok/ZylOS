@@ -37,9 +37,25 @@
   };
 
   /* ─── Clock (shared ZylClock) ─── */
-  if (typeof ZylClock !== 'undefined') {
-    ZylClock.create(sbTime, null, { showDate: false });
+  /* FIX: Guard against ZylClock not yet available (race condition on init) */
+  function initClock() {
+    if (typeof ZylClock !== 'undefined') {
+      ZylClock.create(sbTime, null, { showDate: false });
+    } else {
+      /* Fallback: simple time display until ZylClock loads */
+      function fallbackClock() {
+        if (sbTime) {
+          var now = new Date();
+          var h = now.getHours();
+          var m = now.getMinutes();
+          sbTime.textContent = (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
+        }
+      }
+      fallbackClock();
+      setInterval(fallbackClock, 10000);
+    }
   }
+  initClock();
 
   /* ════════════════════════════════════════════
    *  Battery — periodic polling
@@ -297,22 +313,25 @@
 
   function handleSettingsChange(data) {
     if (!data) return;
+    /* FIX: Normalize category — may arrive as data.category or data.params.category
+     *       depending on which path triggered settings.changed. Coerce to string. */
+    var category = data.category || (data.params && data.params.category) || '';
     /* WiFi state */
-    if (data.category === 'wifi' && data.key === 'enabled') {
+    if (category === 'wifi' && data.key === 'enabled') {
       qsState.wifi = !!data.value;
       if (qsBtns.wifi) qsBtns.wifi.classList.toggle('active', qsState.wifi);
       var wifiIcon = document.getElementById('sb-wifi');
       if (wifiIcon) wifiIcon.style.opacity = qsState.wifi ? '0.85' : '0.15';
     }
     /* Bluetooth state */
-    if (data.category === 'bluetooth' && data.key === 'enabled') {
+    if (category === 'bluetooth' && data.key === 'enabled') {
       qsState.bt = !!data.value;
       if (qsBtns.bt) qsBtns.bt.classList.toggle('active', qsState.bt);
       var btIcon = document.getElementById('sb-bt');
       if (btIcon) btIcon.style.opacity = qsState.bt ? '0.85' : '0.15';
     }
     /* Brightness */
-    if (data.category === 'display' && data.key === 'brightness') {
+    if (category === 'display' && data.key === 'brightness') {
       if (brightnessEl) brightnessEl.value = parseInt(data.value, 10) || 80;
     }
   }
@@ -350,8 +369,12 @@
   }
 
   /* ─── Request initial state ─── */
+  /* FIX: Request all QS-relevant categories on init so UI reflects actual state
+   *       before any user interaction rather than relying on hardcoded qsState defaults. */
   sendServiceRequest('settings', 'get', { category: 'wifi' });
   sendServiceRequest('settings', 'get', { category: 'bluetooth' });
   sendServiceRequest('settings', 'get', { category: 'display' });
+  sendServiceRequest('settings', 'get', { category: 'sound' });
+  sendServiceRequest('settings', 'get', { category: 'location' });
 
 })();

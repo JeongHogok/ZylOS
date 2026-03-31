@@ -29,11 +29,34 @@ ZylAppManifest *zyl_manifest_parse(const char *app_dir) {
     }
 
     JsonNode *root = json_parser_get_root(parser);
+    if (!root || !JSON_NODE_HOLDS_OBJECT(root)) {
+        g_warning("Manifest %s: JSON root is not an object", manifest_path);
+        g_object_unref(parser);
+        return NULL;
+    }
+
     JsonObject *obj = json_node_get_object(root);
 
+    /* Validate required fields before strdup */
+    if (!json_object_has_member(obj, "id") ||
+        !json_object_has_member(obj, "name")) {
+        g_warning("Manifest %s: missing required 'id' or 'name' field",
+                  manifest_path);
+        g_object_unref(parser);
+        return NULL;
+    }
+
+    const char *raw_id   = json_object_get_string_member(obj, "id");
+    const char *raw_name = json_object_get_string_member(obj, "name");
+    if (!raw_id || raw_id[0] == '\0' || !raw_name || raw_name[0] == '\0') {
+        g_warning("Manifest %s: 'id' or 'name' is empty", manifest_path);
+        g_object_unref(parser);
+        return NULL;
+    }
+
     ZylAppManifest *m = g_new0(ZylAppManifest, 1);
-    m->id        = g_strdup(json_object_get_string_member(obj, "id"));
-    m->name      = g_strdup(json_object_get_string_member(obj, "name"));
+    m->id        = g_strdup(raw_id);
+    m->name      = g_strdup(raw_name);
     m->version   = g_strdup(json_object_get_string_member_with_default(
                        obj, "version", "1.0.0"));
     m->entry     = g_strdup(json_object_get_string_member_with_default(

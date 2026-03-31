@@ -1,0 +1,52 @@
+# ----------------------------------------------------------
+# [Clean Architecture] Infrastructure Layer - Security Policy
+#
+# 역할: Camera 서비스 AppArmor 프로파일
+# 수행범위: V4L2 디바이스 접근, 캡처 이미지 저장, DMA-buf
+# 의존방향: /usr/bin/zyl-camera 바이너리에 적용
+# SOLID: SRP — Camera 서비스 격리 정책만 담당
+# ----------------------------------------------------------
+
+#include <tunables/global>
+
+profile zyl-camera /usr/bin/zyl-camera {
+  #include <abstractions/base>
+  #include <abstractions/dbus-session>
+
+  # Camera service binary
+  /usr/bin/zyl-camera                     mr,
+
+  # Libraries
+  /usr/lib/zyl-os/**                      mr,
+  /usr/lib/@{multiarch}/**                mr,
+
+  # V4L2 camera devices (video0, video1, ...)
+  /dev/video*                             rw,
+  /sys/class/video4linux/**               r,
+  /sys/devices/**/video4linux/**          r,
+
+  # DMA-buf / media devices
+  /dev/media*                             rw,
+  /dev/dma_heap/**                        rw,
+
+  # Captured image output (whitelist — no traversal)
+  /data/camera/                           r,
+  owner /data/camera/**                   rw,
+
+  # Shared OS resources (read-only)
+  /usr/share/zyl-os/**                    r,
+
+  # Zyl OS D-Bus session bus
+  dbus (send, receive) bus=session
+       peer=(name=org.zylos.*),
+
+  # Deny sensitive paths
+  deny /dev/mem                           rwmlkx,
+  deny /dev/kmem                          rwmlkx,
+  deny /proc/kcore                        rwmlkx,
+  deny /data/users/**                     rwmlkx,
+  deny /dev/input/**                      rwmlkx,
+  deny /usr/**                            w,
+  deny /etc/**                            w,
+  deny /boot/**                           rwmlkx,
+}

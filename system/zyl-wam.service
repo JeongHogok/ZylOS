@@ -7,14 +7,30 @@ PartOf=zyl-compositor.service
 [Service]
 Type=dbus
 BusName=org.zylos.WebAppManager
-User=root
+
+# Run as dedicated non-root service account instead of root.
+# The zyl-wam user must be created by the installer/package:
+#   useradd -r -s /usr/sbin/nologin -d /var/lib/zyl-os/wam -G video,render zyl-wam
+# XDG_RUNTIME_DIR is set by pam_systemd or the RuntimeDirectory directive.
+User=zyl-wam
+Group=zyl-wam
+# video/render groups required for DRI/GPU access
+SupplementaryGroups=video render
+
+# Wayland display socket access: zyl-compositor must have granted group access
+# (or use /run/zyl-wam/wayland-0 scoped to zyl-wam user)
 Environment=WAYLAND_DISPLAY=wayland-0
-Environment=XDG_RUNTIME_DIR=/run/user/0
+RuntimeDirectory=zyl-wam
+RuntimeDirectoryMode=0700
+# XDG_RUNTIME_DIR must match the RuntimeDirectory path so WebKit/Wayland
+# socket lookup works correctly under the zyl-wam service account.
+Environment=XDG_RUNTIME_DIR=/run/zyl-wam
+
 ExecStart=/usr/bin/zyl-wam
 Restart=on-failure
 RestartSec=2
 
-# Security hardening — root required for Wayland/XDG_RUNTIME_DIR session
+# Security hardening
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
@@ -22,11 +38,13 @@ PrivateTmp=true
 PrivateDevices=false
 ProtectKernelTunables=true
 ProtectKernelModules=true
-# ProtectControlGroups=false — WAM OOM killer가 cgroup v2로 앱별 메모리 제한 설정
+# WAM OOM killer requires cgroup v2 write access
 ProtectControlGroups=false
 RestrictNamespaces=true
-# OOM killer cgroup 경로 접근 허용
+# Allow cgroup path for OOM killer app memory accounting
 ReadWritePaths=/sys/fs/cgroup/zylos.apps
+# App data directories
+ReadWritePaths=/data/apps /var/lib/zyl-os/wam /var/cache/zyl-os/wam
 
 [Install]
 WantedBy=graphical.target

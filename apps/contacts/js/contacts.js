@@ -209,6 +209,8 @@
       })(row);
 
       var avatar = document.createElement('div');
+      /* FIX: getAvatarClass returns only the gradient class (e.g. 'avatar-3');
+       *       preserve 'avatar' base class by concatenating instead of replacing. */
       avatar.className = 'avatar ' + getAvatarClass(c.name);
       avatar.textContent = getInitial(c.name);
 
@@ -244,7 +246,8 @@
   function showDetail(contact) {
     currentContact = contact;
     if (detailAvatar) {
-      detailAvatar.className = getAvatarClass(contact.name);
+      /* FIX: Preserve 'avatar' base class in detail view as well */
+      detailAvatar.className = 'avatar ' + getAvatarClass(contact.name);
       detailAvatar.textContent = getInitial(contact.name);
     }
     if (detailName) detailName.textContent = contact.name || '';

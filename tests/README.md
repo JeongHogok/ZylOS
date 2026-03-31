@@ -18,6 +18,22 @@ meson test -C builddir
 | `gesture-detection` | `test-gesture` | Gesture detection algorithm (swipe direction, thresholds, edge zones) |
 | `manifest-parsing` | `test-manifest` | app.json manifest parsing (required fields, invalid JSON, unknown fields) |
 | `notification` | `test-notification` | Notification service (post, cancel, clear, channel filtering) |
+| `bridge-dispatch` | `test-bridge-dispatch` | Real bridge.c dispatch/response routing with mock WebKit shim |
+
+### Standalone WAM bridge test (manual compile)
+
+`tests/test_bridge_dispatch.c` links the real `runtime/wam/src/bridge/bridge.c`
+through a mock WebKit shim under `tests/include/`. The same test is also wired
+into `tests/meson.build` as `bridge-dispatch`.
+
+```bash
+cc -std=c11 -Wall -Wextra -DZYL_USE_WEBKIT2GTK \
+  -Itests -Itests/include -I. \
+  tests/test_bridge_dispatch.c \
+  $(pkg-config --cflags --libs glib-2.0 gio-2.0 json-glib-1.0) \
+  -o /tmp/test-bridge-dispatch
+/tmp/test-bridge-dispatch
+```
 
 ### Shell-based tests
 

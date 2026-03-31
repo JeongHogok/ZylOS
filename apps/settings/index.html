@@ -127,6 +127,38 @@
       </div>
     </div>
 
+    <!-- 배터리 & 접근성 & 개발자 옵션 -->
+    <div class="settings-group">
+      <div class="setting-item" data-page="battery" role="button" tabindex="0">
+        <div class="setting-icon icon-green">
+          <svg viewBox="0 0 24 24"><path d="M15.67 4H14V2h-4v2H8.33C7.6 4 7 4.6 7 5.33v15.33C7 21.4 7.6 22 8.33 22h7.33c.74 0 1.34-.6 1.34-1.33V5.33C17 4.6 16.4 4 15.67 4zM13 18h-2v-2h2v2zm0-4h-2V9h2v5z"/></svg>
+        </div>
+        <div class="setting-text">
+          <span class="setting-label" data-i18n="settings.battery">Battery</span>
+          <span class="setting-value" id="battery-status"></span>
+        </div>
+        <svg class="chevron" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+      </div>
+      <div class="setting-item" data-page="accessibility" role="button" tabindex="0">
+        <div class="setting-icon icon-teal">
+          <svg viewBox="0 0 24 24"><path d="M12 2c1.1 0 2 .9 2 2s-.9 2-2 2-2-.9-2-2 .9-2 2-2zm9 7h-6v13h-2v-6h-2v6H9V9H3V7h18v2z"/></svg>
+        </div>
+        <div class="setting-text">
+          <span class="setting-label" data-i18n="settings.accessibility">Accessibility</span>
+        </div>
+        <svg class="chevron" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+      </div>
+      <div class="setting-item" data-page="developer" role="button" tabindex="0">
+        <div class="setting-icon icon-gray">
+          <svg viewBox="0 0 24 24"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>
+        </div>
+        <div class="setting-text">
+          <span class="setting-label" data-i18n="settings.developer_options">Developer options</span>
+        </div>
+        <svg class="chevron" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+      </div>
+    </div>
+
     <!-- 시스템 -->
     <div class="settings-group">
       <div class="setting-item" data-page="storage" role="button" tabindex="0">
@@ -420,6 +452,43 @@
   <div id="page-app-detail" class="sub-page hidden">
     <div class="settings-group" id="app-detail-header"></div>
     <div class="settings-group" id="app-detail-permissions"></div>
+  </div>
+
+  <!-- 배터리 서브 페이지 (placeholder — populated by settings-battery.js when available) -->
+  <div id="page-battery" class="sub-page hidden">
+    <div class="settings-group" id="battery-info-list">
+      <div class="setting-item no-tap">
+        <span class="setting-label" data-i18n="settings.battery_level">Battery level</span>
+        <span class="setting-value" id="battery-level-value">—</span>
+      </div>
+      <div class="setting-item no-tap">
+        <span class="setting-label" data-i18n="settings.battery_status">Status</span>
+        <span class="setting-value" id="battery-charging-value">—</span>
+      </div>
+    </div>
+    <div class="settings-group">
+      <div class="setting-item no-tap" style="opacity:0.5">
+        <span class="setting-label" data-i18n="settings.battery_placeholder">Battery saver and power management will be available in a future update.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 접근성 서브 페이지 (placeholder) -->
+  <div id="page-accessibility" class="sub-page hidden">
+    <div class="settings-group">
+      <div class="setting-item no-tap" style="opacity:0.5">
+        <span class="setting-label" data-i18n="settings.accessibility_placeholder">Accessibility features (font size, display size, TalkBack) will be available in a future update.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 개발자 옵션 서브 페이지 (placeholder) -->
+  <div id="page-developer" class="sub-page hidden">
+    <div class="settings-group">
+      <div class="setting-item no-tap" style="opacity:0.5">
+        <span class="setting-label" data-i18n="settings.developer_placeholder">Developer options (USB debugging, mock locations) will be available in a future update.</span>
+      </div>
+    </div>
   </div>
 
   <!-- Shared modules -->

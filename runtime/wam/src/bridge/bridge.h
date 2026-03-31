@@ -19,17 +19,30 @@
 #include "../manifest/manifest.h"
 
 /*
+ * Reply context passed to every handler so it can send an async response.
+ * callback_id == -1 means the caller did not request a response (fire-and-forget).
+ * When callback_id >= 0 the handler MUST eventually call zyl_bridge_respond()
+ * or zyl_bridge_reply_error() — otherwise the JS Promise leaks forever.
+ */
+typedef struct {
+    WebKitWebView *webview;     /* target view for the response */
+    int            callback_id; /* JS _cbId; -1 = no response expected */
+} ZylBridgeReplyCtx;
+
+/*
  * Bridge message handler callback.
  *
- * type     - message type string (e.g. "app.close")
- * msg_obj  - full JSON message as a JsonObject (borrowed, do not free)
- * manifest - manifest of the sending app
+ * type      - message type string (e.g. "app.close")
+ * msg_obj   - full JSON message as a JsonObject (borrowed, do not free)
+ * manifest  - manifest of the sending app
+ * reply_ctx - response context; use zyl_bridge_respond() / zyl_bridge_reply_error()
  * user_data - opaque pointer passed at registration time
  */
-typedef void (*ZylBridgeHandler)(const char       *type,
-                                 gpointer          msg_obj,
-                                 ZylAppManifest   *manifest,
-                                 gpointer          user_data);
+typedef void (*ZylBridgeHandler)(const char        *type,
+                                 gpointer           msg_obj,
+                                 ZylAppManifest    *manifest,
+                                 ZylBridgeReplyCtx *reply_ctx,
+                                 gpointer           user_data);
 
 /*
  * Initialize the bridge handler registry.
@@ -44,11 +57,6 @@ void zyl_bridge_cleanup(void);
 
 /*
  * Register a message type handler.
- *
- * type    - message type string (e.g. "battery.getLevel")
- * handler - callback to invoke
- * data    - user data forwarded to handler
- *
  * Returns 0 on success, -1 on error.
  */
 int zyl_bridge_register_handler(const char       *type,
@@ -56,21 +64,13 @@ int zyl_bridge_register_handler(const char       *type,
                                 gpointer          data);
 
 /*
- * Unregister a previously registered handler for the given type.
- *
+ * Unregister a previously registered handler.
  * Returns 0 on success, -1 if type was not registered.
  */
 int zyl_bridge_unregister_handler(const char *type);
 
 /*
- * Load the bridge.js template from disk, substitute app-specific
- * tokens, and inject it into the given WebKitWebView's user-content
- * manager.
- *
- * bridge_js_path - absolute path to bridge.js
- * webview        - the target WebKitWebView
- * manifest       - the app manifest (for template substitution)
- *
+ * Load bridge.js, substitute app-specific tokens, and inject into the webview.
  * Returns TRUE on success.
  */
 gboolean zyl_bridge_inject(const char      *bridge_js_path,
@@ -80,28 +80,26 @@ gboolean zyl_bridge_inject(const char      *bridge_js_path,
 /*
  * Process an incoming bridge message JSON string.
  * Routes to registered handlers via the type registry.
- * If no handler is found, sends an error response (H13).
- *
- * webview  - the WebKitWebView to send responses to
- * manifest - manifest of the sending app
- * msg_str  - raw JSON string from JS
  */
 void zyl_bridge_dispatch(WebKitWebView    *webview,
                          ZylAppManifest   *manifest,
                          const char       *msg_str);
 
 /*
- * Send a response back to JavaScript.
- * Injects: window._zylCb_{callback_id}(json_data)
- *
- * webview     - the target WebKitWebView
- * callback_id - the JS callback ID to invoke
- * json_data   - JSON string to pass as argument
+ * Send a JSON response back to JavaScript for a specific callback.
+ * Injects: if(window._zylCb_N){window._zylCb_N(json_data);delete window._zylCb_N;}
  *
  * Returns 0 on success, -1 on error.
  */
 int zyl_bridge_respond(WebKitWebView *webview,
                        int            callback_id,
                        const char    *json_data);
+
+/*
+ * Convenience: send a structured error response back to JS.
+ * Equivalent to zyl_bridge_respond with {"error":true,"message":"..."}.
+ */
+void zyl_bridge_reply_error(const ZylBridgeReplyCtx *ctx,
+                             const char              *message);
 
 #endif /* ZYL_WAM_BRIDGE_H */

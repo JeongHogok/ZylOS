@@ -157,19 +157,21 @@ pub async fn location_get_last_known() -> serde_json::Value {
     match rx.await {
         Ok(Some(loc)) => loc,
         _ => {
-            // Fallback: default coordinates (Seoul City Hall)
+            // Fallback: neutral/unknown location — no developer coordinates hardcoded.
+            // Callers should treat provider == "unavailable" as "no fix" and prompt
+            // the user to grant location permission or check connectivity.
             serde_json::json!({
-                "latitude": 37.5665,
-                "longitude": 126.9780,
-                "altitude": 38.0,
-                "accuracy": 100.0,
+                "latitude": 0.0,
+                "longitude": 0.0,
+                "altitude": 0.0,
+                "accuracy": -1.0,
                 "speed": 0.0,
                 "bearing": 0.0,
                 "timestamp": ts,
-                "provider": "fallback",
-                "city": "Seoul",
-                "region": "Seoul",
-                "country": "KR"
+                "provider": "unavailable",
+                "city": "",
+                "region": "",
+                "country": ""
             })
         }
     }
@@ -232,12 +234,107 @@ fn derive_key(passphrase: &[u8], salt: &[u8]) -> [u8; 32] {
 }
 
 /// Master passphrase for emulator credential encryption.
+///
 /// In production, this comes from the user's PIN via D-Bus SetMasterKey.
-/// For emulator, we derive from the store path to ensure consistency.
+///
+/// For the emulator, we derive the passphrase from a stable machine-unique
+/// secret (machine-id / hardware UUID) **combined with** a per-profile salt
+/// stored in the data directory.  This is strictly stronger than a path-based
+/// passphrase because:
+///
+///   1. Moving/copying the data directory to another machine renders stored
+///      credentials unreadable (machine binding).
+///   2. The profile salt ensures that two profiles on the same machine cannot
+///      trivially share or swap credential stores.
+///   3. Neither component alone is sufficient — an attacker needs both the
+///      machine secret and the profile salt file.
+///
+/// The per-profile salt is written once (on first use) with mode 0600 and
+/// never changes.  If the salt file is missing (profile migrated, salt
+/// deleted), decryption will fail with a clear error — this is intentional
+/// and correct behaviour.
+///
+/// This is still NOT equivalent to PIN-based protection (no user secret is
+/// involved), but it eliminates the trivially guessable path-derived string.
 fn get_master_passphrase(app_state: &crate::state::AppState) -> Vec<u8> {
     let base = app_state.mount_point.as_ref()
         .unwrap_or(&app_state.data_dir);
-    format!("zyl-emu-cred-{}", base.display()).into_bytes()
+
+    // ── Per-profile salt ──────────────────────────────────────────────────
+    // 32 random bytes written once to <data_dir>/.emu_keysalt (mode 0600).
+    let salt_path = base.join(".emu_keysalt");
+    let profile_salt: Vec<u8> = if salt_path.exists() {
+        std::fs::read(&salt_path).unwrap_or_else(|_| b"fallback-salt-v1".to_vec())
+    } else {
+        use rand::RngCore;
+        let mut s = [0u8; 32];
+        rand::thread_rng().fill_bytes(&mut s);
+        if std::fs::write(&salt_path, &s).is_ok() {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(
+                    &salt_path,
+                    std::fs::Permissions::from_mode(0o600),
+                );
+            }
+        }
+        s.to_vec()
+    };
+
+    // ── Machine-unique secret ─────────────────────────────────────────────
+    let machine_secret = read_machine_id();
+
+    // ── Combined passphrase ───────────────────────────────────────────────
+    // Format: "zyl-emu-v2:<machine_id_hex>:<profile_salt_hex>"
+    // PBKDF2 (in derive_key) provides the actual key stretching.
+    let mut passphrase = b"zyl-emu-v2:".to_vec();
+    passphrase.extend_from_slice(machine_secret.as_bytes());
+    passphrase.push(b':');
+    passphrase.extend(profile_salt.iter().flat_map(|b| {
+        let h = format!("{:02x}", b);
+        h.into_bytes()
+    }));
+    passphrase
+}
+
+/// Return a stable machine-unique identifier.
+/// Prefers /etc/machine-id (Linux) or IOPlatformUUID (macOS).
+/// Falls back to a constant if neither is readable (e.g. sandboxed builds).
+fn read_machine_id() -> String {
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(id) = std::fs::read_to_string("/etc/machine-id") {
+            let trimmed = id.trim().to_string();
+            if !trimmed.is_empty() {
+                return trimmed;
+            }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::Command;
+        if let Ok(output) = Command::new("ioreg")
+            .args(["-rd1", "-c", "IOPlatformExpertDevice"])
+            .output()
+        {
+            let text = String::from_utf8_lossy(&output.stdout);
+            // Look for: "IOPlatformUUID" = "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
+            for line in text.lines() {
+                if line.contains("IOPlatformUUID") {
+                    if let Some(uuid) = line.split('"').nth(3) {
+                        if !uuid.is_empty() {
+                            return uuid.to_string();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Fallback — weaker but avoids a hard failure
+    "zyl-emu-machine-unknown".to_string()
 }
 
 /// File format: [salt(16)][nonce(12)][ciphertext+tag]

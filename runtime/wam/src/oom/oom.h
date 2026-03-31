@@ -54,11 +54,12 @@ ZylOomKiller *zyl_oom_init(ZylAppInterface *iface);
 void zyl_oom_destroy(ZylOomKiller *oom);
 
 /**
- * 앱 실행 시 호출 — LRU 큐에 추가 + cgroup 메모리 제한 설정.
+ * 앱 실행 시 호출 — LRU 큐에 추가 + cgroup 메모리 제한 설정 + PID 등록.
  * @param is_system  시스템 앱이면 더 높은 메모리 제한 적용
+ * @param pid        앱 주 프로세스 PID (0이면 PID 등록 스킵)
  */
 void zyl_oom_on_app_launched(ZylOomKiller *oom, const char *app_id,
-                              bool is_system);
+                              bool is_system, pid_t pid);
 
 /**
  * 앱 종료 시 호출 — LRU 큐에서 제거 + cgroup 정리.

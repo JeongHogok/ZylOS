@@ -14,6 +14,10 @@
 #include <string.h>
 #include <time.h>
 #include <sys/stat.h>
+#if defined(__linux__)
+#include <sys/random.h>   /* getrandom() */
+#endif
+#include <stdatomic.h>    /* atomic_bool */
 #include <gio/gio.h>
 
 #define TELEMETRY_ENDPOINT  "https://telemetry.zylos.dev/v1/report"
@@ -41,15 +45,42 @@ static void load_or_create_uuid(void) {
         if (g_device_uuid[0]) return;
     }
 
-    /* Generate UUID-like identifier (not cryptographically random, but sufficient for anon telemetry) */
-    srand((unsigned)time(NULL) ^ (unsigned)getpid());
-    snprintf(g_device_uuid, sizeof(g_device_uuid),
-             "%04x%04x-%04x-%04x-%04x-%04x%04x%04x",
-             rand() & 0xffff, rand() & 0xffff,
-             rand() & 0xffff,
-             (rand() & 0x0fff) | 0x4000,
-             (rand() & 0x3fff) | 0x8000,
-             rand() & 0xffff, rand() & 0xffff, rand() & 0xffff);
+    /* Generate UUID v4 using getrandom() for cryptographically random bytes */
+    {
+        uint8_t rnd[16] = {0};
+        gboolean have_random = FALSE;
+#if defined(__linux__)
+        ssize_t got = getrandom(rnd, sizeof(rnd), 0);
+        have_random = (got == (ssize_t)sizeof(rnd));
+#endif
+        if (!have_random) {
+            /* Fallback: /dev/urandom */
+            FILE *ur = fopen("/dev/urandom", "rb");
+            if (ur) {
+                size_t rd = fread(rnd, 1, sizeof(rnd), ur);
+                fclose(ur);
+                have_random = (rd == sizeof(rnd));
+            }
+        }
+        if (!have_random) {
+            /* Last resort: time-based — weak but still avoids rand()/global state */
+            struct timespec ts;
+            clock_gettime(CLOCK_REALTIME, &ts);
+            uint64_t seed = (uint64_t)ts.tv_sec ^ (uint64_t)ts.tv_nsec;
+            memcpy(rnd, &seed, sizeof(seed));
+            memcpy(rnd + 8, &seed, sizeof(seed));
+        }
+        /* Set UUID v4 variant bits per RFC 4122 */
+        rnd[6] = (rnd[6] & 0x0f) | 0x40;   /* version 4 */
+        rnd[8] = (rnd[8] & 0x3f) | 0x80;   /* variant 2 */
+        snprintf(g_device_uuid, sizeof(g_device_uuid),
+                 "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+                 rnd[0], rnd[1], rnd[2], rnd[3],
+                 rnd[4], rnd[5],
+                 rnd[6], rnd[7],
+                 rnd[8], rnd[9],
+                 rnd[10], rnd[11], rnd[12], rnd[13], rnd[14], rnd[15]);
+    }
 
     f = fopen(DEVICE_UUID_FILE, "w");
     if (f) {
@@ -111,7 +142,7 @@ static const char *telemetry_introspection_xml =
     "  </interface>"
     "</node>";
 
-static gboolean g_telemetry_enabled = TRUE;
+static _Atomic int g_telemetry_enabled = 1;  /* 1=enabled, 0=disabled; atomic for thread safety */
 
 static void handle_telemetry_method(GDBusConnection *conn, const gchar *sender,
                                      const gchar *path, const gchar *iface,
@@ -123,7 +154,7 @@ static void handle_telemetry_method(GDBusConnection *conn, const gchar *sender,
         const gchar *event_type = NULL;
         const gchar *payload = NULL;
         g_variant_get(params, "(&s&s)", &event_type, &payload);
-        if (g_telemetry_enabled) {
+        if (atomic_load(&g_telemetry_enabled)) {
             queue_event(event_type, payload);
         }
         g_dbus_method_invocation_return_value(inv, NULL);
@@ -137,7 +168,7 @@ static void handle_telemetry_method(GDBusConnection *conn, const gchar *sender,
     } else if (g_strcmp0(method, "SetEnabled") == 0) {
         gboolean enabled = FALSE;
         g_variant_get(params, "(b)", &enabled);
-        g_telemetry_enabled = enabled;
+        atomic_store(&g_telemetry_enabled, enabled ? 1 : 0);
         g_message("[Telemetry] %s", enabled ? "Enabled" : "Disabled");
         g_dbus_method_invocation_return_value(inv, NULL);
     }

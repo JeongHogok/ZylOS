@@ -516,10 +516,16 @@
     }
   }
 
-  var alarmCheckInterval = setInterval(checkAlarms, 30000);
+  /* FIX: Was 30000ms (30s) — could miss alarms by up to 30s if the minute boundary
+   *       was crossed between checks. Reduced to 5000ms (5s) to ensure alarms fire
+   *       within 5s of the target minute. lastTriggeredKey still prevents double-fires. */
+  var alarmCheckInterval = setInterval(checkAlarms, 5000);
 
   /* Load alarms from settings on startup */
   loadAlarms();
+  /* FIX: Run an initial alarm check immediately after load in case the app
+   *       opens exactly at an alarm time (before the first interval tick). */
+  setTimeout(checkAlarms, 500);
 
   /* Request system alarm volume */
   requestService('audio', 'getVolume', { stream: 'alarm' });

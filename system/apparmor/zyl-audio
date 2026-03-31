@@ -1,0 +1,55 @@
+# ----------------------------------------------------------
+# [Clean Architecture] Infrastructure Layer - Security Policy
+#
+# 역할: Audio 서비스 AppArmor 프로파일
+# 수행범위: PipeWire/ALSA 소켓 접근, 오디오 디바이스 노드
+# 의존방향: /usr/bin/zyl-audio 바이너리에 적용
+# SOLID: SRP — Audio 서비스 격리 정책만 담당
+# ----------------------------------------------------------
+
+#include <tunables/global>
+
+profile zyl-audio /usr/bin/zyl-audio {
+  #include <abstractions/base>
+  #include <abstractions/dbus-session>
+
+  # Audio service binary
+  /usr/bin/zyl-audio                      mr,
+
+  # Libraries (including PipeWire / ALSA shared libraries)
+  /usr/lib/zyl-os/**                      mr,
+  /usr/lib/@{multiarch}/**                mr,
+  /usr/lib/pipewire-*/**                  mr,
+
+  # PipeWire runtime socket
+  owner /run/user/*/pipewire-*            rw,
+  owner /run/pipewire/**                  rw,
+
+  # ALSA devices
+  /dev/snd/**                             rw,
+  /proc/asound/**                         r,
+  /sys/class/sound/**                     r,
+
+  # wpctl binary (volume control) — exec only
+  /usr/bin/wpctl                          ix,
+
+  # Tone temp files
+  owner /tmp/zyl-tone-*                   rw,
+
+  # Shared OS resources (read-only)
+  /usr/share/zyl-os/**                    r,
+  /usr/share/alsa/**                      r,
+
+  # Zyl OS D-Bus session bus
+  dbus (send, receive) bus=session
+       peer=(name=org.zylos.*),
+
+  # Deny sensitive paths
+  deny /dev/mem                           rwmlkx,
+  deny /dev/kmem                          rwmlkx,
+  deny /proc/kcore                        rwmlkx,
+  deny /data/users/**                     rwmlkx,
+  deny /usr/**                            w,
+  deny /etc/**                            w,
+  deny /boot/**                           rwmlkx,
+}

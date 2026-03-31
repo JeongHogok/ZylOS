@@ -117,15 +117,48 @@ pub fn create_image(data_dir: &Path, profile_id: &str, size_gb: u32) -> Result<P
             return Err("Failed to create disk image via hdiutil".into());
         }
 
-        // hdiutil은 .dmg 또는 .sparseimage 확장자를 자동 추가함
+        // hdiutil appends its own extension to the base name we supply.
+        // We supply `foo.img`, so hdiutil produces:
+        //   foo.img.dmg        — when -fs HFS+
+        //   foo.img.sparseimage — when -type SPARSE (not used here, but guard anyway)
+        //
+        // `with_extension("img.dmg")` on "foo.img" produces "foo.img.dmg" ✓
+        // because `with_extension` replaces only the last component.
         if !image_path.exists() {
-            for ext in &["img.dmg", "img.sparseimage"] {
-                let auto_path = image_path.with_extension(ext);
-                if auto_path.exists() {
-                    fs::rename(&auto_path, &image_path)
+            let candidates = [
+                {
+                    // Preferred: add ".dmg" suffix → "foo.img.dmg"
+                    let mut p = image_path.clone();
+                    let stem = p.file_name()
+                        .map(|n| format!("{}.dmg", n.to_string_lossy()))
+                        .unwrap_or_default();
+                    p.set_file_name(&stem);
+                    p
+                },
+                {
+                    // Fallback: hdiutil sometimes uses .sparseimage
+                    let mut p = image_path.clone();
+                    let stem = p.file_name()
+                        .map(|n| format!("{}.sparseimage", n.to_string_lossy()))
+                        .unwrap_or_default();
+                    p.set_file_name(&stem);
+                    p
+                },
+            ];
+            let mut renamed = false;
+            for candidate in &candidates {
+                if candidate.exists() {
+                    fs::rename(candidate, &image_path)
                         .map_err(|e| format!("Failed to rename image: {}", e))?;
+                    renamed = true;
                     break;
                 }
+            }
+            if !renamed && !image_path.exists() {
+                return Err(
+                    "hdiutil succeeded but output image not found at expected path. \
+                     Check hdiutil output for the actual file name.".into()
+                );
             }
         }
     }

@@ -14,6 +14,13 @@
 #include <glib.h>
 #include <string.h>
 #include <time.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/stat.h>
+#include <json-glib/json-glib.h>
+
+#define NOTIF_PERSIST_DIR  "/data/notifications"
+#define NOTIF_PERSIST_FILE "/data/notifications/active.json"
 
 /* ── D-Bus Introspection XML ──────────────────────────────── */
 
@@ -530,6 +537,134 @@ static void on_name_lost(GDBusConnection *connection,
  * Public API — Service Lifecycle
  * ══════════════════════════════════════════════════════════════ */
 
+/* ── Persistence: save/load notification store to/from JSON ─── */
+
+static void persist_save(ZylNotificationService *service) {
+    if (!service) return;
+
+    /* Ensure directory exists */
+    struct stat st;
+    if (stat(NOTIF_PERSIST_DIR, &st) != 0) {
+        mkdir(NOTIF_PERSIST_DIR, 0700);
+    }
+
+    JsonBuilder *builder = json_builder_new();
+    json_builder_begin_object(builder);
+    json_builder_set_member_name(builder, "next_id");
+    json_builder_add_int_value(builder, (gint64)service->next_id);
+    json_builder_set_member_name(builder, "notifications");
+    json_builder_begin_array(builder);
+
+    for (guint i = 0; i < service->notifications->len; i++) {
+        ZylNotification *n = &g_array_index(service->notifications,
+                                             ZylNotification, i);
+        if (!n->persistent && n->read) continue; /* skip read non-persistent */
+        json_builder_begin_object(builder);
+        json_builder_set_member_name(builder, "id");
+        json_builder_add_int_value(builder, (gint64)n->id);
+        json_builder_set_member_name(builder, "app_id");
+        json_builder_add_string_value(builder, n->app_id ? n->app_id : "");
+        json_builder_set_member_name(builder, "channel_id");
+        json_builder_add_string_value(builder, n->channel_id ? n->channel_id : "");
+        json_builder_set_member_name(builder, "title");
+        json_builder_add_string_value(builder, n->title ? n->title : "");
+        json_builder_set_member_name(builder, "body");
+        json_builder_add_string_value(builder, n->body ? n->body : "");
+        json_builder_set_member_name(builder, "icon");
+        json_builder_add_string_value(builder, n->icon ? n->icon : "");
+        json_builder_set_member_name(builder, "timestamp");
+        json_builder_add_int_value(builder, (gint64)n->timestamp);
+        json_builder_set_member_name(builder, "read");
+        json_builder_add_boolean_value(builder, n->read);
+        json_builder_set_member_name(builder, "persistent");
+        json_builder_add_boolean_value(builder, n->persistent);
+        json_builder_set_member_name(builder, "priority");
+        json_builder_add_int_value(builder, (gint64)n->priority);
+        json_builder_end_object(builder);
+    }
+
+    json_builder_end_array(builder);
+    json_builder_end_object(builder);
+
+    JsonNode *root = json_builder_get_root(builder);
+    JsonGenerator *gen = json_generator_new();
+    json_generator_set_root(gen, root);
+    GError *err = NULL;
+    json_generator_to_file(gen, NOTIF_PERSIST_FILE, &err);
+    if (err) {
+        g_warning("zyl-notification: persist save failed: %s", err->message);
+        g_error_free(err);
+    }
+    json_node_free(root);
+    g_object_unref(gen);
+    g_object_unref(builder);
+}
+
+static void persist_load(ZylNotificationService *service) {
+    if (!service) return;
+
+    GError *err = NULL;
+    JsonParser *parser = json_parser_new();
+    if (!json_parser_load_from_file(parser, NOTIF_PERSIST_FILE, &err)) {
+        /* File may not exist on first run */
+        g_clear_error(&err);
+        g_object_unref(parser);
+        return;
+    }
+
+    JsonNode *root = json_parser_get_root(parser);
+    if (!root || !JSON_NODE_HOLDS_OBJECT(root)) {
+        g_object_unref(parser);
+        return;
+    }
+
+    JsonObject *obj = json_node_get_object(root);
+
+    if (json_object_has_member(obj, "next_id")) {
+        service->next_id = (uint64_t)json_object_get_int_member(obj, "next_id");
+        if (service->next_id == 0) service->next_id = 1;
+    }
+
+    if (json_object_has_member(obj, "notifications")) {
+        JsonArray *arr = json_object_get_array_member(obj, "notifications");
+        guint n = json_array_get_length(arr);
+        for (guint i = 0; i < n; i++) {
+            JsonNode *nnode = json_array_get_element(arr, i);
+            if (!JSON_NODE_HOLDS_OBJECT(nnode)) continue;
+            JsonObject *nobj = json_node_get_object(nnode);
+
+            ZylNotification notif = {0};
+#define GETSTR(field) \
+    notif.field = json_object_has_member(nobj, #field) ? \
+        g_strdup(json_object_get_string_member(nobj, #field)) : g_strdup("")
+            notif.id = json_object_has_member(nobj, "id") ?
+                (uint64_t)json_object_get_int_member(nobj, "id") : 0;
+            GETSTR(app_id);
+            GETSTR(channel_id);
+            GETSTR(title);
+            GETSTR(body);
+            GETSTR(icon);
+#undef GETSTR
+            notif.timestamp = json_object_has_member(nobj, "timestamp") ?
+                (uint64_t)json_object_get_int_member(nobj, "timestamp") : 0;
+            notif.read = json_object_has_member(nobj, "read") &&
+                         json_object_get_boolean_member(nobj, "read");
+            notif.persistent = json_object_has_member(nobj, "persistent") &&
+                                json_object_get_boolean_member(nobj, "persistent");
+            notif.priority = json_object_has_member(nobj, "priority") ?
+                (int)json_object_get_int_member(nobj, "priority") : 0;
+
+            if (notif.id > 0) {
+                g_array_append_val(service->notifications, notif);
+            }
+        }
+    }
+
+    g_object_unref(parser);
+    g_info("zyl-notification: loaded %u notifications from disk",
+           service->notifications->len);
+}
+
 ZylNotificationService *zyl_notification_service_create(void)
 {
     ZylNotificationService *service = g_new0(ZylNotificationService, 1);
@@ -538,6 +673,8 @@ ZylNotificationService *zyl_notification_service_create(void)
     service->channels      = g_hash_table_new_full(g_str_hash, g_str_equal,
                                                     g_free, channel_destroy);
     service->next_id       = 1;
+    /* Load persisted notifications from disk */
+    persist_load(service);
 
     service->introspection_data = g_dbus_node_info_new_for_xml(introspection_xml, NULL);
     g_assert(service->introspection_data != NULL);
@@ -674,6 +811,9 @@ uint64_t zyl_notification_post_with_actions(ZylNotificationService *service,
     g_info("zyl-notification: posted id=%" G_GUINT64_FORMAT " app=%s title='%s' actions=%d",
            notif.id, notif.app_id, notif.title, notif.num_actions);
 
+    /* Persist to disk */
+    persist_save(service);
+
     return notif.id;
 }
 
@@ -691,6 +831,7 @@ void zyl_notification_cancel(ZylNotificationService *service, uint64_t id)
                         g_variant_new("(t)", id));
 
             g_info("zyl-notification: cancelled id=%" G_GUINT64_FORMAT, id);
+            persist_save(service);
             return;
         }
     }
@@ -753,6 +894,7 @@ void zyl_notification_clear_all(ZylNotificationService *service)
     }
 
     g_info("zyl-notification: cleared all non-persistent notifications");
+    persist_save(service);
 }
 
 /* ══════════════════════════════════════════════════════════════

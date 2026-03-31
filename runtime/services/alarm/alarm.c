@@ -14,7 +14,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <sys/stat.h>
 #include <gio/gio.h>
+#include <json-glib/json-glib.h>
+
+#define ALARM_PERSIST_DIR  "/data/alarms"
+#define ALARM_PERSIST_FILE "/data/alarms/alarms.json"
 
 /* ─── 내부 상수 ─── */
 #define MAX_ALARMS 256
@@ -231,6 +236,109 @@ static void on_alarm_bus_acquired(GDBusConnection *conn,
 
 /* ─── 공개 API 구현 ─── */
 
+/* ─── Persistence ─── */
+
+static void alarm_persist_save(ZylAlarmService *svc) {
+    if (!svc) return;
+
+    struct stat st;
+    if (stat(ALARM_PERSIST_DIR, &st) != 0) mkdir(ALARM_PERSIST_DIR, 0700);
+
+    JsonBuilder *b = json_builder_new();
+    json_builder_begin_array(b);
+    for (int i = 0; i < svc->count; i++) {
+        ZylAlarm *a = &svc->entries[i].alarm;
+        json_builder_begin_object(b);
+        json_builder_set_member_name(b, "tag");
+        json_builder_add_string_value(b, a->tag ? a->tag : "");
+        json_builder_set_member_name(b, "trigger_at");
+        json_builder_add_int_value(b, (gint64)a->trigger_at);
+        json_builder_set_member_name(b, "interval_ms");
+        json_builder_add_int_value(b, (gint64)a->interval_ms);
+        json_builder_set_member_name(b, "app_id");
+        json_builder_add_string_value(b, a->app_id ? a->app_id : "");
+        json_builder_set_member_name(b, "repeating");
+        json_builder_add_boolean_value(b, a->repeating);
+        json_builder_end_object(b);
+    }
+    json_builder_end_array(b);
+
+    JsonNode *root = json_builder_get_root(b);
+    JsonGenerator *gen = json_generator_new();
+    json_generator_set_root(gen, root);
+    GError *err = NULL;
+    json_generator_to_file(gen, ALARM_PERSIST_FILE, &err);
+    if (err) {
+        g_warning("[Alarm] persist save failed: %s", err->message);
+        g_error_free(err);
+    }
+    json_node_free(root);
+    g_object_unref(gen);
+    g_object_unref(b);
+}
+
+static void alarm_persist_load(ZylAlarmService *svc) {
+    if (!svc) return;
+
+    GError *err = NULL;
+    JsonParser *parser = json_parser_new();
+    if (!json_parser_load_from_file(parser, ALARM_PERSIST_FILE, &err)) {
+        g_clear_error(&err);
+        g_object_unref(parser);
+        return;
+    }
+
+    JsonNode *root = json_parser_get_root(parser);
+    if (!root || !JSON_NODE_HOLDS_ARRAY(root)) {
+        g_object_unref(parser);
+        return;
+    }
+
+    JsonArray *arr = json_node_get_array(root);
+    guint n = json_array_get_length(arr);
+    uint64_t now = now_ms();
+
+    for (guint i = 0; i < n && svc->count < MAX_ALARMS; i++) {
+        JsonNode *anode = json_array_get_element(arr, i);
+        if (!JSON_NODE_HOLDS_OBJECT(anode)) continue;
+        JsonObject *ao = json_node_get_object(anode);
+
+        uint64_t trigger = json_object_has_member(ao, "trigger_at") ?
+            (uint64_t)json_object_get_int_member(ao, "trigger_at") : 0;
+        bool repeating = json_object_has_member(ao, "repeating") &&
+                         json_object_get_boolean_member(ao, "repeating");
+        uint64_t interval = json_object_has_member(ao, "interval_ms") ?
+            (uint64_t)json_object_get_int_member(ao, "interval_ms") : 0;
+
+        /* Skip expired non-repeating alarms */
+        if (!repeating && trigger < now) continue;
+
+        ZylAlarm alarm = {0};
+        alarm.tag = g_strdup(json_object_has_member(ao, "tag") ?
+                             json_object_get_string_member(ao, "tag") : "");
+        alarm.trigger_at = trigger;
+        alarm.interval_ms = interval;
+        alarm.app_id = g_strdup(json_object_has_member(ao, "app_id") ?
+                                json_object_get_string_member(ao, "app_id") : "");
+        alarm.repeating = repeating;
+
+        /* For repeating alarms that fired while service was down,
+           advance trigger_at to the next future occurrence */
+        if (repeating && interval > 0 && trigger < now) {
+            uint64_t delta = now - trigger;
+            uint64_t periods = delta / interval + 1;
+            alarm.trigger_at = trigger + periods * interval;
+        }
+
+        zyl_alarm_set(svc, &alarm);
+        g_free(alarm.tag);
+        g_free(alarm.app_id);
+    }
+
+    g_object_unref(parser);
+    g_message("[Alarm] Loaded %d alarms from disk", svc->count);
+}
+
 ZylAlarmService *zyl_alarm_service_create(void) {
     ZylAlarmService *svc = calloc(1, sizeof(ZylAlarmService));
     if (!svc) return NULL;
@@ -243,6 +351,9 @@ ZylAlarmService *zyl_alarm_service_create(void) {
         on_alarm_bus_acquired,
         NULL, NULL,
         svc, NULL);
+
+    /* Load persisted alarms */
+    alarm_persist_load(svc);
 
     g_message("[Alarm] Zyl OS Alarm Service created");
     return svc;
@@ -322,6 +433,7 @@ int zyl_alarm_set(ZylAlarmService *svc, const ZylAlarm *alarm) {
               (unsigned long long)alarm->interval_ms,
               (int)alarm->repeating,
               delay_ms);
+    alarm_persist_save(svc);
     return 0;
 }
 
@@ -343,6 +455,7 @@ int zyl_alarm_cancel(ZylAlarmService *svc, const char *tag) {
             }
             memset(&svc->entries[last], 0, sizeof(AlarmEntry));
             g_message("[Alarm] Cancelled: tag=%s", tag);
+            alarm_persist_save(svc);
             return 0;
         }
     }

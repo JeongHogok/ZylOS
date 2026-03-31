@@ -38,6 +38,8 @@ jobs:
         run: |
           meson setup builddir
           ninja -C builddir
+      - name: Run C unit tests
+        run: ninja -C builddir test
       - name: Check app manifests
         run: |
           for f in apps/*/app.json; do

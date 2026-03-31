@@ -25,15 +25,28 @@ echo "=== Zyl OS Recovery Mode ==="
 echo ""
 echo "Entered via: hold Volume Down during boot, or 3 failed boot attempts"
 echo ""
+
+# Non-interactive / serial-boot safety: if stdin is not a tty, default to
+# "Reboot" to avoid an infinite select loop hanging the device.
+if [ ! -t 0 ]; then
+    echo "Non-interactive environment detected — rebooting to system."
+    sync
+    reboot
+    exit 0
+fi
+
 echo "1) Factory Reset (wipe /data)"
 echo "2) Wipe Cache"
 echo "3) Reboot to System"
 echo "4) Reboot to Bootloader"
 echo ""
 
-select opt in "Factory Reset" "Wipe Cache" "Reboot" "Bootloader"; do
-    case "$opt" in
-        "Factory Reset")
+# Use read+case instead of select to have full control over the loop and
+# to avoid bash select's infinite retry on empty input.
+perform_action() {
+    local choice="$1"
+    case "$choice" in
+        1)
             if [ -x "${RECOVERY_DIR}/factory-reset.sh" ]; then
                 "${RECOVERY_DIR}/factory-reset.sh"
             else
@@ -41,22 +54,41 @@ select opt in "Factory Reset" "Wipe Cache" "Reboot" "Bootloader"; do
                 exit 1
             fi
             ;;
-        "Wipe Cache")
+        2)
             echo "Wiping cache..."
             rm -rf /var/cache/zyl-os/*
+            sync
             echo "Cache wiped successfully."
             ;;
-        "Reboot")
+        3)
             echo "Rebooting to system..."
+            sync
             reboot
             ;;
-        "Bootloader")
+        4)
             echo "Rebooting to bootloader..."
+            sync
             reboot bootloader
             ;;
         *)
             echo "Invalid option. Please select 1-4."
+            return 1
             ;;
     esac
-    break
+    return 0
+}
+
+while true; do
+    read -r -p "Select option [1-4]: " user_choice || {
+        # EOF on stdin — safe default: reboot
+        echo ""
+        echo "EOF on stdin — rebooting to system."
+        sync
+        reboot
+        exit 0
+    }
+
+    if perform_action "$user_choice"; then
+        break
+    fi
 done

@@ -20,12 +20,18 @@
 #define DBUS_PROP_IFACE "org.freedesktop.DBus.Properties"
 
 /* ─── 내부 구조체 ─── */
+#define MAX_MODEMS 4  /* Support up to 4 modems / SIM slots */
+
 struct ZylTelephonyService {
     /* 현재 상태 */
     ZylTelephonyState state;
     ZylCallState call_state;
     char active_call_number[20];
-    char modem_path[MAX_MODEM_PATH]; /* /org/freedesktop/ModemManager1/Modem/0 */
+
+    /* Multi-modem / Dual-SIM support */
+    char modem_path[MAX_MODEMS][MAX_MODEM_PATH];
+    int modem_count;
+    int active_modem;              /* Index of currently active modem (0-based) */
     bool modem_found;
 
     /* 콜백 */
@@ -106,8 +112,8 @@ static GVariant *get_dbus_property(GDBusConnection *conn,
     return val;
 }
 
-/* ─── 모뎀 탐색 ─── */
-static bool find_first_modem(ZylTelephonyService *svc) {
+/* ─── 모뎀 탐색 (dual-SIM: 최대 MAX_MODEMS 개 모뎀 열거) ─── */
+static bool find_modems(ZylTelephonyService *svc) {
     GError *err = NULL;
     GVariant *result = g_dbus_connection_call_sync(svc->system_bus,
         MM_DBUS_NAME, MM_DBUS_PATH,
@@ -127,22 +133,39 @@ static bool find_first_modem(ZylTelephonyService *svc) {
 
     const gchar *obj_path;
     GVariant *ifaces;
-    bool found = false;
+    svc->modem_count = 0;
 
     while (g_variant_iter_next(obj_iter, "{&o@a{sa{sv}}}", &obj_path, &ifaces)) {
-        /* 첫 번째 모뎀 사용 */
-        snprintf(svc->modem_path, sizeof(svc->modem_path), "%s", obj_path);
-        found = true;
+        /* Check if this object has the Modem interface */
+        bool is_modem = g_variant_lookup(ifaces, MM_MODEM_IFACE,
+                                          "a{sv}", NULL);
+        if (is_modem && svc->modem_count < MAX_MODEMS) {
+            snprintf(svc->modem_path[svc->modem_count],
+                     sizeof(svc->modem_path[svc->modem_count]),
+                     "%s", obj_path);
+            svc->modem_count++;
+            g_message("[Telephony] Found modem[%d]: %s",
+                      svc->modem_count - 1, obj_path);
+        }
         g_variant_unref(ifaces);
-        break;
     }
     g_variant_iter_free(obj_iter);
     g_variant_unref(result);
 
-    if (found) {
-        g_message("[Telephony] Found modem: %s", svc->modem_path);
+    if (svc->modem_count > 0) {
+        svc->active_modem = 0;
+        /* Legacy single-modem code still uses modem_path[0] */
+        return true;
     }
-    return found;
+    return false;
+}
+
+/* Backward-compat helper: get path of currently active modem */
+static const char *active_modem_path(const ZylTelephonyService *svc) {
+    if (!svc || svc->modem_count == 0) return "";
+    int idx = svc->active_modem;
+    if (idx < 0 || idx >= svc->modem_count) idx = 0;
+    return svc->modem_path[idx];
 }
 
 /* ─── 모뎀 상태 읽기 ─── */
@@ -151,7 +174,7 @@ static void read_modem_state(ZylTelephonyService *svc) {
 
     /* SIM 상태 */
     GVariant *sim_path = get_dbus_property(svc->system_bus,
-        MM_DBUS_NAME, svc->modem_path, MM_MODEM_IFACE, "Sim");
+        MM_DBUS_NAME, active_modem_path(svc), MM_MODEM_IFACE, "Sim");
     if (sim_path) {
         const char *sp = g_variant_get_string(sim_path, NULL);
         svc->state.sim_present = (sp && strlen(sp) > 1 && strcmp(sp, "/") != 0);
@@ -160,7 +183,7 @@ static void read_modem_state(ZylTelephonyService *svc) {
 
     /* 통신사 이름 */
     GVariant *op_name = get_dbus_property(svc->system_bus,
-        MM_DBUS_NAME, svc->modem_path,
+        MM_DBUS_NAME, active_modem_path(svc),
         "org.freedesktop.ModemManager1.Modem.Modem3gpp",
         "OperatorName");
     if (op_name) {
@@ -172,7 +195,7 @@ static void read_modem_state(ZylTelephonyService *svc) {
 
     /* 신호 강도 (SignalQuality -> (u, b)) */
     GVariant *sig_qual = get_dbus_property(svc->system_bus,
-        MM_DBUS_NAME, svc->modem_path, MM_MODEM_IFACE, "SignalQuality");
+        MM_DBUS_NAME, active_modem_path(svc), MM_MODEM_IFACE, "SignalQuality");
     if (sig_qual) {
         guint32 quality = 0;
         gboolean recent = FALSE;
@@ -185,7 +208,7 @@ static void read_modem_state(ZylTelephonyService *svc) {
 
     /* IMEI (EquipmentIdentifier) */
     GVariant *imei = get_dbus_property(svc->system_bus,
-        MM_DBUS_NAME, svc->modem_path, MM_MODEM_IFACE,
+        MM_DBUS_NAME, active_modem_path(svc), MM_MODEM_IFACE,
         "EquipmentIdentifier");
     if (imei) {
         const char *s = g_variant_get_string(imei, NULL);
@@ -196,7 +219,7 @@ static void read_modem_state(ZylTelephonyService *svc) {
 
     /* 접속 기술 (AccessTechnologies bitmask) */
     GVariant *tech = get_dbus_property(svc->system_bus,
-        MM_DBUS_NAME, svc->modem_path, MM_MODEM_IFACE,
+        MM_DBUS_NAME, active_modem_path(svc), MM_MODEM_IFACE,
         "AccessTechnologies");
     if (tech) {
         guint32 t = g_variant_get_uint32(tech);
@@ -218,7 +241,7 @@ static void read_modem_state(ZylTelephonyService *svc) {
     /* 전화번호: SIM OwnNumbers */
     if (svc->state.sim_present) {
         GVariant *sim_obj = get_dbus_property(svc->system_bus,
-            MM_DBUS_NAME, svc->modem_path, MM_MODEM_IFACE, "Sim");
+            MM_DBUS_NAME, active_modem_path(svc), MM_MODEM_IFACE, "Sim");
         if (sim_obj) {
             const char *sim_path_str = g_variant_get_string(sim_obj, NULL);
             if (sim_path_str && strlen(sim_path_str) > 1) {
@@ -332,7 +355,7 @@ static void subscribe_mm_signals(ZylTelephonyService *svc) {
     /* SMS 수신 */
     svc->mm_sms_sub = g_dbus_connection_signal_subscribe(svc->system_bus,
         MM_DBUS_NAME, MM_MSG_IFACE,
-        "Added", svc->modem_path, NULL,
+        "Added", active_modem_path(svc), NULL,
         G_DBUS_SIGNAL_FLAGS_NONE,
         on_mm_sms_added, svc, NULL);
 
@@ -463,9 +486,9 @@ ZylTelephonyService *zyl_telephony_create(void) {
         g_clear_error(&err);
     }
 
-    /* 모뎀 탐색 */
+    /* 모뎀 탐색 (dual-SIM: 최대 MAX_MODEMS 개) */
     if (svc->system_bus) {
-        svc->modem_found = find_first_modem(svc);
+        svc->modem_found = find_modems(svc);
         if (svc->modem_found) {
             read_modem_state(svc);
             subscribe_mm_signals(svc);
@@ -527,7 +550,7 @@ int zyl_telephony_dial(ZylTelephonyService *svc, const char *number) {
                            g_variant_new_string(number));
 
     GVariant *result = g_dbus_connection_call_sync(svc->system_bus,
-        MM_DBUS_NAME, svc->modem_path,
+        MM_DBUS_NAME, active_modem_path(svc),
         MM_VOICE_IFACE, "CreateCall",
         g_variant_new("(a{sv})", &builder),
         G_VARIANT_TYPE("(o)"),
@@ -573,7 +596,7 @@ int zyl_telephony_answer(ZylTelephonyService *svc) {
     /* ListCalls로 현재 통화 목록 조회 후 Accept */
     GError *err = NULL;
     GVariant *result = g_dbus_connection_call_sync(svc->system_bus,
-        MM_DBUS_NAME, svc->modem_path,
+        MM_DBUS_NAME, active_modem_path(svc),
         MM_VOICE_IFACE, "ListCalls",
         NULL, G_VARIANT_TYPE("(ao)"),
         G_DBUS_CALL_FLAGS_NONE, 5000, NULL, &err);
@@ -611,7 +634,7 @@ int zyl_telephony_hangup(ZylTelephonyService *svc) {
     /* HangupAll 호출 */
     GError *err = NULL;
     g_dbus_connection_call_sync(svc->system_bus,
-        MM_DBUS_NAME, svc->modem_path,
+        MM_DBUS_NAME, active_modem_path(svc),
         MM_VOICE_IFACE, "HangupAll",
         NULL, NULL,
         G_DBUS_CALL_FLAGS_NONE, 5000, NULL, &err);
@@ -621,7 +644,7 @@ int zyl_telephony_hangup(ZylTelephonyService *svc) {
         g_clear_error(&err);
         /* ListCalls + 개별 Hangup 폴백 */
         GVariant *result = g_dbus_connection_call_sync(svc->system_bus,
-            MM_DBUS_NAME, svc->modem_path,
+            MM_DBUS_NAME, active_modem_path(svc),
             MM_VOICE_IFACE, "ListCalls",
             NULL, G_VARIANT_TYPE("(ao)"),
             G_DBUS_CALL_FLAGS_NONE, 5000, NULL, NULL);
@@ -665,7 +688,7 @@ int zyl_telephony_send_sms(ZylTelephonyService *svc,
 
     GError *err = NULL;
     GVariant *result = g_dbus_connection_call_sync(svc->system_bus,
-        MM_DBUS_NAME, svc->modem_path,
+        MM_DBUS_NAME, active_modem_path(svc),
         MM_MSG_IFACE, "Create",
         g_variant_new("(a{sv})", &builder),
         G_VARIANT_TYPE("(o)"),
@@ -725,6 +748,9 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    if (svc->modem_count > 1) {
+        g_message("[Telephony] Dual-SIM detected (%d modems)", svc->modem_count);
+    }
     if (svc->state.sim_present) {
         g_message("[Telephony] SIM present — operator: %s, signal: %d/4",
                   svc->state.operator_name, svc->state.signal_strength);

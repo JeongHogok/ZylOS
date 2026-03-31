@@ -291,16 +291,21 @@ window.ZylKeyboard = (function () {
   }
 
   /* ─── Key Element Factory ─── */
+  /* FIX: Per-key event listeners removed — replaced by container-level event delegation
+   *       in _attachDelegatedListeners(). createKeyElement now only builds DOM structure.
+   *       label stored in data-label so delegation can identify it without textContent ambiguity. */
 
   function createKeyElement(label) {
     var btn = document.createElement('button');
     btn.className = 'kb-key';
     btn.setAttribute('type', 'button');
-    btn.textContent = label;
+    /* Store original label for event delegation lookup */
+    btn.dataset.label = label;
 
     /* Globe key */
     if (label === '\uD83C\uDF10') {
       btn.className += ' kb-special kb-lang';
+      btn.textContent = label;
     /* Space bar — show language label */
     } else if (label === ' ') {
       btn.className += ' kb-space';
@@ -308,6 +313,9 @@ window.ZylKeyboard = (function () {
     /* Other special keys */
     } else if (isSpecialKey(label)) {
       btn.className += ' kb-special';
+      btn.textContent = label;
+    } else {
+      btn.textContent = label;
     }
 
     /* Shift active indicator */
@@ -318,34 +326,6 @@ window.ZylKeyboard = (function () {
         btn.className += ' kb-active';
       }
     }
-
-    /* Long-press for accents */
-    function onPressStart(e) {
-      e.preventDefault();
-      showKeyPopup(btn, label);
-      dismissAccentPopup();
-      if (!isSpecialKey(label) && label !== ' ' && !_symbols) {
-        var lower = label.toLowerCase();
-        if (ACCENT_MAP[lower]) {
-          _longPressTimer = setTimeout(function () {
-            showAccentPopup(btn, label);
-          }, LONG_PRESS_MS);
-        }
-      }
-      handleKey(label);
-    }
-
-    function onPressEnd() {
-      if (_longPressTimer) {
-        clearTimeout(_longPressTimer);
-        _longPressTimer = null;
-      }
-    }
-
-    btn.addEventListener('touchstart', onPressStart, { passive: false });
-    btn.addEventListener('touchend', onPressEnd, { passive: true });
-    btn.addEventListener('mousedown', onPressStart);
-    btn.addEventListener('mouseup', onPressEnd);
 
     return btn;
   }
@@ -501,12 +481,76 @@ window.ZylKeyboard = (function () {
 
   /* ─── Rendering ─── */
 
+  /* FIX: Attach container-level delegated listeners once at init to avoid
+   *       re-registering per-key handlers on every render() call.
+   *       Each render() still reconstructs DOM (needed for layout change),
+   *       but event handling is routed through the stable container listeners. */
+  var _delegateAttached = false;
+
+  function _attachDelegatedListeners() {
+    if (_delegateAttached || !_container) return;
+    _delegateAttached = true;
+
+    _container.addEventListener('touchstart', function (e) {
+      var btn = e.target.closest && e.target.closest('button.kb-key');
+      if (!btn) return;
+      e.preventDefault();
+      var label = btn.dataset.label !== undefined ? btn.dataset.label : btn.textContent;
+      showKeyPopup(btn, label);
+      dismissAccentPopup();
+      if (!isSpecialKey(label) && label !== ' ' && !_symbols) {
+        var lower = label.toLowerCase();
+        if (ACCENT_MAP[lower]) {
+          _longPressTimer = setTimeout(function () { showAccentPopup(btn, label); }, LONG_PRESS_MS);
+        }
+      }
+      handleKey(label);
+      /* Forward feedback request to compositor via audio service */
+      if (_soundEnabled || _vibrationEnabled) {
+        if (typeof ZylBridge !== 'undefined') {
+          ZylBridge.sendToSystem({
+            type: 'service.request', service: 'audio', method: 'playKeyClick',
+            params: { sound: _soundEnabled, vibration: _vibrationEnabled }
+          });
+        }
+      }
+    }, { passive: false });
+
+    _container.addEventListener('touchend', function (e) {
+      var btn = e.target.closest && e.target.closest('button.kb-key');
+      if (btn && _longPressTimer) { clearTimeout(_longPressTimer); _longPressTimer = null; }
+    }, { passive: true });
+
+    _container.addEventListener('mousedown', function (e) {
+      var btn = e.target.closest && e.target.closest('button.kb-key');
+      if (!btn) return;
+      var label = btn.dataset.label !== undefined ? btn.dataset.label : btn.textContent;
+      showKeyPopup(btn, label);
+      dismissAccentPopup();
+      if (!isSpecialKey(label) && label !== ' ' && !_symbols) {
+        var lower = label.toLowerCase();
+        if (ACCENT_MAP[lower]) {
+          _longPressTimer = setTimeout(function () { showAccentPopup(btn, label); }, LONG_PRESS_MS);
+        }
+      }
+      handleKey(label);
+    });
+
+    _container.addEventListener('mouseup', function (e) {
+      var btn = e.target.closest && e.target.closest('button.kb-key');
+      if (btn && _longPressTimer) { clearTimeout(_longPressTimer); _longPressTimer = null; }
+    });
+  }
+
   function render() {
     if (!_container) return;
 
     dismissAccentPopup();
     dismissKeyPopup();
     _container.innerHTML = '';
+
+    /* Attach delegated listeners once (idempotent) */
+    _attachDelegatedListeners();
 
     /* 예측 후보 바 (최상단) */
     _candidateBar = document.createElement('div');

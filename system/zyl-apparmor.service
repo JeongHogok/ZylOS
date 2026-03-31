@@ -7,7 +7,18 @@ After=apparmor.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/bin/sh -c 'for p in /etc/apparmor.d/zyl-*; do apparmor_parser -r "$p" 2>/dev/null || true; done'
+# Fail closed on parser errors instead of silently ignoring broken profiles.
+# Missing glob matches are ignored safely; individual profile load failures abort.
+ExecStart=/bin/sh -eu -c '
+  found=0; \
+  for p in /etc/apparmor.d/zyl-*; do \
+    [ -e "$p" ] || continue; \
+    found=1; \
+    apparmor_parser -r "$p"; \
+  done; \
+  if [ "$found" -eq 0 ]; then \
+    echo "No ZylOS AppArmor profiles found under /etc/apparmor.d" >&2; \
+  fi'
 
 # Security hardening
 NoNewPrivileges=true

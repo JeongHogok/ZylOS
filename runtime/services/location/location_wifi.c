@@ -8,6 +8,10 @@
  * ────────────────────────────────────────────────────────── */
 
 #include "location_internal.h"
+#include <spawn.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 /* 간단한 RSSI → 선형 가중치 변환 (dBm → weight) */
 static double rssi_to_weight(int rssi_dbm) {
@@ -70,13 +74,112 @@ bool wifi_triangulate(ZylLocationService *svc, ZylLocation *out) {
     if (bss_count == 0) return false;
 
     /*
-     * BSSID → 위도/경도 매핑:
-     * BSS 목록의 lat/lon은 외부 위치 데이터베이스(Mozilla Location Services,
-     * Google Geolocation API, 또는 로컬 캐시)에서 채워진다.
-     * 현재 BSS 구조체에 lat/lon 필드가 있지만 BSSID→좌표 조회 API 호출은
-     * 네트워크 의존이므로 location 서비스의 퓨전 로직에서 처리한다.
-     * lat=0, lon=0인 항목은 매핑 미완료 → 가중 평균에서 제외.
+     * Minimum-viable WiFi location via Mozilla Location Services (MLS).
+     * Build a JSON POST body with BSSIDs + RSSI, send via curl (posix_spawn),
+     * parse {location:{lat,lng}} response.
+     * Falls through to local weighted average (lat/lon from local DB cache)
+     * if MLS is unreachable or returns an error.
      */
+#define MLS_URL "https://location.services.mozilla.com/v1/geolocate?key=geoclue"
+
+    /* Build JSON request body */
+    char req_body[8192];
+    int body_pos = 0;
+    body_pos += snprintf(req_body + body_pos,
+                         sizeof(req_body) - (size_t)body_pos,
+                         "{\"wifiAccessPoints\":[");
+    for (int i = 0; i < bss_count; i++) {
+        if (body_pos >= (int)sizeof(req_body) - 64) break;
+        if (i > 0) req_body[body_pos++] = ',';
+        body_pos += snprintf(req_body + body_pos,
+                             sizeof(req_body) - (size_t)body_pos,
+                             "{\"macAddress\":\"%s\",\"signalStrength\":%d}",
+                             bss_list[i].bssid, bss_list[i].rssi_dbm);
+    }
+    if (body_pos < (int)sizeof(req_body) - 2)
+        body_pos += snprintf(req_body + body_pos,
+                             sizeof(req_body) - (size_t)body_pos, "]}");
+
+    char tmp_req[] = "/tmp/zyl-mls-XXXXXX";
+    int tmpfd = mkstemp(tmp_req);
+    bool tried_mls = false;
+    bool triangulated = false;
+
+    if (tmpfd >= 0) {
+        if (write(tmpfd, req_body, (size_t)body_pos) == body_pos) {
+            close(tmpfd);
+            tried_mls = true;
+
+            int pfd[2];
+            if (pipe(pfd) == 0) {
+                pid_t curl_pid;
+                posix_spawn_file_actions_t pacts;
+                posix_spawn_file_actions_init(&pacts);
+                posix_spawn_file_actions_adddup2(&pacts, pfd[1], STDOUT_FILENO);
+                posix_spawn_file_actions_addclose(&pacts, pfd[0]);
+
+                char data_arg[280];
+                snprintf(data_arg, sizeof(data_arg), "@%s", tmp_req);
+                const char *curl_argv[] = {
+                    "/usr/bin/curl", "-s",
+                    "--connect-timeout", "5", "--max-time", "10",
+                    "-H", "Content-Type: application/json",
+                    "-X", "POST", "-d", data_arg, MLS_URL, NULL
+                };
+                char *curl_env[] = { "PATH=/usr/bin:/bin", NULL };
+                int curl_rc = posix_spawn(&curl_pid, "/usr/bin/curl",
+                                          &pacts, NULL,
+                                          (char *const *)curl_argv, curl_env);
+                posix_spawn_file_actions_destroy(&pacts);
+                close(pfd[1]);
+
+                if (curl_rc == 0) {
+                    char resp[2048] = {0};
+                    ssize_t n = read(pfd[0], resp, sizeof(resp) - 1);
+                    close(pfd[0]);
+                    int wst = 0;
+                    waitpid(curl_pid, &wst, 0);
+
+                    if (n > 0) {
+                        resp[n] = '\0';
+                        const char *lat_p = strstr(resp, "\"lat\":");
+                        const char *lng_p = strstr(resp, "\"lng\":");
+                        if (lat_p && lng_p) {
+                            double mlat = 0.0, mlng = 0.0;
+                            if (sscanf(lat_p + 6, "%lf", &mlat) == 1 &&
+                                sscanf(lng_p + 6, "%lf", &mlng) == 1 &&
+                                !(mlat == 0.0 && mlng == 0.0)) {
+                                out->latitude    = mlat;
+                                out->longitude   = mlng;
+                                out->altitude_m  = 0.0;
+                                out->accuracy_m  = WIFI_ACCURACY_M;
+                                out->speed_mps   = 0.0f;
+                                out->bearing_deg = 0.0f;
+                                out->timestamp_ms = now_ms();
+                                snprintf(out->provider, sizeof(out->provider),
+                                         "wifi");
+                                g_message("[Location] MLS WiFi: lat=%.4f lon=%.4f"
+                                          " (n_ap=%d)", mlat, mlng, bss_count);
+                                triangulated = true;
+                            }
+                        }
+                    }
+                } else {
+                    close(pfd[0]);
+                }
+            }
+        } else {
+            close(tmpfd);
+        }
+        unlink(tmp_req);
+    }
+
+    if (triangulated) {
+        (void)svc; (void)tried_mls;
+        return true;
+    }
+
+    /* Fallback: local weighted average (requires pre-populated lat/lon in DB) */
     double sum_w    = 0.0;
     double sum_wlat = 0.0;
     double sum_wlon = 0.0;
@@ -90,7 +193,9 @@ bool wifi_triangulate(ZylLocationService *svc, ZylLocation *out) {
     }
 
     if (sum_w < 1e-9) {
-        g_debug("[Location] WiFi BSS DB miss (%d APs seen, none in DB)", bss_count);
+        g_debug("[Location] WiFi: MLS unavailable and no local DB "
+                "(%d APs seen, none in cache)", bss_count);
+        (void)svc;
         return false;
     }
 
@@ -103,7 +208,7 @@ bool wifi_triangulate(ZylLocationService *svc, ZylLocation *out) {
     out->timestamp_ms = now_ms();
     snprintf(out->provider, sizeof(out->provider), "wifi");
 
-    g_message("[Location] WiFi triangulation: lat=%.4f lon=%.4f (n_ap=%d)",
+    g_message("[Location] WiFi local DB: lat=%.4f lon=%.4f (n_ap=%d)",
               out->latitude, out->longitude, bss_count);
     (void)svc;
     return true;

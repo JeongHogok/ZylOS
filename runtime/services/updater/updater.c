@@ -19,6 +19,7 @@
 #include <time.h>
 #include <spawn.h>
 #include <sys/wait.h>
+#include <sys/reboot.h>
 
 #include <openssl/evp.h>
 #include <openssl/pem.h>
@@ -245,32 +246,6 @@ static bool validate_version(const char *ver) {
     return true;
 }
 
-/* ─── 유틸리티: popen으로 명령어 실행 후 출력 읽기 ─── */
-static char *run_command(const char *cmd, size_t *out_len) {
-    FILE *fp = popen(cmd, "r");
-    if (!fp) return NULL;
-
-    size_t capacity = 4096;
-    size_t total = 0;
-    char *buf = malloc(capacity);
-    if (!buf) { pclose(fp); return NULL; }
-
-    size_t n;
-    while ((n = fread(buf + total, 1, capacity - total - 1, fp)) > 0) {
-        total += n;
-        if (total + 1 >= capacity) {
-            capacity *= 2;
-            char *tmp = realloc(buf, capacity);
-            if (!tmp) { free(buf); pclose(fp); return NULL; }
-            buf = tmp;
-        }
-    }
-    buf[total] = '\0';
-    pclose(fp);
-    if (out_len) *out_len = total;
-    return buf;
-}
-
 /* ─── 유틸리티: SHA-256 해시 계산 (OpenSSL EVP API) ─── */
 static bool compute_sha256_file(const char *path, char *out_hex, size_t hex_size) {
     if (hex_size < 65) return false; /* need 64 hex chars + NUL */
@@ -402,15 +377,52 @@ ZylUpdateState zyl_updater_check(ZylUpdater *u,
              u->current_version ? u->current_version : "0.0.0",
              u->active_slot ? u->active_slot : "a");
 
-    /* 2. curl 명령어로 HTTP GET 수행 */
-    char cmd[1280];
-    snprintf(cmd, sizeof(cmd),
-             "curl -s --connect-timeout 10 --max-time 30 '%s' 2>/dev/null",
-             url);
-
+    /* 2. curl via posix_spawn (no shell) */
     fprintf(stderr, "[UPDATER] Checking: %s\n", url);
 
-    char *response = run_command(cmd, NULL);
+    int check_pfd[2];
+    char *response = NULL;
+    if (pipe(check_pfd) == 0) {
+        pid_t check_pid;
+        posix_spawn_file_actions_t check_acts;
+        posix_spawn_file_actions_init(&check_acts);
+        posix_spawn_file_actions_adddup2(&check_acts, check_pfd[1], STDOUT_FILENO);
+        posix_spawn_file_actions_addclose(&check_acts, check_pfd[0]);
+
+        const char *check_argv[] = {
+            "/usr/bin/curl", "-s",
+            "--connect-timeout", "10", "--max-time", "30",
+            url, NULL
+        };
+        char *check_env[] = { "PATH=/usr/bin:/bin", NULL };
+        int check_rc = posix_spawn(&check_pid, "/usr/bin/curl",
+                                    &check_acts, NULL,
+                                    (char *const *)check_argv, check_env);
+        posix_spawn_file_actions_destroy(&check_acts);
+        close(check_pfd[1]);
+
+        if (check_rc == 0) {
+            size_t cap = 8192, total = 0;
+            response = malloc(cap);
+            if (response) {
+                ssize_t n;
+                while ((n = read(check_pfd[0], response + total, cap - total - 1)) > 0) {
+                    total += (size_t)n;
+                    if (total + 1 >= cap) {
+                        cap *= 2;
+                        char *tmp = realloc(response, cap);
+                        if (!tmp) break;
+                        response = tmp;
+                    }
+                }
+                response[total] = '\0';
+                if (total == 0) { free(response); response = NULL; }
+            }
+            int wst = 0;
+            waitpid(check_pid, &wst, 0);
+        }
+        close(check_pfd[0]);
+    }
     if (!response || strlen(response) == 0) {
         fprintf(stderr, "[UPDATER] No response from server\n");
         free(response);
@@ -526,31 +538,53 @@ bool zyl_updater_download(ZylUpdater *u,
         return false;
     }
 
-    char cmd[2048];
-    snprintf(cmd, sizeof(cmd),
-             "curl -f -L --connect-timeout 15 --max-time 3600 "
-             "-o '%s' --progress-bar '%s' 2>&1",
-             pkg_path, u->pending->download_url);
-
     fprintf(stderr, "[UPDATER] Downloading: %s -> %s\n",
             u->pending->download_url, pkg_path);
 
-    /* popen으로 실행하여 진행률 파싱 시도 */
-    FILE *fp = popen(cmd, "r");
-    if (!fp) {
-        fprintf(stderr, "[UPDATER] Failed to start download\n");
+    /* curl via posix_spawn; capture progress output without a shell */
+    int pipefd[2];
+    if (pipe(pipefd) != 0) {
+        fprintf(stderr, "[UPDATER] Failed to create progress pipe\n");
         u->state = ZYL_UPDATE_FAILED;
         report_progress(u, 0, "Download failed to start");
         return false;
     }
 
+    pid_t dl_pid;
+    posix_spawn_file_actions_t dl_acts;
+    posix_spawn_file_actions_init(&dl_acts);
+    posix_spawn_file_actions_adddup2(&dl_acts, pipefd[1], STDOUT_FILENO);
+    posix_spawn_file_actions_adddup2(&dl_acts, pipefd[1], STDERR_FILENO);
+    posix_spawn_file_actions_addclose(&dl_acts, pipefd[0]);
+
+    const char *dl_argv[] = {
+        "/usr/bin/curl", "-f", "-L",
+        "--connect-timeout", "15",
+        "--max-time", "3600",
+        "-o", pkg_path,
+        "--progress-bar",
+        u->pending->download_url,
+        NULL
+    };
+    char *dl_env[] = { "PATH=/usr/bin:/bin", NULL };
+    int spawn_rc = posix_spawn(&dl_pid, "/usr/bin/curl", &dl_acts, NULL,
+                               (char *const *)dl_argv, dl_env);
+    posix_spawn_file_actions_destroy(&dl_acts);
+    close(pipefd[1]);
+    if (spawn_rc != 0) {
+        close(pipefd[0]);
+        fprintf(stderr, "[UPDATER] Failed to start curl download\n");
+        u->state = ZYL_UPDATE_FAILED;
+        report_progress(u, 0, "Download failed to start");
+        return false;
+    }
+
+    FILE *fp = fdopen(pipefd[0], "r");
     char line[256];
     int last_pct = 0;
-    while (fgets(line, sizeof(line), fp)) {
-        /* curl progress-bar 형식에서 퍼센트 파싱 시도 */
+    while (fp && fgets(line, sizeof(line), fp)) {
         char *pct_pos = strstr(line, "%");
         if (pct_pos && pct_pos > line) {
-            /* 퍼센트 앞의 숫자 추출 */
             char *num_start = pct_pos - 1;
             while (num_start > line &&
                    (*(num_start - 1) >= '0' && *(num_start - 1) <= '9')) {
@@ -563,7 +597,11 @@ bool zyl_updater_download(ZylUpdater *u,
             }
         }
     }
-    int ret = pclose(fp);
+    if (fp) fclose(fp); else close(pipefd[0]);
+
+    int status = 0;
+    waitpid(dl_pid, &status, 0);
+    int ret = (WIFEXITED(status) ? WEXITSTATUS(status) : -1);
 
     if (ret != 0) {
         fprintf(stderr, "[UPDATER] Download failed (exit code %d)\n", ret);
@@ -898,15 +936,38 @@ bool zyl_updater_apply(ZylUpdater *u,
 bool zyl_updater_reboot_to_update(ZylUpdater *u) {
     if (!u || u->state != ZYL_UPDATE_PENDING_REBOOT) return false;
 
-    /*
-     * 실제 구현:
-     *   sync();
-     *   reboot(RB_AUTOBOOT);
-     * 또는:
-     *   system("systemctl reboot");
-     */
-    fprintf(stderr, "[UPDATER] Reboot requested for update activation\n");
-    return true;
+    fprintf(stderr, "[UPDATER] Initiating system reboot for update activation\n");
+
+    /* Flush all dirty pages before rebooting */
+    sync();
+
+    /* Try systemd-logind Reboot() first (graceful, runs shutdown hooks) */
+    {
+        const char *argv[] = {
+            "/usr/bin/systemctl", "reboot", NULL
+        };
+        pid_t pid;
+        char *envp[] = { "PATH=/usr/bin:/sbin:/bin", NULL };
+        int rc = posix_spawn(&pid, "/usr/bin/systemctl", NULL, NULL,
+                              (char *const *)argv, envp);
+        if (rc == 0) {
+            int status;
+            waitpid(pid, &status, 0);
+            /* systemctl reboot typically does not return; if it returns successfully,
+             * the reboot is already in progress. On non-zero exit, fall back. */
+            if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+                return true;
+            }
+        }
+    }
+
+    /* Fallback: direct kernel reboot syscall */
+    sync();
+    reboot(RB_AUTOBOOT);
+
+    /* If reboot() returns, treat as failure. */
+    fprintf(stderr, "[UPDATER] reboot() returned unexpectedly: %s\n", strerror(errno));
+    return false;
 }
 
 bool zyl_updater_mark_verified(ZylUpdater *u) {

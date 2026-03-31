@@ -58,6 +58,10 @@ struct ZylInputService {
     /* evdev file descriptor (-1 if not opened) */
     int              evdev_fd;
 
+    /* Touch coordinate range (read from ABS_MT_POSITION_X/Y info) */
+    int              touch_max_x;   /* default 4095; overridden from evdev */
+    int              touch_max_y;   /* default 4095; overridden from evdev */
+
     /* GLib I/O channel for evdev */
     GIOChannel      *evdev_channel;
     guint            evdev_watch_id;
@@ -98,7 +102,13 @@ static bool is_valid_layout(const char *layout)
 {
     if (!layout || layout[0] == '\0') return false;
 
-    static const char *known[] = {"en", "ko", "ja", "zh", "num", NULL};
+    static const char *known[] = {
+        "en", "ko", "ja", "zh", "num",
+        "de", "fr", "es", "it", "pt",    /* European */
+        "ar", "he", "fa",                 /* RTL */
+        "ru", "uk",                       /* Cyrillic */
+        NULL
+    };
     for (int i = 0; known[i]; i++) {
         if (strcmp(layout, known[i]) == 0) return true;
     }
@@ -202,17 +212,22 @@ static gboolean on_evdev_event(GIOChannel  *source,
             break;
         case ABS_MT_POSITION_X:
             if (current_slot >= 0 && current_slot < ZYL_MAX_TOUCH_POINTS) {
-                /* Normalize: assume 0-4095 touchscreen range */
-                svc->touch_points[current_slot].x = (float)ev.value / 4095.0f;
+                int max_x = svc->touch_max_x > 0 ? svc->touch_max_x : 4095;
+                svc->touch_points[current_slot].x = (float)ev.value / (float)max_x;
                 if (svc->touch_points[current_slot].x > 1.0f)
                     svc->touch_points[current_slot].x = 1.0f;
+                if (svc->touch_points[current_slot].x < 0.0f)
+                    svc->touch_points[current_slot].x = 0.0f;
             }
             break;
         case ABS_MT_POSITION_Y:
             if (current_slot >= 0 && current_slot < ZYL_MAX_TOUCH_POINTS) {
-                svc->touch_points[current_slot].y = (float)ev.value / 4095.0f;
+                int max_y = svc->touch_max_y > 0 ? svc->touch_max_y : 4095;
+                svc->touch_points[current_slot].y = (float)ev.value / (float)max_y;
                 if (svc->touch_points[current_slot].y > 1.0f)
                     svc->touch_points[current_slot].y = 1.0f;
+                if (svc->touch_points[current_slot].y < 0.0f)
+                    svc->touch_points[current_slot].y = 0.0f;
             }
             break;
         }
@@ -240,6 +255,19 @@ static void try_open_evdev(ZylInputService *svc)
             if (evbits[0] & (1UL << EV_KEY)) {
                 svc->evdev_fd = fd;
                 g_info("zyl-input: opened evdev device %s", path);
+
+                /* Read ABS_MT_POSITION_X/Y range for accurate normalization */
+                struct input_absinfo abs_info;
+                if (ioctl(fd, EVIOCGABS(ABS_MT_POSITION_X), &abs_info) >= 0
+                    && abs_info.maximum > 0) {
+                    svc->touch_max_x = abs_info.maximum;
+                }
+                if (ioctl(fd, EVIOCGABS(ABS_MT_POSITION_Y), &abs_info) >= 0
+                    && abs_info.maximum > 0) {
+                    svc->touch_max_y = abs_info.maximum;
+                }
+                g_info("zyl-input: touch range x=%d y=%d",
+                       svc->touch_max_x, svc->touch_max_y);
                 return;
             }
         }
@@ -408,6 +436,10 @@ ZylInputService *zyl_input_create(void)
         svc->touch_points[i].y      = 0.0f;
         svc->touch_points[i].active  = false;
     }
+
+    /* Initialize touch range defaults (overridden by try_open_evdev) */
+    svc->touch_max_x = 4095;
+    svc->touch_max_y = 4095;
 
     /* Try to open evdev device */
     try_open_evdev(svc);

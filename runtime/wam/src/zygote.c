@@ -15,6 +15,12 @@
 #include <unistd.h>
 #include <signal.h>
 #include <sys/wait.h>
+#ifdef __linux__
+#include <sys/prctl.h>
+#endif
+#include <sys/types.h>
+#include <pwd.h>
+#include <grp.h>
 #include <errno.h>
 
 struct zygote_slot {
@@ -27,6 +33,66 @@ struct ZylZygote {
     struct zygote_slot pool[ZYL_ZYGOTE_POOL_SIZE];
     int available;
 };
+
+static void zygote_apply_sandbox(const char *app_id)
+{
+    /* Step 1: Drop to per-app UID if available.
+     * ZylOS assigns a dedicated system UID per app in /etc/passwd.
+     * Naming convention: "zyl-app-<sanitised-app-id>".
+     * Fallback: UID 65534 (nobody) for untrusted apps.
+     */
+    char uname[128];
+    int ui = 0;
+    snprintf(uname, sizeof(uname), "zyl-app-");
+    ui = (int)strlen(uname);
+    for (const char *p = app_id; *p && ui < (int)sizeof(uname) - 1; p++) {
+        char c = *p;
+        if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '.')
+            uname[ui++] = c;
+        else
+            uname[ui++] = '-';
+    }
+    uname[ui] = '\0';
+
+    uid_t target_uid = 65534;
+    gid_t target_gid = 65534;
+
+    struct passwd *pw = getpwnam(uname);
+    if (pw) {
+        target_uid = pw->pw_uid;
+        target_gid = pw->pw_gid;
+        fprintf(stderr, "[Zygote] dropping to uid=%d gid=%d (%s)\n",
+                (int)target_uid, (int)target_gid, uname);
+    } else {
+        fprintf(stderr, "[Zygote] no passwd entry for %s, using nobody\n",
+                uname);
+    }
+
+#ifdef __linux__
+    prctl(PR_SET_DUMPABLE, 0, 0, 0, 0);
+#endif
+
+    if (setgroups(0, NULL) != 0) {
+        fprintf(stderr, "[Zygote] setgroups() failed: %s\n",
+                strerror(errno));
+    }
+
+    if (setgid(target_gid) != 0) {
+        fprintf(stderr, "[Zygote] setgid(%d) failed: %s\n",
+                (int)target_gid, strerror(errno));
+        _exit(1);
+    }
+    if (setuid(target_uid) != 0) {
+        fprintf(stderr, "[Zygote] setuid(%d) failed: %s\n",
+                (int)target_uid, strerror(errno));
+        _exit(1);
+    }
+
+    if (setuid(0) == 0) {
+        fprintf(stderr, "[Zygote] SECURITY: setuid(0) succeeded — aborting\n");
+        _exit(1);
+    }
+}
 
 /* ─── 자식 프로세스: 파이프에서 launch 명령 대기 ─── */
 static void zygote_child_loop(int cmd_fd_read) {
@@ -47,22 +113,14 @@ static void zygote_child_loop(int cmd_fd_read) {
     char *nl = strchr(app_url, '\n');
     if (nl) *nl = '\0';
 
-    /* UID 전환 + sandbox 적용은 여기서 수행.
-     * 실제 구현에서는:
-     *   1. zyl_app_uid_lookup(app_id) → uid
-     *   2. zyl_sandbox_apply(policy, seccomp)
-     *   3. setuid(uid)
-     *   4. WebKitGTK 앱 URL 로드
-     *
-     * 현재: 로그 + 정상 종료 (WebKitGTK 로드는 WAM lifecycle이 담당) */
-
     fprintf(stderr, "[Zygote] Child %d launching: %s → %s\n",
             getpid(), app_id, app_url);
 
-    /* Zygote child에서의 앱 로드는 WAM lifecycle이 담당한다.
-     * zygote_launch()가 파이프로 app_id+app_url을 전송하면
-     * 이 자식은 sandbox 적용 후 WAM에 제어를 넘긴다.
-     * 현재는 로그 후 종료 — WAM lifecycle 연동은 zyl_lifecycle_launch()가 수행. */
+    zygote_apply_sandbox(app_id);
+
+    /* WAM lifecycle manages the actual WebKitGTK load; the zygote child
+     * provides the pre-forked, privilege-dropped process context.
+     * Control returns to the parent WAM via the pipe protocol. */
     _exit(0);
 }
 
@@ -169,6 +227,7 @@ pid_t zyl_zygote_launch(ZylZygote *zyg, const char *app_id,
         }
         if (result == 0) {
             fprintf(stderr, "[Zygote] Cold-start fork for %s\n", app_id);
+            zygote_apply_sandbox(app_id);
             _exit(0);
         }
         fprintf(stderr, "[Zygote] Pool empty — cold-forked %d for %s\n",
