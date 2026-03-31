@@ -170,6 +170,14 @@
     state.previousApp = state.currentApp;
     state.currentApp = appId;
 
+    /* Background execution limit — iframe unload on app switch
+     * 앱 전환 시 이전 앱의 iframe src를 about:blank으로 설정하여
+     * 백그라운드 JS 실행을 중단한다. recents에서 앱 카드를 클릭하면
+     * launchApp()이 다시 호출되어 iframe을 재로드한다. */
+    if (state.previousApp && state.previousApp !== appId) {
+      appFrame.src = 'about:blank';
+    }
+
     /* Apply OS sandbox policy before loading app */
     if (typeof ZylSandbox !== 'undefined') {
       appFrame.setAttribute('sandbox', ZylSandbox.SANDBOX_FLAGS);
