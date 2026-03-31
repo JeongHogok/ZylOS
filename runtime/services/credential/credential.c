@@ -442,7 +442,14 @@ int zyl_credential_store(ZylCredentialStore *store,
     if (fd >= 0) fchmod(fd, 0600);
     size_t written = fwrite(encrypted, 1, enc_len, f);
     fflush(f);
-    fsync(fileno(f));
+    if (fsync(fileno(f)) != 0) {
+        g_warning("[Credential] fsync failed for %s/%s: %s",
+                  service, account, strerror(errno));
+        fclose(f);
+        free(encrypted);
+        remove(path);
+        return -1;
+    }
     fclose(f);
     free(encrypted);
 
@@ -552,6 +559,13 @@ int zyl_credential_list(ZylCredentialStore *store,
                          const char *service,
                          ZylCredentialInfo **out, int *count) {
     if (!store || !service || !out || !count) return -1;
+
+    if (!is_safe_name(service)) {
+        fprintf(stderr, "[Credential] Rejected unsafe service name in list: '%s'\n",
+                service ? service : "(null)");
+        *out = NULL; *count = 0;
+        return -1;
+    }
 
     char dir_path[512];
     snprintf(dir_path, sizeof(dir_path), "%s/%s",

@@ -90,7 +90,11 @@ static bool write_file_string(const char *path, const char *content) {
     if (!f) return false;
     fputs(content, f);
     fflush(f);
-    fsync(fileno(f));
+    if (fsync(fileno(f)) != 0) {
+        fprintf(stderr, "[UPDATER] fsync failed for %s: %s\n", path, strerror(errno));
+        fclose(f);
+        return false;
+    }
     fclose(f);
     return true;
 }
@@ -100,15 +104,18 @@ static void report_progress(ZylUpdater *u, int pct, const char *msg) {
         u->progress_cb(u->state, pct, msg, u->progress_data);
 }
 
-/* ─── 유틸리티: 경로 안전성 검증 (shell metacharacter 거부) ─── */
+/* ─── 유틸리티: 경로 안전성 검증 (shell metacharacter + path traversal 거부) ─── */
 static bool is_safe_path(const char *path) {
     if (!path || path[0] == '\0') return false;
+    /* Reject path traversal */
+    if (strstr(path, "..") != NULL) return false;
+    /* Reject shell metacharacters */
     for (const char *p = path; *p; p++) {
         switch (*p) {
         case ';': case '&': case '|': case '$':
         case '`': case '(': case ')': case '{':
         case '}': case '<': case '>': case '!':
-        case '\n': case '\r': case '\'':
+        case '\n': case '\r': case '\'': case '"':
             return false;
         default:
             break;
@@ -120,10 +127,11 @@ static bool is_safe_path(const char *path) {
 /**
  * Validate URL for safe use in shell commands.
  * Must start with https:// and contain no shell metacharacters.
+ * HTTP (plaintext) is rejected to prevent MITM on OTA metadata.
  */
 static bool is_safe_url(const char *url) {
     if (!url) return false;
-    if (strncmp(url, "https://", 8) != 0 && strncmp(url, "http://", 7) != 0)
+    if (strncmp(url, "https://", 8) != 0)
         return false;
     return is_safe_path(url);
 }

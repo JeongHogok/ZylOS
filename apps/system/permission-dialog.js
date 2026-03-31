@@ -195,12 +195,55 @@ window.ZylPermissionDialog = (function () {
     dialog.appendChild(btnRow);
     overlay.appendChild(dialog);
 
+    /* ESC key closes dialog (deny) */
+    function onKeyDown(e) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        handleResponse(false, false);
+      }
+      /* Focus trap: keep Tab within dialog */
+      if (e.key === 'Tab') {
+        var focusable = dialog.querySelectorAll('button, input, [tabindex]');
+        if (focusable.length === 0) return;
+        var first = focusable[0];
+        var last = focusable[focusable.length - 1];
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else {
+          if (document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
+      }
+    }
+    document.addEventListener('keydown', onKeyDown);
+
+    /* Overlay click closes dialog (deny) */
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) {
+        handleResponse(false, false);
+      }
+    });
+
+    /* Store cleanup reference */
+    overlay._keyHandler = onKeyDown;
+
     document.body.appendChild(overlay);
+
+    /* Focus first button */
+    denyBtn.focus();
   }
 
   function handleResponse(granted, dontAskAgain) {
     var el = document.getElementById('zyl-permission-dialog');
-    if (el) el.parentNode.removeChild(el);
+    if (el) {
+      if (el._keyHandler) document.removeEventListener('keydown', el._keyHandler);
+      el.parentNode.removeChild(el);
+    }
 
     if (_pendingGrant) {
       var key = _pendingGrant.appId + ':' + _pendingGrant.permission;

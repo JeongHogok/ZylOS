@@ -255,6 +255,13 @@ void zyl_audio_set_mute(ZylAudioService *svc, bool muted) {
     g_message("[Audio] Mute: %s", muted ? "ON" : "OFF");
 }
 
+/* Child-watch callback: reap zombie and unlink temp WAV file */
+static void on_play_child_exit(GPid pid, gint status, gpointer data) {
+    (void)status;
+    g_spawn_close_pid(pid);
+    if (data) { unlink((const char *)data); free(data); }
+}
+
 int zyl_audio_play_tone(ZylAudioService *svc, int freq_hz,
                          int duration_ms) {
     if (!svc || svc->muted) return -1;
@@ -279,12 +286,16 @@ int zyl_audio_play_tone(ZylAudioService *svc, int freq_hz,
     if (play_rc != 0) {
         /* ALSA fallback */
         char *aplay_argv[] = {"aplay", tmp, NULL};
-        posix_spawn(&play_pid, "/usr/bin/aplay", NULL, NULL, aplay_argv, play_envp);
+        play_rc = posix_spawn(&play_pid, "/usr/bin/aplay", NULL, NULL, aplay_argv, play_envp);
+        if (play_rc != 0) {
+            unlink(tmp);
+            return -1;
+        }
     }
 
-    /* Schedule cleanup */
-    /* Note: in production, use g_timeout_add for cleanup.
-       Tone files are small (<100KB) and /tmp is tmpfs. */
+    /* Reap child via GLib child-watch to avoid zombies and clean up temp file */
+    char *tmp_copy = strdup(tmp);
+    g_child_watch_add(play_pid, on_play_child_exit, tmp_copy);
     return 0;
 }
 

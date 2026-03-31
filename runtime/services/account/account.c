@@ -261,8 +261,11 @@ int zyl_account_set_auto_sync(ZylAccountService *svc, bool enabled, int interval
     return 0;
 }
 
-/* Reject paths containing shell metacharacters to prevent injection */
+/* Reject paths containing shell metacharacters or path traversal */
 static bool is_safe_path(const char *path) {
+    if (!path || path[0] == '\0') return false;
+    /* Reject ".." path traversal */
+    if (strstr(path, "..") != NULL) return false;
     const char *dangerous = ";|&`$\n\r\"'\\(){}[]<>?*~!#";
     for (const char *p = path; *p; p++) {
         if (strchr(dangerous, *p)) return false;

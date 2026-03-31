@@ -24,6 +24,20 @@
     });
   }
 
+  /* ─── ES5 helpers ─── */
+  function arrFind(arr, fn) {
+    for (var i = 0; i < arr.length; i++) {
+      if (fn(arr[i], i, arr)) return arr[i];
+    }
+    return undefined;
+  }
+  function arrFindIndex(arr, fn) {
+    for (var i = 0; i < arr.length; i++) {
+      if (fn(arr[i], i, arr)) return i;
+    }
+    return -1;
+  }
+
   /* ─── Constants ─── */
   var MAX_TABS = 5;
 
@@ -75,7 +89,7 @@
 
       /* ── Navigation back handling ── */
       if (msg.type === 'navigation.back') {
-        var tab = tabs[activeTabIndex];
+        var tab = getActiveTab();
         if (tab && tab.historyIndex > 0) {
           if (btnBack) btnBack.click();
           ZylBridge.sendToSystem({ type: 'navigation.handled' });
@@ -102,7 +116,7 @@
 
   /* ─── Helper: Get active tab ─── */
   function getActiveTab() {
-    return tabs.find(function (t) { return t.id === activeTabId; });
+    return arrFind(tabs, function (t) { return t.id === activeTabId; });
   }
 
   /* ─── Render Tabs ─── */
@@ -154,7 +168,7 @@
   /* ─── Close Tab ─── */
   function closeTab(id) {
     if (tabs.length <= 1) return;
-    var idx = tabs.findIndex(function (t) { return t.id === id; });
+    var idx = arrFindIndex(tabs, function (t) { return t.id === id; });
     tabs.splice(idx, 1);
     if (activeTabId === id) {
       var newIdx = Math.min(idx, tabs.length - 1);

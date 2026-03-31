@@ -337,7 +337,13 @@ int zyl_location_request_updates(ZylLocationService *svc,
     svc->updates_active = true;
     svc->thread_running = true;
 
-    pthread_create(&svc->poll_thread, NULL, location_poll_thread, svc);
+    int thr_rc = pthread_create(&svc->poll_thread, NULL, location_poll_thread, svc);
+    if (thr_rc != 0) {
+        svc->thread_running = false;
+        svc->updates_active = false;
+        g_warning("[Location] pthread_create failed: %s", strerror(thr_rc));
+        return -1;
+    }
 
     g_message("[Location] Updates requested: interval=%d ms", interval_ms);
     return 0;
@@ -399,7 +405,11 @@ int zyl_location_add_geofence(ZylLocationService *svc,
     e->fence.lat      = fence->lat;
     e->fence.lon      = fence->lon;
     e->fence.radius_m = fence->radius_m;
-    e->fence.tag      = strdup(fence->tag);
+    e->fence.tag      = fence->tag ? strdup(fence->tag) : NULL;
+    if (fence->tag && !e->fence.tag) {
+        pthread_mutex_unlock(&svc->lock);
+        return -1; /* allocation failure */
+    }
     e->inside         = false;
     e->active         = true;
     svc->geofence_count++;

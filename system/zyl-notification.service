@@ -7,6 +7,9 @@ Type=dbus
 BusName=org.zylos.Notification
 ExecStart=/usr/bin/zyl-notification
 Restart=on-failure
+RestartSec=5
+StartLimitBurst=5
+StartLimitIntervalSec=60
 
 [Install]
 WantedBy=multi-user.target

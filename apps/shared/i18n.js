@@ -51,7 +51,11 @@ window.zylI18n = (function () {
       'permission.allow': '\uD5C8\uC6A9',
       'permission.dont_ask_again': '\uB2E4\uC2DC \uBB3B\uC9C0 \uC54A\uAE30',
       'permission.request_message': '{app}\uC774(\uAC00) {perm}\uC5D0 \uC811\uADFC\uD558\uB824\uACE0 \uD569\uB2C8\uB2E4',
-      'home.loading': '\uB85C\uB529 \uC911...'
+      'home.loading': '\uB85C\uB529 \uC911...',
+      'month.1': '1\uC6D4', 'month.2': '2\uC6D4', 'month.3': '3\uC6D4',
+      'month.4': '4\uC6D4', 'month.5': '5\uC6D4', 'month.6': '6\uC6D4',
+      'month.7': '7\uC6D4', 'month.8': '8\uC6D4', 'month.9': '9\uC6D4',
+      'month.10': '10\uC6D4', 'month.11': '11\uC6D4', 'month.12': '12\uC6D4'
     },
     en: {
       'search': 'Search...',
@@ -125,7 +129,11 @@ window.zylI18n = (function () {
       'permission.allow': '\u8A31\u53EF',
       'permission.dont_ask_again': '\u4ECA\u5F8C\u8868\u793A\u3057\u306A\u3044',
       'permission.request_message': '{app}\u304C{perm}\u3078\u306E\u30A2\u30AF\u30BB\u30B9\u3092\u6C42\u3081\u3066\u3044\u307E\u3059',
-      'home.loading': '\u8AAD\u307F\u8FBC\u307F\u4E2D...'
+      'home.loading': '\u8AAD\u307F\u8FBC\u307F\u4E2D...',
+      'month.1': '1\u6708', 'month.2': '2\u6708', 'month.3': '3\u6708',
+      'month.4': '4\u6708', 'month.5': '5\u6708', 'month.6': '6\u6708',
+      'month.7': '7\u6708', 'month.8': '8\u6708', 'month.9': '9\u6708',
+      'month.10': '10\u6708', 'month.11': '11\u6708', 'month.12': '12\u6708'
     },
     zh: {
       'search': '\u641C\u7D22...',
@@ -160,7 +168,11 @@ window.zylI18n = (function () {
       'permission.allow': '\u5141\u8BB8',
       'permission.dont_ask_again': '\u4E0D\u518D\u8BE2\u95EE',
       'permission.request_message': '{app}\u60F3\u8981\u8BBF\u95EE{perm}',
-      'home.loading': '\u52A0\u8F7D\u4E2D...'
+      'home.loading': '\u52A0\u8F7D\u4E2D...',
+      'month.1': '\u4E00\u6708', 'month.2': '\u4E8C\u6708', 'month.3': '\u4E09\u6708',
+      'month.4': '\u56DB\u6708', 'month.5': '\u4E94\u6708', 'month.6': '\u516D\u6708',
+      'month.7': '\u4E03\u6708', 'month.8': '\u516B\u6708', 'month.9': '\u4E5D\u6708',
+      'month.10': '\u5341\u6708', 'month.11': '\u5341\u4E00\u6708', 'month.12': '\u5341\u4E8C\u6708'
     },
     es: {
       'search': 'Buscar...',

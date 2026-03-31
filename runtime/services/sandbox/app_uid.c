@@ -89,7 +89,11 @@ int zyl_app_uid_create(const char *app_id) {
     char *envp[] = {"PATH=/usr/sbin:/usr/bin:/sbin:/bin", NULL};
     pid_t pid;
     int ret = posix_spawn(&pid, "/usr/sbin/useradd", NULL, NULL, argv, envp);
-    if (ret == 0) waitpid(pid, &ret, 0);
+    if (ret == 0) {
+        int wstatus = 0;
+        waitpid(pid, &wstatus, 0);
+        ret = (WIFEXITED(wstatus) && WEXITSTATUS(wstatus) == 0) ? 0 : -1;
+    }
     if (ret != 0) {
         /* useradd 실패 — /etc/passwd 직접 추가 폴백 */
         FILE *pw = fopen("/etc/passwd", "a");

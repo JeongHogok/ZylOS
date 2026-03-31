@@ -138,7 +138,7 @@
       });
     } else {
       /* ZylPermissionDialog 미로드 시 폴백 */
-      requestService('contacts', 'getAll');
+      requestServiceFire('contacts', 'getAll');
     }
   }
 
@@ -199,12 +199,14 @@
       row.setAttribute('role', 'listitem');
       row.setAttribute('aria-label', c.name || '');
       row.setAttribute('tabindex', '0');
-      row.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          row.click();
-        }
-      });
+      (function (r) {
+        r.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            r.click();
+          }
+        });
+      })(row);
 
       var avatar = document.createElement('div');
       avatar.className = 'avatar ' + getAvatarClass(c.name);

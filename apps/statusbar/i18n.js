@@ -28,7 +28,7 @@
     'qs.wifi': 'WiFi',
     'qs.bluetooth': 'BT',
     'qs.silent': 'Silent',
-    'qs.rotation': 'Rotate',
+    'qs.rotation': 'Rotation',
     'qs.flashlight': 'Flashlight',
     'qs.airplane': 'Airplane',
     'qs.dnd': 'DND',

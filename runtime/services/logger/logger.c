@@ -218,30 +218,27 @@ void zyl_logger_write(ZylLoggerService *svc,
 
 /* -- Crash Signal Handler ----------------------------------- */
 
+/*
+ * Log file descriptor cached at handler install time for async-signal-safety.
+ * fileno() is not guaranteed async-signal-safe on all POSIX implementations.
+ */
+static int g_crash_log_fd = -1;
+
 static void crash_signal_handler(int sig)
 {
-    /* Async-signal-safe: write directly to fd, minimal operations */
-    ZylLoggerService *svc = g_logger_instance;
+    /*
+     * STRICTLY async-signal-safe: only use write(), _exit(), signal(), raise().
+     * backtrace() is NOT async-signal-safe (may call malloc internally),
+     * so we only write a crash marker and rely on core dumps for stack traces.
+     */
+    static const char crash_prefix[] =
+        "{\"level\":\"CRASH\",\"source\":\"signal\","
+        "\"msg\":\"Fatal signal received\"}\n";
 
-    /* Capture backtrace */
-    void *bt_buf[64];
-    int bt_count = backtrace(bt_buf, 64);
-
-    /* Write crash info to log via fd using only async-signal-safe calls */
-    if (svc && svc->log_fp) {
-        int fd = fileno(svc->log_fp);
-        if (fd >= 0) {
-            /* snprintf is NOT async-signal-safe — use raw write instead */
-            static const char crash_prefix[] =
-                "{\"level\":\"CRASH\",\"source\":\"signal\","
-                "\"msg\":\"Fatal signal received\"}\n";
-            (void)write(fd, crash_prefix, sizeof(crash_prefix) - 1);
-
-            /* Write backtrace symbols to stderr and log */
-            backtrace_symbols_fd(bt_buf, bt_count, STDERR_FILENO);
-            backtrace_symbols_fd(bt_buf, bt_count, fd);
-        }
+    if (g_crash_log_fd >= 0) {
+        (void)write(g_crash_log_fd, crash_prefix, sizeof(crash_prefix) - 1);
     }
+    (void)write(STDERR_FILENO, crash_prefix, sizeof(crash_prefix) - 1);
 
     /* Re-raise to get core dump */
     signal(sig, SIG_DFL);
@@ -254,6 +251,11 @@ void zyl_logger_install_crash_handler(ZylLoggerService *svc)
         return;
     }
     g_logger_instance = svc;
+
+    /* Cache log fd for async-signal-safe access in crash handler */
+    if (ensure_log_file(svc) && svc->log_fp) {
+        g_crash_log_fd = fileno(svc->log_fp);
+    }
 
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));

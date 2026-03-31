@@ -13,6 +13,30 @@
 (function () {
   'use strict';
 
+  /* ─── ES5 polyfill helpers ─── */
+  function strPadEnd(str, len, ch) {
+    str = String(str); ch = ch || ' ';
+    while (str.length < len) str = str + ch;
+    return str;
+  }
+  function strPadStart(str, len, ch) {
+    str = String(str); ch = ch || ' ';
+    while (str.length < len) str = ch + str;
+    return str;
+  }
+  function strStartsWith(str, prefix) {
+    return str.indexOf(prefix) === 0;
+  }
+  function strEndsWith(str, suffix) {
+    return str.indexOf(suffix, str.length - suffix.length) !== -1;
+  }
+  function arrFind(arr, fn) {
+    for (var i = 0; i < arr.length; i++) {
+      if (fn(arr[i], i, arr)) return arr[i];
+    }
+    return undefined;
+  }
+
   /* ─── DOM ─── */
   var outputContent = document.getElementById('output-content');
   var terminalOutput = document.getElementById('terminal-output');
@@ -170,7 +194,7 @@
         ['help', 'Show this help message']
       ];
       cmds.forEach(function (c) {
-        addHtml('  <span class="line-bold">' + c[0].padEnd(16) + '</span> <span class="line-output">' + c[1] + '</span>');
+        addHtml('  <span class="line-bold">' + strPadEnd(c[0], 16) + '</span> <span class="line-output">' + c[1] + '</span>');
       });
       addLine('');
     },
@@ -193,14 +217,14 @@
       if (isLong) {
         addLine('total ' + filtered.length, 'line-output');
         filtered.forEach(function (entry) {
-          var isDir = entry.endsWith('/') || (filesystem[target + '/' + entry] !== undefined);
+          var isDir = strEndsWith(entry, '/') || (filesystem[target + '/' + entry] !== undefined);
           var name = entry.replace(/\/$/, '');
           var perms = isDir ? 'drwxr-xr-x' : '-rw-r--r--';
           var size = isDir ? '4096' : '0';
           var now = new Date();
           var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-          var date = months[now.getMonth()] + ' ' + String(now.getDate()).padStart(2, ' ') + ' ' + String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
-          var line = perms + '  1 user user ' + size.padStart(8) + ' ' + date + ' ';
+          var date = months[now.getMonth()] + ' ' + strPadStart(String(now.getDate()), 2, ' ') + ' ' + strPadStart(String(now.getHours()), 2, '0') + ':' + strPadStart(String(now.getMinutes()), 2, '0');
+          var line = perms + '  1 user user ' + strPadStart(size, 8) + ' ' + date + ' ';
           addHtml(line + (isDir
             ? '<span class="line-info">' + name + '</span>'
             : '<span class="line-output">' + name + '</span>'));
@@ -208,7 +232,7 @@
       } else {
         var output = '';
         filtered.forEach(function (entry) {
-          var isDir = entry.endsWith('/') || (filesystem[target + '/' + entry] !== undefined);
+          var isDir = strEndsWith(entry, '/') || (filesystem[target + '/' + entry] !== undefined);
           var name = entry.replace(/\/$/, '');
           if (isDir) {
             output += '<span class="line-info">' + name + '</span>  ';
@@ -378,15 +402,15 @@
 
     history: function () {
       commandHistory.forEach(function (cmd, i) {
-        addLine('  ' + (i + 1).toString().padStart(4) + '  ' + cmd, 'line-output');
+        addLine('  ' + strPadStart((i + 1).toString(), 4) + '  ' + cmd, 'line-output');
       });
     }
   };
 
   /* ─── Path Resolution ─── */
   function resolvePath(input) {
-    if (input.startsWith('/')) return normalizePath(input);
-    if (input.startsWith('~')) return normalizePath('/home/' + username + input.slice(1));
+    if (strStartsWith(input, '/')) return normalizePath(input);
+    if (strStartsWith(input, '~')) return normalizePath('/home/' + username + input.slice(1));
     return normalizePath(currentDir + '/' + input);
   }
 
@@ -513,8 +537,8 @@
         var lastPart = parts[parts.length - 1];
         if (lastPart) {
           var entries = filesystem[currentDir] || [];
-          var match = entries.find(function (e) {
-            return e.toLowerCase().startsWith(lastPart.toLowerCase());
+          var match = arrFind(entries, function (e) {
+            return strStartsWith(e.toLowerCase(), lastPart.toLowerCase());
           });
           if (match) {
             parts[parts.length - 1] = match;

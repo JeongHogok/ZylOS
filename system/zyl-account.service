@@ -9,11 +9,14 @@ BusName=org.zylos.AccountService
 ExecStart=/usr/bin/zyl-account
 Restart=on-failure
 RestartSec=2
+StartLimitBurst=5
+StartLimitIntervalSec=60
 TimeoutStopSec=5
 
 # Security hardening — handles user account data
 NoNewPrivileges=true
 ProtectSystem=strict
+ReadWritePaths=/data/accounts
 ProtectHome=read-only
 PrivateTmp=true
 PrivateDevices=true

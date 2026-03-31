@@ -7,11 +7,14 @@ Type=simple
 ExecStart=/usr/bin/zyl-telemetry
 Restart=on-failure
 RestartSec=10
+StartLimitBurst=5
+StartLimitIntervalSec=120
 TimeoutStopSec=5
 
 # Security hardening — sends data over network
 NoNewPrivileges=true
 ProtectSystem=strict
+ReadWritePaths=/data/telemetry
 ProtectHome=read-only
 PrivateTmp=true
 PrivateDevices=true

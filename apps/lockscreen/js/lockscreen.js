@@ -13,6 +13,16 @@
 (function () {
   'use strict';
 
+  /* ─── XSS-safe HTML escaping ─── */
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
   /* ─── DOM ─── */
   var lockMain    = document.getElementById('lock-main');
   var pinScreen   = document.getElementById('pin-screen');
@@ -61,7 +71,8 @@
     /* 폴백: ZylClock 미로드 시 직접 업데이트 */
     function updateClock() {
       var now = new Date();
-      lockTime.textContent = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+      var hh = now.getHours(); var mm = now.getMinutes();
+      lockTime.textContent = (hh < 10 ? '0' : '') + hh + ':' + (mm < 10 ? '0' : '') + mm;
       var locale = (typeof zylI18n !== 'undefined' && zylI18n.getLocale) ? zylI18n.getLocale() : 'en';
       lockDate.textContent = now.toLocaleDateString(locale, { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
     }
@@ -301,11 +312,11 @@
     el.className = 'lock-notif';
     el.dataset.appId = n.appId || '';
     el.innerHTML =
-      '<div class="lock-notif-icon">' + (n.icon || '🔔') + '</div>' +
+      '<div class="lock-notif-icon">' + escapeHtml(n.icon || '🔔') + '</div>' +
       '<div class="lock-notif-text">' +
-        '<div class="lock-notif-app">' + (n.appName || 'System') + '</div>' +
-        '<div class="lock-notif-title">' + (n.title || '') + '</div>' +
-        '<div class="lock-notif-body">' + (n.body || '') + '</div>' +
+        '<div class="lock-notif-app">' + escapeHtml(n.appName || 'System') + '</div>' +
+        '<div class="lock-notif-title">' + escapeHtml(n.title || '') + '</div>' +
+        '<div class="lock-notif-body">' + escapeHtml(n.body || '') + '</div>' +
       '</div>' +
       '<div class="lock-notif-time">now</div>';
 
