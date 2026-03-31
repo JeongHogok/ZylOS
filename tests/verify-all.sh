@@ -161,7 +161,7 @@ for appdir in "$ROOT/apps"/*/; do
     continue
   fi
   # 필수 필드 확인
-  for field in id name version; do
+  for field in id name version entry; do
     VAL=$(python3 -c "import json; d=json.load(open('$MANIFEST')); print(d.get('$field',''))" 2>/dev/null)
     if [ -z "$VAL" ]; then fail "$APPNAME: app.json '$field' 필드 누락"; fi
   done

@@ -41,16 +41,28 @@ fi
 EXPECTED_BINS=(
     zyl-compositor
     zyl-wam
+    zyl-accessibility
+    zyl-account
+    zyl-alarm
+    zyl-audio
+    zyl-auth
+    zyl-bluetooth
+    zyl-camera
+    zyl-crash-handler
+    zyl-credential
+    zyl-display
+    zyl-input
+    zyl-location
+    zyl-logger
+    zyl-nfc
     zyl-notification
     zyl-power
     zyl-sensors
-    zyl-location
+    zyl-telemetry
     zyl-telephony
-    zyl-display
-    zyl-input
     zyl-usb
     zyl-user
-    zyl-credential
+    zyl-wifi
 )
 
 for bin in "${EXPECTED_BINS[@]}"; do
@@ -125,7 +137,7 @@ fi
 
 echo -n "[7] Service files... "
 SVC_MISSING=0
-for svc in compositor wam notification power sensors location telephony display usb input user credential; do
+for svc in compositor wam accessibility account alarm apparmor audio auth bluetooth camera crash-handler credential display input location logger nfc notification power sensors telemetry telephony usb user wifi; do
     if [ ! -f "$PROJECT_DIR/system/zyl-$svc.service" ] && [ "$svc" != "compositor" ] && [ "$svc" != "wam" ]; then
         # compositor and wam checked separately
         true
