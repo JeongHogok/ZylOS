@@ -73,6 +73,11 @@ ZylSandbox *zyl_sandbox_create(void) {
     sb->app_data_root = strdup("/data/apps");
     sb->shared_storage = strdup("/data/shared");
 
+    if (!sb->cgroup_root || !sb->app_data_root || !sb->shared_storage) {
+        zyl_sandbox_destroy(sb);
+        return NULL;
+    }
+
     mkdir_p(sb->app_data_root, 0755);
     mkdir_p(sb->shared_storage, 0755);
 
@@ -388,6 +393,15 @@ int zyl_sandbox_apply(ZylSandbox *sb, const ZylSandboxPolicy *policy,
 
     /* L5-IPC: D-Bus 정책 적용 — 앱별 접근 가능 서비스 제한 */
     {
+        /* Validate app_id to prevent path traversal in D-Bus policy path */
+        for (const char *p = policy->app_id; p && *p; p++) {
+            if (*p == '/' || *p == '.' || *p == '\0') {
+                fprintf(stderr, "[Sandbox] Invalid app_id for D-Bus policy: %s\n",
+                        policy->app_id);
+                return -1;
+            }
+        }
+
         char dbus_xml[2048];
         if (zyl_sandbox_generate_dbus_policy(policy, dbus_xml,
                                               sizeof(dbus_xml)) == 0) {
@@ -418,7 +432,9 @@ int zyl_sandbox_apply(ZylSandbox *sb, const ZylSandboxPolicy *policy,
     apply_seccomp_filter(seccomp);
 
     /* L5: 권한 드롭 — setgid/setuid to unprivileged "zyl-app" user.
-     * This MUST be the last step — after namespaces, cgroups, and seccomp. */
+     * This MUST be the last step — after namespaces, cgroups, and seccomp.
+     * Failure to drop privileges is a security-critical error — we must
+     * abort the sandbox setup to prevent running with elevated privileges. */
     if (!(policy->permissions & ZYL_PERM_SYSTEM)) {
         struct passwd *pw = getpwnam("zyl-app");
         if (pw) {
@@ -426,21 +442,25 @@ int zyl_sandbox_apply(ZylSandbox *sb, const ZylSandboxPolicy *policy,
             if (setgroups(0, NULL) != 0) {
                 fprintf(stderr, "[Sandbox] setgroups(0) failed: %s\n",
                         strerror(errno));
+                return -1;
             }
             /* Set GID before UID (cannot setgid after dropping root) */
             if (setgid(pw->pw_gid) != 0) {
                 fprintf(stderr, "[Sandbox] setgid(%d) failed: %s\n",
                         pw->pw_gid, strerror(errno));
+                return -1;
             }
             if (setuid(pw->pw_uid) != 0) {
                 fprintf(stderr, "[Sandbox] setuid(%d) failed: %s\n",
                         pw->pw_uid, strerror(errno));
+                return -1;
             }
             fprintf(stderr, "[Sandbox] Dropped to uid=%d gid=%d\n",
                     pw->pw_uid, pw->pw_gid);
         } else {
-            fprintf(stderr, "[Sandbox] WARNING: user 'zyl-app' not found "
-                    "— running without privilege drop\n");
+            fprintf(stderr, "[Sandbox] FATAL: user 'zyl-app' not found "
+                    "— refusing to run without privilege drop\n");
+            return -1;
         }
     }
 
@@ -575,17 +595,26 @@ int zyl_sandbox_generate_dbus_policy(const ZylSandboxPolicy *policy,
         "    <allow send_destination=\"org.zylos.WebAppManager\"/>\n"
         "    <allow send_destination=\"org.zylos.Notification\"/>\n");
 
+    /* Guard against snprintf truncation: if written >= max_len, buffer is full */
+    if (written < 0 || (size_t)written >= max_len) return -1;
+
     if (policy->permissions & ZYL_PERM_LOCATION) {
-        written += snprintf(out_xml + written, max_len - written,
+        int n = snprintf(out_xml + written, max_len - written,
             "    <allow send_destination=\"org.zylos.LocationService\"/>\n");
+        if (n > 0) written += n;
+        if ((size_t)written >= max_len) return -1;
     }
     if (policy->permissions & ZYL_PERM_BLUETOOTH) {
-        written += snprintf(out_xml + written, max_len - written,
+        int n = snprintf(out_xml + written, max_len - written,
             "    <allow send_destination=\"org.bluez\"/>\n");
+        if (n > 0) written += n;
+        if ((size_t)written >= max_len) return -1;
     }
     if (policy->permissions & ZYL_PERM_PHONE) {
-        written += snprintf(out_xml + written, max_len - written,
+        int n = snprintf(out_xml + written, max_len - written,
             "    <allow send_destination=\"org.freedesktop.ModemManager1\"/>\n");
+        if (n > 0) written += n;
+        if ((size_t)written >= max_len) return -1;
     }
 
     snprintf(out_xml + written, max_len - written,
