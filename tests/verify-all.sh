@@ -128,12 +128,13 @@ section "apps/ — CSS 소프트웨어 렌더링 호환"
 
 BD_WARN=""
 for cssfile in $(grep -rl 'backdrop-filter' "$ROOT/apps" --include='*.css' 2>/dev/null); do
-  LOW=$(grep -B2 'backdrop-filter' "$cssfile" | grep -oP 'rgba\([^)]*,\s*0\.[0-4]\d*\)' 2>/dev/null || true)
+  # opacity < 0.85 → 0.0–0.84 범위 탐지 (CLAUDE.md: opacity ≥ 0.85 필수)
+  LOW=$(grep -B2 'backdrop-filter' "$cssfile" | grep -oP 'rgba\([^)]*,\s*(0\.[0-7]\d*|0\.8[0-4]\d*)\)' 2>/dev/null || true)
   if [ -n "$LOW" ]; then
     BD_WARN="${BD_WARN}  $(echo $cssfile | sed "s|$ROOT/||"): $LOW\n"
   fi
 done
-if [ -n "$BD_WARN" ]; then warn "backdrop-filter 폴백 부족:\n$BD_WARN"; else pass "backdrop-filter 폴백 충분"; fi
+if [ -n "$BD_WARN" ]; then warn "backdrop-filter 폴백 부족 (opacity < 0.85):\n$BD_WARN"; else pass "backdrop-filter 폴백 충분 (opacity ≥ 0.85)"; fi
 
 # ─────────────────────────────────────────────────────────────
 section "apps/ — Mock/Demo 데이터 금지"

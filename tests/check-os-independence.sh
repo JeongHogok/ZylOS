@@ -96,9 +96,8 @@ echo ""
 echo "── Check 5: CSS backdrop-filter 폴백 확인 ──"
 BD_WARNINGS=""
 for cssfile in $(grep -rl 'backdrop-filter' "$APPS_DIR" --include='*.css' 2>/dev/null); do
-    # Check if any background before backdrop-filter has very low opacity
-    # This is a heuristic check — look for rgba with opacity < 0.5 near backdrop-filter
-    LOW_OPACITY=$(grep -B2 'backdrop-filter' "$cssfile" | grep -oP 'rgba\([^)]*,\s*0\.[0-4]\d*\)' 2>/dev/null || true)
+    # opacity < 0.85 → 0.0–0.84 범위 탐지 (CLAUDE.md: opacity ≥ 0.85 필수)
+    LOW_OPACITY=$(grep -B2 'backdrop-filter' "$cssfile" | grep -oP 'rgba\([^)]*,\s*(0\.[0-7]\d*|0\.8[0-4]\d*)\)' 2>/dev/null || true)
     if [ -n "$LOW_OPACITY" ]; then
         BD_WARNINGS="${BD_WARNINGS}  ${cssfile}: 낮은 불투명도 배경 발견 (${LOW_OPACITY})\n"
     fi
@@ -106,10 +105,10 @@ done
 if [ -n "$BD_WARNINGS" ]; then
     echo -e "${YELLOW}WARN${NC}: backdrop-filter 근처에 낮은 불투명도 배경 발견:"
     echo -e "$BD_WARNINGS"
-    echo "  → 소프트웨어 렌더링에서 UI가 투명해질 수 있습니다. opacity ≥ 0.85 권장."
+    echo "  → 소프트웨어 렌더링에서 UI가 투명해질 수 있습니다. opacity ≥ 0.85 필수."
     WARNINGS=$((WARNINGS + 1))
 else
-    echo -e "${GREEN}PASS${NC}: 모든 backdrop-filter에 충분한 불투명도 폴백 있음"
+    echo -e "${GREEN}PASS${NC}: 모든 backdrop-filter에 충분한 불투명도 폴백 있음 (opacity ≥ 0.85)"
 fi
 echo ""
 
