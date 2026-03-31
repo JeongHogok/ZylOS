@@ -1,7 +1,7 @@
 /* ──────────────────────────────────────────────────────────
    [Clean Architecture] Presentation Layer - Style
    역할: 시계 앱 스타일
-   수행범위: clock 앱 레이아웃과 시각적 표현 (시계, 알람, 타이머, 스톱워치)
+   수행범위: clock 앱 레이아웃과 시각적 표현 (시계, 알람, 세계시계, 타이머, 스톱워치)
    의존방향: clock/index.html
    SOLID: SRP — clock 앱 스타일만 담당
 
@@ -13,8 +13,8 @@ body { font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#0a0a
 .hidden { display:none !important; }
 
 /* ── Tabs ── */
-#tabs { display:flex; border-bottom:1px solid #1a1a2e; flex-shrink:0; }
-.tab { flex:1; padding:14px 0; text-align:center; background:none; border:none; color:#888; font-size:13px; cursor:pointer; transition:color 0.2s; }
+#tabs { display:flex; border-bottom:1px solid #1a1a2e; flex-shrink:0; overflow-x:auto; }
+.tab { flex:1; padding:14px 0; text-align:center; background:none; border:none; color:#888; font-size:12px; cursor:pointer; transition:color 0.2s; white-space:nowrap; min-width:0; }
 .tab.active { color:#6366f1; border-bottom:2px solid #6366f1; }
 .tab-content { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:20px; overflow-y:auto; }
 
@@ -44,7 +44,7 @@ body { font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#0a0a
 
 .empty-state { font-size:15px; color:#666; padding:40px 0; text-align:center; }
 
-#btn-add-alarm { margin-top:16px; padding:12px 28px; border-radius:24px; border:none; background:#6366f1; color:#fff; font-size:15px; cursor:pointer; align-self:center; }
+#btn-add-alarm, #btn-add-city { margin-top:16px; padding:12px 28px; border-radius:24px; border:none; background:#6366f1; color:#fff; font-size:15px; cursor:pointer; align-self:center; }
 
 /* ── Alarm Form ── */
 #alarm-form { width:100%; background:#111125; border-radius:16px; padding:16px; margin-top:12px; }
@@ -68,6 +68,33 @@ body { font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#0a0a
 .day-buttons { display:flex; gap:6px; flex-wrap:wrap; }
 .day-btn { width:40px; height:40px; border-radius:50%; border:1px solid #2a2a4e; background:#1a1a2e; color:#888; font-size:11px; cursor:pointer; transition:all 0.2s; }
 .day-btn.active { background:#6366f1; color:#fff; border-color:#6366f1; }
+
+/* ── Snooze Overlay ── */
+#alarm-snooze-overlay { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.85); display:flex; align-items:center; justify-content:center; z-index:100; }
+.snooze-card { background:#111125; border-radius:20px; padding:32px 24px; text-align:center; width:280px; }
+.snooze-title { font-size:18px; font-weight:600; margin-bottom:8px; }
+.snooze-time { font-size:48px; font-weight:200; margin-bottom:24px; }
+.snooze-actions { display:flex; gap:12px; justify-content:center; }
+.snooze-actions button { padding:12px 24px; border-radius:24px; border:none; font-size:15px; cursor:pointer; }
+#btn-snooze-dismiss { background:#333; color:#e0e0e0; }
+.snooze-btn { background:#6366f1; color:#fff; }
+
+/* ── World Clock Tab ── */
+#tab-world { justify-content:flex-start; padding-top:12px; }
+#world-list { width:100%; }
+.world-row { display:flex; align-items:center; padding:14px 0; border-bottom:1px solid #1a1a2e; gap:12px; }
+.world-info { flex:1; }
+.world-city-name { font-size:16px; font-weight:500; }
+.world-city-date { font-size:12px; color:#888; margin-top:2px; }
+.world-city-time { font-size:32px; font-weight:200; min-width:80px; text-align:right; }
+
+/* ── City Picker ── */
+#city-picker { width:100%; background:#111125; border-radius:16px; padding:16px; margin-top:12px; }
+.city-search-input { width:100%; background:#1a1a2e; border:1px solid #2a2a4e; border-radius:8px; color:#e0e0e0; font-size:14px; padding:10px 12px; margin:12px 0; }
+.city-results { max-height:240px; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+.city-result-item { display:flex; justify-content:space-between; align-items:center; padding:12px 4px; border-bottom:1px solid #1a1a2e; cursor:pointer; }
+.city-result-item:active { background:#1a1a2e; }
+.city-result-time { color:#888; font-size:14px; }
 
 /* ── Timer Tab ── */
 #timer-display { font-size:56px; font-weight:200; margin-bottom:16px; }

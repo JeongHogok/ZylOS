@@ -1,8 +1,8 @@
 // ──────────────────────────────────────────────────────────
 // [Clean Architecture] Presentation Layer - Page
 //
-// 역할: 메시지 앱 — 대화목록, 채팅, 새 메시지
-// 수행범위: 스레드 목록, 메시지 송수신, 연락처 선택, 시간 포맷
+// 역할: 메시지 앱 — 대화목록(검색/삭제), 채팅(읽음표시), 새 메시지
+// 수행범위: 스레드 목록, 메시지 송수신, 연락처 선택, 시간 포맷, 검색, 삭제, 읽음 표시
 // 의존방향: shared/bridge.js → postMessage IPC (messaging, contacts)
 // SOLID: SRP — 메시지 관련 UI만 담당, OCP — 스레드/메시지 확장 가능
 //
@@ -75,6 +75,7 @@
   var threadList = document.getElementById('thread-list');
   var threadsEmpty = document.getElementById('threads-empty');
   var btnNewMessage = document.getElementById('btn-new-message');
+  var threadSearchInput = document.getElementById('thread-search-input');
 
   /* Chat */
   var btnChatBack = document.getElementById('btn-chat-back');
@@ -88,6 +89,11 @@
   var newRecipientInput = document.getElementById('new-recipient-input');
   var newContactList = document.getElementById('new-contact-list');
 
+  /* Delete dialog */
+  var deleteDialog = document.getElementById('delete-dialog');
+  var btnDeleteCancel = document.getElementById('btn-delete-cancel');
+  var btnDeleteConfirm = document.getElementById('btn-delete-confirm');
+
   /* ═══════════════════════════════════════════════════════════
      State
      ═══════════════════════════════════════════════════════════ */
@@ -96,6 +102,8 @@
   var currentThreadId = null;
   var currentThreadNumber = '';
   var currentThreadName = '';
+  var allThreads = [];  /* cached for search filtering */
+  var deleteTargetThreadId = null;
 
   /* ═══════════════════════════════════════════════════════════
      View Switching
@@ -134,18 +142,43 @@
 
   onServiceResponse('messaging', 'getThreads', function (data) {
     if (!data || !Array.isArray(data.threads) || data.threads.length === 0) {
+      allThreads = [];
       threadList.innerHTML = '';
       threadsEmpty.classList.remove('hidden');
       return;
     }
     threadsEmpty.classList.add('hidden');
-    renderThreads(data.threads);
+    allThreads = data.threads;
+    filterAndRenderThreads();
   });
 
   function avatarColor(name) {
     var code = 0;
     for (var j = 0; j < (name || '').length; j++) code += name.charCodeAt(j);
     return 'avatar-' + (code % 10);
+  }
+
+  function filterAndRenderThreads() {
+    var query = (threadSearchInput ? threadSearchInput.value.trim().toLowerCase() : '');
+    var filtered = allThreads;
+    if (query) {
+      filtered = [];
+      for (var f = 0; f < allThreads.length; f++) {
+        var t = allThreads[f];
+        var searchable = ((t.name || '') + ' ' + (t.number || '') + ' ' + (t.lastMessage || '')).toLowerCase();
+        if (searchable.indexOf(query) !== -1) {
+          filtered.push(t);
+        }
+      }
+    }
+    renderThreads(filtered);
+  }
+
+  /* Thread search */
+  if (threadSearchInput) {
+    threadSearchInput.addEventListener('input', function () {
+      filterAndRenderThreads();
+    });
   }
 
   function renderThreads(threads) {
@@ -156,6 +189,7 @@
       var timeStr = formatRelativeTime(t.lastTimestamp);
       var unreadClass = t.unread ? ' unread' : '';
       var colorClass = avatarColor(t.name || t.number || '');
+      var readIcon = t.unread ? '' : '<span class="thread-read-check" title="' + escapeAttr(zylI18n.t('messages.read') || 'Read') + '">&#10003;</span>';
       html += '<div class="thread-item' + unreadClass + '" ' +
         'data-thread-id="' + escapeAttr(t.id || '') + '" ' +
         'data-number="' + escapeAttr(t.number || '') + '" ' +
@@ -163,11 +197,12 @@
         '<div class="thread-avatar ' + colorClass + '">' + escapeHtml(initial) + '</div>' +
         '<div class="thread-info">' +
           '<div class="thread-name">' + escapeHtml(t.name || t.number || '') + '</div>' +
-          '<div class="thread-preview">' + escapeHtml(t.lastMessage || '') + '</div>' +
+          '<div class="thread-preview">' + readIcon + escapeHtml(t.lastMessage || '') + '</div>' +
         '</div>' +
         '<div class="thread-meta">' +
           '<div class="thread-time">' + escapeHtml(timeStr) + '</div>' +
           (t.unread ? '<div class="thread-unread-dot"></div>' : '') +
+          '<button class="thread-delete-btn" data-delete-id="' + escapeAttr(t.id || '') + '" aria-label="Delete">&times;</button>' +
         '</div>' +
       '</div>';
     }
@@ -175,6 +210,15 @@
   }
 
   threadList.addEventListener('click', function (e) {
+    /* Delete button */
+    var deleteBtn = e.target.closest('.thread-delete-btn');
+    if (deleteBtn) {
+      e.stopPropagation();
+      deleteTargetThreadId = deleteBtn.getAttribute('data-delete-id');
+      if (deleteDialog) deleteDialog.classList.remove('hidden');
+      return;
+    }
+
     var item = e.target.closest('.thread-item');
     if (!item) return;
     currentThreadId = item.getAttribute('data-thread-id');
@@ -182,6 +226,38 @@
     currentThreadName = item.getAttribute('data-name');
     openChat();
   });
+
+  /* ═══════════════════════════════════════════════════════════
+     Delete Conversation
+     ═══════════════════════════════════════════════════════════ */
+
+  if (btnDeleteCancel) {
+    btnDeleteCancel.addEventListener('click', function () {
+      deleteTargetThreadId = null;
+      if (deleteDialog) deleteDialog.classList.add('hidden');
+    });
+  }
+
+  if (btnDeleteConfirm) {
+    btnDeleteConfirm.addEventListener('click', function () {
+      if (deleteTargetThreadId) {
+        requestService('messaging', 'deleteThread', { threadId: deleteTargetThreadId });
+        /* Remove from local cache and re-render */
+        for (var i = 0; i < allThreads.length; i++) {
+          if (allThreads[i].id === deleteTargetThreadId) {
+            allThreads.splice(i, 1);
+            break;
+          }
+        }
+        filterAndRenderThreads();
+        if (allThreads.length === 0) {
+          threadsEmpty.classList.remove('hidden');
+        }
+      }
+      deleteTargetThreadId = null;
+      if (deleteDialog) deleteDialog.classList.add('hidden');
+    });
+  }
 
   /* ═══════════════════════════════════════════════════════════
      Chat View
@@ -192,6 +268,18 @@
     chatMessages.innerHTML = '';
     showView('chat');
     loadMessages();
+
+    /* Mark thread as read */
+    if (currentThreadId) {
+      requestService('messaging', 'markRead', { threadId: currentThreadId });
+      /* Update local cache */
+      for (var i = 0; i < allThreads.length; i++) {
+        if (allThreads[i].id === currentThreadId) {
+          allThreads[i].unread = false;
+          break;
+        }
+      }
+    }
   }
 
   function loadMessages() {
@@ -213,9 +301,15 @@
       var m = messages[i];
       var bubbleClass = m.sent ? 'sent' : 'received';
       var timeStr = formatMessageTime(m.timestamp);
+      var readStatus = '';
+      if (m.sent) {
+        readStatus = m.read
+          ? '<span class="bubble-read">' + escapeHtml(zylI18n.t('messages.read') || 'Read') + '</span>'
+          : '<span class="bubble-delivered">' + escapeHtml(zylI18n.t('messages.delivered') || 'Delivered') + '</span>';
+      }
       html += '<div class="bubble ' + bubbleClass + '">' +
         escapeHtml(m.text || '') +
-        '<div class="bubble-time">' + escapeHtml(timeStr) + '</div>' +
+        '<div class="bubble-time">' + escapeHtml(timeStr) + readStatus + '</div>' +
       '</div>';
     }
     chatMessages.innerHTML = html;
@@ -232,6 +326,12 @@
     var timeDiv = document.createElement('div');
     timeDiv.className = 'bubble-time';
     timeDiv.textContent = formatMessageTime(Date.now());
+    if (isSent) {
+      var deliveredSpan = document.createElement('span');
+      deliveredSpan.className = 'bubble-delivered';
+      deliveredSpan.textContent = zylI18n.t('messages.delivered') || 'Delivered';
+      timeDiv.appendChild(deliveredSpan);
+    }
     div.appendChild(timeDiv);
 
     chatMessages.appendChild(div);
@@ -249,6 +349,7 @@
     });
     appendBubble(text, true);
     chatInput.value = '';
+    btnSend.classList.remove('active');
   }
 
   btnSend.addEventListener('click', sendMessage);
@@ -280,6 +381,8 @@
     /* If currently viewing this thread, append the bubble */
     if (currentView === 'chat' && data.threadId === currentThreadId) {
       appendBubble(data.text || '', false);
+      /* Auto mark as read since user is viewing */
+      requestService('messaging', 'markRead', { threadId: currentThreadId });
     } else {
       /* Refresh thread list if visible */
       if (currentView === 'threads') {
@@ -402,15 +505,15 @@
     if (d.toDateString() === yesterday.toDateString()) {
       return t ? (t.t('messages.yesterday') || 'Yesterday') : 'Yesterday';
     }
-    var pad = function (n) { return (n < 10 ? '0' : '') + n; };
-    return pad(d.getMonth() + 1) + '/' + pad(d.getDate());
+    var padTime = function (n) { return (n < 10 ? '0' : '') + n; };
+    return padTime(d.getMonth() + 1) + '/' + padTime(d.getDate());
   }
 
   function formatMessageTime(ts) {
     if (!ts) return '';
     var d = new Date(ts);
-    var pad = function (n) { return (n < 10 ? '0' : '') + n; };
-    return pad(d.getHours()) + ':' + pad(d.getMinutes());
+    var padTime = function (n) { return (n < 10 ? '0' : '') + n; };
+    return padTime(d.getHours()) + ':' + padTime(d.getMinutes());
   }
 
   /* ═══════════════════════════════════════════════════════════

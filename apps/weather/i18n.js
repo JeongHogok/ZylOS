@@ -43,7 +43,11 @@
     'weather.day_wed': '\uC218',
     'weather.day_thu': '\uBAA9',
     'weather.day_fri': '\uAE08',
-    'weather.day_sat': '\uD1A0'
+    'weather.day_sat': '\uD1A0',
+    'weather.manage_cities': '\uB3C4\uC2DC \uAD00\uB9AC',
+    'weather.search_city': '\uB3C4\uC2DC \uAC80\uC0C9...',
+    'weather.current_location': '\uD604\uC7AC \uC704\uCE58',
+    'weather.add_city': '\uB3C4\uC2DC \uCD94\uAC00'
   });
 
   zylI18n.addTranslations('en', {
@@ -80,7 +84,11 @@
     'weather.day_wed': 'Wed',
     'weather.day_thu': 'Thu',
     'weather.day_fri': 'Fri',
-    'weather.day_sat': 'Sat'
+    'weather.day_sat': 'Sat',
+    'weather.manage_cities': 'Manage Cities',
+    'weather.search_city': 'Search city...',
+    'weather.current_location': 'Current Location',
+    'weather.add_city': 'Add City'
   });
 
   zylI18n.addTranslations('ja', {
@@ -117,7 +125,11 @@
     'weather.day_wed': '\u6C34',
     'weather.day_thu': '\u6728',
     'weather.day_fri': '\u91D1',
-    'weather.day_sat': '\u571F'
+    'weather.day_sat': '\u571F',
+    'weather.manage_cities': '\u90FD\u5E02\u7BA1\u7406',
+    'weather.search_city': '\u90FD\u5E02\u3092\u691C\u7D22...',
+    'weather.current_location': '\u73FE\u5728\u5730',
+    'weather.add_city': '\u90FD\u5E02\u3092\u8FFD\u52A0'
   });
 
   zylI18n.addTranslations('zh', {
@@ -154,7 +166,11 @@
     'weather.day_wed': '\u4E09',
     'weather.day_thu': '\u56DB',
     'weather.day_fri': '\u4E94',
-    'weather.day_sat': '\u516D'
+    'weather.day_sat': '\u516D',
+    'weather.manage_cities': '\u57CE\u5E02\u7BA1\u7406',
+    'weather.search_city': '\u641C\u7D22\u57CE\u5E02...',
+    'weather.current_location': '\u5F53\u524D\u4F4D\u7F6E',
+    'weather.add_city': '\u6DFB\u52A0\u57CE\u5E02'
   });
 
   zylI18n.addTranslations('es', {
@@ -191,6 +207,10 @@
     'weather.day_wed': 'Mi\u00E9',
     'weather.day_thu': 'Jue',
     'weather.day_fri': 'Vie',
-    'weather.day_sat': 'S\u00E1b'
+    'weather.day_sat': 'S\u00E1b',
+    'weather.manage_cities': 'Gestionar ciudades',
+    'weather.search_city': 'Buscar ciudad...',
+    'weather.current_location': 'Ubicaci\u00F3n actual',
+    'weather.add_city': 'Agregar ciudad'
   });
 })();

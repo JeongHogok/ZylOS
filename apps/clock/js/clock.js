@@ -1,10 +1,10 @@
 // ──────────────────────────────────────────────────────────
 // [Clean Architecture] Presentation Layer - Page
 //
-// 역할: 시계 앱 — 시계, 알람, 타이머, 스톱워치
-// 수행범위: 탭 전환, 실시간 시계, 알람 관리/체크, 타이머 카운트다운, 스톱워치 랩
+// 역할: 시계 앱 — 시계, 알람(스누즈 포함), 세계시계, 타이머, 스톱워치
+// 수행범위: 탭 전환, 실시간 시계, 알람 관리/체크/스누즈, 세계시계 관리, 타이머 카운트다운, 스톱워치 랩
 // 의존방향: shared/clock.js, shared/bridge.js → postMessage IPC (settings, notification)
-// SOLID: SRP — 시간 관련 UI만 담당, OCP — 알람 목록 확장 가능
+// SOLID: SRP — 시간 관련 UI만 담당, OCP — 알람/도시 목록 확장 가능
 //
 // 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
 // 실제 디바이스 구동 기준이며, mock/demo 등 하드코딩 데이터가 있어서는 안 된다
@@ -45,6 +45,13 @@
         if (alarmForm && !alarmForm.classList.contains('hidden')) {
           alarmForm.classList.add('hidden');
           if (btnAddAlarm) btnAddAlarm.classList.remove('hidden');
+          ZylBridge.sendToSystem({ type: 'navigation.handled' });
+        } else if (snoozeOverlay && !snoozeOverlay.classList.contains('hidden')) {
+          dismissSnooze();
+          ZylBridge.sendToSystem({ type: 'navigation.handled' });
+        } else if (cityPicker && !cityPicker.classList.contains('hidden')) {
+          cityPicker.classList.add('hidden');
+          if (btnAddCity) btnAddCity.classList.remove('hidden');
           ZylBridge.sendToSystem({ type: 'navigation.handled' });
         } else {
           ZylBridge.sendToSystem({ type: 'navigation.exit' });
@@ -103,6 +110,22 @@
   var timerMinutesInput = document.getElementById('timer-minutes');
   var timerSecondsInput = document.getElementById('timer-seconds');
   var timerSetArea = document.getElementById('timer-set');
+
+  /* Snooze overlay */
+  var snoozeOverlay = document.getElementById('alarm-snooze-overlay');
+  var snoozeLabel = document.getElementById('snooze-label');
+  var snoozeTime = document.getElementById('snooze-time');
+  var btnSnoozeDismiss = document.getElementById('btn-snooze-dismiss');
+  var btnSnooze = document.getElementById('btn-snooze');
+
+  /* World clock */
+  var worldList = document.getElementById('world-list');
+  var worldEmpty = document.getElementById('world-empty');
+  var btnAddCity = document.getElementById('btn-add-city');
+  var cityPicker = document.getElementById('city-picker');
+  var cityPickerCancel = document.getElementById('city-picker-cancel');
+  var citySearch = document.getElementById('city-search');
+  var cityResults = document.getElementById('city-results');
 
   /* ═══════════════════════════════════════════════════════════
      Utility
@@ -170,6 +193,9 @@
 
   var alarms = []; // Array of alarm objects: { id, hour, minute, label, days[], enabled }
   var alarmsLoaded = false;
+  var SNOOZE_MINUTES = 5;
+  var activeSnoozeAlarm = null;
+  var snoozeTimerId = null;
 
   var DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -189,24 +215,37 @@
   }
 
   onServiceResponse('settings', 'get', function (params, data) {
-    if (!params || params.category !== 'alarms') return;
-    if (data && data.list) {
-      try {
-        var parsed = JSON.parse(data.list);
-        if (Array.isArray(parsed)) {
-          alarms = parsed;
+    if (!params) return;
+    if (params.category === 'alarms') {
+      if (data && data.list) {
+        try {
+          var parsed = JSON.parse(data.list);
+          if (Array.isArray(parsed)) {
+            alarms = parsed;
+            alarmsLoaded = true;
+            renderAlarms();
+          }
+        } catch (err) {
+          alarms = [];
           alarmsLoaded = true;
           renderAlarms();
         }
-      } catch (err) {
+      } else {
         alarms = [];
         alarmsLoaded = true;
         renderAlarms();
       }
-    } else {
-      alarms = [];
-      alarmsLoaded = true;
-      renderAlarms();
+    }
+    if (params.category === 'worldclock') {
+      if (data && data.cities) {
+        try {
+          var parsed = JSON.parse(data.cities);
+          if (Array.isArray(parsed)) {
+            worldCities = parsed;
+            renderWorldClock();
+          }
+        } catch (err) { /* ignore */ }
+      }
     }
   });
 
@@ -379,6 +418,40 @@
     });
   }
 
+  /* ── Snooze UI ── */
+
+  function showSnoozeUI(alarm) {
+    activeSnoozeAlarm = alarm;
+    if (snoozeLabel) snoozeLabel.textContent = alarm.label || zylI18n.t('clock.alarm');
+    if (snoozeTime) snoozeTime.textContent = pad(alarm.hour) + ':' + pad(alarm.minute);
+    if (snoozeOverlay) snoozeOverlay.classList.remove('hidden');
+  }
+
+  function dismissSnooze() {
+    activeSnoozeAlarm = null;
+    if (snoozeTimerId) { clearTimeout(snoozeTimerId); snoozeTimerId = null; }
+    if (snoozeOverlay) snoozeOverlay.classList.add('hidden');
+  }
+
+  if (btnSnoozeDismiss) {
+    btnSnoozeDismiss.addEventListener('click', function () {
+      dismissSnooze();
+    });
+  }
+
+  if (btnSnooze) {
+    btnSnooze.addEventListener('click', function () {
+      if (!activeSnoozeAlarm) return;
+      var alarm = activeSnoozeAlarm;
+      if (snoozeOverlay) snoozeOverlay.classList.add('hidden');
+
+      /* Re-trigger after SNOOZE_MINUTES */
+      snoozeTimerId = setTimeout(function () {
+        triggerAlarm(alarm, -1); /* -1 = snooze re-trigger, don't disable */
+      }, SNOOZE_MINUTES * 60 * 1000);
+    });
+  }
+
   /* ── Alarm checker — runs every 30 seconds ── */
 
   var lastTriggeredKey = ''; // Prevent duplicate triggers within same minute
@@ -432,8 +505,11 @@
     /* Play beep sound */
     playBeep(880, 200, 5);
 
-    /* Disable one-time alarms (no repeat days) */
-    if (!alarm.days || alarm.days.length === 0) {
+    /* Show snooze UI */
+    showSnoozeUI(alarm);
+
+    /* Disable one-time alarms (no repeat days) — only if not a snooze re-trigger */
+    if (index >= 0 && (!alarm.days || alarm.days.length === 0)) {
       alarms[index].enabled = false;
       saveAlarms();
       renderAlarms();
@@ -447,6 +523,228 @@
 
   /* Request system alarm volume */
   requestService('audio', 'getVolume', { stream: 'alarm' });
+
+  /* ═══════════════════════════════════════════════════════════
+     World Clock Tab
+     ═══════════════════════════════════════════════════════════ */
+
+  var worldCities = []; /* Array of { name, tz } — IANA timezone IDs */
+  var worldInterval = null;
+
+  /* Common timezone database (subset of IANA) */
+  var TIMEZONE_DB = [
+    { name: 'New York', tz: 'America/New_York' },
+    { name: 'Los Angeles', tz: 'America/Los_Angeles' },
+    { name: 'Chicago', tz: 'America/Chicago' },
+    { name: 'London', tz: 'Europe/London' },
+    { name: 'Paris', tz: 'Europe/Paris' },
+    { name: 'Berlin', tz: 'Europe/Berlin' },
+    { name: 'Moscow', tz: 'Europe/Moscow' },
+    { name: 'Dubai', tz: 'Asia/Dubai' },
+    { name: 'Mumbai', tz: 'Asia/Kolkata' },
+    { name: 'Bangkok', tz: 'Asia/Bangkok' },
+    { name: 'Singapore', tz: 'Asia/Singapore' },
+    { name: 'Hong Kong', tz: 'Asia/Hong_Kong' },
+    { name: 'Shanghai', tz: 'Asia/Shanghai' },
+    { name: 'Tokyo', tz: 'Asia/Tokyo' },
+    { name: 'Seoul', tz: 'Asia/Seoul' },
+    { name: 'Sydney', tz: 'Australia/Sydney' },
+    { name: 'Auckland', tz: 'Pacific/Auckland' },
+    { name: 'Honolulu', tz: 'Pacific/Honolulu' },
+    { name: 'Anchorage', tz: 'America/Anchorage' },
+    { name: 'Denver', tz: 'America/Denver' },
+    { name: 'Toronto', tz: 'America/Toronto' },
+    { name: 'Mexico City', tz: 'America/Mexico_City' },
+    { name: 'Sao Paulo', tz: 'America/Sao_Paulo' },
+    { name: 'Buenos Aires', tz: 'America/Argentina/Buenos_Aires' },
+    { name: 'Cairo', tz: 'Africa/Cairo' },
+    { name: 'Johannesburg', tz: 'Africa/Johannesburg' },
+    { name: 'Istanbul', tz: 'Europe/Istanbul' },
+    { name: 'Rome', tz: 'Europe/Rome' },
+    { name: 'Madrid', tz: 'Europe/Madrid' },
+    { name: 'Amsterdam', tz: 'Europe/Amsterdam' },
+    { name: 'Jakarta', tz: 'Asia/Jakarta' },
+    { name: 'Taipei', tz: 'Asia/Taipei' },
+    { name: 'Kuala Lumpur', tz: 'Asia/Kuala_Lumpur' }
+  ];
+
+  function getTimeInTimezone(tz) {
+    try {
+      var now = new Date();
+      var parts = now.toLocaleString('en-US', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false });
+      return parts;
+    } catch (err) {
+      return '--:--';
+    }
+  }
+
+  function getDateInTimezone(tz) {
+    try {
+      var now = new Date();
+      var parts = now.toLocaleString('en-US', { timeZone: tz, weekday: 'short', month: 'short', day: 'numeric' });
+      return parts;
+    } catch (err) {
+      return '';
+    }
+  }
+
+  function getOffsetLabel(tz) {
+    try {
+      var now = new Date();
+      var localOffset = now.getTimezoneOffset(); /* in minutes, inverted sign */
+      /* Get target offset by comparing date strings */
+      var localStr = now.toLocaleString('en-US', { timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone });
+      var targetStr = now.toLocaleString('en-US', { timeZone: tz });
+      var localDate = new Date(localStr);
+      var targetDate = new Date(targetStr);
+      var diffMs = targetDate.getTime() - localDate.getTime();
+      var diffHours = Math.round(diffMs / 3600000);
+      if (diffHours === 0) return zylI18n.t('clock.same_time');
+      var sign = diffHours > 0 ? '+' : '';
+      return sign + diffHours + 'h';
+    } catch (err) {
+      return '';
+    }
+  }
+
+  function renderWorldClock() {
+    if (!worldList) return;
+    worldList.innerHTML = '';
+
+    if (worldCities.length === 0) {
+      if (worldEmpty) worldEmpty.classList.remove('hidden');
+      return;
+    }
+    if (worldEmpty) worldEmpty.classList.add('hidden');
+
+    for (var i = 0; i < worldCities.length; i++) {
+      (function (city, idx) {
+        var row = document.createElement('div');
+        row.className = 'world-row';
+
+        var infoDiv = document.createElement('div');
+        infoDiv.className = 'world-info';
+
+        var nameEl = document.createElement('div');
+        nameEl.className = 'world-city-name';
+        nameEl.textContent = city.name;
+
+        var dateEl = document.createElement('div');
+        dateEl.className = 'world-city-date';
+        dateEl.textContent = getDateInTimezone(city.tz) + ' \u00B7 ' + getOffsetLabel(city.tz);
+
+        infoDiv.appendChild(nameEl);
+        infoDiv.appendChild(dateEl);
+
+        var timeEl = document.createElement('div');
+        timeEl.className = 'world-city-time';
+        timeEl.setAttribute('data-tz', city.tz);
+        timeEl.textContent = getTimeInTimezone(city.tz);
+
+        var delBtn = document.createElement('button');
+        delBtn.className = 'alarm-delete';
+        delBtn.textContent = '\u00D7';
+        delBtn.addEventListener('click', function () {
+          worldCities.splice(idx, 1);
+          saveWorldCities();
+          renderWorldClock();
+        });
+
+        row.appendChild(infoDiv);
+        row.appendChild(timeEl);
+        row.appendChild(delBtn);
+        worldList.appendChild(row);
+      })(worldCities[i], i);
+    }
+
+    /* Auto-update world clocks */
+    if (worldInterval) clearInterval(worldInterval);
+    worldInterval = setInterval(function () {
+      var timeEls = worldList.querySelectorAll('.world-city-time');
+      for (var t = 0; t < timeEls.length; t++) {
+        var tz = timeEls[t].getAttribute('data-tz');
+        if (tz) timeEls[t].textContent = getTimeInTimezone(tz);
+      }
+    }, 30000);
+  }
+
+  function saveWorldCities() {
+    requestService('settings', 'update', {
+      category: 'worldclock',
+      key: 'cities',
+      value: JSON.stringify(worldCities)
+    });
+  }
+
+  function loadWorldCities() {
+    requestService('settings', 'get', { category: 'worldclock' });
+  }
+
+  /* ── City picker ── */
+  if (btnAddCity) {
+    btnAddCity.addEventListener('click', function () {
+      if (cityPicker) {
+        cityPicker.classList.remove('hidden');
+        btnAddCity.classList.add('hidden');
+        if (citySearch) { citySearch.value = ''; citySearch.focus(); }
+        renderCityResults('');
+      }
+    });
+  }
+
+  if (cityPickerCancel) {
+    cityPickerCancel.addEventListener('click', function () {
+      if (cityPicker) cityPicker.classList.add('hidden');
+      if (btnAddCity) btnAddCity.classList.remove('hidden');
+    });
+  }
+
+  if (citySearch) {
+    citySearch.addEventListener('input', function () {
+      renderCityResults(citySearch.value.trim().toLowerCase());
+    });
+  }
+
+  function renderCityResults(query) {
+    if (!cityResults) return;
+    cityResults.innerHTML = '';
+    var existingTzs = {};
+    for (var e = 0; e < worldCities.length; e++) {
+      existingTzs[worldCities[e].tz] = true;
+    }
+
+    for (var i = 0; i < TIMEZONE_DB.length; i++) {
+      var city = TIMEZONE_DB[i];
+      if (existingTzs[city.tz]) continue; /* Already added */
+      if (query && city.name.toLowerCase().indexOf(query) === -1) continue;
+
+      (function (c) {
+        var el = document.createElement('div');
+        el.className = 'city-result-item';
+
+        var nameSpan = document.createElement('span');
+        nameSpan.textContent = c.name;
+
+        var timeSpan = document.createElement('span');
+        timeSpan.className = 'city-result-time';
+        timeSpan.textContent = getTimeInTimezone(c.tz);
+
+        el.appendChild(nameSpan);
+        el.appendChild(timeSpan);
+
+        el.addEventListener('click', function () {
+          worldCities.push({ name: c.name, tz: c.tz });
+          saveWorldCities();
+          renderWorldClock();
+          if (cityPicker) cityPicker.classList.add('hidden');
+          if (btnAddCity) btnAddCity.classList.remove('hidden');
+        });
+        cityResults.appendChild(el);
+      })(city);
+    }
+  }
+
+  loadWorldCities();
 
   /* ═══════════════════════════════════════════════════════════
      Timer Tab

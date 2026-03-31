@@ -13,6 +13,7 @@
   <div id="tabs">
     <button class="tab active" data-tab="clock" data-i18n="clock.tab_clock">Clock</button>
     <button class="tab" data-tab="alarm" data-i18n="clock.tab_alarm">Alarm</button>
+    <button class="tab" data-tab="world" data-i18n="clock.tab_world">World</button>
     <button class="tab" data-tab="timer" data-i18n="clock.tab_timer">Timer</button>
     <button class="tab" data-tab="stopwatch" data-i18n="clock.tab_stopwatch">Stopwatch</button>
   </div>
@@ -57,6 +58,35 @@
           <button class="day-btn" data-day="6" data-i18n="clock.day_sat">Sat</button>
         </div>
       </div>
+    </div>
+
+    <!-- Snooze overlay (hidden by default) -->
+    <div id="alarm-snooze-overlay" class="hidden">
+      <div class="snooze-card">
+        <div id="snooze-label" class="snooze-title"></div>
+        <div id="snooze-time" class="snooze-time"></div>
+        <div class="snooze-actions">
+          <button id="btn-snooze-dismiss" data-i18n="clock.dismiss">Dismiss</button>
+          <button id="btn-snooze" class="snooze-btn" data-i18n="clock.snooze">Snooze</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── World Clock Tab ── -->
+  <div id="tab-world" class="tab-content hidden">
+    <div id="world-list"></div>
+    <div id="world-empty" class="empty-state" data-i18n="clock.no_cities">No cities added</div>
+    <button id="btn-add-city" data-i18n="clock.add_city">+ Add City</button>
+
+    <!-- City picker (hidden by default) -->
+    <div id="city-picker" class="hidden">
+      <div class="alarm-form-header">
+        <button id="city-picker-cancel" class="alarm-form-btn" data-i18n="clock.cancel">Cancel</button>
+        <span class="alarm-form-title" data-i18n="clock.add_city">Add City</span>
+      </div>
+      <input type="text" id="city-search" class="city-search-input" data-i18n-placeholder="clock.search_city" placeholder="Search city...">
+      <div id="city-results" class="city-results"></div>
     </div>
   </div>
 

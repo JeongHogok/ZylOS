@@ -1,7 +1,7 @@
 /* ──────────────────────────────────────────────────────────
    [Clean Architecture] Presentation Layer - Style
    역할: 계산기 스타일
-   수행범위: calc 앱 레이아웃과 시각적 표현
+   수행범위: calc 앱 레이아웃과 시각적 표현 (기본 + 공학용 모드, 히스토리)
    의존방향: calc/index.html
    SOLID: SRP — calc 앱 스타일만 담당
 
@@ -9,14 +9,25 @@
    실제 디바이스 구동 기준이며, mock/demo 등 하드코딩 데이터가 있어서는 안 된다
    ────────────────────────────────────────────────────────── */
 * { margin:0; padding:0; box-sizing:border-box; }
-body { font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#0a0a1a; color:#e0e0e0; height:100vh; overflow:hidden; display:flex; flex-direction:column; }
+body { font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#000; color:#e0e0e0; height:100vh; overflow:hidden; display:flex; flex-direction:column; }
 .hidden { display:none !important; }
-#header { padding:20px 16px 12px; }
-#header h1 { font-size:28px; font-weight:700; }
-body { background:#000; }
-#display { padding:24px 20px; text-align:right; min-height:120px; display:flex; flex-direction:column; justify-content:flex-end; }
-#expression { font-size:16px; color:#888; min-height:24px; }
-#result { font-size:48px; font-weight:300; }
+
+/* ── Display ── */
+#display { padding:20px 20px 8px; text-align:right; min-height:100px; display:flex; flex-direction:column; justify-content:flex-end; }
+#expression { font-size:16px; color:#888; min-height:24px; word-break:break-all; }
+#result { font-size:48px; font-weight:300; word-break:break-all; }
+
+/* ── Mode bar ── */
+#mode-bar { display:flex; gap:8px; padding:4px 16px 8px; flex-shrink:0; }
+.mode-btn { padding:6px 14px; border-radius:16px; border:1px solid #2a2a4e; background:#1a1a2e; color:#a0a0b0; font-size:12px; cursor:pointer; transition:all 0.2s; }
+.mode-btn.active, .mode-btn:active { background:#6366f1; color:#fff; border-color:#6366f1; }
+
+/* ── Scientific keypad ── */
+#sci-keypad { display:grid; grid-template-columns:repeat(4,1fr); gap:1px; flex-shrink:0; }
+#sci-keypad .key { background:#12122a; border:none; color:#818cf8; font-size:16px; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:12px 0; }
+#sci-keypad .key:active { background:#252540; }
+
+/* ── Main keypad ── */
 #keypad { display:grid; grid-template-columns:repeat(4,1fr); gap:1px; flex:1; }
 .key { background:#1a1a2e; border:none; color:#fff; font-size:24px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
 .key:active { background:#252540; }
@@ -24,3 +35,15 @@ body { background:#000; }
 .key.fn { background:#1e1e28; color:#a0a0b0; }
 .key.eq { background:#6366f1; color:#fff; }
 .key.zero { grid-column: span 2; }
+
+/* ── History panel ── */
+#history-panel { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+#history-header { display:flex; justify-content:space-between; align-items:center; padding:12px 16px; border-bottom:1px solid #1a1a2e; }
+#history-header span { font-size:16px; font-weight:600; }
+#btn-clear-history { background:none; border:none; color:#f87171; font-size:13px; cursor:pointer; padding:4px 8px; }
+#history-list { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:4px 0; }
+#history-empty { text-align:center; color:#666; padding:40px 16px; font-size:14px; }
+.history-item { padding:12px 16px; border-bottom:1px solid #111; cursor:pointer; transition:background 0.15s; }
+.history-item:active { background:#1a1a2e; }
+.history-expr { font-size:14px; color:#888; margin-bottom:2px; word-break:break-all; }
+.history-result { font-size:20px; font-weight:300; }

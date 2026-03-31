@@ -14,6 +14,24 @@
     <div id="expression" aria-live="polite" aria-label="Expression"></div>
     <div id="result" aria-live="polite" aria-label="Result">0</div>
   </div>
+
+  <!-- Mode toggle -->
+  <div id="mode-bar">
+    <button id="btn-mode" class="mode-btn" data-i18n="calc.scientific">SCI</button>
+    <button id="btn-history" class="mode-btn" data-i18n="calc.history">History</button>
+  </div>
+
+  <!-- History panel -->
+  <div id="history-panel" class="hidden">
+    <div id="history-header">
+      <span data-i18n="calc.history">History</span>
+      <button id="btn-clear-history" data-i18n="calc.clear_history">Clear</button>
+    </div>
+    <div id="history-list"></div>
+    <div id="history-empty" data-i18n="calc.no_history">No history</div>
+  </div>
+
+  <!-- Standard keypad -->
   <div id="keypad" role="group" aria-label="Calculator keypad">
     <button class="key fn" data-action="clear">C</button>
     <button class="key fn" data-action="backspace" aria-label="Backspace">&larr;</button>
@@ -35,6 +53,23 @@
     <button class="key num" data-value=".">.</button>
     <button class="key eq" data-action="equals">=</button>
   </div>
+
+  <!-- Scientific keypad (hidden by default) -->
+  <div id="sci-keypad" class="hidden" role="group" aria-label="Scientific keypad">
+    <button class="key sci" data-sci="sin">sin</button>
+    <button class="key sci" data-sci="cos">cos</button>
+    <button class="key sci" data-sci="tan">tan</button>
+    <button class="key sci" data-sci="log">log</button>
+    <button class="key sci" data-sci="ln">ln</button>
+    <button class="key sci" data-sci="sqrt">&radic;</button>
+    <button class="key sci" data-sci="pow">x<sup>y</sup></button>
+    <button class="key sci" data-sci="pi">&pi;</button>
+    <button class="key sci" data-sci="e">e</button>
+    <button class="key sci" data-sci="paren_open">(</button>
+    <button class="key sci" data-sci="paren_close">)</button>
+    <button class="key sci" data-sci="factorial">x!</button>
+  </div>
+
   <script src="../shared/i18n.js"></script>
   <script src="i18n.js"></script>
   <script src="js/calc.js"></script>

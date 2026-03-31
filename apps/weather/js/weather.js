@@ -1,9 +1,9 @@
 // ──────────────────────────────────────────────────────────
 // [Clean Architecture] Presentation Layer - Page
 //
-// Role: Weather app — Samsung-grade UI with current, hourly, daily forecast
-// Scope: Location service → Open-Meteo API → render weather data with dynamic backgrounds
-// Dependency: location service (postMessage IPC), network service (Open-Meteo API)
+// Role: Weather app — Samsung-grade UI with current, hourly, daily forecast + multi-city
+// Scope: Location service → Open-Meteo API → render weather data with dynamic backgrounds, multi-city management
+// Dependency: location service (postMessage IPC), network service (Open-Meteo API), settings service
 // SOLID: SRP — weather display UI only
 //
 // Clean Architecture, SOLID principles, i18n rules strictly followed
@@ -29,12 +29,61 @@
   var sunset       = document.getElementById('sunset');
   var uvIndex      = document.getElementById('uv-index');
   var cloudCover   = document.getElementById('cloud-cover');
+  var cityIndicator = document.getElementById('city-indicator');
+
+  /* City management DOM */
+  var btnManageCities = document.getElementById('btn-manage-cities');
+  var cityPanel = document.getElementById('city-panel');
+  var btnCityBack = document.getElementById('btn-city-back');
+  var savedCitiesList = document.getElementById('saved-cities-list');
+  var cityAddInput = document.getElementById('city-add-input');
+  var citySearchResults = document.getElementById('city-search-results');
+  var weatherScroll = document.getElementById('weather-scroll');
 
   /* ─── State ─── */
   var lastLat = null;
   var lastLon = null;
   var locationTimeout = null;
   var isRefreshing = false;
+
+  /* Multi-city state */
+  var savedCities = []; /* Array of { name, lat, lon } */
+  var currentCityIndex = -1; /* -1 = current location */
+  var currentLocationCity = null; /* { name, lat, lon } from device location */
+
+  /* Well-known cities for search */
+  var CITY_DB = [
+    { name: 'Seoul', lat: 37.5665, lon: 126.978 },
+    { name: 'Tokyo', lat: 35.6762, lon: 139.6503 },
+    { name: 'New York', lat: 40.7128, lon: -74.006 },
+    { name: 'London', lat: 51.5074, lon: -0.1278 },
+    { name: 'Paris', lat: 48.8566, lon: 2.3522 },
+    { name: 'Berlin', lat: 52.52, lon: 13.405 },
+    { name: 'Moscow', lat: 55.7558, lon: 37.6173 },
+    { name: 'Beijing', lat: 39.9042, lon: 116.4074 },
+    { name: 'Shanghai', lat: 31.2304, lon: 121.4737 },
+    { name: 'Hong Kong', lat: 22.3193, lon: 114.1694 },
+    { name: 'Singapore', lat: 1.3521, lon: 103.8198 },
+    { name: 'Sydney', lat: -33.8688, lon: 151.2093 },
+    { name: 'Dubai', lat: 25.2048, lon: 55.2708 },
+    { name: 'Mumbai', lat: 19.076, lon: 72.8777 },
+    { name: 'Bangkok', lat: 13.7563, lon: 100.5018 },
+    { name: 'Los Angeles', lat: 34.0522, lon: -118.2437 },
+    { name: 'Chicago', lat: 41.8781, lon: -87.6298 },
+    { name: 'Toronto', lat: 43.6532, lon: -79.3832 },
+    { name: 'Mexico City', lat: 19.4326, lon: -99.1332 },
+    { name: 'Sao Paulo', lat: -23.5505, lon: -46.6333 },
+    { name: 'Cairo', lat: 30.0444, lon: 31.2357 },
+    { name: 'Istanbul', lat: 41.0082, lon: 28.9784 },
+    { name: 'Rome', lat: 41.9028, lon: 12.4964 },
+    { name: 'Madrid', lat: 40.4168, lon: -3.7038 },
+    { name: 'Osaka', lat: 34.6937, lon: 135.5023 },
+    { name: 'Jakarta', lat: -6.2088, lon: 106.8456 },
+    { name: 'Taipei', lat: 25.033, lon: 121.5654 },
+    { name: 'Buenos Aires', lat: -34.6037, lon: -58.3816 },
+    { name: 'Amsterdam', lat: 52.3676, lon: 4.9041 },
+    { name: 'Auckland', lat: -36.8485, lon: 174.7633 }
+  ];
 
   /* ─── i18n helper ─── */
   function t(key) {
@@ -48,7 +97,6 @@
       locationName.setAttribute('data-loading', 'true');
     }
 
-    /* 런타임 퍼미션: location 권한 체크 후 위치 요청 */
     if (typeof ZylPermissionDialog !== 'undefined') {
       ZylPermissionDialog.checkAndRequest('com.zylos.weather', 'location').then(function (granted) {
         if (granted) {
@@ -67,7 +115,6 @@
         setRefreshing(false);
       });
     } else {
-      /* ZylPermissionDialog 미로드 시 폴백 */
       ZylBridge.sendToSystem({
         type: 'service.request', service: 'location', method: 'getLastKnown'
       });
@@ -90,8 +137,25 @@
     }
   }
 
+  /* ─── Settings persistence ─── */
+  function saveCities() {
+    ZylBridge.sendToSystem({
+      type: 'service.request', service: 'settings', method: 'update',
+      params: { category: 'weather', key: 'cities', value: JSON.stringify(savedCities) }
+    });
+  }
+
+  function loadCities() {
+    ZylBridge.sendToSystem({
+      type: 'service.request', service: 'settings', method: 'get',
+      params: { category: 'weather' }
+    });
+  }
+
+  /* ─── Init ─── */
   setRefreshing(true);
   requestLocation();
+  loadCities();
 
   /* ─── Message handler ─── */
   window.addEventListener('message', function (e) {
@@ -101,11 +165,30 @@
       if (!msg) return;
 
       if (msg.type === 'navigation.back') {
-        ZylBridge.sendToSystem({ type: 'navigation.exit' });
+        if (cityPanel && !cityPanel.classList.contains('hidden')) {
+          closeCityPanel();
+          ZylBridge.sendToSystem({ type: 'navigation.handled' });
+        } else {
+          ZylBridge.sendToSystem({ type: 'navigation.exit' });
+        }
         return;
       }
 
       if (msg.type !== 'service.response') return;
+
+      /* Settings response */
+      if (msg.service === 'settings' && msg.method === 'get' && msg.params && msg.params.category === 'weather') {
+        if (msg.data && msg.data.cities) {
+          try {
+            var parsed = JSON.parse(msg.data.cities);
+            if (Array.isArray(parsed)) {
+              savedCities = parsed;
+              updateCityIndicator();
+            }
+          } catch (err) { /* ignore */ }
+        }
+        return;
+      }
 
       /* Network response (weather data) */
       if (msg.service === 'network' && msg.method === 'fetch') {
@@ -142,11 +225,17 @@
         var displayName = cityName;
         if (region && region !== cityName) displayName += ', ' + region;
         if (!displayName) displayName = lastLat.toFixed(2) + ', ' + lastLon.toFixed(2);
-        if (locationName) {
-          locationName.textContent = displayName;
-          locationName.removeAttribute('data-loading');
+
+        currentLocationCity = { name: displayName, lat: lastLat, lon: lastLon };
+
+        if (currentCityIndex === -1) {
+          if (locationName) {
+            locationName.textContent = displayName;
+            locationName.removeAttribute('data-loading');
+          }
+          fetchWeather(lastLat, lastLon);
         }
-        fetchWeather(lastLat, lastLon);
+        updateCityIndicator();
       }
     } catch (err) { /* ignore */ }
   });
@@ -156,8 +245,187 @@
     refreshBtn.addEventListener('click', function () {
       if (isRefreshing) return;
       setRefreshing(true);
-      requestLocation();
+      if (currentCityIndex === -1) {
+        requestLocation();
+      } else {
+        var city = savedCities[currentCityIndex];
+        if (city) {
+          fetchWeather(city.lat, city.lon);
+        }
+      }
     });
+  }
+
+  /* ─── City switching via swipe/indicator ─── */
+  function switchToCity(index) {
+    /* index: -1 = current location, 0+ = saved city */
+    currentCityIndex = index;
+    updateCityIndicator();
+
+    if (index === -1) {
+      if (currentLocationCity) {
+        if (locationName) locationName.textContent = currentLocationCity.name;
+        setRefreshing(true);
+        fetchWeather(currentLocationCity.lat, currentLocationCity.lon);
+      } else {
+        setRefreshing(true);
+        requestLocation();
+      }
+    } else {
+      var city = savedCities[index];
+      if (city) {
+        if (locationName) locationName.textContent = city.name;
+        setRefreshing(true);
+        fetchWeather(city.lat, city.lon);
+      }
+    }
+  }
+
+  function updateCityIndicator() {
+    if (!cityIndicator) return;
+    var totalDots = 1 + savedCities.length; /* current location + saved */
+    if (totalDots <= 1) {
+      cityIndicator.innerHTML = '';
+      return;
+    }
+    var html = '';
+    for (var i = -1; i < savedCities.length; i++) {
+      var activeClass = (i === currentCityIndex) ? ' dot-active' : '';
+      html += '<span class="city-dot' + activeClass + '" data-city-idx="' + i + '"></span>';
+    }
+    cityIndicator.innerHTML = html;
+  }
+
+  if (cityIndicator) {
+    cityIndicator.addEventListener('click', function (e) {
+      var dot = e.target.closest('.city-dot');
+      if (!dot) return;
+      var idx = parseInt(dot.getAttribute('data-city-idx'), 10);
+      if (!isNaN(idx)) switchToCity(idx);
+    });
+  }
+
+  /* ─── City Management Panel ─── */
+  if (btnManageCities) {
+    btnManageCities.addEventListener('click', function () {
+      openCityPanel();
+    });
+  }
+
+  if (btnCityBack) {
+    btnCityBack.addEventListener('click', function () {
+      closeCityPanel();
+    });
+  }
+
+  function openCityPanel() {
+    if (cityPanel) cityPanel.classList.remove('hidden');
+    if (weatherScroll) weatherScroll.classList.add('hidden');
+    if (cityIndicator) cityIndicator.classList.add('hidden');
+    renderSavedCities();
+    if (cityAddInput) { cityAddInput.value = ''; }
+    if (citySearchResults) citySearchResults.innerHTML = '';
+    renderCitySearchResults('');
+  }
+
+  function closeCityPanel() {
+    if (cityPanel) cityPanel.classList.add('hidden');
+    if (weatherScroll) weatherScroll.classList.remove('hidden');
+    if (cityIndicator) cityIndicator.classList.remove('hidden');
+  }
+
+  function renderSavedCities() {
+    if (!savedCitiesList) return;
+    savedCitiesList.innerHTML = '';
+
+    /* Current location (non-deletable) */
+    var locItem = document.createElement('div');
+    locItem.className = 'saved-city-item';
+    if (currentCityIndex === -1) locItem.classList.add('active');
+    var locName = document.createElement('span');
+    locName.className = 'saved-city-name';
+    locName.textContent = (currentLocationCity ? currentLocationCity.name : t('weather.current_location')) + ' (' + t('weather.current_location') + ')';
+    locItem.appendChild(locName);
+    locItem.addEventListener('click', function () {
+      switchToCity(-1);
+      closeCityPanel();
+    });
+    savedCitiesList.appendChild(locItem);
+
+    for (var i = 0; i < savedCities.length; i++) {
+      (function (city, idx) {
+        var item = document.createElement('div');
+        item.className = 'saved-city-item';
+        if (idx === currentCityIndex) item.classList.add('active');
+
+        var nameEl = document.createElement('span');
+        nameEl.className = 'saved-city-name';
+        nameEl.textContent = city.name;
+
+        var delBtn = document.createElement('button');
+        delBtn.className = 'saved-city-delete';
+        delBtn.textContent = '\u00D7';
+        delBtn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          savedCities.splice(idx, 1);
+          saveCities();
+          if (currentCityIndex === idx) {
+            switchToCity(-1);
+          } else if (currentCityIndex > idx) {
+            currentCityIndex--;
+          }
+          renderSavedCities();
+          updateCityIndicator();
+        });
+
+        item.appendChild(nameEl);
+        item.appendChild(delBtn);
+        item.addEventListener('click', function () {
+          switchToCity(idx);
+          closeCityPanel();
+        });
+        savedCitiesList.appendChild(item);
+      })(savedCities[i], i);
+    }
+  }
+
+  /* City search */
+  if (cityAddInput) {
+    cityAddInput.addEventListener('input', function () {
+      renderCitySearchResults(cityAddInput.value.trim().toLowerCase());
+    });
+  }
+
+  function renderCitySearchResults(query) {
+    if (!citySearchResults) return;
+    citySearchResults.innerHTML = '';
+    if (!query) return;
+
+    var existingNames = {};
+    for (var e = 0; e < savedCities.length; e++) {
+      existingNames[savedCities[e].name.toLowerCase()] = true;
+    }
+
+    for (var i = 0; i < CITY_DB.length; i++) {
+      var city = CITY_DB[i];
+      if (existingNames[city.name.toLowerCase()]) continue;
+      if (city.name.toLowerCase().indexOf(query) === -1) continue;
+
+      (function (c) {
+        var el = document.createElement('div');
+        el.className = 'city-search-item';
+        el.textContent = c.name;
+        el.addEventListener('click', function () {
+          savedCities.push({ name: c.name, lat: c.lat, lon: c.lon });
+          saveCities();
+          updateCityIndicator();
+          renderSavedCities();
+          if (cityAddInput) cityAddInput.value = '';
+          citySearchResults.innerHTML = '';
+        });
+        citySearchResults.appendChild(el);
+      })(city);
+    }
   }
 
   /* ─── Fetch weather from Open-Meteo via network service ─── */
@@ -191,8 +459,6 @@
     if (!hourlyEl || !data.hourly) return;
     hourlyEl.innerHTML = '';
     var h = data.hourly;
-    var now = new Date();
-    var currentHour = now.getHours();
     var count = Math.min(h.time.length, 24);
 
     for (var i = 0; i < count; i++) {
@@ -277,7 +543,6 @@
   /* ─── Apply weather-based background theme ─── */
   function applyWeatherTheme(code) {
     var body = document.body;
-    /* Remove all weather classes */
     body.className = body.className.replace(/weather-\w+/g, '').trim();
 
     var now = new Date();

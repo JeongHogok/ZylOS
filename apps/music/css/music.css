@@ -24,16 +24,17 @@ body {
 .hidden { display: none !important; }
 
 /* ─── Header ─── */
-#header { padding: 20px 16px 12px; }
-#header h1 { font-size: 28px; font-weight: 700; }
+#header { padding: 16px 16px 8px; }
+#header h1 { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+#music-tabs { display: flex; gap: 4px; }
+.music-tab { padding: 6px 16px; border-radius: 16px; border: 1px solid #2a2a4e; background: #1a1a2e; color: #888; font-size: 13px; cursor: pointer; transition: all 0.2s; }
+.music-tab.active { background: #6366f1; color: #fff; border-color: #6366f1; }
+.music-panel { display: none; -webkit-flex: 1; flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.music-panel.active { display: block; }
 
 /* ─── Track List ─── */
 #track-list {
-  -webkit-flex: 1;
-  flex: 1;
-  overflow-y: auto;
   padding: 4px 16px;
-  -webkit-overflow-scrolling: touch;
 }
 
 .track-item {
@@ -257,3 +258,119 @@ body {
   background: #6366f1;
   cursor: pointer;
 }
+
+/* ─── Playlist Panel ─── */
+#playlist-panel { padding: 4px 16px; }
+.playlist-item {
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: center;
+  align-items: center;
+  -webkit-justify-content: space-between;
+  justify-content: space-between;
+  padding: 14px 8px;
+  border-bottom: 1px solid #1a1a2e;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+.playlist-item:hover { background: rgba(99, 102, 241, 0.08); }
+.playlist-name { font-size: 15px; font-weight: 500; }
+.playlist-count { font-size: 12px; color: #666; }
+.playlist-create-btn {
+  margin-top: 16px;
+  padding: 10px 24px;
+  border-radius: 24px;
+  border: none;
+  background: #6366f1;
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* ─── Playlist Detail ─── */
+#playlist-detail { padding: 0; }
+#playlist-detail-header {
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: center;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #1a1a2e;
+}
+#playlist-detail-header span { -webkit-flex: 1; flex: 1; font-size: 16px; font-weight: 600; }
+.pl-back-btn, .pl-del-btn { background: none; border: none; color: #aaa; cursor: pointer; padding: 4px; display: -webkit-flex; display: flex; }
+.pl-del-btn { color: #f87171; }
+#playlist-detail-tracks { padding: 4px 16px; }
+#playlist-add-section { padding: 12px 16px; text-align: center; }
+#btn-add-to-playlist { padding: 8px 20px; border-radius: 20px; border: 1px solid #2a2a4e; background: #1a1a2e; color: #e0e0e0; font-size: 13px; cursor: pointer; }
+.pl-track-remove { background: none; border: none; color: #f87171; font-size: 20px; cursor: pointer; padding: 4px 8px; line-height: 1; }
+
+/* ─── Track Picker ─── */
+#track-picker { padding: 0; }
+#track-picker-header {
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: center;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #1a1a2e;
+}
+#track-picker-header span { -webkit-flex: 1; flex: 1; font-size: 16px; font-weight: 600; }
+#btn-picker-done { background: none; border: none; color: #6366f1; font-size: 14px; font-weight: 600; cursor: pointer; padding: 4px 8px; }
+#track-picker-list { padding: 4px 16px; }
+.picker-item {
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: center;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 8px;
+  border-bottom: 1px solid #1a1a2e;
+  cursor: pointer;
+}
+.picker-check {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  border: 2px solid #444;
+  -webkit-flex-shrink: 0;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+.picker-check.checked { background: #6366f1; border-color: #6366f1; }
+
+/* ─── Create Playlist Dialog ─── */
+.dialog-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.7);
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: center;
+  align-items: center;
+  -webkit-justify-content: center;
+  justify-content: center;
+  z-index: 100;
+}
+.dialog-card { background: #1a1a2e; border-radius: 16px; padding: 24px; width: 280px; text-align: center; }
+.dialog-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; }
+.dialog-card input[type="text"] {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #2a2a4e;
+  background: #111;
+  color: #e0e0e0;
+  font-size: 14px;
+  margin-bottom: 16px;
+  outline: none;
+}
+.dialog-actions { display: -webkit-flex; display: flex; gap: 12px; -webkit-justify-content: center; justify-content: center; }
+.dialog-actions button { padding: 8px 20px; border-radius: 20px; border: none; font-size: 13px; cursor: pointer; background: #252535; color: #e0e0e0; }
+.dialog-primary { background: #6366f1 !important; color: #fff !important; }

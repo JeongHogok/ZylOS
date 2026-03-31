@@ -18,6 +18,7 @@
     'clock.tab_alarm': '\uC54C\uB78C',
     'clock.tab_timer': '\uD0C0\uC774\uBA38',
     'clock.tab_stopwatch': '\uC2A4\uD1B1\uC6CC\uCE58',
+    'clock.tab_world': '\uC138\uACC4\uC2DC\uACC4',
     'clock.add_alarm': '\uC54C\uB78C \uCD94\uAC00',
     'clock.new_alarm': '\uC0C8 \uC54C\uB78C',
     'clock.no_alarms': '\uC54C\uB78C \uC5C6\uC74C',
@@ -46,7 +47,13 @@
     'clock.hours': '\uC2DC',
     'clock.minutes': '\uBD84',
     'clock.seconds': '\uCD08',
-    'clock.timer_done': '\uC2DC\uAC04\uC774 \uB418\uC5C8\uC2B5\uB2C8\uB2E4!'
+    'clock.timer_done': '\uC2DC\uAC04\uC774 \uB418\uC5C8\uC2B5\uB2C8\uB2E4!',
+    'clock.snooze': '\uC2A4\uB204\uC988',
+    'clock.dismiss': '\uD574\uC81C',
+    'clock.add_city': '\uB3C4\uC2DC \uCD94\uAC00',
+    'clock.no_cities': '\uCD94\uAC00\uB41C \uB3C4\uC2DC \uC5C6\uC74C',
+    'clock.search_city': '\uB3C4\uC2DC \uAC80\uC0C9...',
+    'clock.same_time': '\uAC19\uC740 \uC2DC\uAC04'
   });
 
   zylI18n.addTranslations('en', {
@@ -58,6 +65,7 @@
     'clock.tab_alarm': 'Alarm',
     'clock.tab_timer': 'Timer',
     'clock.tab_stopwatch': 'Stopwatch',
+    'clock.tab_world': 'World',
     'clock.add_alarm': 'Add Alarm',
     'clock.new_alarm': 'New Alarm',
     'clock.no_alarms': 'No alarms set',
@@ -86,7 +94,13 @@
     'clock.hours': 'h',
     'clock.minutes': 'm',
     'clock.seconds': 's',
-    'clock.timer_done': 'Time is up!'
+    'clock.timer_done': 'Time is up!',
+    'clock.snooze': 'Snooze',
+    'clock.dismiss': 'Dismiss',
+    'clock.add_city': 'Add City',
+    'clock.no_cities': 'No cities added',
+    'clock.search_city': 'Search city...',
+    'clock.same_time': 'Same time'
   });
 
   zylI18n.addTranslations('ja', {
@@ -98,6 +112,7 @@
     'clock.tab_alarm': '\u30A2\u30E9\u30FC\u30E0',
     'clock.tab_timer': '\u30BF\u30A4\u30DE\u30FC',
     'clock.tab_stopwatch': '\u30B9\u30C8\u30C3\u30D7\u30A6\u30A9\u30C3\u30C1',
+    'clock.tab_world': '\u4E16\u754C\u6642\u8A08',
     'clock.add_alarm': '\u30A2\u30E9\u30FC\u30E0\u3092\u8FFD\u52A0',
     'clock.new_alarm': '\u65B0\u3057\u3044\u30A2\u30E9\u30FC\u30E0',
     'clock.no_alarms': '\u30A2\u30E9\u30FC\u30E0\u306A\u3057',
@@ -126,7 +141,13 @@
     'clock.hours': '\u6642',
     'clock.minutes': '\u5206',
     'clock.seconds': '\u79D2',
-    'clock.timer_done': '\u6642\u9593\u306B\u306A\u308A\u307E\u3057\u305F\uFF01'
+    'clock.timer_done': '\u6642\u9593\u306B\u306A\u308A\u307E\u3057\u305F\uFF01',
+    'clock.snooze': '\u30B9\u30CC\u30FC\u30BA',
+    'clock.dismiss': '\u89E3\u9664',
+    'clock.add_city': '\u90FD\u5E02\u3092\u8FFD\u52A0',
+    'clock.no_cities': '\u90FD\u5E02\u304C\u8FFD\u52A0\u3055\u308C\u3066\u3044\u307E\u305B\u3093',
+    'clock.search_city': '\u90FD\u5E02\u3092\u691C\u7D22...',
+    'clock.same_time': '\u540C\u3058\u6642\u9593'
   });
 
   zylI18n.addTranslations('zh', {
@@ -138,6 +159,7 @@
     'clock.tab_alarm': '\u95F9\u949F',
     'clock.tab_timer': '\u8BA1\u65F6\u5668',
     'clock.tab_stopwatch': '\u79D2\u8868',
+    'clock.tab_world': '\u4E16\u754C\u65F6\u949F',
     'clock.add_alarm': '\u6DFB\u52A0\u95F9\u949F',
     'clock.new_alarm': '\u65B0\u95F9\u949F',
     'clock.no_alarms': '\u65E0\u95F9\u949F',
@@ -166,7 +188,13 @@
     'clock.hours': '\u65F6',
     'clock.minutes': '\u5206',
     'clock.seconds': '\u79D2',
-    'clock.timer_done': '\u65F6\u95F4\u5230\uFF01'
+    'clock.timer_done': '\u65F6\u95F4\u5230\uFF01',
+    'clock.snooze': '\u8D2A\u7761',
+    'clock.dismiss': '\u89E3\u9664',
+    'clock.add_city': '\u6DFB\u52A0\u57CE\u5E02',
+    'clock.no_cities': '\u672A\u6DFB\u52A0\u57CE\u5E02',
+    'clock.search_city': '\u641C\u7D22\u57CE\u5E02...',
+    'clock.same_time': '\u76F8\u540C\u65F6\u95F4'
   });
 
   zylI18n.addTranslations('es', {
@@ -178,6 +206,7 @@
     'clock.tab_alarm': 'Alarma',
     'clock.tab_timer': 'Temporizador',
     'clock.tab_stopwatch': 'Cron\u00F3metro',
+    'clock.tab_world': 'Mundial',
     'clock.add_alarm': 'Agregar alarma',
     'clock.new_alarm': 'Nueva alarma',
     'clock.no_alarms': 'Sin alarmas',
@@ -206,6 +235,12 @@
     'clock.hours': 'h',
     'clock.minutes': 'm',
     'clock.seconds': 's',
-    'clock.timer_done': '\u00A1Se acab\u00F3 el tiempo!'
+    'clock.timer_done': '\u00A1Se acab\u00F3 el tiempo!',
+    'clock.snooze': 'Posponer',
+    'clock.dismiss': 'Descartar',
+    'clock.add_city': 'Agregar ciudad',
+    'clock.no_cities': 'Sin ciudades agregadas',
+    'clock.search_city': 'Buscar ciudad...',
+    'clock.same_time': 'Misma hora'
   });
 })();
