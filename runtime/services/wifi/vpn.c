@@ -41,6 +41,12 @@ static int safe_exec(const char *const argv[]) {
 int zyl_vpn_import_profile(const char *config_path, const char *name) {
     if (!config_path || !name) return -1;
 
+    /* Validate config_path — reject path traversal */
+    if (strstr(config_path, "..") != NULL) {
+        fprintf(stderr, "[VPN] Rejected unsafe config path: %s\n", config_path);
+        return -1;
+    }
+
     mkdir(VPN_CONFIG_DIR, 0700);
 
     /* nmcli로 WireGuard 프로필 임포트 */

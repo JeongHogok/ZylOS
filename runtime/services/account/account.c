@@ -164,6 +164,13 @@ int zyl_account_register_local(ZylAccountService *svc,
     acc->account_id = strdup(id);
     acc->display_name = strdup(name);
     acc->email = strdup("");
+    if (!acc->account_id || !acc->display_name || !acc->email) {
+        free(acc->account_id);
+        free(acc->display_name);
+        free(acc->email);
+        memset(acc, 0, sizeof(*acc));
+        return -1;
+    }
     acc->type = ZYL_ACCOUNT_LOCAL;
     acc->is_active = true;
     acc->created_at = (uint64_t)time(NULL);
