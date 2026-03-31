@@ -1,11 +1,14 @@
 // ──────────────────────────────────────────────────────────
 // [Clean Architecture] Presentation Layer - UI Component
 //
-// 역할: Zyl OS 가상 키보드 — 다국어 레이아웃 지원 (en/ko/es/ja/zh)
+// 역할: Zyl OS 가상 키보드 — 다국어 레이아웃 지원 (en/ko/es/ja/zh),
+//       bigram 기반 예측 변환 후보 바 포함
 // 수행범위: 다국어 QWERTY/한글/스페인어 레이아웃 렌더링,
 //          키 입력 콜백 전달, Shift/Symbol 토글, 언어 순환,
-//          키 높이 설정, 터치 사운드/진동 피드백
-// 의존방향: 에뮬레이터가 window.ZylKeyboard.init() 호출
+//          키 높이 설정, 터치 사운드/진동 피드백,
+//          예측 변환 후보 바 렌더링 (ZylPrediction 모듈 연동)
+// 의존방향: 에뮬레이터가 window.ZylKeyboard.init() 호출,
+//           window.ZylPrediction (prediction.js, optional)
 // SOLID: SRP — 키보드 UI 렌더링과 입력 콜백 전달만 담당
 //        OCP — LAYOUTS 객체에 언어 추가로 확장 가능
 //        DIP — 에뮬레이터가 콜백 주입, 키보드는 구현에 비의존
@@ -21,6 +24,7 @@ window.ZylKeyboard = (function () {
 
   var _onKey = null;
   var _container = null;
+  var _candidateBar = null;   /* 예측 후보 바 엘리먼트 */
   var _shifted = false;
   var _capsLock = false;
   var _symbols = false;
@@ -29,6 +33,9 @@ window.ZylKeyboard = (function () {
   var _keyHeight = 36;
   var _soundEnabled = true;
   var _vibrationEnabled = true;
+
+  /* 현재 입력 필드 텍스트 추적 (예측 변환용) */
+  var _currentFieldText = '';
 
   /* ─── Audio Context (lazy) ─── */
 
@@ -258,11 +265,101 @@ window.ZylKeyboard = (function () {
       _onKey(key);
     }
 
+    /* 입력 텍스트 추적 (예측 변환용) */
+    if (key === 'Backspace') {
+      if (_currentFieldText.length > 0) {
+        _currentFieldText = _currentFieldText.slice(0, -1);
+      }
+    } else if (key === 'Enter') {
+      _currentFieldText = '';
+      if (window.ZylPrediction) window.ZylPrediction.reset();
+    } else if (key.length === 1) {
+      _currentFieldText += key;
+    }
+    updatePredictions();
+
     /* Auto-reset shift after one character (not for caps lock) */
     if (_shifted && !_capsLock && key.length === 1) {
       _shifted = false;
       render();
     }
+  }
+
+  /* ─── 예측 후보 바 ─── */
+
+  function renderCandidateBar(candidates) {
+    if (!_candidateBar) return;
+    _candidateBar.innerHTML = '';
+
+    if (!candidates || candidates.length === 0) {
+      _candidateBar.classList.remove('visible');
+      return;
+    }
+
+    _candidateBar.classList.add('visible');
+    for (var i = 0; i < candidates.length && i < 3; i++) {
+      (function (word) {
+        var btn = document.createElement('button');
+        btn.className = 'kb-candidate';
+        btn.setAttribute('type', 'button');
+        btn.textContent = word;
+
+        btn.addEventListener('touchstart', function (e) {
+          e.preventDefault();
+          handleCandidateSelect(word);
+        }, { passive: false });
+
+        btn.addEventListener('mousedown', function (e) {
+          e.preventDefault();
+          handleCandidateSelect(word);
+        });
+
+        _candidateBar.appendChild(btn);
+
+        /* 구분선 (마지막 제외) */
+        if (i < candidates.length - 1 && i < 2) {
+          var sep = document.createElement('span');
+          sep.className = 'kb-candidate-sep';
+          _candidateBar.appendChild(sep);
+        }
+      })(candidates[i]);
+    }
+  }
+
+  function handleCandidateSelect(word) {
+    /* 현재 입력 중인 부분 단어를 선택된 후보로 교체하여 onKey로 전달 */
+    if (!_onKey) return;
+
+    /* 현재 입력 중인 prefix 길이만큼 Backspace 전송 후 단어 삽입 */
+    var words = _currentFieldText ? _currentFieldText.trimRight().split(/\s+/) : [];
+    var currentPrefix = words.length > 0 ? words[words.length - 1] : '';
+
+    for (var i = 0; i < currentPrefix.length; i++) {
+      _onKey('Backspace');
+    }
+
+    /* 단어 + 공백 삽입 */
+    for (var j = 0; j < word.length; j++) {
+      _onKey(word[j]);
+    }
+    _onKey(' ');
+
+    /* 예측 컨텍스트 업데이트 */
+    if (window.ZylPrediction) {
+      window.ZylPrediction.onCandidateSelected(word);
+    }
+    _currentFieldText = _currentFieldText
+      ? _currentFieldText.trimRight().split(/\s+/).slice(0, -1).join(' ') + (words.length > 1 ? ' ' : '') + word + ' '
+      : word + ' ';
+
+    updatePredictions();
+  }
+
+  function updatePredictions() {
+    if (!window.ZylPrediction) return;
+    window.ZylPrediction.updateContext(_currentFieldText);
+    var candidates = window.ZylPrediction.getPredictions(_currentLang);
+    renderCandidateBar(candidates);
   }
 
   /* ─── Rendering ─── */
@@ -271,6 +368,12 @@ window.ZylKeyboard = (function () {
     if (!_container) return;
 
     _container.innerHTML = '';
+
+    /* 예측 후보 바 (최상단) */
+    _candidateBar = document.createElement('div');
+    _candidateBar.className = 'kb-candidate-bar';
+    _container.appendChild(_candidateBar);
+
     var layout = getCurrentLayout();
 
     for (var r = 0; r < layout.length; r++) {
@@ -284,6 +387,9 @@ window.ZylKeyboard = (function () {
 
       _container.appendChild(rowEl);
     }
+
+    /* 초기 예측 업데이트 */
+    updatePredictions();
   }
 
   /* ─── Sound / Vibration Setters ─── */

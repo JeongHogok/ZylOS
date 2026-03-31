@@ -1,0 +1,13 @@
+[Unit]
+Description=Zyl OS Account Service
+After=zyl-credential.service
+
+[Service]
+Type=dbus
+BusName=org.zylos.AccountService
+ExecStart=/usr/bin/zyl-account
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=zyl-os.target
