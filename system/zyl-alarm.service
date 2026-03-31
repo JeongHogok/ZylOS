@@ -1,0 +1,12 @@
+[Unit]
+Description=Zyl OS Alarm/Scheduler Service
+After=dbus.service
+
+[Service]
+Type=dbus
+BusName=org.zylos.AlarmService
+ExecStart=/usr/bin/zyl-alarm
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
