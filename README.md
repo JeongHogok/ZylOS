@@ -26,7 +26,12 @@
 - **Verified Boot**: FIT 이미지 서명 + dm-verity (rootfs 무결성)
 - **zyl SDK CLI**: init/validate/package/sign/keygen 개발자 워크플로우
 - **코드 품질 보증**: verify-all.sh (11섹션 자동 검증) + pre-commit hook
-- **코드베이스 규모**: 360개 파일, ~68,400 LoC
+- **코드베이스 규모**: 375개 파일, ~66,300 LoC
+
+## 최근 보강 내역 (v0.1.0)
+
+- **앱 기능 보강**: calc 공학용 모드+이력, clock 세계시계+스누즈, messages 검색/삭제/읽음, weather 다중도시, music 재생목록+앨범아트, phone 즐겨찾기+DTMF, gallery 앨범+슬라이드쇼, browser 히스토리+프라이빗, store 카테고리+상세, terminal 멀티탭+테마, notes 검색/정렬/서식
+- **OS 핵심 UI 보강**: home 배지+정렬, keyboard CapsLock+악센트, lockscreen 잠금카운트다운, statusbar 알림관리, oobe 역슬라이드
 
 ## 기술 스택
 
