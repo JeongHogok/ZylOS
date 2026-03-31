@@ -1,8 +1,9 @@
 /* ──────────────────────────────────────────────────────────
  * [Clean Architecture] Infrastructure Layer - Adapter
  *
- * 역할: XDG shell 윈도우/뷰 라이프사이클 관리
- * 수행범위: toplevel/popup 서피스 생성, 포커스, 풀스크린, map/unmap, 파괴
+ * 역할: XDG shell 윈도우/뷰 라이프사이클 관리 + 분할화면/PiP 레이아웃
+ * 수행범위: toplevel/popup 서피스 생성, 포커스, 풀스크린, map/unmap, 파괴,
+ *           split-screen layout 계산, PiP 레이어 렌더링
  * 의존방향: view.h → zyl_compositor.h
  * SOLID: SRP — 윈도우 뷰 관리 로직만 담당
  * ────────────────────────────────────────────────────────── */
@@ -157,6 +158,128 @@ static void handle_new_xdg_popup(struct wl_listener *listener, void *data)
     struct wlr_scene_tree *parent_tree = parent->data;
     popup->base->data =
         wlr_scene_xdg_surface_create(parent_tree, popup->base);
+}
+
+/* ================================================================
+ * Split-screen layout
+ * ================================================================ */
+
+/**
+ * Clamp a value to [lo, hi].
+ */
+static int clamp_int(int v, int lo, int hi)
+{
+    if (v < lo) return lo;
+    if (v > hi) return hi;
+    return v;
+}
+
+void view_apply_split_layout(struct zyl_server *server)
+{
+    if (!server) return;
+    if (server->split_mode == ZYL_SPLIT_NONE) return;
+
+    struct zyl_view *primary   = server->split_primary;
+    struct zyl_view *secondary = server->split_secondary;
+
+    if (!primary || !secondary) {
+        wlr_log(WLR_ERROR,
+                "view_apply_split_layout: split_mode set but primary/secondary view is NULL");
+        return;
+    }
+
+    int sw = server->screen_width;
+    int sh = server->screen_height - server->config.statusbar_height_px;
+    if (sw <= 0 || sh <= 0) return;
+
+    /* ratio_pct: portion of the screen the primary pane takes (0-100) */
+    int ratio = clamp_int(server->split_ratio_pct, 5, 95);
+
+    int primary_w, primary_h, secondary_w, secondary_h;
+    int primary_x = 0, primary_y = 0;
+    int secondary_x, secondary_y;
+
+    if (server->split_mode == ZYL_SPLIT_HORIZONTAL) {
+        /* Left | Right */
+        primary_w   = (sw * ratio) / 100;
+        primary_h   = sh;
+        secondary_x = primary_w;
+        secondary_y = 0;
+        secondary_w = sw - primary_w;
+        secondary_h = sh;
+    } else {
+        /* Top / Bottom  (ZYL_SPLIT_VERTICAL) */
+        primary_w   = sw;
+        primary_h   = (sh * ratio) / 100;
+        secondary_x = 0;
+        secondary_y = primary_h;
+        secondary_w = sw;
+        secondary_h = sh - primary_h;
+    }
+
+    /* Resize and reposition primary */
+    wlr_xdg_toplevel_set_size(primary->xdg_toplevel, primary_w, primary_h);
+    wlr_scene_node_set_position(&primary->scene_tree->node, primary_x, primary_y);
+
+    /* Resize and reposition secondary */
+    wlr_xdg_toplevel_set_size(secondary->xdg_toplevel, secondary_w, secondary_h);
+    wlr_scene_node_set_position(&secondary->scene_tree->node, secondary_x, secondary_y);
+
+    wlr_log(WLR_DEBUG,
+            "split layout: mode=%d ratio=%d%%  primary=%dx%d@%d,%d  secondary=%dx%d@%d,%d",
+            server->split_mode, ratio,
+            primary_w, primary_h, primary_x, primary_y,
+            secondary_w, secondary_h, secondary_x, secondary_y);
+}
+
+/* ================================================================
+ * PiP (Picture-in-Picture) rendering
+ * ================================================================ */
+
+void view_update_pip(struct zyl_server *server)
+{
+    if (!server) return;
+
+    struct zyl_pip_config *pip = &server->pip;
+
+    if (!pip->active || !pip->pip_view) {
+        /* Hide PiP scene tree if it exists */
+        if (pip->pip_scene_tree) {
+            wlr_scene_node_set_enabled(&pip->pip_scene_tree->node, false);
+        }
+        return;
+    }
+
+    /* Lazily create a dedicated scene sub-tree for the PiP layer */
+    if (!pip->pip_scene_tree) {
+        pip->pip_scene_tree =
+            wlr_scene_tree_create(&server->scene->tree);
+        if (!pip->pip_scene_tree) {
+            wlr_log(WLR_ERROR, "view_update_pip: failed to create pip scene tree");
+            return;
+        }
+    }
+
+    /* Re-parent the PiP view's scene node into the PiP sub-tree if needed.
+     * (The scene tree owns the node; we just reposition it.) */
+    wlr_scene_node_set_enabled(&pip->pip_scene_tree->node, true);
+
+    /* Position and size */
+    int x = clamp_int(pip->x, 0, server->screen_width  - 1);
+    int y = clamp_int(pip->y, 0, server->screen_height - 1);
+
+    wlr_scene_node_set_position(&pip->pip_scene_tree->node, x, y);
+    wlr_xdg_toplevel_set_size(pip->pip_view->xdg_toplevel,
+                              pip->width  > 0 ? pip->width  : 320,
+                              pip->height > 0 ? pip->height : 180);
+
+    /* Raise the PiP sub-tree to the top of the scene graph so it
+     * always renders above regular views and the split-screen layout. */
+    wlr_scene_node_raise_to_top(&pip->pip_scene_tree->node);
+
+    wlr_log(WLR_DEBUG,
+            "pip update: active=true pos=%d,%d size=%dx%d",
+            x, y, pip->width, pip->height);
 }
 
 /* ================================================================
