@@ -84,7 +84,11 @@
     'settings.perm_phone': '\uC804\uD654',
     'settings.perm_bluetooth': '\uBE14\uB8E8\uD22C\uC2A4',
     'settings.perm_network': '\uB124\uD2B8\uC6CC\uD06C',
-    'settings.perm_sensors': '\uC13C\uC11C'
+    'settings.perm_sensors': '\uC13C\uC11C',
+    'settings.wifi_toggle_error': 'Wi-Fi \uC804\uD658\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4',
+    'settings.wifi_scan_error': 'Wi-Fi \uAC80\uC0C9\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4',
+    'settings.bt_toggle_error': '\uBE14\uB8E8\uD22C\uC2A4 \uC804\uD658\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4',
+    'settings.bt_scan_error': '\uBE14\uB8E8\uD22C\uC2A4 \uAC80\uC0C9\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4'
   });
 
   zylI18n.addTranslations('en', {
@@ -162,7 +166,11 @@
     'settings.perm_phone': 'Phone',
     'settings.perm_bluetooth': 'Bluetooth',
     'settings.perm_network': 'Network',
-    'settings.perm_sensors': 'Sensors'
+    'settings.perm_sensors': 'Sensors',
+    'settings.wifi_toggle_error': 'Failed to toggle Wi-Fi',
+    'settings.wifi_scan_error': 'Failed to scan Wi-Fi',
+    'settings.bt_toggle_error': 'Failed to toggle Bluetooth',
+    'settings.bt_scan_error': 'Failed to scan Bluetooth'
   });
 
   zylI18n.addTranslations('ja', {
@@ -240,7 +248,11 @@
     'settings.perm_phone': '\u96FB\u8A71',
     'settings.perm_bluetooth': 'Bluetooth',
     'settings.perm_network': '\u30CD\u30C3\u30C8\u30EF\u30FC\u30AF',
-    'settings.perm_sensors': '\u30BB\u30F3\u30B5\u30FC'
+    'settings.perm_sensors': '\u30BB\u30F3\u30B5\u30FC',
+    'settings.wifi_toggle_error': 'Wi-Fi\u306E\u5207\u308A\u66FF\u3048\u306B\u5931\u6557\u3057\u307E\u3057\u305F',
+    'settings.wifi_scan_error': 'Wi-Fi\u30B9\u30AD\u30E3\u30F3\u306B\u5931\u6557\u3057\u307E\u3057\u305F',
+    'settings.bt_toggle_error': 'Bluetooth\u306E\u5207\u308A\u66FF\u3048\u306B\u5931\u6557\u3057\u307E\u3057\u305F',
+    'settings.bt_scan_error': 'Bluetooth\u30B9\u30AD\u30E3\u30F3\u306B\u5931\u6557\u3057\u307E\u3057\u305F'
   });
 
   zylI18n.addTranslations('zh', {
@@ -318,7 +330,11 @@
     'settings.perm_phone': '\u7535\u8BDD',
     'settings.perm_bluetooth': '\u84DD\u7259',
     'settings.perm_network': '\u7F51\u7EDC',
-    'settings.perm_sensors': '\u4F20\u611F\u5668'
+    'settings.perm_sensors': '\u4F20\u611F\u5668',
+    'settings.wifi_toggle_error': 'Wi-Fi\u5207\u6362\u5931\u8D25',
+    'settings.wifi_scan_error': 'Wi-Fi\u626B\u63CF\u5931\u8D25',
+    'settings.bt_toggle_error': '\u84DD\u7259\u5207\u6362\u5931\u8D25',
+    'settings.bt_scan_error': '\u84DD\u7259\u626B\u63CF\u5931\u8D25'
   });
 
   zylI18n.addTranslations('es', {
@@ -396,6 +412,10 @@
     'settings.perm_phone': 'Tel\u00E9fono',
     'settings.perm_bluetooth': 'Bluetooth',
     'settings.perm_network': 'Red',
-    'settings.perm_sensors': 'Sensores'
+    'settings.perm_sensors': 'Sensores',
+    'settings.wifi_toggle_error': 'Error al cambiar Wi-Fi',
+    'settings.wifi_scan_error': 'Error al buscar Wi-Fi',
+    'settings.bt_toggle_error': 'Error al cambiar Bluetooth',
+    'settings.bt_scan_error': 'Error al buscar Bluetooth'
   });
 })();

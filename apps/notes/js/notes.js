@@ -19,6 +19,10 @@
   var notes = [];
   var currentNote = null;
 
+  function t(key) {
+    return typeof zylI18n !== 'undefined' ? zylI18n.t(key) : key;
+  }
+
   function requestNotes() {
     ZylBridge.sendToSystem({
       type: 'service.request', service: 'fs', method: 'getDirectory', params: { path: 'Documents/Notes' }
@@ -99,28 +103,38 @@
 
     var newFileName = title + '.txt';
 
-    /* If title changed, rename old file first */
+    /* If title changed, rename old file first, then write */
+    var renamePromise;
     if (currentNote && currentNote !== newFileName) {
-      ZylBridge.sendToSystem({
-        type: 'service.request', service: 'fs', method: 'rename',
-        params: { oldPath: 'Documents/Notes/' + currentNote, newPath: 'Documents/Notes/' + newFileName }
+      renamePromise = ZylBridge.requestService('fs', 'rename', {
+        oldPath: 'Documents/Notes/' + currentNote, newPath: 'Documents/Notes/' + newFileName
       });
+    } else {
+      renamePromise = Promise.resolve();
     }
 
-    ZylBridge.sendToSystem({
-      type: 'service.request', service: 'fs', method: 'writeFile',
-      params: { path: 'Documents/Notes/' + newFileName, content: body }
+    renamePromise.then(function () {
+      return ZylBridge.requestService('fs', 'writeFile', {
+        path: 'Documents/Notes/' + newFileName, content: body
+      });
+    }).then(function () {
+      if (typeof ZylToast !== 'undefined') ZylToast.success(t('notes.save_success'));
+      closeEditor();
+    }).catch(function () {
+      if (typeof ZylToast !== 'undefined') ZylToast.error(t('notes.save_error'));
     });
-    closeEditor();
   });
 
   if (document.getElementById('btn-delete')) document.getElementById('btn-delete').addEventListener('click', function () {
     if (!currentNote) return;
-    ZylBridge.sendToSystem({
-      type: 'service.request', service: 'fs', method: 'remove',
-      params: { path: 'Documents/Notes/' + currentNote }
+    ZylBridge.requestService('fs', 'remove', {
+      path: 'Documents/Notes/' + currentNote
+    }).then(function () {
+      if (typeof ZylToast !== 'undefined') ZylToast.success(t('notes.delete_success'));
+      closeEditor();
+    }).catch(function () {
+      if (typeof ZylToast !== 'undefined') ZylToast.error(t('notes.delete_error'));
     });
-    closeEditor();
   });
 
   if (document.getElementById('btn-new')) document.getElementById('btn-new').addEventListener('click', function () {

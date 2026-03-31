@@ -60,8 +60,13 @@
   if (wifiToggle) {
     wifiToggle.addEventListener('change', function () {
       var enabled = wifiToggle.checked;
-      core.updateSetting('wifi', 'enabled', enabled);
       updateWifiUI(enabled);
+      core.updateSetting('wifi', 'enabled', enabled).catch(function () {
+        /* Revert toggle on failure */
+        wifiToggle.checked = !enabled;
+        updateWifiUI(!enabled);
+        if (typeof ZylToast !== 'undefined') ZylToast.error(core.t('settings.wifi_toggle_error'));
+      });
     });
   }
 
@@ -71,11 +76,14 @@
     wifiScanBtn.addEventListener('click', function () {
       wifiScanBtn.classList.add('scanning');
       wifiScanBtn.textContent = core.t('settings.scanning');
-      core.requestService('wifi', 'getNetworks');
-      setTimeout(function () {
+      core.requestService('wifi', 'getNetworks').then(function (data) {
+        if (data) renderWifiNetworks(data);
+      }).catch(function () {
+        if (typeof ZylToast !== 'undefined') ZylToast.error(core.t('settings.wifi_scan_error'));
+      }).then(function () {
         wifiScanBtn.classList.remove('scanning');
         wifiScanBtn.textContent = core.t('settings.wifi_scan');
-      }, 3000);
+      });
     });
   }
 

@@ -61,8 +61,13 @@
   if (btToggle) {
     btToggle.addEventListener('change', function () {
       var enabled = btToggle.checked;
-      core.updateSetting('bluetooth', 'enabled', enabled);
       updateBtUI(enabled);
+      core.updateSetting('bluetooth', 'enabled', enabled).catch(function () {
+        /* Revert toggle on failure */
+        btToggle.checked = !enabled;
+        updateBtUI(!enabled);
+        if (typeof ZylToast !== 'undefined') ZylToast.error(core.t('settings.bt_toggle_error'));
+      });
     });
   }
 
@@ -72,11 +77,14 @@
     btScanBtn.addEventListener('click', function () {
       btScanBtn.classList.add('scanning');
       btScanBtn.textContent = core.t('settings.scanning');
-      core.requestService('bluetooth', 'getDevices');
-      setTimeout(function () {
+      core.requestService('bluetooth', 'getDevices').then(function (data) {
+        if (data) renderBtDevices(data);
+      }).catch(function () {
+        if (typeof ZylToast !== 'undefined') ZylToast.error(core.t('settings.bt_scan_error'));
+      }).then(function () {
         btScanBtn.classList.remove('scanning');
         btScanBtn.textContent = core.t('settings.bt_scan');
-      }, 3000);
+      });
     });
   }
 

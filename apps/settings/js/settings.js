@@ -129,8 +129,8 @@
     });
   });
 
-  /* ─── System Service IPC ─── */
-  function requestService(service, method, params) {
+  /* ─── System Service IPC (fire-and-forget for init reads) ─── */
+  function requestServiceFire(service, method, params) {
     ZylBridge.sendToSystem({
       type: 'service.request',
       service: service,
@@ -139,9 +139,14 @@
     });
   }
 
-  /* ─── Send a setting update ─── */
+  /* ─── Promise-based service request for user actions ─── */
+  function requestService(service, method, params) {
+    return ZylBridge.requestService(service, method, params || {});
+  }
+
+  /* ─── Send a setting update (Promise-based) ─── */
   function updateSetting(category, key, value) {
-    requestService('settings', 'update', { category: category, key: key, value: value });
+    return requestService('settings', 'update', { category: category, key: key, value: value });
   }
 
   /* ─── Track current settings state locally for UI ─── */
@@ -284,22 +289,22 @@
     setCurrentPage: function (val) { currentPage = val; }
   };
 
-  /* ═══ Request all service data on init ═══ */
-  requestService('wifi', 'getNetworks');
-  requestService('bluetooth', 'getDevices');
-  requestService('device', 'getInfo');
-  requestService('storage', 'getFormatted');
+  /* ═══ Request all service data on init (fire-and-forget reads) ═══ */
+  requestServiceFire('wifi', 'getNetworks');
+  requestServiceFire('bluetooth', 'getDevices');
+  requestServiceFire('device', 'getInfo');
+  requestServiceFire('storage', 'getFormatted');
 
   /* Request settings state for all categories */
-  requestService('settings', 'get', { category: 'wifi' });
-  requestService('settings', 'get', { category: 'bluetooth' });
-  requestService('settings', 'get', { category: 'display' });
-  requestService('settings', 'get', { category: 'sound' });
-  requestService('settings', 'get', { category: 'security' });
-  requestService('settings', 'get', { category: 'keyboard' });
-  requestService('settings', 'get', { category: 'wallpaper' });
-  requestService('settings', 'get', { category: 'app_permissions' });
-  requestService('apps', 'getInstalled');
+  requestServiceFire('settings', 'get', { category: 'wifi' });
+  requestServiceFire('settings', 'get', { category: 'bluetooth' });
+  requestServiceFire('settings', 'get', { category: 'display' });
+  requestServiceFire('settings', 'get', { category: 'sound' });
+  requestServiceFire('settings', 'get', { category: 'security' });
+  requestServiceFire('settings', 'get', { category: 'keyboard' });
+  requestServiceFire('settings', 'get', { category: 'wallpaper' });
+  requestServiceFire('settings', 'get', { category: 'app_permissions' });
+  requestServiceFire('apps', 'getInstalled');
 
   /* ─── 초기화 ─── */
   applyTranslations();

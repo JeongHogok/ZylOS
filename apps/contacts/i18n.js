@@ -30,7 +30,11 @@
     'contacts.confirm_delete': '\uC774 \uC5F0\uB77D\uCC98\uB97C \uC0AD\uC81C\uD558\uC2DC\uACA0\uC2B5\uB2C8\uAE4C?',
     'contacts.delete_confirm': '\uC5F0\uB77D\uCC98 \uC0AD\uC81C',
     'contacts.delete_confirm_msg': '\uC774 \uC5F0\uB77D\uCC98\uB97C \uC0AD\uC81C\uD558\uC2DC\uACA0\uC2B5\uB2C8\uAE4C?',
-    'contacts.permission_denied': '\uC5F0\uB77D\uCC98 \uAD8C\uD55C\uC774 \uAC70\uBD80\uB418\uC5C8\uC2B5\uB2C8\uB2E4'
+    'contacts.permission_denied': '\uC5F0\uB77D\uCC98 \uAD8C\uD55C\uC774 \uAC70\uBD80\uB418\uC5C8\uC2B5\uB2C8\uB2E4',
+    'contacts.save_success': '\uC5F0\uB77D\uCC98\uAC00 \uC800\uC7A5\uB418\uC5C8\uC2B5\uB2C8\uB2E4',
+    'contacts.save_error': '\uC5F0\uB77D\uCC98 \uC800\uC7A5\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4',
+    'contacts.delete_success': '\uC5F0\uB77D\uCC98\uAC00 \uC0AD\uC81C\uB418\uC5C8\uC2B5\uB2C8\uB2E4',
+    'contacts.delete_error': '\uC5F0\uB77D\uCC98 \uC0AD\uC81C\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4'
   });
 
   zylI18n.addTranslations('en', {
@@ -51,7 +55,11 @@
     'contacts.delete_confirm': 'Delete Contact',
     'contacts.delete_confirm_msg': 'Are you sure you want to delete this contact?',
     'contacts.email_label': 'Email',
-    'contacts.permission_denied': 'Contacts permission denied'
+    'contacts.permission_denied': 'Contacts permission denied',
+    'contacts.save_success': 'Contact saved',
+    'contacts.save_error': 'Failed to save contact',
+    'contacts.delete_success': 'Contact deleted',
+    'contacts.delete_error': 'Failed to delete contact'
   });
 
   zylI18n.addTranslations('ja', {
@@ -72,7 +80,11 @@
     'contacts.delete_confirm': '\u9023\u7D61\u5148\u306E\u524A\u9664',
     'contacts.delete_confirm_msg': '\u3053\u306E\u9023\u7D61\u5148\u3092\u524A\u9664\u3057\u307E\u3059\u304B\uFF1F',
     'contacts.email_label': '\u30E1\u30FC\u30EB',
-    'contacts.permission_denied': '\u9023\u7D61\u5148\u306E\u6A29\u9650\u304C\u62D2\u5426\u3055\u308C\u307E\u3057\u305F'
+    'contacts.permission_denied': '\u9023\u7D61\u5148\u306E\u6A29\u9650\u304C\u62D2\u5426\u3055\u308C\u307E\u3057\u305F',
+    'contacts.save_success': '\u9023\u7D61\u5148\u3092\u4FDD\u5B58\u3057\u307E\u3057\u305F',
+    'contacts.save_error': '\u9023\u7D61\u5148\u306E\u4FDD\u5B58\u306B\u5931\u6557\u3057\u307E\u3057\u305F',
+    'contacts.delete_success': '\u9023\u7D61\u5148\u3092\u524A\u9664\u3057\u307E\u3057\u305F',
+    'contacts.delete_error': '\u9023\u7D61\u5148\u306E\u524A\u9664\u306B\u5931\u6557\u3057\u307E\u3057\u305F'
   });
 
   zylI18n.addTranslations('zh', {
@@ -93,7 +105,11 @@
     'contacts.delete_confirm': '\u5220\u9664\u8054\u7CFB\u4EBA',
     'contacts.delete_confirm_msg': '\u786E\u5B9A\u8981\u5220\u9664\u8BE5\u8054\u7CFB\u4EBA\u5417\uFF1F',
     'contacts.email_label': '\u90AE\u4EF6',
-    'contacts.permission_denied': '\u901A\u8BAF\u5F55\u6743\u9650\u88AB\u62D2\u7EDD'
+    'contacts.permission_denied': '\u901A\u8BAF\u5F55\u6743\u9650\u88AB\u62D2\u7EDD',
+    'contacts.save_success': '\u8054\u7CFB\u4EBA\u5DF2\u4FDD\u5B58',
+    'contacts.save_error': '\u4FDD\u5B58\u8054\u7CFB\u4EBA\u5931\u8D25',
+    'contacts.delete_success': '\u8054\u7CFB\u4EBA\u5DF2\u5220\u9664',
+    'contacts.delete_error': '\u5220\u9664\u8054\u7CFB\u4EBA\u5931\u8D25'
   });
 
   zylI18n.addTranslations('es', {
@@ -114,6 +130,10 @@
     'contacts.delete_confirm': 'Eliminar contacto',
     'contacts.delete_confirm_msg': '\u00BFEst\u00E1 seguro de eliminar este contacto?',
     'contacts.email_label': 'Correo',
-    'contacts.permission_denied': 'Permiso de contactos denegado'
+    'contacts.permission_denied': 'Permiso de contactos denegado',
+    'contacts.save_success': 'Contacto guardado',
+    'contacts.save_error': 'Error al guardar contacto',
+    'contacts.delete_success': 'Contacto eliminado',
+    'contacts.delete_error': 'Error al eliminar contacto'
   });
 })();

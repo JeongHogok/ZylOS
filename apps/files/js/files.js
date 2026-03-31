@@ -17,8 +17,8 @@
   var fileSystem = {};
   var serviceReady = false;
 
-  /* Request filesystem data from central service */
-  function requestService(service, method, params) {
+  /* Request filesystem data from central service (fire-and-forget for init) */
+  function requestServiceFire(service, method, params) {
     ZylBridge.sendToSystem({
       type: 'service.request',
       service: service,
@@ -27,9 +27,14 @@
     });
   }
 
+  /* i18n helper */
+  function ti(key) {
+    return typeof zylI18n !== 'undefined' ? zylI18n.t(key) : key;
+  }
+
   function requestFileSystem() {
-    requestService('fs', 'getAllData');
-    requestService('storage', 'getFormatted');
+    requestServiceFire('fs', 'getAllData');
+    requestServiceFire('storage', 'getFormatted');
   }
 
   /* Listen for messages from emulator */
@@ -382,13 +387,14 @@
 
     /* 해당 경로의 데이터가 없으면 서비스에 요청 */
     if (!fileSystem[path]) {
-      ZylBridge.sendToSystem({
-        type: 'service.request',
-        service: 'fs',
-        method: 'getDirectory',
-        params: { path: path }
+      fileList.innerHTML = '<div style="text-align:center;opacity:0.5;padding:32px">' + ti('files.loading') + '</div>';
+      ZylBridge.requestService('fs', 'getDirectory', { path: path }).then(function (data) {
+        fileSystem[path] = normalizeEntries(data || []);
+        if (currentPath === path) renderFiles();
+      }).catch(function () {
+        if (typeof ZylToast !== 'undefined') ZylToast.error(ti('files.nav_error'));
+        fileList.innerHTML = '<div style="text-align:center;opacity:0.5;padding:32px">' + ti('files.nav_error') + '</div>';
       });
-      fileList.innerHTML = '<div style="text-align:center;opacity:0.5;padding:32px">' + (typeof zylI18n !== 'undefined' ? zylI18n.t('files.loading') : 'Loading...') + '</div>';
     } else {
       renderFiles();
     }
@@ -444,18 +450,22 @@
         var deleteTitle = typeof zylI18n !== 'undefined' ? zylI18n.t('files.delete_title') : 'Delete';
         var deleteMsg = typeof zylI18n !== 'undefined' ? zylI18n.t('files.delete_confirm') : 'Are you sure you want to delete this file?';
         showConfirmModal(deleteTitle, deleteMsg + ' (' + deleteTarget.name + ')', function () {
-          requestService('fs', 'remove', { path: deleteFilePath });
-          var files = fileSystem[currentPath];
-          if (files) {
-            var idx = -1;
-            for (var di = 0; di < files.length; di++) {
-              if (files[di].name === deleteTarget.name) { idx = di; break; }
+          ZylBridge.requestService('fs', 'remove', { path: deleteFilePath }).then(function () {
+            var files = fileSystem[currentPath];
+            if (files) {
+              var idx = -1;
+              for (var di = 0; di < files.length; di++) {
+                if (files[di].name === deleteTarget.name) { idx = di; break; }
+              }
+              if (idx !== -1) {
+                files.splice(idx, 1);
+                renderFiles();
+              }
             }
-            if (idx !== -1) {
-              files.splice(idx, 1);
-              renderFiles();
-            }
-          }
+            if (typeof ZylToast !== 'undefined') ZylToast.success(ti('files.delete_success'));
+          }).catch(function () {
+            if (typeof ZylToast !== 'undefined') ZylToast.error(ti('files.delete_error'));
+          });
         });
       } else if (action === 'rename') {
         var renameTarget = contextTarget;
@@ -465,9 +475,13 @@
           if (newName !== oldName) {
             var oldPath = currentPath === '/' ? '/' + oldName : currentPath + '/' + oldName;
             var newPath = currentPath === '/' ? '/' + newName : currentPath + '/' + newName;
-            requestService('fs', 'rename', { oldPath: oldPath, newPath: newPath });
-            renameTarget.name = newName;
-            renderFiles();
+            ZylBridge.requestService('fs', 'rename', { oldPath: oldPath, newPath: newPath }).then(function () {
+              renameTarget.name = newName;
+              renderFiles();
+              if (typeof ZylToast !== 'undefined') ZylToast.success(ti('files.rename_success'));
+            }).catch(function () {
+              if (typeof ZylToast !== 'undefined') ZylToast.error(ti('files.rename_error'));
+            });
           }
         });
       } else if (action === 'share') {
@@ -519,13 +533,16 @@
       showPromptModal(title, '', function (folderName) {
         if (folderName.trim()) {
           var trimmed = folderName.trim();
-          var newPath = currentPath === '/' ? '/' + trimmed : currentPath + '/' + trimmed;
-          requestService('fs', 'mkdir', { path: newPath });
-          /* Optimistic update */
-          var files = fileSystem[currentPath] || [];
-          files.push({ name: trimmed, type: 'folder', size: 0 });
-          fileSystem[currentPath] = files;
-          renderFiles();
+          var mkdirPath = currentPath === '/' ? '/' + trimmed : currentPath + '/' + trimmed;
+          ZylBridge.requestService('fs', 'mkdir', { path: mkdirPath }).then(function () {
+            var files = fileSystem[currentPath] || [];
+            files.push({ name: trimmed, type: 'folder', size: 0 });
+            fileSystem[currentPath] = files;
+            renderFiles();
+            if (typeof ZylToast !== 'undefined') ZylToast.success(ti('files.mkdir_success'));
+          }).catch(function () {
+            if (typeof ZylToast !== 'undefined') ZylToast.error(ti('files.mkdir_error'));
+          });
         }
       });
     });

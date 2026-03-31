@@ -102,15 +102,14 @@
     return key;
   }
 
-  /* ── IPC ── */
-  function requestService(service, method, params) {
-    var msg = {
+  /* ── IPC (fire-and-forget for init/read) ── */
+  function requestServiceFire(service, method, params) {
+    ZylBridge.sendToSystem({
       type: 'service.request',
       service: service,
       method: method,
       params: params || {}
-    };
-    ZylBridge.sendToSystem(msg);
+    });
   }
 
   /* ── ContentProvider 등록: 다른 앱이 연락처 조회 가능하게 ── */
@@ -128,7 +127,7 @@
     if (typeof ZylPermissionDialog !== 'undefined') {
       ZylPermissionDialog.checkAndRequest('com.zylos.contacts', 'contacts').then(function (granted) {
         if (granted) {
-          requestService('contacts', 'getAll');
+          requestServiceFire('contacts', 'getAll');
         } else {
           if (contactList) {
             contactList.innerHTML = '<div class="empty-state">' + t('contacts.permission_denied') + '</div>';
@@ -275,16 +274,17 @@
 
     var data = { name: name, phone: phone, email: email };
 
-    if (editingId) {
-      data.id = editingId;
-      requestService('contacts', 'update', data);
-    } else {
-      requestService('contacts', 'create', data);
-    }
+    var method = editingId ? 'update' : 'create';
+    if (editingId) { data.id = editingId; }
 
-    editingId = null;
-    showView('list');
-    loadContacts();
+    ZylBridge.requestService('contacts', method, data).then(function () {
+      if (typeof ZylToast !== 'undefined') ZylToast.success(t('contacts.save_success'));
+      editingId = null;
+      showView('list');
+      loadContacts();
+    }).catch(function () {
+      if (typeof ZylToast !== 'undefined') ZylToast.error(t('contacts.save_error'));
+    });
   }
 
   function deleteContact() {
@@ -305,10 +305,15 @@
     modalDelete.addEventListener('click', function () {
       if (deleteModal) deleteModal.classList.add('hidden');
       if (!currentContact || !currentContact.id) return;
-      requestService('contacts', 'delete', { id: currentContact.id });
-      currentContact = null;
-      showView('list');
-      loadContacts();
+      var deleteId = currentContact.id;
+      ZylBridge.requestService('contacts', 'delete', { id: deleteId }).then(function () {
+        if (typeof ZylToast !== 'undefined') ZylToast.success(t('contacts.delete_success'));
+        currentContact = null;
+        showView('list');
+        loadContacts();
+      }).catch(function () {
+        if (typeof ZylToast !== 'undefined') ZylToast.error(t('contacts.delete_error'));
+      });
     });
   }
 
