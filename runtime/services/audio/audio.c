@@ -81,6 +81,8 @@ static void pw_set_mute(bool mute) {
 static int generate_tone_wav(const char *path, int freq, int duration_ms,
                               int volume_pct) {
     int sample_rate = 44100;
+    /* Clamp duration to prevent integer overflow (max ~48 seconds at 44100Hz) */
+    if (duration_ms > 48000) duration_ms = 48000;
     int num_samples = sample_rate * duration_ms / 1000;
     int data_size = num_samples * 2; /* 16-bit mono */
     int file_size = 44 + data_size;
