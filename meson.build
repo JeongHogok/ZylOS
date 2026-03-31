@@ -43,6 +43,8 @@ subdir('runtime/services/account')
 subdir('runtime/hal')
 subdir('runtime/services/crash')
 subdir('runtime/services/telemetry')
+subdir('runtime/services/auth')
+subdir('runtime/services/nfc')
 
 # Install app files
 install_subdir('apps/home',       install_dir: get_option('datadir') / 'zyl-os' / 'apps')
@@ -53,6 +55,7 @@ install_subdir('apps/browser',    install_dir: get_option('datadir') / 'zyl-os' 
 install_subdir('apps/files',      install_dir: get_option('datadir') / 'zyl-os' / 'apps')
 install_subdir('apps/terminal',   install_dir: get_option('datadir') / 'zyl-os' / 'apps')
 install_subdir('apps/camera',     install_dir: get_option('datadir') / 'zyl-os' / 'apps')
+install_subdir('apps/keyboard',   install_dir: get_option('datadir') / 'zyl-os' / 'apps')
 install_subdir('apps/shared',     install_dir: get_option('datadir') / 'zyl-os' / 'apps')
 
 # Install HAL header
@@ -77,6 +80,8 @@ install_data('system/zyl-camera.service',        install_dir: get_option('prefix
 install_data('system/zyl-audio.service',         install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
 install_data('system/zyl-bluetooth.service',     install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
 install_data('system/zyl-wifi.service',          install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
+install_data('system/zyl-auth.service',          install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
+install_data('system/zyl-nfc.service',           install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
 install_data('system/zyl-account.service',       install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
 install_data('system/zyl-os.target',             install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
 install_data('system/zyl-apparmor.service',      install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')

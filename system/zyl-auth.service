@@ -1,0 +1,27 @@
+[Unit]
+Description=Zyl OS Auth Service (fingerprint biometric via libfprint/fprintd)
+Documentation=https://github.com/zylos-project/ZylOS
+After=dbus.service fprintd.service
+Requires=dbus.service
+Wants=fprintd.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/zyl-auth
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=5
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+PrivateDevices=false
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+
+[Install]
+WantedBy=zyl-os.target
