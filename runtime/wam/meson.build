@@ -33,6 +33,7 @@ wam_sources = files(
   'src/lifecycle/lifecycle.c',
   'src/bridge/bridge.c',
   'src/dbus/dbus_service.c',
+  'src/zygote.c',
 )
 
 executable('zyl-wam',
