@@ -537,6 +537,28 @@
     outputContent.innerHTML = '';
   });
 
+  /* ─── 클립보드: 터미널 출력 복사 (텍스트 선택 후 더블클릭) ─── */
+  (function () {
+    function copyTerminalSelection() {
+      var selection = window.getSelection ? window.getSelection() : null;
+      if (!selection || !selection.toString()) return;
+      var selectedText = selection.toString();
+      if (!selectedText) return;
+      if (typeof ZylBridge !== 'undefined') {
+        ZylBridge.requestService('clipboard', 'copy', { text: selectedText });
+      }
+    }
+
+    if (terminalOutput) {
+      terminalOutput.addEventListener('mouseup', function () {
+        copyTerminalSelection();
+      });
+      terminalOutput.addEventListener('touchend', function () {
+        setTimeout(copyTerminalSelection, 100);
+      });
+    }
+  })();
+
   /* ─── Info Button ─── */
   btnInfo.addEventListener('click', function () {
     addLine('Zyl OS Terminal v1.0.0', 'line-info');

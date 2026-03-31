@@ -113,8 +113,32 @@
     ZylBridge.sendToSystem(msg);
   }
 
+  /* ── ContentProvider 등록: 다른 앱이 연락처 조회 가능하게 ── */
+  function registerContentProvider() {
+    if (typeof ZylContentProvider === 'undefined') return;
+    ZylContentProvider.registerProvider('com.zylos.contacts', {
+      query: function (path) {
+        return contacts; /* 현재 로드된 연락처 배열 반환 */
+      }
+    });
+  }
+
   function loadContacts() {
-    requestService('contacts', 'getAll');
+    /* ── 런타임 퍼미션: contacts 권한 체크 후 로드 ── */
+    if (typeof ZylPermissionDialog !== 'undefined') {
+      ZylPermissionDialog.checkAndRequest('com.zylos.contacts', 'contacts').then(function (granted) {
+        if (granted) {
+          requestService('contacts', 'getAll');
+        } else {
+          if (contactList) {
+            contactList.innerHTML = '<div class="empty-state">Contacts permission denied</div>';
+          }
+        }
+      });
+    } else {
+      /* ZylPermissionDialog 미로드 시 폴백 */
+      requestService('contacts', 'getAll');
+    }
   }
 
   /* ── View Management ── */
@@ -304,6 +328,8 @@
         if (msg.method === 'getAll' && msg.data) {
           contacts = msg.data;
           renderContacts(contacts);
+          /* 연락처 로드 후 ContentProvider 재등록 (데이터 최신화) */
+          registerContentProvider();
         }
         if (msg.method === 'create' || msg.method === 'update' || msg.method === 'delete') {
           loadContacts();
@@ -348,10 +374,21 @@
   var btnCall = document.getElementById('btn-call');
   if (btnCall) btnCall.addEventListener('click', function () {
     if (!currentContact) return;
+    var phoneNumber = currentContact.phone || '';
+    /* Intent 연동: 전화번호 클릭 시 DIAL Intent 발사 */
+    if (typeof ZylIntent !== 'undefined') {
+      ZylIntent.startIntent({
+        action: ZylIntent.ACTION.DIAL,
+        data: phoneNumber,
+        mimeType: 'tel/*'
+      });
+      return;
+    }
+    /* ZylIntent 미로드 시 폴백 */
     ZylBridge.sendToSystem({
       type: 'app.launch',
       appId: 'com.zylos.phone',
-      params: { action: 'call', number: currentContact.phone || '' }
+      params: { action: 'call', number: phoneNumber }
     });
   });
 
@@ -373,5 +410,6 @@
   }
 
   /* ── Init ── */
+  registerContentProvider(); /* ContentProvider 초기 등록 */
   loadContacts();
 })();

@@ -68,9 +68,26 @@
 
   /* ─── Request camera access via OS permission service ─── */
   function requestCameraAccess() {
-    ZylBridge.sendToSystem({
-      type: 'service.request', service: 'camera', method: 'requestAccess', params: {}
-    });
+    /* 런타임 퍼미션: ZylPermissionDialog로 camera 권한 체크 및 요청 */
+    if (typeof ZylPermissionDialog !== 'undefined') {
+      ZylPermissionDialog.checkAndRequest('com.zylos.camera', 'camera').then(function (granted) {
+        if (granted) {
+          startCamera();
+        } else {
+          if (viewfinder) {
+            var overlay = document.createElement('div');
+            overlay.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:14px;text-align:center;padding:20px;z-index:5';
+            overlay.textContent = (typeof zylI18n !== 'undefined') ? zylI18n.t('camera.access_denied') : 'Camera access denied';
+            viewfinder.appendChild(overlay);
+          }
+        }
+      });
+    } else {
+      /* ZylPermissionDialog 미로드 시 폴백: 기존 OS 서비스 요청 */
+      ZylBridge.sendToSystem({
+        type: 'service.request', service: 'camera', method: 'requestAccess', params: {}
+      });
+    }
   }
   requestCameraAccess();
 

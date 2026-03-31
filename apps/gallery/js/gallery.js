@@ -245,6 +245,45 @@
     document.getElementById('viewer-close').addEventListener('click', closeViewer);
   }
 
+  /* ─── Share Button (동적 추가) ─── */
+  (function () {
+    var viewerEl = document.getElementById('viewer');
+    if (!viewerEl) return;
+    /* 기존 공유 버튼이 없을 때만 생성 */
+    if (!document.getElementById('viewer-share')) {
+      var shareBtn = document.createElement('button');
+      shareBtn.id = 'viewer-share';
+      shareBtn.title = 'Share';
+      shareBtn.setAttribute('aria-label', 'Share');
+      shareBtn.textContent = '⬆';
+      shareBtn.style.cssText =
+        'position:absolute;bottom:20px;right:72px;background:rgba(74,158,255,0.8);' +
+        'border:none;color:white;width:44px;height:44px;border-radius:22px;' +
+        'font-size:20px;cursor:pointer;';
+      /* 공유 버튼 클릭: Intent SEND 연동 */
+      shareBtn.addEventListener('click', function () {
+        if (!currentViewingFile) return;
+        var imagePath = 'Pictures/' + currentViewingFile;
+        if (typeof ZylIntent !== 'undefined') {
+          ZylIntent.startIntent({
+            action: ZylIntent.ACTION.SEND,
+            data: imagePath,
+            mimeType: 'image/*'
+          });
+        } else {
+          /* ZylIntent 미로드 시 폴백 */
+          ZylBridge.sendToSystem({
+            type: 'service.request',
+            service: 'share',
+            method: 'share',
+            params: { path: imagePath, mimeType: 'image/*' }
+          });
+        }
+      });
+      viewerEl.appendChild(shareBtn);
+    }
+  })();
+
   function closeViewer() {
     if (viewer) {
       viewer.classList.add('hidden');

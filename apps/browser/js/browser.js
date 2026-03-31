@@ -185,6 +185,15 @@
 
   /* ─── Show Web Page (real iframe rendering) ─── */
   function showWebPage(url, skipHistory) {
+    /* Intent 연동: 외부 URL 열기 */
+    if (typeof ZylIntent !== 'undefined') {
+      ZylIntent.startIntent({
+        action: ZylIntent.ACTION.VIEW,
+        data: url,
+        mimeType: 'text/uri'
+      });
+    }
+
     newTabPage.classList.remove('active');
     webPage.classList.remove('hidden');
     pageLoading.classList.add('active');
@@ -433,9 +442,24 @@
     });
   }
 
+  /* ─── URL 복사 기능 (클립보드 연동) ─── */
+  function copyCurrentUrl() {
+    var tab = getActiveTab();
+    if (!tab || !tab.url) return;
+    if (typeof ZylBridge !== 'undefined') {
+      ZylBridge.requestService('clipboard', 'copy', { text: tab.url });
+    }
+    showToast('URL copied');
+  }
+
+  /* URL 입력 필드 더블탭 시 복사 */
+  urlInput.addEventListener('dblclick', function () {
+    copyCurrentUrl();
+  });
+
   /* ─── Menu Button (placeholder) ─── */
   btnMenu.addEventListener('click', function () {
-    /* Future: dropdown menu */
+    copyCurrentUrl();
   });
 
   /* ─── Init ─── */

@@ -123,6 +123,31 @@
     if (document.getElementById('header')) document.getElementById('header').classList.add('hidden');
   });
 
+  /* ── 클립보드: 텍스트 선택 후 복사 (마우스업 / 터치엔드) ── */
+  (function () {
+    function copySelectedText() {
+      if (!bodyEl) return;
+      var start = bodyEl.selectionStart;
+      var end = bodyEl.selectionEnd;
+      if (start === end) return; /* 선택된 텍스트 없음 */
+      var selectedText = bodyEl.value.substring(start, end);
+      if (!selectedText) return;
+      if (typeof ZylBridge !== 'undefined') {
+        ZylBridge.requestService('clipboard', 'copy', { text: selectedText });
+      }
+    }
+
+    if (bodyEl) {
+      bodyEl.addEventListener('mouseup', function () {
+        copySelectedText();
+      });
+      bodyEl.addEventListener('touchend', function () {
+        /* 터치 환경: 약간의 딜레이 후 선택 확인 */
+        setTimeout(copySelectedText, 100);
+      });
+    }
+  })();
+
   /* 파일 내용 수신 */
   window.addEventListener('message', function (e) {
     if (e.source !== window.parent) return;

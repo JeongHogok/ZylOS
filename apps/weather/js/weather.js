@@ -47,9 +47,28 @@
       locationName.textContent = t('weather.loading');
       locationName.setAttribute('data-loading', 'true');
     }
-    ZylBridge.sendToSystem({
-      type: 'service.request', service: 'location', method: 'getLastKnown'
-    });
+
+    /* 런타임 퍼미션: location 권한 체크 후 위치 요청 */
+    if (typeof ZylPermissionDialog !== 'undefined') {
+      ZylPermissionDialog.checkAndRequest('com.zylos.weather', 'location').then(function (granted) {
+        if (granted) {
+          ZylBridge.sendToSystem({
+            type: 'service.request', service: 'location', method: 'getLastKnown'
+          });
+        } else {
+          if (locationName) {
+            locationName.textContent = t('weather.location_unavailable');
+            locationName.removeAttribute('data-loading');
+          }
+          setRefreshing(false);
+        }
+      });
+    } else {
+      /* ZylPermissionDialog 미로드 시 폴백 */
+      ZylBridge.sendToSystem({
+        type: 'service.request', service: 'location', method: 'getLastKnown'
+      });
+    }
 
     locationTimeout = setTimeout(function () {
       if (locationName && locationName.getAttribute('data-loading') === 'true') {

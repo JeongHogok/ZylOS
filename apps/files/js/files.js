@@ -454,15 +454,35 @@
     var videoExts = ['mp4', 'mov', 'webm', 'mkv', 'avi'];
     var textExts  = ['txt', 'md', 'log', 'json', 'xml', 'csv'];
 
+    var filePath = currentPath === '/' ? '/' + file.name : currentPath + '/' + file.name;
+    var detectedMime = 'application/octet-stream';
     var appId = null;
-    if (imageExts.indexOf(ext) !== -1 || videoExts.indexOf(ext) !== -1) {
+
+    if (imageExts.indexOf(ext) !== -1) {
+      detectedMime = 'image/*';
+      appId = 'com.zylos.gallery';
+    } else if (videoExts.indexOf(ext) !== -1) {
+      detectedMime = 'video/*';
       appId = 'com.zylos.gallery';
     } else if (audioExts.indexOf(ext) !== -1) {
+      detectedMime = 'audio/*';
       appId = 'com.zylos.music';
     } else if (textExts.indexOf(ext) !== -1) {
+      detectedMime = 'text/plain';
       appId = 'com.zylos.notes';
     }
 
+    /* Intent 연동: 파일 유형에 맞는 앱으로 열기 */
+    if (appId && typeof ZylIntent !== 'undefined') {
+      ZylIntent.startIntent({
+        action: ZylIntent.ACTION.VIEW,
+        data: filePath,
+        mimeType: detectedMime
+      });
+      return;
+    }
+
+    /* ZylIntent 미로드 시 폴백: 직접 앱 실행 */
     if (appId) {
       ZylBridge.sendToSystem({
         type: 'app.launch',
