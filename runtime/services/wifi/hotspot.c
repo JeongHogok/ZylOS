@@ -1,0 +1,76 @@
+#define _GNU_SOURCE
+/* ──────────────────────────────────────────────────────────
+ * [Clean Architecture] Application Layer - Service
+ *
+ * 역할: WiFi 핫스팟 — AP 모드 활성화/비활성화
+ * 수행범위: nmcli hotspot 생성, SSID/비밀번호 설정, 클라이언트 목록
+ * 의존방향: stdio, spawn
+ * SOLID: SRP — 핫스팟 관리만 담당
+ * ────────────────────────────────────────────────────────── */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/wait.h>
+#include <spawn.h>
+
+static int safe_exec(const char *const argv[]) {
+    pid_t pid;
+    char *env[] = { "PATH=/usr/bin:/bin:/sbin", NULL };
+    int rc = posix_spawn(&pid, argv[0], NULL, NULL,
+                         (char *const *)argv, env);
+    if (rc != 0) return -1;
+    int status;
+    waitpid(pid, &status, 0);
+    return (WIFEXITED(status) && WEXITSTATUS(status) == 0) ? 0 : -1;
+}
+
+/**
+ * WiFi 핫스팟 활성화.
+ * @param ssid     SSID (NULL이면 "ZylOS-Hotspot")
+ * @param password WPA2 비밀번호 (NULL이면 랜덤 생성)
+ * @param band     "bg" (2.4GHz) 또는 "a" (5GHz)
+ */
+int zyl_hotspot_start(const char *ssid, const char *password,
+                       const char *band) {
+    const char *s = ssid ? ssid : "ZylOS-Hotspot";
+    const char *b = band ? band : "bg";
+
+    if (password && strlen(password) > 0) {
+        const char *argv[] = {
+            "/usr/bin/nmcli", "device", "wifi", "hotspot",
+            "ssid", s, "password", password, "band", b, NULL
+        };
+        return safe_exec(argv);
+    } else {
+        const char *argv[] = {
+            "/usr/bin/nmcli", "device", "wifi", "hotspot",
+            "ssid", s, "band", b, NULL
+        };
+        return safe_exec(argv);
+    }
+}
+
+/**
+ * WiFi 핫스팟 비활성화.
+ */
+int zyl_hotspot_stop(void) {
+    const char *argv[] = {
+        "/usr/bin/nmcli", "connection", "down", "Hotspot", NULL
+    };
+    return safe_exec(argv);
+}
+
+/**
+ * 핫스팟 활성 여부 확인.
+ */
+int zyl_hotspot_is_active(void) {
+    FILE *fp = popen(
+        "nmcli -t -f NAME,TYPE connection show --active 2>/dev/null | "
+        "grep Hotspot", "r");
+    if (!fp) return 0;
+    char buf[128];
+    int active = (fgets(buf, sizeof(buf), fp) != NULL);
+    pclose(fp);
+    return active;
+}

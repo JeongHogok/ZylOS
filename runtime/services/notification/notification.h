@@ -34,17 +34,29 @@ typedef enum {
 
 /* ── Structs ──────────────────────────────────────────────── */
 
+/**
+ * A single action button attached to a notification.
+ * label:     Human-readable button text.
+ * action_id: Opaque string identifier sent back on activation.
+ */
 typedef struct {
-    uint64_t    id;
-    char       *app_id;
-    char       *channel_id;
-    char       *title;
-    char       *body;
-    char       *icon;
-    uint64_t    timestamp;
-    bool        read;
-    bool        persistent;
-    int         priority;       /* 0 (LOW) .. 3 (URGENT) */
+    char *label;
+    char *action_id;
+} ZylNotifAction;
+
+typedef struct {
+    uint64_t        id;
+    char           *app_id;
+    char           *channel_id;
+    char           *title;
+    char           *body;
+    char           *icon;
+    uint64_t        timestamp;
+    bool            read;
+    bool            persistent;
+    int             priority;       /* 0 (LOW) .. 3 (URGENT) */
+    ZylNotifAction *actions;        /* Optional action buttons (heap-allocated array) */
+    int             num_actions;    /* Length of actions array; 0 = no actions */
 } ZylNotification;
 
 typedef struct {
@@ -54,6 +66,16 @@ typedef struct {
     int         importance;     /* 0 .. 3 */
     bool        show_on_lockscreen;
 } ZylNotificationChannel;
+
+/* ── DND (Do Not Disturb) State ────────────────────────────── */
+
+/**
+ * When DND is enabled, notifications with priority < ZYL_NOTIFICATION_PRIORITY_URGENT
+ * (i.e. priority < 3) are silently dropped by zyl_notification_post().
+ */
+typedef struct {
+    bool enabled;   /* true = DND active */
+} ZylDndState;
 
 /* Opaque service handle */
 typedef struct _ZylNotificationService ZylNotificationService;
@@ -76,6 +98,22 @@ uint64_t zyl_notification_post(ZylNotificationService *service,
                                const char             *body,
                                const char             *icon,
                                ZylNotificationPriority priority);
+
+/**
+ * Post a notification with attached action buttons.
+ * actions:     Array of ZylNotifAction (label + action_id pairs).
+ * num_actions: Length of the actions array (0 = same as zyl_notification_post).
+ * Returns the assigned notification ID, or 0 on failure.
+ */
+uint64_t zyl_notification_post_with_actions(ZylNotificationService *service,
+                                            const char             *app_id,
+                                            const char             *channel_id,
+                                            const char             *title,
+                                            const char             *body,
+                                            const char             *icon,
+                                            ZylNotificationPriority priority,
+                                            const ZylNotifAction   *actions,
+                                            int                     num_actions);
 
 /** Cancel (dismiss) a single notification by ID. */
 void zyl_notification_cancel(ZylNotificationService *service, uint64_t id);
