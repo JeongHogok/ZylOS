@@ -23,6 +23,8 @@
  * Direct libpipewire API requires async event loops that conflict
  * with GMainLoop. wpctl provides synchronous volume control. */
 
+#define TONE_TMP_TEMPLATE "/tmp/zyl-tone-XXXXXX.wav"
+
 struct ZylAudioService {
     int volumes[5]; /* per-stream volume 0-100 */
     bool muted;
@@ -256,7 +258,7 @@ int zyl_audio_play_tone(ZylAudioService *svc, int freq_hz,
     if (!svc || svc->muted) return -1;
     if (freq_hz <= 0 || duration_ms <= 0) return -1;
 
-    char tmp[] = "/tmp/zyl-tone-XXXXXX.wav";
+    char tmp[] = TONE_TMP_TEMPLATE;
     int fd = mkstemps(tmp, 4);
     if (fd < 0) return -1;
     close(fd);

@@ -37,6 +37,8 @@
 #define CERT_FILE            "CERT"
 #define MANIFEST_FILE        "app.json"
 #define HASH_SIZE            32    /* SHA-256 */
+#define PKG_TMP_TEMPLATE     "/tmp/zyl-pkg-XXXXXX"
+#define SYSTEM_APPS_DIR      "/usr/share/zyl-os/apps/"
 
 /* ─── 앱스토어 내부 구조체 ─── */
 struct ZylAppStore {
@@ -646,7 +648,7 @@ ZylPkgSignatureStatus zyl_appstore_verify_package(
     /* 개발자 모드: 서명 검증 우회, 메타데이터만 추출 */
     if (store->dev_mode) {
         /* 개발자 모드에서도 메타데이터 추출 시도 */
-        char tmp_dir[] = "/tmp/zyl-pkg-XXXXXX";
+        char tmp_dir[] = PKG_TMP_TEMPLATE;
         if (mkdtemp(tmp_dir)) {
             safe_extract_zip(package_path, tmp_dir, MANIFEST_FILE);
 
@@ -668,7 +670,7 @@ ZylPkgSignatureStatus zyl_appstore_verify_package(
     }
 
     /* Step 2: .ospkg(ZIP)를 임시 디렉토리에 압축 해제 */
-    char tmp_dir[] = "/tmp/zyl-pkg-XXXXXX";
+    char tmp_dir[] = PKG_TMP_TEMPLATE;
     if (!mkdtemp(tmp_dir)) {
         fprintf(stderr, "[APPSTORE] Failed to create temp dir\n");
         return ZYL_PKG_UNSIGNED;
@@ -962,7 +964,7 @@ ZylInstallResult zyl_appstore_uninstall(ZylAppStore *store,
     /* 시스템 앱은 제거 불가 */
     char sys_manifest[512];
     snprintf(sys_manifest, sizeof(sys_manifest),
-             "/usr/share/zyl-os/apps/%s/app.json", app_id);
+             SYSTEM_APPS_DIR "%s/app.json", app_id);
     if (file_exists(sys_manifest)) {
         fprintf(stderr, "[APPSTORE] Cannot uninstall system app: %s\n",
                 app_id);

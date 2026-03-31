@@ -27,6 +27,13 @@
 #include <spawn.h>         /* posix_spawn */
 #include <sys/wait.h>      /* waitpid, WIFEXITED, WEXITSTATUS */
 
+/* ─── 기본 리소스 제한 상수 ─── */
+#define DEFAULT_MEMORY_LIMIT_MB   256
+#define DEFAULT_CPU_SHARES        512
+#define DEFAULT_MAX_PIDS          32
+#define DEFAULT_DISK_QUOTA_MB     100
+#define PATH_BUF_SIZE             512
+
 /* ─── 내부 구조체 ─── */
 struct ZylSandbox {
     char *cgroup_root;         /* cgroup v2 마운트 포인트 */
@@ -36,7 +43,7 @@ struct ZylSandbox {
 
 /* ─── 유틸리티 ─── */
 static bool mkdir_p(const char *path, mode_t mode) {
-    char tmp[512];
+    char tmp[PATH_BUF_SIZE];
     snprintf(tmp, sizeof(tmp), "%s", path);
     for (char *p = tmp + 1; *p; p++) {
         if (*p == '/') {
@@ -457,10 +464,10 @@ ZylSandboxPolicy *zyl_sandbox_policy_from_manifest(const char *app_json_path) {
     if (!policy) return NULL;
 
     /* 기본 리소스 제한 */
-    policy->limits.memory_limit_bytes = 256 * 1024 * 1024;  /* 256MB */
-    policy->limits.cpu_shares = 512;                         /* 절반 가중치 */
-    policy->limits.max_pids = 32;                            /* 최대 32 프로세스 */
-    policy->limits.disk_quota_bytes = 100 * 1024 * 1024;     /* 100MB */
+    policy->limits.memory_limit_bytes = (size_t)DEFAULT_MEMORY_LIMIT_MB * 1024 * 1024;
+    policy->limits.cpu_shares = DEFAULT_CPU_SHARES;
+    policy->limits.max_pids = DEFAULT_MAX_PIDS;
+    policy->limits.disk_quota_bytes = (size_t)DEFAULT_DISK_QUOTA_MB * 1024 * 1024;
 
     return policy;
 }

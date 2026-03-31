@@ -31,6 +31,10 @@
 #define UPDATE_CACHE_DEFAULT  "/var/cache/zyl-os/updates"
 #define CURRENT_VERSION_FILE  "/etc/zyl-os/version"
 #define VERIFY_FLAG_FILE      "/var/lib/zyl-os/slot-verified"
+#define ZYL_STATE_DIR         "/var/lib/zyl-os"
+#define NEXT_SLOT_FILE        "/var/lib/zyl-os/next-slot"
+#define APP_UPDATE_TMP_DIR    "/tmp/zyl-app-update"
+#define SYSTEM_APPS_DIR       "/usr/share/zyl-os/apps/"
 
 /* ─── 업데이터 내부 구조체 ─── */
 struct ZylUpdater {
@@ -728,18 +732,18 @@ bool zyl_updater_apply(ZylUpdater *u,
             u->state = ZYL_UPDATE_FAILED;
             return false;
         }
-        const char *mkdir_argv[] = {"/bin/mkdir", "-p", "/tmp/zyl-app-update", NULL};
+        const char *mkdir_argv[] = {"/bin/mkdir", "-p", APP_UPDATE_TMP_DIR, NULL};
         ret = safe_exec(mkdir_argv);
         if (ret == 0) {
-            const char *unzip_argv[] = {"/usr/bin/unzip", "-o", "-q", pkg_path, "-d", "/tmp/zyl-app-update", NULL};
+            const char *unzip_argv[] = {"/usr/bin/unzip", "-o", "-q", pkg_path, "-d", APP_UPDATE_TMP_DIR, NULL};
             ret = safe_exec(unzip_argv);
         }
         if (ret == 0) {
-            const char *cp_argv[] = {"/bin/cp", "-a", "/tmp/zyl-app-update/apps/.", "/usr/share/zyl-os/apps/", NULL};
+            const char *cp_argv[] = {"/bin/cp", "-a", APP_UPDATE_TMP_DIR "/apps/.", SYSTEM_APPS_DIR, NULL};
             ret = safe_exec(cp_argv);
         }
         /* Cleanup regardless */
-        const char *rm_argv[] = {"/bin/rm", "-rf", "/tmp/zyl-app-update", NULL};
+        const char *rm_argv[] = {"/bin/rm", "-rf", APP_UPDATE_TMP_DIR, NULL};
         safe_exec(rm_argv);
         if (ret != 0) {
             fprintf(stderr, "[UPDATER] App update extraction failed\n");
@@ -807,8 +811,8 @@ bool zyl_updater_apply(ZylUpdater *u,
 
     /* 파일 기반 폴백 (fw_setenv가 없는 환경용) */
     char flag_path[256];
-    snprintf(flag_path, sizeof(flag_path), "/var/lib/zyl-os/next-slot");
-    mkdir_p("/var/lib/zyl-os");
+    snprintf(flag_path, sizeof(flag_path), "%s", NEXT_SLOT_FILE);
+    mkdir_p(ZYL_STATE_DIR);
     write_file_string(flag_path, inactive);
 
     report_progress(u, 85, "Saving version metadata...");
@@ -816,7 +820,7 @@ bool zyl_updater_apply(ZylUpdater *u,
     /* 4. 버전 메타데이터 기록 */
     char ver_path[256];
     snprintf(ver_path, sizeof(ver_path),
-             "/var/lib/zyl-os/slot-%s-version", inactive);
+             ZYL_STATE_DIR "/slot-%s-version", inactive);
     write_file_string(ver_path, u->pending->version);
 
     /* 다운로드 캐시 정리 */
@@ -886,7 +890,7 @@ bool zyl_updater_mark_verified(ZylUpdater *u) {
     }
 
     /* 파일 기반 폴백 */
-    mkdir_p("/var/lib/zyl-os");
+    mkdir_p(ZYL_STATE_DIR);
     write_file_string(VERIFY_FLAG_FILE, "1");
     write_file_string(SLOT_METADATA_PATH, u->active_slot);
 
@@ -910,8 +914,8 @@ bool zyl_updater_rollback(ZylUpdater *u) {
     }
 
     /* 파일 기반 폴백 */
-    mkdir_p("/var/lib/zyl-os");
-    write_file_string("/var/lib/zyl-os/next-slot", previous);
+    mkdir_p(ZYL_STATE_DIR);
+    write_file_string(NEXT_SLOT_FILE, previous);
 
     fprintf(stderr, "[UPDATER] Rollback to slot '%s' scheduled. "
             "Reboot required.\n", previous);
