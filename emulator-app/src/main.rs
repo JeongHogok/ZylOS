@@ -21,12 +21,6 @@ use state::AppState;
 use std::sync::Mutex;
 use tauri::Manager;
 
-/// 배터리 상태 조회 (HAL 커맨드)
-#[tauri::command]
-fn get_battery_state() -> Result<serde_json::Value, String> {
-    platform::get_battery_info()
-}
-
 /// 플랫폼 정보 조회
 #[tauri::command]
 fn get_platform_info() -> serde_json::Value {
@@ -80,8 +74,6 @@ fn main() {
             commands::settings::load_settings,
             commands::settings::save_settings,
             // Network commands
-            commands::network::get_wifi_networks,
-            commands::network::get_bluetooth_devices,
             commands::network::http_fetch,
             // App registry
             commands::config::list_installed_apps,
@@ -98,8 +90,60 @@ fn main() {
             commands::emulated_services::credential_store,
             commands::emulated_services::credential_lookup,
             commands::emulated_services::credential_delete,
+            // WiFi HAL
+            commands::emulated_services::get_wifi_networks,
+            commands::emulated_services::wifi_connect,
+            commands::emulated_services::wifi_disconnect,
+            commands::emulated_services::wifi_get_state,
+            // Bluetooth HAL
+            commands::emulated_services::get_bluetooth_devices,
+            commands::emulated_services::bt_set_enabled,
+            commands::emulated_services::bt_pair,
+            commands::emulated_services::bt_unpair,
+            commands::emulated_services::bt_connect,
+            commands::emulated_services::bt_disconnect,
+            commands::emulated_services::bt_get_state,
+            // Audio HAL
+            commands::emulated_services::audio_get_state,
+            commands::emulated_services::audio_set_volume,
+            commands::emulated_services::audio_set_vibration,
+            commands::emulated_services::audio_set_silent,
+            // Display HAL
+            commands::emulated_services::display_get_state,
+            commands::emulated_services::display_set_brightness,
+            commands::emulated_services::display_set_dark_mode,
+            commands::emulated_services::display_set_font_size,
+            commands::emulated_services::display_set_screen_timeout,
+            // Battery HAL
+            commands::emulated_services::get_battery_state,
+            // Storage HAL
+            commands::emulated_services::get_storage_state,
+            // Camera HAL
+            commands::emulated_services::camera_get_capabilities,
+            commands::emulated_services::camera_capture,
+            commands::emulated_services::camera_start_preview,
+            commands::emulated_services::camera_stop_preview,
+            // Sensors HAL
+            commands::emulated_services::sensors_get_available,
+            commands::emulated_services::sensors_start,
+            commands::emulated_services::sensors_stop,
+            commands::emulated_services::sensors_get_reading,
+            // Telephony HAL
+            commands::emulated_services::telephony_get_state,
+            commands::emulated_services::telephony_dial,
+            commands::emulated_services::telephony_hangup,
+            commands::emulated_services::telephony_send_sms,
+            commands::emulated_services::telephony_get_sms_list,
+            // NFC HAL
+            commands::emulated_services::nfc_get_state,
+            commands::emulated_services::nfc_start_scan,
+            commands::emulated_services::nfc_stop_scan,
+            commands::emulated_services::nfc_get_last_tag,
+            // Alarm HAL
+            commands::emulated_services::alarm_set,
+            commands::emulated_services::alarm_cancel,
+            commands::emulated_services::alarm_get_all,
             // HAL commands
-            get_battery_state,
             get_platform_info,
         ])
         .setup(|_app| {

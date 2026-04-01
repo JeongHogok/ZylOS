@@ -31,9 +31,10 @@ pub struct BluetoothDevice {
     pub connected: bool,
 }
 
-/// WiFi 네트워크 목록 조회 (non-blocking)
+/// WiFi 네트워크 목록 조회 — 호스트 시스템 실제 정보 (non-blocking)
+/// Note: 에뮬레이터 HAL 레이어에서는 emulated_services::get_wifi_networks 사용
 #[tauri::command]
-pub async fn get_wifi_networks() -> Result<Vec<WifiNetwork>, String> {
+pub async fn host_get_wifi_networks() -> Result<Vec<WifiNetwork>, String> {
     let (tx, rx) = tokio::sync::oneshot::channel();
     std::thread::spawn(move || {
         #[cfg(target_os = "macos")]
@@ -45,9 +46,10 @@ pub async fn get_wifi_networks() -> Result<Vec<WifiNetwork>, String> {
     rx.await.map_err(|_| "WiFi scan cancelled".to_string())?
 }
 
-/// Bluetooth 디바이스 목록 조회 (non-blocking)
+/// Bluetooth 디바이스 목록 조회 — 호스트 시스템 실제 정보 (non-blocking)
+/// Note: 에뮬레이터 HAL 레이어에서는 emulated_services::get_bluetooth_devices 사용
 #[tauri::command]
-pub async fn get_bluetooth_devices() -> Result<Vec<BluetoothDevice>, String> {
+pub async fn host_get_bluetooth_devices() -> Result<Vec<BluetoothDevice>, String> {
     let (tx, rx) = tokio::sync::oneshot::channel();
     std::thread::spawn(move || {
         #[cfg(target_os = "macos")]
