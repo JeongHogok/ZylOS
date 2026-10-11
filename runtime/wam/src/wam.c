@@ -101,13 +101,21 @@ static void wam_handle_app_launch(const char        *type,
  *  WebKit bridge message signal handler
  * ════════════════════════════════════════════════════════════════ */
 
+/* WebKitGTK 6.0 (the GTK 4 port) hands the JSCValue over directly; the
+   webkit2gtk-4.x API wrapped it in a WebKitJavascriptResult */
+#ifdef ZYL_USE_WEBKIT2GTK
 static void on_webkit_bridge_message(WebKitUserContentManager *manager,
                                      WebKitJavascriptResult   *result,
                                      gpointer                  user_data) {
+    JSCValue *value = webkit_javascript_result_get_js_value(result);
+#else
+static void on_webkit_bridge_message(WebKitUserContentManager *manager,
+                                     JSCValue                 *value,
+                                     gpointer                  user_data) {
+#endif
     ZylAppInstance *instance = user_data;
     (void)manager;
 
-    JSCValue *value = webkit_javascript_result_get_js_value(result);
     char *msg_str = jsc_value_to_string(value);
 
     /* H5: Dispatch via handler registry; H13: error handling inside */
@@ -141,16 +149,26 @@ static GtkWidget *webkit_create_webview(ZylWebEngine   *self,
     WebKitUserContentManager *ucm = webkit_user_content_manager_new();
     g_signal_connect(ucm, "script-message-received::bridge",
                      G_CALLBACK(on_webkit_bridge_message), instance_ctx);
+#ifdef ZYL_USE_WEBKIT2GTK
     webkit_user_content_manager_register_script_message_handler(ucm, "bridge");
-
     WebKitWebView *webview = WEBKIT_WEB_VIEW(
         webkit_web_view_new_with_user_content_manager(ucm));
+#else
+    webkit_user_content_manager_register_script_message_handler(ucm, "bridge", NULL);
+    WebKitWebView *webview = WEBKIT_WEB_VIEW(
+        g_object_new(WEBKIT_TYPE_WEB_VIEW, "user-content-manager", ucm, NULL));
+#endif
     webkit_web_view_set_settings(webview, settings);
 
-    /* H11: TLS certificate verification — reject invalid certificates */
-    WebKitWebContext *web_ctx = webkit_web_context_get_default();
-    webkit_web_context_set_tls_errors_policy(web_ctx,
+    /* H11: TLS certificate verification — reject invalid certificates.
+       6.0 moved the policy from the web context to the network session. */
+#ifdef ZYL_USE_WEBKIT2GTK
+    webkit_web_context_set_tls_errors_policy(webkit_web_context_get_default(),
         WEBKIT_TLS_ERRORS_POLICY_FAIL);
+#else
+    webkit_network_session_set_tls_errors_policy(webkit_network_session_get_default(),
+        WEBKIT_TLS_ERRORS_POLICY_FAIL);
+#endif
 
     /* Inject JS bridge from external file */
     zyl_bridge_inject(WAM_BRIDGE_JS, webview, manifest);
