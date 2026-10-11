@@ -75,7 +75,7 @@ var moduleFiles = [
   'notification.js', 'power.js', 'display.js', 'input.js', 'sensors.js',
   'location.js', 'telephony.js', 'contacts.js', 'messaging.js', 'usb.js',
   'user.js', 'credential.js', 'appstore.js', 'updater.js', 'sandbox.js',
-  'logger.js', 'accessibility.js', 'audio.js'
+  'logger.js', 'accessibility.js', 'audio.js', 'telemetry.js'
 ];
 
 /* Provide window.addEventListener stub before loading modules */
@@ -818,10 +818,120 @@ console.log('\n■ ZylHangul');
 })();
 
 /* ═══════════════════════════════════════════════════════
+   Permission policy — reserved permissions (real permissions.js, isolated)
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ ZylPermissions');
+
+(function () {
+  /* Load the real module in its own context: the rest of this file uses a
+     permissive stub, which must stay untouched. */
+  var vm = require('vm');
+  var ctx = { window: {}, console: console };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'apps', 'system',
+                     'permissions.js'), 'utf8'), ctx);
+  var P = ctx.window.ZylPermissions;
+
+  P.registerFromAppList([
+    { id: 'com.zylos.settings', permissions: [] },
+    { id: 'com.evil.app', permissions: ['system', 'shell', 'credential',
+                                        'app.manage', 'notification.read',
+                                        'camera', 'network'] },
+    { id: 'com.zylos.settings', permissions: ['camera'] }   /* ID spoof */
+  ]);
+
+  test('a third-party app cannot declare itself system permissions', function () {
+    var got = P.getEffectivePermissions('com.evil.app');
+    ['system', 'shell', 'credential', 'app.manage', 'notification.read'].forEach(function (r) {
+      assert.strictEqual(got.indexOf(r), -1, r + ' must not be grantable by declaration');
+    });
+  });
+
+  test('ordinary declared permissions are still granted', function () {
+    var got = P.getEffectivePermissions('com.evil.app');
+    assert.ok(got.indexOf('camera') !== -1);
+    assert.ok(got.indexOf('network') !== -1);
+  });
+
+  test('settings and telemetry stay closed to third-party apps', function () {
+    assert.strictEqual(P.checkPermission('com.evil.app', 'settings', 'set'), false);
+    assert.strictEqual(P.checkPermission('com.evil.app', 'telemetry', 'setEnabled'), false);
+    assert.strictEqual(P.checkPermission('com.evil.app', 'terminal', 'exec'), false);
+  });
+
+  test('system apps keep reserved permissions', function () {
+    assert.strictEqual(P.checkPermission('com.zylos.settings', 'settings', 'set'), true);
+    assert.strictEqual(P.checkPermission('com.zylos.settings', 'telemetry', 'setEnabled'), true);
+  });
+
+  test('a spoofed system app ID is not re-registered', function () {
+    var got = P.getEffectivePermissions('com.zylos.settings');
+    assert.ok(got.indexOf('system') !== -1, 'still the locked full set');
+  });
+
+  test('registerApp applies the same filter', function () {
+    P.registerApp('com.other.app', ['system', 'location']);
+    var got = P.getEffectivePermissions('com.other.app');
+    assert.strictEqual(got.indexOf('system'), -1);
+    assert.ok(got.indexOf('location') !== -1);
+  });
+})();
+
+/* ═══════════════════════════════════════════════════════
+   Telemetry consent (JS service, emulator contract)
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ telemetry service');
+
+var telemetryTests = (function () {
+  /* Each test gets its own store: they run concurrently under Promise.all */
+  function make() {
+    var store = {};
+    var settingsSvc = {
+      _getSetting: function (cat) { return Promise.resolve(store[cat] || null); },
+      _updateSetting: function (cat, k, v) { store[cat] = store[cat] || {}; store[cat][k] = v; }
+    };
+    return { tel: ns.telemetry({ settingsSvc: settingsSvc }), store: store };
+  }
+
+  return Promise.all([
+    asyncTest('telemetry is off when never asked (opt-in)', function () {
+      var t = make();
+      return t.tel.getEnabled().then(function (on) { assert.strictEqual(on, false); });
+    }),
+    asyncTest('consent is stored and read back', function () {
+      var t = make();
+      return t.tel.setEnabled({ enabled: true }).then(function () {
+        return t.tel.getEnabled();
+      }).then(function (on) {
+        assert.strictEqual(on, true);
+        assert.strictEqual(t.store.privacy.telemetry, true);
+      });
+    }),
+    asyncTest('withdrawal turns it back off', function () {
+      var t = make();
+      return t.tel.setEnabled({ enabled: true }).then(function () {
+        return t.tel.setEnabled({ enabled: false });
+      }).then(function () {
+        return t.tel.getEnabled();
+      }).then(function (on) { assert.strictEqual(on, false); });
+    }),
+    asyncTest('only an explicit true counts as consent', function () {
+      var t = make();
+      t.store.privacy = { telemetry: 'yes' };
+      return t.tel.getEnabled().then(function (on) {
+        assert.strictEqual(on, false);
+        return t.tel.setEnabled({ enabled: 'true' });
+      }).then(function (on) {
+        assert.strictEqual(on, false, 'a truthy non-boolean is not consent');
+      });
+    })
+  ]);
+})();
+
+/* ═══════════════════════════════════════════════════════
    Wait for all async tests and report
    ═══════════════════════════════════════════════════════ */
 Promise.all([settingsTests, displayTests, inputTests, sensorsTests,
-             usbTests, powerTests, audioTests, fsTests, updaterTests])
+             usbTests, powerTests, audioTests, fsTests, updaterTests, telemetryTests])
   .then(function () {
     console.log('\n════════════════════════');
     console.log('Total: ' + total + '  Passed: ' + passed + '  Failed: ' + failed);

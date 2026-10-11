@@ -51,6 +51,7 @@
     sound: 'settings.sound',
     language: 'settings.language',
     'device-class': 'settings.device_class',
+    privacy: 'settings.privacy',
     wallpaper: 'settings.wallpaper',
     security: 'settings.security',
     storage: 'settings.storage',
@@ -373,6 +374,29 @@
         updateDeviceClassValue();
       });
       list.appendChild(row);
+    });
+  }
+
+  /* ─── 개인정보 보호: 진단 데이터 동의 ───
+     토글은 수집 주체의 현재 상태를 그대로 보여준다. 끄면 기기에서는 수집 데몬이
+     저장된 이벤트와 기기 ID 를 지운다. 응답이 오기 전에는 꺼진 상태로 둔다 —
+     확인되지 않은 동의를 켜진 것처럼 보여주지 않는다. */
+  var telemetryToggle = document.getElementById('telemetry-toggle');
+  if (telemetryToggle) {
+    telemetryToggle.checked = false;
+    requestService('telemetry', 'getEnabled').then(function (on) {
+      telemetryToggle.checked = (on === true);
+    }).catch(function () {
+      telemetryToggle.checked = false;   /* unknown is reported as off */
+    });
+    telemetryToggle.addEventListener('change', function () {
+      var wanted = telemetryToggle.checked;
+      requestService('telemetry', 'setEnabled', { enabled: wanted }).then(function (on) {
+        /* Reflect what the service actually stored, not what was asked */
+        if (typeof on === 'boolean') telemetryToggle.checked = on;
+      }).catch(function () {
+        telemetryToggle.checked = !wanted;   /* not persisted — undo the flip */
+      });
     });
   }
 

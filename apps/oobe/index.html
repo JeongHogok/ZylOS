@@ -78,7 +78,21 @@
       </div>
     </div>
 
-    <!-- Step 6: Complete -->
+    <!-- Step 6: Privacy — diagnostic data is opt-in, so the box starts unchecked -->
+    <div class="oobe-step" id="step-privacy">
+      <h2 data-i18n="oobe.privacy_title">Privacy</h2>
+      <p class="oobe-privacy-desc" data-i18n="oobe.privacy_desc"></p>
+      <label class="oobe-checkbox">
+        <input type="checkbox" id="telemetry-consent">
+        <span data-i18n="oobe.privacy_share">Send diagnostic data</span>
+      </label>
+      <div class="oobe-step-actions">
+        <button class="oobe-btn-back" onclick="prevStep()" data-i18n-aria-label="oobe.back">&larr;</button>
+        <button class="oobe-btn" onclick="applyPrivacy()" data-i18n="oobe.next">Next</button>
+      </div>
+    </div>
+
+    <!-- Step 7: Complete -->
     <div class="oobe-step" id="step-complete">
       <div class="oobe-logo">&check;</div>
       <h1 data-i18n="oobe.complete_title">Setup Complete</h1>
@@ -89,6 +103,7 @@
     <!-- Progress dots -->
     <div id="progress-dots">
       <span class="dot active"></span>
+      <span class="dot"></span>
       <span class="dot"></span>
       <span class="dot"></span>
       <span class="dot"></span>

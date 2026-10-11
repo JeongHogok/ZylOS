@@ -1,9 +1,11 @@
 /* ──────────────────────────────────────────────────────────
  * [Clean Architecture] Infrastructure Layer - Service
  *
- * 역할: Telemetry 서비스 — 익명 OTA/크래시/부팅 통계 수집 + 보고
- * 수행범위: 부팅 카운트, 크래시 리포트 전송, OTA 결과 보고.
- *           개인정보 수집 안 함 — 기기 UUID + OS 버전 + 이벤트 종류만.
+ * 역할: Telemetry 서비스 — 사용자 동의 하에서만 OTA/크래시/부팅 통계 수집
+ * 수행범위: 동의 영속화(옵트인), 동의 철회 시 수집분·식별자 삭제,
+ *           부팅 카운트, 이벤트 큐잉. 기기 UUID + OS 버전 + 이벤트 종류만.
+ *           기기 UUID 는 GDPR 상 온라인 식별자(개인정보)이므로 동의 전에는
+ *           만들지 않는다.
  * 의존방향: gio/gio.h (D-Bus), curl (HTTP POST)
  * SOLID: SRP — 텔레메트리 수집/전송만 담당
  * ────────────────────────────────────────────────────────── */
@@ -13,24 +15,80 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
+#include <dirent.h>
 #include <sys/stat.h>
 #if defined(__linux__)
 #include <sys/random.h>   /* getrandom() */
 #endif
-#include <stdatomic.h>    /* atomic_bool */
 #include <gio/gio.h>
 
 #define TELEMETRY_ENDPOINT  "https://telemetry.zylos.dev/v1/report"
+/* Overridable so tests run against a scratch directory */
+#ifndef TELEMETRY_DIR
 #define TELEMETRY_DIR       "/data/telemetry"
-#define DEVICE_UUID_FILE    "/data/telemetry/device_uuid"
-#define BOOT_COUNT_FILE     "/data/telemetry/boot_count"
+#endif
+#define DEVICE_UUID_FILE    TELEMETRY_DIR "/device_uuid"
+#define BOOT_COUNT_FILE     TELEMETRY_DIR "/boot_count"
+#define CONSENT_FILE        TELEMETRY_DIR "/consent"
 #define OS_VERSION          "0.1.0"
 
-static char g_device_uuid[64] = {0};
 
 static void ensure_dir(const char *path) {
     struct stat st;
     if (stat(path, &st) != 0) mkdir(path, 0700);
+}
+
+/* ─── Consent ───────────────────────────────────────────────
+ * Opt-in. Nothing is collected and no identifier exists until the user grants
+ * consent (OOBE or Settings > Privacy). No file means never asked, which is a
+ * refusal. Read fresh on every use, so a withdrawal takes effect at once and
+ * survives a reboot — the in-memory flag this replaces defaulted to enabled
+ * and came back on at every service restart.
+ */
+static int consent_granted(void) {
+    FILE *f = fopen(CONSENT_FILE, "r");
+    if (!f) return 0;
+    int c = fgetc(f);
+    fclose(f);
+    return c == '1';
+}
+
+static int write_consent(int granted) {
+    char tmp[512];
+    snprintf(tmp, sizeof(tmp), "%s.tmp", CONSENT_FILE);
+    FILE *f = fopen(tmp, "w");
+    if (!f) return -1;
+    fputc(granted ? '1' : '0', f);
+    fputc('\n', f);
+    fflush(f);
+    fsync(fileno(f));
+    fclose(f);
+    return rename(tmp, CONSENT_FILE);     /* atomic: never a half-written state */
+}
+
+static char g_device_uuid[64];
+
+/* Withdrawal erases what was collected and the identifier itself. Stopping
+ * future collection is not enough while queued events and a stable device ID
+ * stay on disk. Also run at startup without consent, which removes data that
+ * earlier versions collected before anyone was asked. */
+static void purge_collected_data(void) {
+    DIR *d = opendir(TELEMETRY_DIR);
+    if (d) {
+        struct dirent *e;
+        char path[512];
+        while ((e = readdir(d)) != NULL) {
+            if (strncmp(e->d_name, "pending_", 8) == 0) {
+                snprintf(path, sizeof(path), "%s/%s", TELEMETRY_DIR, e->d_name);
+                unlink(path);
+            }
+        }
+        closedir(d);
+    }
+    unlink(DEVICE_UUID_FILE);
+    unlink(BOOT_COUNT_FILE);
+    g_device_uuid[0] = '\0';
 }
 
 /* ─── Device UUID: generated once, persisted ─── */
@@ -104,8 +162,15 @@ static int increment_boot_count(void) {
 
 /* ─── Queue event to local file (for later batch send) ─── */
 static int queue_event(const char *event_type, const char *payload) {
+    if (!consent_granted()) return 0;          /* not an error: just not allowed */
+    if (!g_device_uuid[0]) load_or_create_uuid();
+
+    /* time + pid + counter: two events in the same second used to share a
+       file name, so the second silently overwrote the first */
+    static unsigned int seq;
     char path[512];
-    snprintf(path, sizeof(path), "%s/pending_%ld.json", TELEMETRY_DIR, (long)time(NULL));
+    snprintf(path, sizeof(path), "%s/pending_%ld_%d_%u.json", TELEMETRY_DIR,
+             (long)time(NULL), (int)getpid(), seq++);
 
     FILE *f = fopen(path, "w");
     if (!f) return -1;
@@ -139,10 +204,12 @@ static const char *telemetry_introspection_xml =
     "    <method name='SetEnabled'>"
     "      <arg type='b' name='enabled' direction='in'/>"
     "    </method>"
+    "    <method name='GetEnabled'>"
+    "      <arg type='b' name='enabled' direction='out'/>"
+    "    </method>"
     "  </interface>"
     "</node>";
 
-static _Atomic int g_telemetry_enabled = 1;  /* 1=enabled, 0=disabled; atomic for thread safety */
 
 static void handle_telemetry_method(GDBusConnection *conn, const gchar *sender,
                                      const gchar *path, const gchar *iface,
@@ -154,12 +221,13 @@ static void handle_telemetry_method(GDBusConnection *conn, const gchar *sender,
         const gchar *event_type = NULL;
         const gchar *payload = NULL;
         g_variant_get(params, "(&s&s)", &event_type, &payload);
-        if (atomic_load(&g_telemetry_enabled)) {
-            queue_event(event_type, payload);
-        }
+        queue_event(event_type, payload);       /* checks consent itself */
         g_dbus_method_invocation_return_value(inv, NULL);
     } else if (g_strcmp0(method, "GetDeviceUUID") == 0) {
-        g_dbus_method_invocation_return_value(inv, g_variant_new("(s)", g_device_uuid));
+        /* Without consent there is no identifier to hand out — and asking for
+           it must not create one */
+        g_dbus_method_invocation_return_value(inv,
+            g_variant_new("(s)", consent_granted() ? g_device_uuid : ""));
     } else if (g_strcmp0(method, "GetBootCount") == 0) {
         int count = 0;
         FILE *f = fopen(BOOT_COUNT_FILE, "r");
@@ -168,9 +236,18 @@ static void handle_telemetry_method(GDBusConnection *conn, const gchar *sender,
     } else if (g_strcmp0(method, "SetEnabled") == 0) {
         gboolean enabled = FALSE;
         g_variant_get(params, "(b)", &enabled);
-        atomic_store(&g_telemetry_enabled, enabled ? 1 : 0);
-        g_message("[Telemetry] %s", enabled ? "Enabled" : "Disabled");
+        if (write_consent(enabled ? 1 : 0) != 0) {
+            g_dbus_method_invocation_return_error(inv, G_IO_ERROR, G_IO_ERROR_FAILED,
+                "could not persist telemetry consent");
+            return;
+        }
+        if (enabled) load_or_create_uuid();
+        else purge_collected_data();
+        g_message("[Telemetry] consent %s", enabled ? "granted" : "withdrawn");
         g_dbus_method_invocation_return_value(inv, NULL);
+    } else if (g_strcmp0(method, "GetEnabled") == 0) {
+        g_dbus_method_invocation_return_value(inv,
+            g_variant_new("(b)", consent_granted() ? TRUE : FALSE));
     }
 }
 
@@ -186,25 +263,33 @@ static void on_telemetry_bus(GDBusConnection *conn, const gchar *name, gpointer 
     if (info) g_dbus_node_info_unref(info);
 }
 
+#ifndef ZYL_TEST
 int main(int argc, char *argv[]) {
     (void)argc; (void)argv;
 
     ensure_dir(TELEMETRY_DIR);
-    load_or_create_uuid();
-    int boot_count = increment_boot_count();
-
-    /* Report boot event */
-    char payload[128];
-    snprintf(payload, sizeof(payload), "{\"boot_count\":%d}", boot_count);
-    queue_event("boot", payload);
+    int boot_count = 0;
+    if (consent_granted()) {
+        load_or_create_uuid();
+        boot_count = increment_boot_count();
+        char payload[128];
+        snprintf(payload, sizeof(payload), "{\"boot_count\":%d}", boot_count);
+        queue_event("boot", payload);
+    } else {
+        purge_collected_data();
+    }
 
     g_bus_own_name(G_BUS_TYPE_SESSION,
         "org.zylos.Telemetry", G_BUS_NAME_OWNER_FLAGS_NONE,
         on_telemetry_bus, NULL, NULL, NULL, NULL);
 
-    g_message("[Telemetry] Service started (device=%s, boot=%d)", g_device_uuid, boot_count);
+    /* The device ID stays out of the journal: logs are collected far more
+       widely than telemetry and outlive a consent withdrawal */
+    g_message("[Telemetry] Service started (consent=%s, boot=%d)",
+              consent_granted() ? "granted" : "not granted", boot_count);
     GMainLoop *loop = g_main_loop_new(NULL, FALSE);
     g_main_loop_run(loop);
     g_main_loop_unref(loop);
     return 0;
 }
+#endif /* ZYL_TEST */

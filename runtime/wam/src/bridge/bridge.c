@@ -814,6 +814,7 @@ static const ServiceRoute SERVICE_ROUTES[] = {
     {"bluetooth",    "org.zylos.BluetoothService",   "/org/zylos/BluetoothService",   "org.zylos.BluetoothService"},
     {"wifi",         "org.zylos.WifiService",        "/org/zylos/WifiService",        "org.zylos.WifiService"},
     {"settings",     "org.zylos.Settings",           "/org/zylos/Settings",           "org.zylos.Settings"},
+    {"telemetry",    "org.zylos.Telemetry",          "/org/zylos/Telemetry",          "org.zylos.Telemetry"},
     {NULL, NULL, NULL, NULL}
 };
 

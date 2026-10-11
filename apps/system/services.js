@@ -263,6 +263,7 @@ window.ZylSystemServices = (function () {
     if (ns.updater)       serviceMap.updater      = ns.updater(crossDeps);
     if (ns.sandbox)       serviceMap.sandbox      = ns.sandbox(crossDeps);
     if (ns.accessibility) serviceMap.accessibility = ns.accessibility(crossDeps);
+    if (ns.telemetry)     serviceMap.telemetry    = ns.telemetry(crossDeps);
     if (ns.audio) {
       var audioMod = ns.audio(crossDeps);
       serviceMap.audio = audioMod;

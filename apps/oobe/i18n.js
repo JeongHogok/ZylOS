@@ -24,7 +24,7 @@
     'oobe.pin_set': '\uC124\uC815',
     'oobe.pin_later': '\uB098\uC911\uC5D0',
     'oobe.terms_title': '\uC774\uC6A9 \uC57D\uAD00',
-    'oobe.terms_body': 'Zyl OS\uB294 MIT \uB77C\uC774\uC120\uC2A4\uB85C \uBC30\uD3EC\uB418\uB294 \uC624\uD508\uC18C\uC2A4 \uBAA8\uBC14\uC77C \uC6B4\uC601\uCCB4\uC81C\uC785\uB2C8\uB2E4. \uBCF8 \uC18C\uD504\uD2B8\uC6E8\uC5B4\uB294 \uC5B4\uB5A0\uD55C \uBCF4\uC99D\uB3C4 \uC5C6\uC774 "\uC788\uB294 \uADF8\uB300\uB85C" \uC81C\uACF5\uB429\uB2C8\uB2E4.',
+    'oobe.terms_body': 'Zyl OS\uB294 GNU \uC77C\uBC18 \uACF5\uC911 \uC0AC\uC6A9 \uD5C8\uAC00\uC11C \uBC84\uC804 3(GPL-3.0)\uC73C\uB85C \uBC30\uD3EC\uB418\uB294 \uC624\uD508\uC18C\uC2A4 \uBAA8\uBC14\uC77C \uC6B4\uC601\uCCB4\uC81C\uC785\uB2C8\uB2E4. \uC774 \uC18C\uD504\uD2B8\uC6E8\uC5B4\uB294 \uC5B4\uB5A0\uD55C \uBCF4\uC99D\uB3C4 \uC5C6\uC774 "\uC788\uB294 \uADF8\uB300\uB85C" \uC81C\uACF5\uB429\uB2C8\uB2E4. \uC18C\uC2A4 \uCF54\uB4DC\uB97C \uBC1B\uACE0, \uC218\uC815\uD558\uACE0, \uB2E4\uC2DC \uBC30\uD3EC\uD560 \uAD8C\uB9AC\uAC00 \uC788\uC2B5\uB2C8\uB2E4.',
     'oobe.terms_agree': '\uC774\uC6A9 \uC57D\uAD00\uC5D0 \uB3D9\uC758\uD569\uB2C8\uB2E4',
     'oobe.agree': '\uB3D9\uC758',
     'oobe.complete_title': '\uC124\uC815 \uC644\uB8CC',
@@ -33,7 +33,10 @@
     'oobe.pin_format': 'PIN\uC740 4\uC790\uB9AC \uC22B\uC790\uC5EC\uC57C \uD569\uB2C8\uB2E4',
     'oobe.pin_mismatch': 'PIN\uC774 \uC77C\uCE58\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4',
     'oobe.no_networks': '\uB124\uD2B8\uC6CC\uD06C\uB97C \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4',
-    'oobe.connected': '(\uC5F0\uACB0\uB428)'
+    'oobe.connected': '(\uC5F0\uACB0\uB428)',
+    'oobe.privacy_title': '\uAC1C\uC778\uC815\uBCF4 \uBCF4\uD638',
+    'oobe.privacy_desc': 'Zyl OS\uB97C \uAC1C\uC120\uD558\uAE30 \uC704\uD574 \uC624\uB958\u00B7\uBD80\uD305\u00B7\uC5C5\uB370\uC774\uD2B8 \uD1B5\uACC4\uB97C \uBCF4\uB0BC \uC218 \uC788\uC2B5\uB2C8\uB2E4. \uBCF4\uB0B4\uB294 \uC815\uBCF4\uB294 \uBB34\uC791\uC704 \uAE30\uAE30 ID, OS \uBC84\uC804, \uC774\uBCA4\uD2B8 \uC885\uB958\uBFD0\uC774\uBA70 \uC5F0\uB77D\uCC98\u00B7\uBA54\uC2DC\uC9C0\u00B7\uC704\uCE58\uB294 \uD3EC\uD568\uB418\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4. \uCF1C\uC9C0 \uC54A\uC73C\uBA74 \uAEBC\uC9C4 \uC0C1\uD0DC\uB85C \uC720\uC9C0\uB418\uBA70 \uC124\uC815 > \uAC1C\uC778\uC815\uBCF4 \uBCF4\uD638\uC5D0\uC11C \uC5B8\uC81C\uB4E0 \uBC14\uAFC0 \uC218 \uC788\uC2B5\uB2C8\uB2E4. \uB044\uBA74 \uC774\uBBF8 \uC800\uC7A5\uB41C \uB370\uC774\uD130\uC640 \uAE30\uAE30 ID\uAC00 \uC0AD\uC81C\uB429\uB2C8\uB2E4.',
+    'oobe.privacy_share': '\uC9C4\uB2E8 \uB370\uC774\uD130 \uBCF4\uB0B4\uAE30'
   });
 
   zylI18n.addTranslations('en', {
@@ -51,7 +54,7 @@
     'oobe.pin_set': 'Set',
     'oobe.pin_later': 'Later',
     'oobe.terms_title': 'Terms of Service',
-    'oobe.terms_body': 'Zyl OS is an open-source mobile operating system distributed under the MIT License. This software is provided "as is" without warranty of any kind.',
+    'oobe.terms_body': 'Zyl OS is an open-source mobile operating system distributed under the GNU General Public License version 3 (GPL-3.0). This software is provided "as is" without warranty of any kind. You have the right to obtain, modify and redistribute its source code.',
     'oobe.terms_agree': 'I agree to the Terms of Service',
     'oobe.agree': 'Agree',
     'oobe.complete_title': 'Setup Complete',
@@ -60,7 +63,10 @@
     'oobe.pin_format': 'PIN must be 4 digits',
     'oobe.pin_mismatch': 'PINs do not match',
     'oobe.no_networks': 'No networks found',
-    'oobe.connected': '(Connected)'
+    'oobe.connected': '(Connected)',
+    'oobe.privacy_title': 'Privacy',
+    'oobe.privacy_desc': 'To help improve Zyl OS you can send crash, boot and update statistics. Only a random device ID, the OS version and the event type are sent, never contacts, messages or location. This stays off unless you turn it on, and you can change it any time in Settings > Privacy. Turning it off deletes the data already stored and the device ID.',
+    'oobe.privacy_share': 'Send diagnostic data'
   });
 
   zylI18n.addTranslations('ja', {
@@ -78,7 +84,7 @@
     'oobe.pin_set': '\u8A2D\u5B9A',
     'oobe.pin_later': '\u5F8C\u3067',
     'oobe.terms_title': '\u5229\u7528\u898F\u7D04',
-    'oobe.terms_body': 'Zyl OS\u306FMIT\u30E9\u30A4\u30BB\u30F3\u30B9\u3067\u914D\u5E03\u3055\u308C\u308B\u30AA\u30FC\u30D7\u30F3\u30BD\u30FC\u30B9\u30E2\u30D0\u30A4\u30EBOS\u3067\u3059\u3002\u672C\u30BD\u30D5\u30C8\u30A6\u30A7\u30A2\u306F\u3044\u304B\u306A\u308B\u4FDD\u8A3C\u3082\u306A\u304F\u300C\u73FE\u72B6\u306E\u307E\u307E\u300D\u63D0\u4F9B\u3055\u308C\u307E\u3059\u3002',
+    'oobe.terms_body': 'Zyl OS\u306FGNU\u4E00\u822C\u516C\u8846\u5229\u7528\u8A31\u8AFE\u66F8\u30D0\u30FC\u30B8\u30E7\u30F33(GPL-3.0)\u3067\u914D\u5E03\u3055\u308C\u308B\u30AA\u30FC\u30D7\u30F3\u30BD\u30FC\u30B9\u306E\u30E2\u30D0\u30A4\u30EBOS\u3067\u3059\u3002\u672C\u30BD\u30D5\u30C8\u30A6\u30A7\u30A2\u306F\u300C\u73FE\u72B6\u306E\u307E\u307E\u300D\u63D0\u4F9B\u3055\u308C\u3001\u3044\u304B\u306A\u308B\u4FDD\u8A3C\u3082\u3042\u308A\u307E\u305B\u3093\u3002\u30BD\u30FC\u30B9\u30B3\u30FC\u30C9\u3092\u5165\u624B\u3001\u6539\u5909\u3001\u518D\u914D\u5E03\u3059\u308B\u6A29\u5229\u304C\u3042\u308A\u307E\u3059\u3002',
     'oobe.terms_agree': '\u5229\u7528\u898F\u7D04\u306B\u540C\u610F\u3057\u307E\u3059',
     'oobe.agree': '\u540C\u610F',
     'oobe.complete_title': '\u30BB\u30C3\u30C8\u30A2\u30C3\u30D7\u5B8C\u4E86',
@@ -87,7 +93,10 @@
     'oobe.pin_format': 'PIN\u306F4\u6841\u306E\u6570\u5B57\u3067\u3059',
     'oobe.pin_mismatch': 'PIN\u304C\u4E00\u81F4\u3057\u307E\u305B\u3093',
     'oobe.no_networks': '\u30CD\u30C3\u30C8\u30EF\u30FC\u30AF\u304C\u898B\u3064\u304B\u308A\u307E\u305B\u3093',
-    'oobe.connected': '(\u63A5\u7D9A\u6E08\u307F)'
+    'oobe.connected': '(\u63A5\u7D9A\u6E08\u307F)',
+    'oobe.privacy_title': '\u30D7\u30E9\u30A4\u30D0\u30B7\u30FC',
+    'oobe.privacy_desc': 'Zyl OS\u306E\u6539\u5584\u306E\u305F\u3081\u3001\u30A8\u30E9\u30FC\u30FB\u8D77\u52D5\u30FB\u30A2\u30C3\u30D7\u30C7\u30FC\u30C8\u306E\u7D71\u8A08\u3092\u9001\u4FE1\u3067\u304D\u307E\u3059\u3002\u9001\u4FE1\u3055\u308C\u308B\u306E\u306F\u30E9\u30F3\u30C0\u30E0\u306A\u7AEF\u672BID\u3001OS\u30D0\u30FC\u30B8\u30E7\u30F3\u3001\u30A4\u30D9\u30F3\u30C8\u306E\u7A2E\u985E\u306E\u307F\u3067\u3001\u9023\u7D61\u5148\u30FB\u30E1\u30C3\u30BB\u30FC\u30B8\u30FB\u4F4D\u7F6E\u60C5\u5831\u306F\u542B\u307E\u308C\u307E\u305B\u3093\u3002\u30AA\u30F3\u306B\u3057\u306A\u3044\u9650\u308A\u30AA\u30D5\u306E\u307E\u307E\u3067\u3001\u8A2D\u5B9A > \u30D7\u30E9\u30A4\u30D0\u30B7\u30FC\u3067\u3044\u3064\u3067\u3082\u5909\u66F4\u3067\u304D\u307E\u3059\u3002\u30AA\u30D5\u306B\u3059\u308B\u3068\u4FDD\u5B58\u6E08\u307F\u306E\u30C7\u30FC\u30BF\u3068\u7AEF\u672BID\u306F\u524A\u9664\u3055\u308C\u307E\u3059\u3002',
+    'oobe.privacy_share': '\u8A3A\u65AD\u30C7\u30FC\u30BF\u3092\u9001\u4FE1\u3059\u308B'
   });
 
   zylI18n.addTranslations('zh', {
@@ -105,7 +114,7 @@
     'oobe.pin_set': '\u8BBE\u7F6E',
     'oobe.pin_later': '\u7A0D\u540E',
     'oobe.terms_title': '\u670D\u52A1\u6761\u6B3E',
-    'oobe.terms_body': 'Zyl OS\u662F\u4E00\u6B3E\u57FA\u4E8EMIT\u8BB8\u53EF\u8BC1\u53D1\u5E03\u7684\u5F00\u6E90\u79FB\u52A8\u64CD\u4F5C\u7CFB\u7EDF\u3002\u672C\u8F6F\u4EF6\u6309\u201C\u539F\u6837\u201D\u63D0\u4F9B\uFF0C\u4E0D\u63D0\u4F9B\u4EFB\u4F55\u5F62\u5F0F\u7684\u4FDD\u8BC1\u3002',
+    'oobe.terms_body': 'Zyl OS\u662F\u4E00\u6B3E\u57FA\u4E8EGNU\u901A\u7528\u516C\u5171\u8BB8\u53EF\u8BC1\u7B2C3\u7248(GPL-3.0)\u53D1\u5E03\u7684\u5F00\u6E90\u79FB\u52A8\u64CD\u4F5C\u7CFB\u7EDF\u3002\u672C\u8F6F\u4EF6\u6309\u201C\u539F\u6837\u201D\u63D0\u4F9B\uFF0C\u4E0D\u9644\u5E26\u4EFB\u4F55\u62C5\u4FDD\u3002\u60A8\u6709\u6743\u83B7\u53D6\u3001\u4FEE\u6539\u548C\u91CD\u65B0\u5206\u53D1\u5176\u6E90\u4EE3\u7801\u3002',
     'oobe.terms_agree': '\u6211\u540C\u610F\u670D\u52A1\u6761\u6B3E',
     'oobe.agree': '\u540C\u610F',
     'oobe.complete_title': '\u8BBE\u7F6E\u5B8C\u6210',
@@ -114,7 +123,10 @@
     'oobe.pin_format': 'PIN\u5FC5\u987B\u662F4\u4F4D\u6570\u5B57',
     'oobe.pin_mismatch': 'PIN\u4E0D\u4E00\u81F4',
     'oobe.no_networks': '\u672A\u627E\u5230\u7F51\u7EDC',
-    'oobe.connected': '(\u5DF2\u8FDE\u63A5)'
+    'oobe.connected': '(\u5DF2\u8FDE\u63A5)',
+    'oobe.privacy_title': '\u9690\u79C1',
+    'oobe.privacy_desc': '\u4E3A\u5E2E\u52A9\u6539\u8FDBZyl OS\uFF0C\u60A8\u53EF\u4EE5\u53D1\u9001\u5D29\u6E83\u3001\u542F\u52A8\u548C\u66F4\u65B0\u7EDF\u8BA1\u4FE1\u606F\u3002\u4EC5\u53D1\u9001\u968F\u673A\u8BBE\u5907ID\u3001\u64CD\u4F5C\u7CFB\u7EDF\u7248\u672C\u548C\u4E8B\u4EF6\u7C7B\u578B\uFF0C\u7EDD\u4E0D\u5305\u542B\u8054\u7CFB\u4EBA\u3001\u6D88\u606F\u6216\u4F4D\u7F6E\u3002\u9664\u975E\u60A8\u5F00\u542F\uFF0C\u5426\u5219\u4FDD\u6301\u5173\u95ED\uFF0C\u5E76\u53EF\u968F\u65F6\u5728\u8BBE\u7F6E > \u9690\u79C1\u4E2D\u66F4\u6539\u3002\u5173\u95ED\u540E\u5C06\u5220\u9664\u5DF2\u5B58\u50A8\u7684\u6570\u636E\u548C\u8BBE\u5907ID\u3002',
+    'oobe.privacy_share': '\u53D1\u9001\u8BCA\u65AD\u6570\u636E'
   });
 
   zylI18n.addTranslations('es', {
@@ -132,7 +144,7 @@
     'oobe.pin_set': 'Establecer',
     'oobe.pin_later': 'M\u00E1s tarde',
     'oobe.terms_title': 'T\u00E9rminos de servicio',
-    'oobe.terms_body': 'Zyl OS es un sistema operativo m\u00F3vil de c\u00F3digo abierto distribuido bajo la licencia MIT. Este software se proporciona "tal cual" sin garant\u00EDa de ning\u00FAn tipo.',
+    'oobe.terms_body': 'Zyl OS es un sistema operativo m\u00F3vil de c\u00F3digo abierto distribuido bajo la Licencia P\u00FAblica General de GNU versi\u00F3n 3 (GPL-3.0). Este software se proporciona "tal cual", sin garant\u00EDa de ning\u00FAn tipo. Tiene derecho a obtener, modificar y redistribuir su c\u00F3digo fuente.',
     'oobe.terms_agree': 'Acepto los t\u00E9rminos de servicio',
     'oobe.agree': 'Aceptar',
     'oobe.complete_title': 'Configuraci\u00F3n completa',
@@ -141,6 +153,9 @@
     'oobe.pin_format': 'El PIN debe ser de 4 d\u00EDgitos',
     'oobe.pin_mismatch': 'Los PIN no coinciden',
     'oobe.no_networks': 'No se encontraron redes',
-    'oobe.connected': '(Conectado)'
+    'oobe.connected': '(Conectado)',
+    'oobe.privacy_title': 'Privacidad',
+    'oobe.privacy_desc': 'Para ayudar a mejorar Zyl OS puede enviar estad\u00EDsticas de fallos, arranque y actualizaciones. Solo se env\u00EDa un ID aleatorio del dispositivo, la versi\u00F3n del sistema y el tipo de evento, nunca contactos, mensajes ni ubicaci\u00F3n. Permanece desactivado salvo que lo active, y puede cambiarlo en cualquier momento en Ajustes > Privacidad. Al desactivarlo se borran los datos guardados y el ID del dispositivo.',
+    'oobe.privacy_share': 'Enviar datos de diagn\u00F3stico'
   });
 })();

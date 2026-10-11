@@ -65,3 +65,13 @@ if host_machine.system() == 'linux'
     )
   )
 endif
+
+# Test: telemetry opt-in consent (no collection or identifier before consent,
+# erasure on withdrawal). Uses the real daemon source with main() compiled out.
+test('telemetry-consent',
+  executable('test-telemetry-consent',
+    'test_telemetry_consent.c',
+    dependencies: [gio_dep],
+    c_args: ['-DZYL_TEST'],
+  )
+)
