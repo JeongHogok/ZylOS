@@ -20,8 +20,8 @@
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Noto Sans KR', sans-serif;
-  width: 100vw;
-  height: 100vh;
+  width: var(--ff-vw);
+  height: var(--ff-vh);
   overflow: hidden;
   color: white;
   -webkit-font-smoothing: antialiased;
@@ -70,7 +70,7 @@ body {
   0%   { opacity: 0; transform: translateY(0) scale(0.5); }
   10%  { opacity: 1; }
   90%  { opacity: 1; }
-  100% { opacity: 0; transform: translateY(-100vh) scale(1); }
+  100% { opacity: 0; transform: translateY(calc(var(--ff-vh) * -1)) scale(1); }
 }
 
 .hidden { display: none !important; }
@@ -80,7 +80,7 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  height: 100vh;
+  height: var(--ff-vh);
   padding-top: 100px;
   transition: none;
   will-change: transform, opacity;

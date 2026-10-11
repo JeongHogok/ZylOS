@@ -179,6 +179,17 @@ window.ZylFormFactor = (function () {
        var() — verified in WebKit: `zoom: var(--x)` computes to 1 while a
        literal applies. Keeping the factor in PROFILES avoids a second copy. */
     style.zoom = p.fontScale === 1 ? '' : String(p.fontScale);
+
+    /* Viewport units are not affected by zoom: inside a root scaled by Z,
+       100vh still means 100% of the unscaled viewport, so it renders Z times
+       too tall. Apps use var(--ff-vh)/var(--ff-vw) instead of vh/vw. */
+    if (p.fontScale === 1) {
+      style.setProperty('--ff-vh', '100vh');
+      style.setProperty('--ff-vw', '100vw');
+    } else {
+      style.setProperty('--ff-vh', 'calc(100vh / ' + p.fontScale + ')');
+      style.setProperty('--ff-vw', 'calc(100vw / ' + p.fontScale + ')');
+    }
     return p;
   }
 
