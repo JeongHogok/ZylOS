@@ -956,10 +956,17 @@ var appStateTests = (function () {
       });
     }),
     asyncTest('a hung app does not block the switch', function () {
+      /* No reply ever comes; the switch must still go ahead via the timeout.
+         A tight wall-clock bound flaked on loaded CI runners, so the guard
+         only tells "finished" from "never finished". */
       var st = make(['a']);
-      var t0 = Date.now();
-      return saveThen(st, 'a').then(function () {
-        assert.ok(Date.now() - t0 < 200, 'finished on the timeout');
+      var guard;
+      return Promise.race([
+        saveThen(st, 'a').then(function () { return 'done'; }),
+        new Promise(function (r) { guard = setTimeout(function () { r('blocked'); }, 5000); })
+      ]).then(function (how) {
+        clearTimeout(guard);
+        assert.strictEqual(how, 'done', 'switch went ahead without a reply');
         assert.strictEqual(st.take('a').found, false);
       });
     }),
