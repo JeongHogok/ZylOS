@@ -2,7 +2,8 @@
  * [Clean Architecture] Infrastructure Layer - Test
  *
  * 역할: bridge.c 디스패치/응답 라우팅 단위 테스트
- * 수행범위: callbackId 전달, unknown type error 응답, malformed JSON reject 검증
+ * 수행범위: callbackId 전달, unknown type error 응답, malformed JSON reject,
+ *          service.request 인자 마샬링(인트로스펙션 시그니처) + 사설 버스 종단 검증
  * 의존방향: GLib/JSON-GLib, runtime/wam/src/bridge/bridge.c
  * SOLID: SRP — 브릿지 디스패치 검증만 담당
  * ────────────────────────────────────────────────────────── */
@@ -268,6 +269,144 @@ static void test_policy_unreviewed_service_fails_closed(void)
 }
 
 
+/* ── service.request argument marshalling (params_to_dbus_args) ──
+   The bridge used to send every call as one JSON string, which no typed
+   D-Bus method accepts. Arguments now follow the service's introspection. */
+static const char *MARSHAL_XML =
+    "<node><interface name='org.zylos.T'>"
+    "<method name='GetState'/>"
+    "<method name='Dial'><arg type='s' name='number' direction='in'/></method>"
+    "<method name='Post'><arg type='s' name='app_id' direction='in'/>"
+    "<arg type='s' name='title' direction='in'/><arg type='i' name='priority' direction='in'/></method>"
+    "<method name='SetEnabled'><arg type='b' name='enabled' direction='in'/></method>"
+    "<method name='SetLevel'><arg type='d' name='level' direction='in'/></method>"
+    "</interface></node>";
+
+static char *marshal(const char *method, const char *params_json, GError **err) {
+    GDBusNodeInfo *node = g_dbus_node_info_new_for_xml(MARSHAL_XML, NULL);
+    GDBusMethodInfo *m = g_dbus_interface_info_lookup_method(
+        g_dbus_node_info_lookup_interface(node, "org.zylos.T"), method);
+    JsonNode *root = json_from_string(params_json, NULL);
+    GVariant *v = params_to_dbus_args(m, json_node_get_object(root), err);
+    char *out = v ? g_variant_print(g_variant_ref_sink(v), FALSE) : NULL;
+    if (v) g_variant_unref(v);
+    json_node_unref(root);
+    g_dbus_node_info_unref(node);
+    return out;
+}
+
+static void expect_args(const char *method, const char *params, const char *want) {
+    GError *err = NULL;
+    char *got = marshal(method, params, &err);
+    if (!got || strcmp(got, want) != 0) {
+        printf("\n    %s(%s): want %s, got %s (%s)\n", method, params, want,
+               got ? got : "NULL", err ? err->message : "");
+        assert(0);
+    }
+    g_free(got);
+}
+
+static void test_args_no_input_is_empty_tuple(void) {
+    expect_args("GetState", "{}", "()");
+}
+
+static void test_args_follow_signature_not_one_json_string(void) {
+    expect_args("Dial", "{\"number\":\"0101234\"}", "('0101234',)");
+    expect_args("SetEnabled", "{\"enabled\":true}", "(true,)");
+}
+
+static void test_args_camel_case_fills_snake_case(void) {
+    expect_args("Post", "{\"title\":\"t\",\"appId\":\"a\",\"priority\":2}", "('a', 't', 2)");
+}
+
+static void test_args_integer_fills_double(void) {
+    expect_args("SetLevel", "{\"level\":1}", "(1.0,)");
+}
+
+static void test_args_missing_or_wrong_type_names_the_argument(void) {
+    GError *err = NULL;
+    assert(marshal("Dial", "{}", &err) == NULL);
+    assert(err && strstr(err->message, "number"));
+    g_clear_error(&err);
+    assert(marshal("SetEnabled", "{\"enabled\":\"yes\"}", &err) == NULL);
+    assert(err && strstr(err->message, "enabled"));
+    g_clear_error(&err);
+}
+
+/* ── service.request end to end over a private session bus ──
+   A real GDBus service with a typed method, called through dispatch exactly
+   as an app would. Before the fix this returned InvalidArgs for '(s)'. */
+static gboolean e2e_seen_enabled;
+
+static void e2e_method(GDBusConnection *c, const char *sender, const char *path,
+                       const char *iface, const char *method, GVariant *params,
+                       GDBusMethodInvocation *inv, gpointer data) {
+    (void)c; (void)sender; (void)path; (void)iface; (void)method; (void)data;
+    gboolean on = FALSE;
+    g_variant_get(params, "(b)", &on);
+    e2e_seen_enabled = on;
+    g_dbus_method_invocation_return_value(inv, g_variant_new("(b)", on));
+}
+
+static void e2e_wait_reply(WebKitWebView *view) {
+    gint64 deadline = g_get_monotonic_time() + 3 * G_USEC_PER_SEC;
+    while (!view->last_script && g_get_monotonic_time() < deadline)
+        g_main_context_iteration(NULL, FALSE);
+}
+
+static void test_service_request_reaches_typed_dbus_method(void) {
+    if (!g_find_program_in_path("dbus-daemon")) {
+        printf("SKIP (no dbus-daemon) ");
+        return;
+    }
+    GTestDBus *bus = g_test_dbus_new(G_TEST_DBUS_NONE);
+    g_test_dbus_up(bus);
+
+    GDBusConnection *conn = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, NULL);
+    assert(conn);
+    GDBusNodeInfo *info = g_dbus_node_info_new_for_xml(
+        "<node><interface name='org.zylos.Telemetry'><method name='SetEnabled'>"
+        "<arg type='b' name='enabled' direction='in'/>"
+        "<arg type='b' name='enabled' direction='out'/></method></interface></node>", NULL);
+    static const GDBusInterfaceVTable vt = { e2e_method, NULL, NULL, {0} };
+    guint reg = g_dbus_connection_register_object(conn, "/org/zylos/Telemetry",
+        info->interfaces[0], &vt, NULL, NULL, NULL);
+    assert(reg > 0);
+    GVariant *r = g_dbus_connection_call_sync(conn, "org.freedesktop.DBus",
+        "/org/freedesktop/DBus", "org.freedesktop.DBus", "RequestName",
+        g_variant_new("(su)", "org.zylos.Telemetry", 0), NULL,
+        G_DBUS_CALL_FLAGS_NONE, -1, NULL, NULL);
+    assert(r);
+    g_variant_unref(r);
+
+    WebKitWebView view = {0};
+    ZylAppManifest manifest = make_manifest();
+    manifest.is_system = TRUE;
+    zyl_bridge_init();
+
+    /* First call introspects, second uses the cache — both must arrive typed */
+    for (int round = 0; round < 2; round++) {
+        e2e_seen_enabled = FALSE;
+        reset_webview(&view);
+        zyl_bridge_dispatch(&view, &manifest,
+            "{\"type\":\"service.request\",\"service\":\"telemetry\","
+            "\"method\":\"setEnabled\",\"params\":{\"enabled\":true},\"callbackId\":9}");
+        e2e_wait_reply(&view);
+        assert(view.last_script && strstr(view.last_script, "_zylCb_9"));
+        assert(!strstr(view.last_script, "error"));
+        assert(e2e_seen_enabled);
+    }
+
+    zyl_bridge_cleanup();
+    reset_webview(&view);
+    free_manifest_members(&manifest);
+    g_dbus_connection_unregister_object(conn, reg);
+    g_dbus_node_info_unref(info);
+    g_object_unref(conn);
+    g_test_dbus_down(bus);
+    g_object_unref(bus);
+}
+
 int main(void)
 {
     printf("=== Zyl OS Bridge Dispatch Tests ===\n");
@@ -282,6 +421,12 @@ int main(void)
     RUN_TEST(test_policy_reserved_permissions_cannot_be_self_declared);
     RUN_TEST(test_policy_services_without_requirement_are_open);
     RUN_TEST(test_policy_unreviewed_service_fails_closed);
+    RUN_TEST(test_args_no_input_is_empty_tuple);
+    RUN_TEST(test_args_follow_signature_not_one_json_string);
+    RUN_TEST(test_args_camel_case_fills_snake_case);
+    RUN_TEST(test_args_integer_fills_double);
+    RUN_TEST(test_args_missing_or_wrong_type_names_the_argument);
+    RUN_TEST(test_service_request_reaches_typed_dbus_method);
     printf("\nResults: %d/%d passed\n", tests_pass, tests_run);
     return tests_pass == tests_run ? 0 : 1;
 }

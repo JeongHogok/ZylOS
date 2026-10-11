@@ -21,7 +21,7 @@ jobs:
             hwdata libdisplay-info \
             seatd \
             openssl libseccomp libzip curl gpsd \
-            python nodejs
+            python nodejs dbus
       - name: Build wlroots from source
         run: |
           git clone --depth 1 --branch 0.18.2 https://gitlab.freedesktop.org/wlroots/wlroots.git /tmp/wlroots

@@ -324,6 +324,53 @@ else
   pass "샌드박스 권한 어휘가 app.json 선언과 일치"
 fi
 
+# C5: 앱의 서비스 호출이 실기기 D-Bus 메서드와 맞는지 (래칫)
+#     브릿지는 params 의 멤버를 서비스 인트로스펙션의 인자 이름으로 채운다.
+#     메서드나 인자가 없으면 에뮬레이터에서는 되고 기기에서는 실패한다.
+#     기존 공백(settings 데몬 부재, JS 전용 메서드)은 상한으로 묶고, 늘면 실패.
+#     공백을 메우면 상한을 낮출 것.
+CONTRACT_GAP_MAX=34
+CONTRACT_GAPS=$(python3 - "$ROOT" <<'PYCHK'
+import re, glob, sys
+root = sys.argv[1]
+br = open(root + '/runtime/wam/src/bridge/bridge.c').read()
+routes = dict(re.findall(r'\{"(\w+)",\s*"org\.zylos\.\w+",\s*"/[^"]+",\s*"([^"]+)"\}', br))
+defs = {}
+for h in glob.glob(root + '/runtime/**/*.[ch]', recursive=True):
+    defs.update(re.findall(r'#define\s+(ZYL_\w+)\s+"([^"]*)"', open(h, errors='ignore').read()))
+ifaces = {}
+for f in glob.glob(root + '/runtime/services/**/*.c', recursive=True):
+    src = re.sub(r'"\s*(ZYL_\w+)\s*"', lambda m: defs.get(m.group(1), m.group(0)),
+                 open(f, errors='ignore').read())
+    xml = ''.join(re.findall(r'"((?:[^"\\\n]|\\.)*)"', src))
+    for name, body in re.findall(r"<interface name='([\w.]+)'>(.*?)</interface>", xml, re.S):
+        d = ifaces.setdefault(name, {})
+        for m in re.finditer(r"<method name='(\w+)'\s*(/?)>(.*?)(?=<method|$)", body, re.S):
+            d[m.group(1)] = [] if m.group(2) else re.findall(
+                r"<arg type='[^']+' name='(\w+)' direction='in'", m.group(3))
+norm = lambda s: s.replace('_', '').lower()
+gaps = []
+for f in glob.glob(root + '/apps/**/*.js', recursive=True):
+    for svc, meth, obj in re.findall(
+            r"requestService(?:Fire)?\(\s*'(\w+)'\s*,\s*'(\w+)'\s*(?:,\s*(\{[^{}]*\}))?", open(f).read()):
+        if svc not in routes: continue
+        methods = ifaces.get(routes[svc])
+        M = meth[0].upper() + meth[1:]
+        keys = [norm(k) for k in re.findall(r'(\w+)\s*:', obj)]
+        if methods is None or M not in methods or any(norm(a) not in keys for a in methods[M]):
+            gaps.append(svc + '.' + meth)
+print(len(gaps), ' '.join(sorted(set(gaps))))
+PYCHK
+)
+GAP_COUNT=${CONTRACT_GAPS%% *}
+if [ "$GAP_COUNT" -gt "$CONTRACT_GAP_MAX" ]; then
+  fail "앱→기기 서비스 계약 공백 ${GAP_COUNT}건 (상한 ${CONTRACT_GAP_MAX}): ${CONTRACT_GAPS#* }"
+elif [ "$GAP_COUNT" -lt "$CONTRACT_GAP_MAX" ]; then
+  fail "앱→기기 서비스 계약 공백이 ${GAP_COUNT}건으로 줄었음 — CONTRACT_GAP_MAX 를 ${GAP_COUNT} 로 낮출 것"
+else
+  pass "앱→기기 서비스 계약 공백 ${GAP_COUNT}건 (상한 고정, 늘면 실패)"
+fi
+
 # ═════════════════════════════════════════════════════════════
 # [D] system/ — 디바이스 설정
 # ═════════════════════════════════════════════════════════════
