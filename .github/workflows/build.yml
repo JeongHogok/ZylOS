@@ -91,12 +91,23 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libglib2.0-dev libjson-glib-dev pkg-config
+      # fuzz_json_dispatch.c compiles the real bridge.c, so it needs GLib,
+      # GIO and JSON-GLib plus the mock WebKit shim. The build line that
+      # harness documents in its own header comment is what we use here.
       - name: Build and run fuzzers
         run: |
           cd tests/fuzz
+          PKG_FLAGS=$(pkg-config --cflags --libs glib-2.0 gio-2.0 json-glib-1.0)
           for f in fuzz_*.c; do
             name="${f%.c}"
-            clang -g -O1 -fsanitize=fuzzer,address "$f" -o "$name"
+            clang -g -O1 -fsanitize=fuzzer,address \
+              -DZYL_USE_WEBKIT2GTK \
+              -Iinclude -I. \
+              "$f" $PKG_FLAGS -o "$name"
             mkdir -p "corpus/$name"
             "./$name" "corpus/$name" -max_len=4096 -runs=10000 || exit 1
           done

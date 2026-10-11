@@ -34,7 +34,7 @@ test('notification',
     include_directories: include_directories(
       '../runtime/services/notification',
     ),
-    dependencies: [gio_dep],
+    dependencies: [gio_dep, json_glib_dep],
     c_args: ['-DZYL_TEST'],
   )
 )
