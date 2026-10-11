@@ -522,6 +522,51 @@ console.log('\n■ ZylFormFactor / ZylFocusNav');
 
   FF.clearOverride();
 
+  test('apply(target) scopes the form factor and leaves <html> alone', function () {
+    /* The compositor hosts OS UI (the keyboard) in its own document; scaling
+       <html> there would scale the emulator chrome with it. */
+    var scopedClasses = {};
+    var scopedAttrs = {};
+    var scopedZoom = null;
+    var container = {
+      classList: {
+        add: function (c) { scopedClasses[c] = true; },
+        remove: function (c) { delete scopedClasses[c]; }
+      },
+      setAttribute: function (k, v) { scopedAttrs[k] = v; },
+      style: {
+        setProperty: function () {},
+        set zoom(v) { scopedZoom = v; },
+        get zoom() { return scopedZoom; }
+      }
+    };
+
+    /* No override, so the hardware hint decides — as it does in the shell.
+       An override would outrank it; that precedence is tested separately. */
+    FF.clearOverride();
+    geom(1080, 2400);
+    FF.reload();
+    assert.strictEqual(htmlAttrs['data-form-factor'], 'phone',
+      'baseline: <html> is a phone');
+    var htmlZoomBefore = htmlZoom;
+
+    FF.setHardwareInput('dpad');
+    geom(1920, 1080, 'fine');
+    FF.reload(container);
+
+    assert.strictEqual(scopedAttrs['data-form-factor'], 'tv');
+    assert.strictEqual(scopedClasses['ff-tv'], true);
+    assert.strictEqual(scopedZoom, '1.8');
+    assert.strictEqual(htmlZoom, htmlZoomBefore, '<html> zoom must not change');
+    assert.strictEqual(htmlAttrs['data-form-factor'], 'phone',
+      '<html> form factor must not change');
+
+    FF.setHardwareInput(null);
+    FF.clearOverride();
+    geom(1080, 2400);
+    FF.reload();
+  });
+
   test('focus-nav init is idempotent (no duplicate keydown listener)', function () {
     FF.setOverride('tv');
     FF.reload();

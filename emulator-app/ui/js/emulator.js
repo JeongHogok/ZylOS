@@ -404,6 +404,15 @@
     /* Set keyboard position based on nav mode */
     var kb = document.getElementById('keyboard-container');
     if (kb) kb.setAttribute('data-nav', mode || 'gesture');
+
+    /* The keyboard is OS UI mounted in this document, so it needs the form
+       factor too — a phone-sized keyboard is unreadable across a room. Scoped
+       to the container: applying it to <html> would scale the device frame.
+       The OS classifies; we only report which input hardware exists. */
+    if (kb && typeof ZylFormFactor !== 'undefined') {
+      if (device && device.inputModel) ZylFormFactor.setHardwareInput(device.inputModel);
+      ZylFormFactor.reload(kb);
+    }
   }
 
   /* ── 소프트키 ── */

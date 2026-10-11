@@ -93,13 +93,27 @@ window.ZylFormFactor = (function () {
    * The container states the hardware fact; this module still decides the class.
    * @returns {string|null} 'touch' | 'dpad' | 'crown' | 'mouse-keyboard' | ...
    */
+  var _injectedInput = null;
+
   function hardwareInput() {
+    if (_injectedInput) return _injectedInput;
     try {
       var m = /[?&]zylInput=([a-z-]+)/.exec(window.location.search || '');
       return m ? m[1] : null;
     } catch (e) {
       return null; /* no location (sandboxed document) — fall back to geometry */
     }
+  }
+
+  /**
+   * Declare the input hardware directly, for containers that host OS UI in
+   * their own document rather than launching it by URL — the compositor
+   * mounting the keyboard, for instance. Same contract as ?zylInput=.
+   * @param {string} model e.g. 'dpad', 'crown', 'touch'
+   */
+  function setHardwareInput(model) {
+    _injectedInput = model || null;
+    _active = null;        /* re-resolve on next use */
   }
 
   function detect() {
@@ -179,12 +193,15 @@ window.ZylFormFactor = (function () {
   function getAllIds() { return Object.keys(PROFILES); }
 
   /**
-   * Write the active profile onto <html> so CSS and focus-nav can react.
+   * Write the active profile onto an element so CSS and focus-nav can react.
    * Idempotent — safe to call again after an override change.
+   * @param {Element} [target] defaults to <html>. Pass a container to scope
+   *        the form factor to OS UI hosted inside a non-OS document (the
+   *        emulator chrome must not be scaled along with it).
    */
-  function apply() {
+  function apply(target) {
     var p = resolve();
-    var root = document.documentElement;
+    var root = target || document.documentElement;
     if (!root) return p;
 
     getAllIds().forEach(function (id) {
@@ -223,9 +240,9 @@ window.ZylFormFactor = (function () {
    * Re-resolve after an override change and re-apply.
    * @returns {Object} the newly active profile
    */
-  function reload() {
+  function reload(target) {
     _active = null;
-    return apply();
+    return apply(target);
   }
 
   /* ═══ Per-app availability ═══════════════════════════════
@@ -242,6 +259,7 @@ window.ZylFormFactor = (function () {
     PROFILES: PROFILES,
     detect: detect,
     hardwareInput: hardwareInput,
+    setHardwareInput: setHardwareInput,
     getProfile: getProfile,
     getId: getId,
     getAllIds: getAllIds,
