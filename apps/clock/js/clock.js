@@ -502,6 +502,7 @@
     /* Send notification via IPC */
     requestService('notification', 'post', {
       appId: 'com.zylos.clock',
+      channelId: 'alarm',
       title: alarm.label || zylI18n.t('clock.alarm'),
       body: pad(alarm.hour) + ':' + pad(alarm.minute),
       icon: '',
@@ -817,6 +818,7 @@
     /* Notification */
     requestService('notification', 'post', {
       appId: 'com.zylos.clock',
+      channelId: 'timer',
       title: zylI18n.t('clock.timer'),
       body: zylI18n.t('clock.timer_done'),
       icon: '',

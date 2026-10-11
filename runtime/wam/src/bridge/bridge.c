@@ -943,7 +943,9 @@ static char *capitalize_method(const char *method) {
  * rejected nearly every device service call with InvalidArgs.
  * The service's own introspection XML is the authority: each in-argument is
  * filled from the JSON member of the same name. Case and '_' are ignored,
- * so a JS appId fills a C app_id. */
+ * so a JS appId fills a C app_id.
+ * An app_id argument from a third-party app is always the caller's own id:
+ * otherwise any app could post notifications as com.zylos.messages. */
 
 static gboolean arg_name_matches(const char *dbus_name, const char *json_key) {
     const char *a = dbus_name, *b = json_key;
@@ -967,16 +969,21 @@ static JsonNode *find_param(JsonObject *params, const char *arg_name) {
     return found;
 }
 
-/* Returns the argument tuple (floating), or NULL with *error naming the bad argument. */
+/* Returns the argument tuple (floating), or NULL with *error naming the bad argument.
+ * caller_id: the calling app when it is not a system app, else NULL. */
 static GVariant *params_to_dbus_args(const GDBusMethodInfo *method,
-                                     JsonObject *params, GError **error) {
+                                     JsonObject *params, const char *caller_id,
+                                     GError **error) {
     GVariantBuilder b;
     g_variant_builder_init(&b, G_VARIANT_TYPE_TUPLE);
     for (int i = 0; method->in_args && method->in_args[i]; i++) {
         const GDBusArgInfo *arg = method->in_args[i];
         JsonNode *node = find_param(params, arg->name);
         GVariant *v = NULL;
-        if (!node) {
+        if (caller_id && strcmp(arg->signature, "s") == 0 &&
+            arg_name_matches(arg->name, "appid")) {
+            v = g_variant_new_string(caller_id);
+        } else if (!node) {
             g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
                         "missing argument '%s'", arg->name);
         } else if (strcmp(arg->signature, "d") == 0 && JSON_NODE_HOLDS_VALUE(node) &&
@@ -1004,6 +1011,7 @@ static GVariant *params_to_dbus_args(const GDBusMethodInfo *method,
 typedef struct {
     const ServiceRoute *route;
     char               *method;   /* D-Bus method name */
+    char               *caller_id; /* NULL for system apps */
     JsonObject         *params;   /* owned ref, may be NULL */
     ZylBridgeReplyCtx   reply;
     GDBusConnection    *conn;     /* owned ref */
@@ -1011,6 +1019,7 @@ typedef struct {
 
 static void service_call_free(ServiceCall *c) {
     g_free(c->method);
+    g_free(c->caller_id);
     if (c->params) json_object_unref(c->params);
     g_object_unref(c->conn);
     g_free(c);
@@ -1028,7 +1037,7 @@ static void service_call_invoke(ServiceCall *c, GDBusNodeInfo *node) {
     }
 
     GError *err = NULL;
-    GVariant *args = params_to_dbus_args(m, c->params, &err);
+    GVariant *args = params_to_dbus_args(m, c->params, c->caller_id, &err);
     if (!args) {
         g_warning("Bridge: %s.%s: %s", c->route->service, c->method, err->message);
         zyl_bridge_reply_error(&c->reply, err->message);
@@ -1138,6 +1147,7 @@ static void handle_service_request(const char *type, gpointer msg_obj,
     ServiceCall *call = g_new0(ServiceCall, 1);
     call->route  = route;
     call->method = dbus_method;
+    call->caller_id = manifest->is_system ? NULL : g_strdup(app_id);
     call->reply  = *reply_ctx;
     call->conn   = session;   /* g_bus_get_sync returned a ref; the call owns it */
     JsonNode *params_node = json_object_get_member(msg, "params");

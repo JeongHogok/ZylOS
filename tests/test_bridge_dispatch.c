@@ -282,17 +282,22 @@ static const char *MARSHAL_XML =
     "<method name='SetLevel'><arg type='d' name='level' direction='in'/></method>"
     "</interface></node>";
 
-static char *marshal(const char *method, const char *params_json, GError **err) {
+static char *marshal_as(const char *method, const char *params_json,
+                        const char *caller_id, GError **err) {
     GDBusNodeInfo *node = g_dbus_node_info_new_for_xml(MARSHAL_XML, NULL);
     GDBusMethodInfo *m = g_dbus_interface_info_lookup_method(
         g_dbus_node_info_lookup_interface(node, "org.zylos.T"), method);
     JsonNode *root = json_from_string(params_json, NULL);
-    GVariant *v = params_to_dbus_args(m, json_node_get_object(root), err);
+    GVariant *v = params_to_dbus_args(m, json_node_get_object(root), caller_id, err);
     char *out = v ? g_variant_print(g_variant_ref_sink(v), FALSE) : NULL;
     if (v) g_variant_unref(v);
     json_node_unref(root);
     g_dbus_node_info_unref(node);
     return out;
+}
+
+static char *marshal(const char *method, const char *params_json, GError **err) {
+    return marshal_as(method, params_json, NULL, err);
 }
 
 static void expect_args(const char *method, const char *params, const char *want) {
@@ -407,6 +412,21 @@ static void test_service_request_reaches_typed_dbus_method(void) {
     g_object_unref(bus);
 }
 
+static void test_args_third_party_app_id_is_the_caller(void) {
+    /* A third-party app cannot post as another app — app_id is its own */
+    char *got = marshal_as("Post",
+        "{\"appId\":\"com.zylos.messages\",\"title\":\"t\",\"priority\":1}",
+        "com.evil.app", NULL);
+    assert(got && strcmp(got, "('com.evil.app', 't', 1)") == 0);
+    g_free(got);
+    /* ...and needs not send one at all */
+    got = marshal_as("Post", "{\"title\":\"t\",\"priority\":1}", "com.evil.app", NULL);
+    assert(got && strcmp(got, "('com.evil.app', 't', 1)") == 0);
+    g_free(got);
+    /* System apps (settings acting on another app) keep the param */
+    expect_args("Post", "{\"appId\":\"com.x\",\"title\":\"t\",\"priority\":1}", "('com.x', 't', 1)");
+}
+
 int main(void)
 {
     printf("=== Zyl OS Bridge Dispatch Tests ===\n");
@@ -426,6 +446,7 @@ int main(void)
     RUN_TEST(test_args_camel_case_fills_snake_case);
     RUN_TEST(test_args_integer_fills_double);
     RUN_TEST(test_args_missing_or_wrong_type_names_the_argument);
+    RUN_TEST(test_args_third_party_app_id_is_the_caller);
     RUN_TEST(test_service_request_reaches_typed_dbus_method);
     printf("\nResults: %d/%d passed\n", tests_pass, tests_run);
     return tests_pass == tests_run ? 0 : 1;

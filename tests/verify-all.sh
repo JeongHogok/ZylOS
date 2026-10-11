@@ -346,8 +346,9 @@ for f in glob.glob(root + '/runtime/services/**/*.c', recursive=True):
     for name, body in re.findall(r"<interface name='([\w.]+)'>(.*?)</interface>", xml, re.S):
         d = ifaces.setdefault(name, {})
         for m in re.finditer(r"<method name='(\w+)'\s*(/?)>(.*?)(?=<method|$)", body, re.S):
-            d[m.group(1)] = [] if m.group(2) else re.findall(
-                r"<arg type='[^']+' name='(\w+)' direction='in'", m.group(3))
+            args = [] if m.group(2) else re.findall(r'<arg\b([^>]*)>', m.group(3))
+            d[m.group(1)] = [re.search(r"name='(\w+)'", a).group(1) for a in args
+                             if "direction='in'" in a and "name='" in a]
 norm = lambda s: s.replace('_', '').lower()
 gaps = []
 for f in glob.glob(root + '/apps/**/*.js', recursive=True):
