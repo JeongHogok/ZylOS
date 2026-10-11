@@ -1,7 +1,8 @@
 /* ──────────────────────────────────────────────────────────
  * [Clean Architecture] Infrastructure Layer - Performance Gate
  *
- * 역할: 앱 성능 예산 검사 — 시작 시간·메인스레드 블로킹·메모리·DOM 크기
+ * 역할: 앱 성능 예산 검사 — 시작 시간·메인스레드 블로킹·메모리·DOM 크기,
+ *       시작 중 미처리 예외(스크립트가 죽으면 다른 지표는 멀쩡해 보인다)
  * 수행범위: 헤드리스 Chrome 을 CDP 로 직접 구동(외부 패키지 없음), CPU 스로틀로
  *           저사양 SoC 근사, 앱마다 반복 측정 후 중앙값을 budgets.json 과 비교
  * 의존방향: Node 22+ (내장 WebSocket), Chrome/Chromium
@@ -115,6 +116,8 @@ function cdp(url) {
         listeners.push(l);
       });
     },
+    listen(fn) { listeners.push(fn); },
+    unlisten(fn) { const i = listeners.indexOf(fn); if (i !== -1) listeners.splice(i, 1); },
     close() { ws.close(); },
   };
 }
@@ -141,7 +144,18 @@ async function measureOnce(browser, origin, app) {
   const { targetId } = await browser.send('Target.createTarget', { url: 'about:blank' });
   const { sessionId } = await browser.send('Target.attachToTarget', { targetId, flatten: true });
   const S = (m, p) => browser.send(m, p, sessionId);
+  /* A script that dies at load leaves an app looking fine to every other
+     metric — fast, small DOM — while nothing works. Record uncaught errors. */
+  const exceptions = [];
+  const onMsg = (m) => {
+    if (m.sessionId === sessionId && m.method === 'Runtime.exceptionThrown') {
+      const d = m.params.exceptionDetails || {};
+      exceptions.push(((d.exception && d.exception.description) || d.text || 'error').split('\n')[0]);
+    }
+  };
+  browser.listen(onMsg);
   try {
+    await S('Runtime.enable');
     await S('Page.enable');
     await S('Performance.enable', { timeDomain: 'timeTicks' });
     await S('Emulation.setCPUThrottlingRate', { rate: budgets.throttle });
@@ -172,6 +186,7 @@ async function measureOnce(browser, origin, app) {
     const { metrics } = await S('Performance.getMetrics');
     const m = Object.fromEntries(metrics.map((x) => [x.name, x.value]));
     return {
+      exceptions,
       loadMs: result.value.loadMs,
       fcpMs: result.value.fcpMs,
       blockingMs: result.value.blockingMs,
@@ -180,6 +195,7 @@ async function measureOnce(browser, origin, app) {
       layouts: m.LayoutCount,
     };
   } finally {
+    browser.unlisten(onMsg);
     await browser.send('Target.closeTarget', { targetId }).catch(() => {});
   }
 }
@@ -226,6 +242,7 @@ async function main() {
       const runs = [];
       for (let i = 0; i < RUNS; i++) runs.push(await measureOnce(browser, origin, app));
       results[app] = Object.fromEntries(KEYS.map((k) => [k, median(runs.map((r) => r[k]))]));
+      results[app].exceptions = [...new Set(runs.flatMap((r) => r.exceptions))];
     }
   } finally {
     browser.close();
@@ -266,6 +283,12 @@ async function main() {
       row.push(`${fmt(v, k)}${over ? '!' : ''}/${b === undefined ? '-' : b}`.padStart(13));
     }
     console.log(row.join(''));
+  }
+  for (const app of apps) {
+    if (results[app].exceptions.length) {
+      failures++;
+      console.log(`\n✗ ${app}: uncaught exception at startup — ${results[app].exceptions.join(' | ')}`);
+    }
   }
   fs.writeFileSync(path.join(os.tmpdir(), 'zyl-perf-results.json'), JSON.stringify(results, null, 2));
   console.log(failures ? `\n✗ ${failures} metric(s) over budget (marked !)` : '\n✓ all apps within budget');

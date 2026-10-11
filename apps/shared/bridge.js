@@ -316,6 +316,30 @@ var ZylBridge = (function () {
 
   /* ─── Incoming Message Handler (emulator → app iframe) ─── */
 
+  /* ─── Instance state (lifecycle.save / lifecycle.restore) ───
+     The compositor asks for UI state before it leaves an app and hands it back
+     on the next launch — Android's onSaveInstanceState. Apps register a saver
+     that returns a JSON-serialisable object (drafts, open view, scroll) and a
+     restorer that applies it. Keep it to UI state: the compositor drops
+     anything over 64 KB, and real data belongs in the fs or a service. */
+  var _stateSaver = null;
+  var _stateRestorer = null;
+  var _pendingRestore;          /* undefined = nothing waiting */
+
+  function onSaveState(fn) {
+    _stateSaver = (typeof fn === 'function') ? fn : null;
+  }
+
+  function onRestoreState(fn) {
+    _stateRestorer = (typeof fn === 'function') ? fn : null;
+    /* The restore can arrive before the app finished initialising */
+    if (_stateRestorer && _pendingRestore !== undefined) {
+      var st = _pendingRestore;
+      _pendingRestore = undefined;
+      try { _stateRestorer(st); } catch (e) { log('restore failed:', e); }
+    }
+  }
+
   /* Set after the keyboard edits a field; the next touch on the app commits
      the composing syllable (moving the caret, tapping "send"). Gated so a
      plain tap with no typing in between sends nothing. */
@@ -431,6 +455,23 @@ var ZylBridge = (function () {
       }
     }
 
+    /* Always answer a save request — an app with nothing to save replies null
+       at once, so the compositor does not wait out its timeout */
+    if (msg.type === 'lifecycle.save') {
+      var saved = null;
+      if (_stateSaver) {
+        try { saved = _stateSaver(); } catch (e) { saved = null; log('save failed:', e); }
+      }
+      sendToSystem({ type: 'lifecycle.state', state: saved === undefined ? null : saved });
+    }
+    if (msg.type === 'lifecycle.restore' && msg.data) {
+      if (_stateRestorer) {
+        try { _stateRestorer(msg.data.state); } catch (e) { log('restore failed:', e); }
+      } else {
+        _pendingRestore = msg.data.state;
+      }
+    }
+
     /* Keyboard inset management: OS adjusts layout when keyboard shows/hides */
     if (msg.type === 'keyboard.show' && msg.data) {
       var kbHeight = parseInt(msg.data.height, 10) || 0;
@@ -450,6 +491,8 @@ var ZylBridge = (function () {
     getIpcMode: getIpcMode,
     sendToSystem: sendToSystem,
     requestService: requestService,
+    onSaveState: onSaveState,
+    onRestoreState: onRestoreState,
     requestServiceFire: requestServiceFire,
     launch: launch,
     closeApp: closeApp,

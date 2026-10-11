@@ -66,20 +66,25 @@
   /* ─── Navigation stack for multi-level pages ─── */
   var navStack = [];
 
+  /* 서브 페이지 열기 — 메뉴 클릭과 상태 복원이 같은 경로를 쓴다 */
+  function openPage(pageId) {
+    var page = document.getElementById('page-' + pageId);
+    if (!page) return false;
+
+    mainMenu.classList.add('hidden');
+    page.classList.remove('hidden');
+    btnBack.classList.remove('hidden');
+    currentPage = pageId;
+
+    headerTitle.textContent = t(PAGE_TITLES[pageId] || 'settings.' + pageId);
+    return true;
+  }
+
   /* 메뉴 항목 클릭 → 서브 페이지 */
   document.querySelectorAll('.setting-item[data-page]').forEach(function (item) {
     addButtonKeyHandler(item);
     item.addEventListener('click', function () {
-      var pageId = item.dataset.page;
-      var page = document.getElementById('page-' + pageId);
-      if (!page) return;
-
-      mainMenu.classList.add('hidden');
-      page.classList.remove('hidden');
-      btnBack.classList.remove('hidden');
-      currentPage = pageId;
-
-      headerTitle.textContent = t(PAGE_TITLES[pageId] || 'settings.' + pageId);
+      openPage(item.dataset.page);
     });
   });
 
@@ -376,6 +381,22 @@
       list.appendChild(row);
     });
   }
+
+  /* ─── Instance state: come back to the page the user was on ───
+     Only top-level pages listed in the main menu are restored; a nested detail
+     page depends on data that has to be fetched again. */
+  ZylBridge.onSaveState(function () {
+    if (!currentPage) return null;
+    if (!document.querySelector('.setting-item[data-page="' + currentPage + '"]')) return null;
+    return { page: currentPage };
+  });
+  ZylBridge.onRestoreState(function (st) {
+    /* The value ends up inside a selector — accept page ids only */
+    if (st && typeof st.page === 'string' && /^[a-z][a-z-]*$/.test(st.page) &&
+        document.querySelector('.setting-item[data-page="' + st.page + '"]')) {
+      openPage(st.page);
+    }
+  });
 
   /* ─── 개인정보 보호: 진단 데이터 동의 ───
      토글은 수집 주체의 현재 상태를 그대로 보여준다. 끄면 기기에서는 수집 데몬이

@@ -928,10 +928,96 @@ var telemetryTests = (function () {
 })();
 
 /* ═══════════════════════════════════════════════════════
+   Compositor instance-state store (emulator-app/ui/js/app-state.js)
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ ZylAppStateStore');
+
+var appStateTests = (function () {
+  var Store = require(path.join(__dirname, '..', 'emulator-app', 'ui', 'js', 'app-state.js'));
+  function make(running, onAsk) {
+    return Store.create({
+      ask: onAsk || function () {}, timeoutMs: 40, maxBytes: 100,
+      isRunning: function (id) { return running.indexOf(id) !== -1; }
+    });
+  }
+  function saveThen(store, id) { return new Promise(function (r) { store.saveThen(id, r); }); }
+
+  return Promise.all([
+    asyncTest('a reply is stored and handed back once', function () {
+      var st = make(['a'], null);
+      var p = saveThen(st, 'a');
+      st.onState({ draft: 'x' });
+      return p.then(function () {
+        assert.deepStrictEqual(st.take('a'), { found: true, state: { draft: 'x' } });
+        assert.deepStrictEqual(st.take('a'), { found: false }, 'one-shot');
+      });
+    }),
+    asyncTest('a hung app does not block the switch', function () {
+      var st = make(['a']);
+      var t0 = Date.now();
+      return saveThen(st, 'a').then(function () {
+        assert.ok(Date.now() - t0 < 200, 'finished on the timeout');
+        assert.strictEqual(st.take('a').found, false);
+      });
+    }),
+    asyncTest('a closed app has its state discarded', function () {
+      var st = make([]);                       /* no longer running */
+      var p = saveThen(st, 'a');
+      st.onState({ draft: 'x' });
+      return p.then(function () { assert.strictEqual(st.take('a').found, false); });
+    }),
+    asyncTest('oversized state is dropped', function () {
+      var st = make(['a']);
+      var p = saveThen(st, 'a');
+      st.onState({ blob: new Array(200).join('x') });
+      return p.then(function () { assert.strictEqual(st.take('a').found, false); });
+    }),
+    asyncTest('done fires exactly once even if a late reply follows the timeout', function () {
+      var st = make(['a']);
+      var calls = 0;
+      return new Promise(function (resolve) {
+        st.saveThen('a', function () { calls++; });
+        setTimeout(function () { st.onState({ late: true }); }, 60);
+        setTimeout(resolve, 120);
+      }).then(function () { assert.strictEqual(calls, 1); });
+    }),
+    asyncTest('an older timeout does not cancel a newer request (rapid switching)', function () {
+      /* The inline version this replaced cleared the shared waiter on any
+         timeout, so a reply to the newer request was dropped and lost. */
+      var st = make(['a', 'b']);
+      var first = saveThen(st, 'a');
+      var second;
+      return new Promise(function (resolve) {
+        setTimeout(function () {
+          second = saveThen(st, 'b');          /* newer request, first still pending */
+          setTimeout(function () {             /* first has timed out by now */
+            st.onState({ who: 'b' });          /* the reply to the newer request */
+            resolve();
+          }, 30);
+        }, 20);
+      }).then(function () { return Promise.all([first, second]); }).then(function () {
+        assert.deepStrictEqual(st.take('b'), { found: true, state: { who: 'b' } });
+        assert.strictEqual(st.take('a').found, false);
+      });
+    }),
+    asyncTest('discard removes saved state', function () {
+      var st = make(['a']);
+      var p = saveThen(st, 'a');
+      st.onState({ x: 1 });
+      return p.then(function () {
+        st.discard('a');
+        assert.strictEqual(st.take('a').found, false);
+      });
+    })
+  ]);
+})();
+
+/* ═══════════════════════════════════════════════════════
    Wait for all async tests and report
    ═══════════════════════════════════════════════════════ */
 Promise.all([settingsTests, displayTests, inputTests, sensorsTests,
-             usbTests, powerTests, audioTests, fsTests, updaterTests, telemetryTests])
+             usbTests, powerTests, audioTests, fsTests, updaterTests, telemetryTests,
+             appStateTests])
   .then(function () {
     console.log('\n════════════════════════');
     console.log('Total: ' + total + '  Passed: ' + passed + '  Failed: ' + failed);

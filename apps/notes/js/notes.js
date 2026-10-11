@@ -196,14 +196,18 @@
     btnSortName.addEventListener('click', function () { setSortMode('name'); });
   }
 
-  function openNote(filename) {
-    currentNote = filename;
-    if (titleEl) titleEl.value = filename.replace('.txt', '');
-    if (bodyEl) bodyEl.value = '';
+  function showEditor() {
     if (list) list.classList.add('hidden');
     if (editor) editor.classList.remove('hidden');
     if (document.getElementById('header')) document.getElementById('header').classList.add('hidden');
     if (listControls) listControls.classList.add('hidden');
+  }
+
+  function openNote(filename) {
+    currentNote = filename;
+    if (titleEl) titleEl.value = filename.replace('.txt', '');
+    if (bodyEl) bodyEl.value = '';
+    showEditor();
     /* 파일 내용 요청 */
     ZylBridge.sendToSystem({
       type: 'service.request', service: 'fs', method: 'getFileContent', params: { path: 'Documents/Notes/' + filename }
@@ -274,10 +278,30 @@
     currentNote = null;
     if (titleEl) titleEl.value = '';
     if (bodyEl) bodyEl.value = '';
-    if (list) list.classList.add('hidden');
-    if (editor) editor.classList.remove('hidden');
-    if (document.getElementById('header')) document.getElementById('header').classList.add('hidden');
-    if (listControls) listControls.classList.add('hidden');
+    showEditor();
+  });
+
+  /* ─── Instance state ───
+     Notes are written to disk only when the user taps save, so switching apps
+     with the editor open used to lose the draft outright. The draft travels
+     with the instance state; restoring must not re-read the file, which would
+     overwrite the unsaved text with what is on disk. */
+  ZylBridge.onSaveState(function () {
+    if (!editor || editor.classList.contains('hidden')) return null;
+    return {
+      editing: true,
+      note: currentNote,
+      title: titleEl ? titleEl.value : '',
+      body: bodyEl ? bodyEl.value : ''
+    };
+  });
+
+  ZylBridge.onRestoreState(function (st) {
+    if (!st || st.editing !== true) return;
+    currentNote = st.note || null;
+    if (titleEl) titleEl.value = String(st.title || '');
+    if (bodyEl) bodyEl.value = String(st.body || '');
+    showEditor();
   });
 
   /* ── Formatting toolbar ── */

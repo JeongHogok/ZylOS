@@ -277,11 +277,28 @@
   /* ─── Scientific mode toggle ─── */
   if (btnMode) {
     btnMode.addEventListener('click', function () {
-      sciMode = !sciMode;
-      btnMode.classList.toggle('active', sciMode);
-      if (sciKeypad) sciKeypad.classList.toggle('hidden', !sciMode || historyVisible);
+      setSciMode(!sciMode);
     });
   }
+
+  function setSciMode(on) {
+    sciMode = !!on;
+    if (btnMode) btnMode.classList.toggle('active', sciMode);
+    if (sciKeypad) sciKeypad.classList.toggle('hidden', !sciMode || historyVisible);
+  }
+
+  /* ─── Instance state: a half-typed calculation survives switching apps ─── */
+  ZylBridge.onSaveState(function () {
+    return { current: current, expression: expression, lastOp: lastOp, sciMode: sciMode };
+  });
+  ZylBridge.onRestoreState(function (st) {
+    if (!st) return;
+    current = String(st.current !== undefined ? st.current : '0');
+    expression = String(st.expression || '');
+    lastOp = !!st.lastOp;
+    setSciMode(st.sciMode);
+    update();
+  });
 
   /* ─── Scientific keypad handler ─── */
   if (sciKeypad) {
