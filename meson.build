@@ -1,6 +1,9 @@
 project('zyl-os', 'c',
   version: '0.1.0',
-  default_options: ['c_std=c11', 'warning_level=2'],
+  # gnu11, not c11: with strict ISO mode glibc hides POSIX declarations
+  # (mkstemp, lstat, symlink, strdup...) behind feature macros, which this
+  # tree had been patching file by file with #define _GNU_SOURCE.
+  default_options: ['c_std=gnu11', 'warning_level=2'],
 )
 
 # ═══════════════════════════════════════════════════════════

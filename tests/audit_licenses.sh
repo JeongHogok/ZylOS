@@ -27,8 +27,10 @@ if [ ! -f "$LICENSE_FILE" ]; then
 fi
 
 # ─── Rust dependencies from Cargo.toml ───
+# 'path' is excluded because [[bin]] and [lib] declare `path = "src/..."`,
+# which the key extraction below would otherwise read as a crate name.
 echo "■ Rust Dependencies (emulator-app/Cargo.toml)"
-RUST_DEPS=$(grep -E '^[a-z][-a-z_0-9]+ *=' emulator-app/Cargo.toml | grep -v '^\[' | sed 's/ *=.*//' | grep -v -E '^(name|version|edition|description|license|strip|lto|codegen-units)$' | sort -u)
+RUST_DEPS=$(grep -E '^[a-z][-a-z_0-9]+ *=' emulator-app/Cargo.toml | grep -v '^\[' | sed 's/ *=.*//' | grep -v -E '^(name|version|edition|description|license|strip|lto|codegen-units|path)$' | sort -u)
 
 for dep in $RUST_DEPS; do
   if grep -qi "$dep" "$LICENSE_FILE"; then
