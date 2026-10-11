@@ -316,6 +316,22 @@ var ZylBridge = (function () {
 
   /* ─── Incoming Message Handler (emulator → app iframe) ─── */
 
+  /* Set after the keyboard edits a field; the next touch on the app commits
+     the composing syllable (moving the caret, tapping "send"). Gated so a
+     plain tap with no typing in between sends nothing. */
+  var _keyboardEditActive = false;
+
+  function onAppTouch() {
+    if (!_keyboardEditActive) return;
+    _keyboardEditActive = false;
+    sendToSystem({ type: 'input.commitComposition' });
+  }
+
+  if (typeof document !== 'undefined' && document.addEventListener) {
+    document.addEventListener('mousedown', onAppTouch, true);
+    document.addEventListener('touchstart', onAppTouch, true);
+  }
+
   window.addEventListener('message', function (event) {
     var msg;
     if (typeof event.data === 'string') {
@@ -369,6 +385,49 @@ var ZylBridge = (function () {
         }
 
         focused.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    }
+
+    /* Atomic text edit from the keyboard, applied in one step with one input
+       event (input-method composition, candidate selection).
+         expect  — text the keyboard believes is just before the caret
+         text    — replaces expect
+         fallbackDelete / fallback — used instead when expect is NOT there:
+                   the field changed behind the keyboard (cleared after send,
+                   rewritten by the app), so replacing would delete the wrong
+                   characters or resurrect a syllable that was already gone.
+       After a fallback we tell the keyboard so it can match its state. */
+    if (msg.type === 'input.text' && msg.data) {
+      var field = document.activeElement;
+      if (field && (field.tagName === 'INPUT' || field.tagName === 'TEXTAREA')) {
+        var d = msg.data;
+        var expect = String(d.expect || '');
+        var selStart = field.selectionStart;
+        var selEnd = field.selectionEnd;
+        /* email/number inputs expose no selection — treat as caret at the end */
+        if (selStart === null || selStart === undefined) {
+          selStart = selEnd = field.value.length;
+        }
+        var from, insert, usedFallback = false;
+        if (selStart === selEnd && selStart >= expect.length &&
+            field.value.slice(selStart - expect.length, selStart) === expect) {
+          from = selStart - expect.length;
+          insert = String(d.text || '');
+        } else {
+          /* A selection or a mismatch both mean the context moved on */
+          var del = parseInt(d.fallbackDelete, 10);
+          if (!(del > 0)) del = 0;
+          from = (selStart !== selEnd) ? selStart : Math.max(0, selStart - del);
+          insert = String(d.fallback || '');
+          usedFallback = true;
+        }
+        field.value = field.value.slice(0, from) + insert + field.value.slice(selEnd);
+        try {
+          field.selectionStart = field.selectionEnd = from + insert.length;
+        } catch (e) { /* input type without selection support — value is set */ }
+        _keyboardEditActive = true;
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        if (usedFallback) sendToSystem({ type: 'input.compositionFallback' });
       }
     }
 

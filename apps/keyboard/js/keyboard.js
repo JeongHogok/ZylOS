@@ -1,7 +1,7 @@
 // ──────────────────────────────────────────────────────────
 // [Clean Architecture] Presentation Layer - UI Component
 //
-// 역할: Zyl OS 가상 키보드 — 다국어 레이아웃 지원 (en/ko/es/ja/zh),
+// 역할: Zyl OS 가상 키보드 — 다국어 레이아웃 지원 (en/ko/es/ja/zh), 한글 조합(ZylHangul),
 //       bigram 기반 예측 변환 후보 바 포함
 // 수행범위: 다국어 QWERTY/한글/스페인어 레이아웃 렌더링,
 //          키 입력 콜백 전달, Shift/Symbol 토글, 언어 순환,
@@ -36,6 +36,57 @@ window.ZylKeyboard = (function () {
 
   /* 현재 입력 필드 텍스트 추적 (예측 변환용) */
   var _currentFieldText = '';
+
+  /* Hangul composition session — only used while the Korean layout is active */
+  var _hangul = (typeof ZylHangul !== 'undefined') ? ZylHangul.create() : null;
+
+  /* Composer to switch to if the receiver could not apply the last edit as
+     planned (see adoptFallback). One keystroke ahead at most. */
+  var _pendingFallback = null;
+
+  /**
+   * Deliver one atomic edit. One keystroke must produce one edit — Backspace
+   * plus characters sent separately would click several times and fire
+   * several input events, so a search box would briefly see a wrong query.
+   *
+   * The receiver (apps/shared/bridge.js) applies "text" in place of "expect"
+   * only if "expect" is really just before the caret. Otherwise the field was
+   * changed behind the keyboard's back — the app cleared it after "send",
+   * say — and it deletes "fallbackDelete" characters and inserts "fallback"
+   * instead, then tells us so we can adopt the matching composer state.
+   */
+  function emitEdit(edit, fallbackDelete, fallback, fallbackComposer) {
+    _pendingFallback = fallbackComposer || null;
+    if (_onKey) {
+      _onKey(null, {
+        expect: edit.expect, text: edit.text,
+        fallbackDelete: fallbackDelete, fallback: fallback
+      });
+    }
+    _currentFieldText = _currentFieldText.slice(0,
+      _currentFieldText.length - edit.expect.length) + edit.text;
+  }
+
+  /**
+   * End the syllable being composed. It is already on screen, so nothing is
+   * sent. Called on non-jamo keys, language switch, hide, and by the
+   * compositor when the user touches the app (moving the caret, tapping a
+   * button) — real input methods commit on any outside interaction.
+   */
+  function commitComposition() {
+    if (_hangul) _hangul.commit();
+    _pendingFallback = null;
+  }
+
+  /**
+   * The receiver applied the fallback of the last edit: make the composer
+   * match what is now in the field, so the next jamo composes onto it.
+   */
+  function adoptFallback() {
+    if (_pendingFallback) _hangul = _pendingFallback;
+    _pendingFallback = null;
+    _currentFieldText = '';
+  }
 
   /* ─── Audio Context (lazy) ─── */
 
@@ -254,6 +305,7 @@ window.ZylKeyboard = (function () {
 
   function setLanguage(lang) {
     if (!LAYOUTS[lang]) return;
+    commitComposition();
     _currentLang = lang;
     _shifted = false;
     _capsLock = false;
@@ -378,6 +430,33 @@ window.ZylKeyboard = (function () {
 
     var key = resolveKey(label);
 
+    /* Korean: jamo go through the composition automaton (ㅎ ㅏ ㄴ → 한) */
+    if (_currentLang === 'ko' && !_symbols && _hangul && ZylHangul.isJamo(key)) {
+      var edit = _hangul.feed(key);
+      /* If the field moved on without us, this key starts a fresh syllable */
+      var fresh = ZylHangul.create();
+      var freshEdit = fresh.feed(key);
+      emitEdit(edit, 0, freshEdit.text, fresh);
+      updatePredictions();
+      if (_shifted && !_capsLock) {
+        _shifted = false;
+        render();
+      }
+      return;
+    }
+
+    /* Backspace while composing peels one jamo off the syllable: 한 → 하 */
+    if (key === 'Backspace' && _hangul && _hangul.isComposing()) {
+      var back = _hangul.backspace();
+      /* If the composing syllable is gone, this is an ordinary Backspace */
+      emitEdit(back, 1, '', ZylHangul.create());
+      updatePredictions();
+      return;
+    }
+
+    /* Any other key (space, enter, punctuation, digits) ends the syllable */
+    commitComposition();
+
     if (_onKey) {
       _onKey(key);
     }
@@ -447,19 +526,19 @@ window.ZylKeyboard = (function () {
     /* 현재 입력 중인 부분 단어를 선택된 후보로 교체하여 onKey로 전달 */
     if (!_onKey) return;
 
-    /* 현재 입력 중인 prefix 길이만큼 Backspace 전송 후 단어 삽입 */
+    /* 현재 입력 중인 prefix 를 선택된 후보 + 공백으로 한 번에 교체.
+       글자 수만큼 Backspace 를 연타하면 키음과 input 이벤트가 그만큼 반복된다. */
     var words = _currentFieldText ? _currentFieldText.trimRight().split(/\s+/) : [];
     var currentPrefix = words.length > 0 ? words[words.length - 1] : '';
 
-    for (var i = 0; i < currentPrefix.length; i++) {
-      _onKey('Backspace');
-    }
-
-    /* 단어 + 공백 삽입 */
-    for (var j = 0; j < word.length; j++) {
-      _onKey(word[j]);
-    }
-    _onKey(' ');
+    /* The composing syllable is part of the prefix and is replaced with it.
+       If the prefix is no longer before the caret, insert without deleting —
+       never erase characters we cannot account for. */
+    commitComposition();
+    _onKey(null, {
+      expect: currentPrefix, text: word + ' ',
+      fallbackDelete: 0, fallback: word + ' '
+    });
 
     /* 예측 컨텍스트 업데이트 */
     if (window.ZylPrediction) {
@@ -594,6 +673,7 @@ window.ZylKeyboard = (function () {
   }
 
   function hide() {
+    commitComposition();
     if (_container) {
       _container.classList.remove('visible');
     }
@@ -607,6 +687,10 @@ window.ZylKeyboard = (function () {
     _onKey = callback;
   }
 
+  function isComposing() {
+    return !!(_hangul && _hangul.isComposing());
+  }
+
   function setSoundEnabled(v) { _soundEnabled = !!v; }
   function setVibrationEnabled(v) { _vibrationEnabled = !!v; }
   function getSoundEnabled() { return _soundEnabled; }
@@ -618,6 +702,9 @@ window.ZylKeyboard = (function () {
     hide: hide,
     isVisible: isVisible,
     setOnKey: setOnKey,
+    isComposing: isComposing,
+    commitComposition: commitComposition,
+    adoptFallback: adoptFallback,
     setLanguage: setLanguage,
     getLanguage: getLanguage,
     setEnabledLanguages: setEnabledLanguages,
