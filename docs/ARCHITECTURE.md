@@ -197,6 +197,58 @@ URI 기반 앱 간 데이터 공유 게이트웨이.
 
 에뮬레이터 구현: 브라우저 Web API (hal-browser.js)
 
+### 폼팩터 아키텍처 (board × profile)
+
+Zyl OS는 하나의 OS에 N개 폼팩터 프로파일을 둔다. 폼팩터마다 별도 OS를 두면
+유지보수가 N배가 되고 `verify-all.sh`가 지켜주는 일관성이 깨진다.
+
+**빌드 타임 — 무엇을 담을지**
+
+```bash
+meson setup builddir -Dboard=bpi-f3 -Dprofile=tv
+```
+
+| 축 | 소유 | 역할 |
+|---|---|---|
+| `-Dboard` | `board/<id>/meson.build` | SoC, arch, HAL 백엔드, DTS, 크로스 파일, **지원 폼팩터 선언** |
+| `-Dprofile` | `meson.build` 의 `zyl_profile_extras` | 빌드/설치할 C 서비스 집합 |
+
+보드가 선언하지 않은 조합은 configure 단계에서 실패한다
+(`generic-x86_64 × phone` → 모뎀/PMIC 없음, `bpi-f3 × watch` → 전력 예산 불가).
+`system/zyl-os.target` 은 `.target.in` 에서 생성되므로 `Wants=` 가 실제 빌드된
+유닛 집합과 어긋날 수 없다.
+
+프로파일별 서비스 수: phone 26 / auto 24 / pda 24 / tablet 24 / desktop 23 /
+watch 22 / tv 21 / appliance 16.
+
+**런타임 — 어떻게 보일지**
+
+| 파일 | 역할 |
+|---|---|
+| `apps/shared/form-factor.js` | 8개 프로파일 테이블(navModel/inputModel/fontScale/touchTarget), 감지, 오버라이드, `<html>` 에 `.ff-<id>` + `--ff-*` 적용 |
+| `apps/shared/focus-nav.js` | 방향 포커스 내비게이션 — 포인터 없는 기기(리모컨 D-pad, 로터리, 크라운)용 공간 탐색 |
+| `apps/shared/responsive.css` | 폼팩터 변수, 포커스 링, 상태바/선택 정책 |
+| `app.json` 의 `formFactors` | 앱이 지원하는 기기 종류. `app-registry.isHiddenFromGrid` 가 걸러낸다 |
+
+두 모듈은 로드 시 자가 적용되므로 앱은 opt-in 코드가 필요 없다.
+
+**폼팩터 결정 우선순위**
+
+1. 사용자/프로비저닝 오버라이드 (설정 > 기기 유형) — 커스텀 단말·PDA·TV 등
+2. 기하 + 입력 능력 감지 — phone/tablet/tv/desktop/watch 자동 판별
+
+Zyl OS는 디바이스 픽셀을 레이아웃 픽셀로 1:1 매핑하므로 크기로는 폰과 태블릿을
+구분할 수 없다. 종횡비가 유일한 신호다(폰 16:9 이상, 태블릿 16:10 이하).
+`auto`/`appliance`/`pda` 는 기하적 서명이 없어 오버라이드가 필요하다.
+
+**루트 스케일링 주의**
+
+앱 CSS는 px로 작성되어 있다(1,776개 px 값, rem 0개). 폼팩터 적응은 루트 `zoom`
+으로 처리하는데, legacy `zoom` 속성은 표준 캐스케이드 밖에서 파싱되어 `var()`
+치환을 **무시한다**. 따라서 `ZylFormFactor.apply()` 가 인라인으로 적용하며
+CSS에 `zoom: var(...)` 를 쓰면 조용히 1이 된다. `zoom` 은 vw/vh 를 스케일하지
+않으므로(앱 CSS에 27개) 해당 값은 폼팩터 변수로 바꿔야 한다.
+
 ### Apps (apps/ — 22개 시스템 앱)
 - 모든 앱은 HTML/CSS/JS (ES5, WebKitGTK에서 실행)
 - 시스템 앱: home, lockscreen, statusbar, oobe, settings, browser, files, terminal, camera, gallery, music, clock, calc, notes, weather, store, phone, messages, contacts, keyboard, shared
