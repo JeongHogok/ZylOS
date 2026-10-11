@@ -37,7 +37,7 @@
 }
 
 body {
-  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', 'Consolas', 'Liberation Mono', monospace;
+  font-family: var(--zyl-font-mono);
   background: var(--bg);
   color: var(--text);
   height: var(--ff-vh);

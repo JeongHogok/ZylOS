@@ -36,7 +36,7 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Noto Sans KR', sans-serif;
+  font-family: var(--zyl-font-sans);
   background: var(--bg);
   color: var(--text);
   height: var(--ff-vh);

@@ -307,6 +307,9 @@ window.ZylKeyboard = (function () {
     if (!LAYOUTS[lang]) return;
     commitComposition();
     _currentLang = lang;
+    /* Key caps follow the typing language, not the host page: a kana or hanzi
+       key drawn with Korean glyph shapes reads as the wrong script. */
+    if (_container) _container.setAttribute('lang', lang);
     _shifted = false;
     _capsLock = false;
     _symbols = false;
@@ -663,6 +666,7 @@ window.ZylKeyboard = (function () {
     _capsLock = false;
     _symbols = false;
     _container.style.setProperty('--kb-key-height', _keyHeight + 'px');
+    _container.setAttribute('lang', _currentLang);
     render();
   }
 

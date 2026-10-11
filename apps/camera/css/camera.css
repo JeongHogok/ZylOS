@@ -10,7 +10,7 @@
    실제 디바이스 구동 기준이며, mock/demo 등 하드코딩 데이터가 있어서는 안 된다
    ────────────────────────────────────────────────────────── */
 * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none; }
-body { font-family:-apple-system,BlinkMacSystemFont,'Noto Sans KR',sans-serif; background:#000; color:#fff; width:var(--ff-vw); height:var(--ff-vh); overflow:hidden; }
+body { font-family:var(--zyl-font-sans); background:#000; color:#fff; width:var(--ff-vw); height:var(--ff-vh); overflow:hidden; }
 .hidden { display:none !important; }
 #viewfinder { position:fixed; top:0; left:0; right:0; bottom:180px; overflow:hidden; }
 #viewfinder-gradient { position:absolute; inset:0; background:radial-gradient(ellipse at 50% 40%,#1a3a5c 0%,#0a1520 50%,#050a10 100%); }

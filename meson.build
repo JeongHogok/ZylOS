@@ -133,6 +133,11 @@ configure_file(
 
 install_data('system/timesyncd.conf', install_dir: get_option('sysconfdir') / 'systemd')
 
+# Native font defaults + per-language CJK glyph selection (web apps use
+# apps/shared/fonts.css). Requires the Noto packages listed in DEPLOYMENT_GUIDE.
+install_data('system/fonts/50-zyl-fonts.conf',
+             install_dir: get_option('sysconfdir') / 'fonts' / 'conf.d')
+
 # Install recovery scripts
 install_data('system/recovery/recovery.sh',       install_dir: get_option('datadir') / 'zyl-os' / 'recovery', install_mode: 'rwxr-xr-x')
 install_data('system/recovery/factory-reset.sh',  install_dir: get_option('datadir') / 'zyl-os' / 'recovery', install_mode: 'rwxr-xr-x')

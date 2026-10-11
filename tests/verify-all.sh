@@ -93,6 +93,19 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────
+# I3: 글꼴은 OS 스택 경유 — 앱이 글꼴을 직접 지정하면 실기기에 없는 글꼴
+#     (-apple-system, Segoe UI)로 떨어지거나 한·중·일 자형이 섞인다
+RAW_FONTS=$(grep -rnE "font-family:" "$ROOT/apps" --include='*.css' 2>/dev/null \
+  | grep -v "/shared/fonts.css" | grep -vE "font-family:\s*(inherit|var\(--zyl-font-)" || true)
+if [ -n "$RAW_FONTS" ]; then
+  warn "글꼴을 직접 지정한 앱 CSS (var(--zyl-font-sans|mono) 사용):\n$(echo "$RAW_FONTS" | sed "s|$ROOT/||")"
+else
+  pass "앱 글꼴이 OS 스택(--zyl-font-*) 경유"
+fi
+if ! grep -q "system/fonts/50-zyl-fonts.conf" "$ROOT/meson.build"; then
+  warn "fontconfig 설정이 설치되지 않음 (meson.build)"
+fi
+
 section "apps/ — Clean Architecture 헤더"
 
 # A7: JS 파일에 Clean Architecture 헤더 존재 확인

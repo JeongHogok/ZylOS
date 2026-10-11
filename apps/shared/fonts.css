@@ -1,0 +1,78 @@
+/* ──────────────────────────────────────────────────────────
+   [Clean Architecture] Shared Layer - Typography
+   Role: The OS font stacks — every app and the compositor-hosted keyboard
+         use these instead of naming fonts themselves
+   Scope: Sans and mono stacks, per-language CJK glyph selection,
+          colour emoji fallback, host fallbacks for the emulator
+   Dependency: Fonts installed by the rootfs (system/fonts/); lang attribute
+               set by zylI18n on <html> and by the keyboard on its container
+   SOLID: SRP — font selection only
+          OCP — a new script is one :lang() block
+
+   Clean Architecture, SOLID principles, i18n rules strictly followed
+   Built for real device runtime; no mock/demo or hardcoded data allowed
+   ────────────────────────────────────────────────────────── */
+
+/* Why per-language stacks: Han unification gives Japanese, Chinese and Korean
+   the same code points for many characters (直 骨 角 ...), but each language
+   draws them differently. One fixed CJK font makes two of the three read as
+   foreign. The language of the text picks the variant.
+
+   Order inside each stack: Latin first (consistent digits and punctuation),
+   then the language's CJK face, then other CJK faces, then colour emoji, then
+   the host's own UI font — the emulator runs on macOS/Windows/Linux hosts
+   without Noto installed, where system-ui picks the right native CJK face. */
+
+:root {
+  --zyl-font-sans: 'Noto Sans', 'Noto Sans CJK KR', 'Noto Sans CJK JP',
+                   'Noto Sans CJK SC', 'Noto Color Emoji',
+                   system-ui, -apple-system, sans-serif;
+  --zyl-font-mono: 'Noto Sans Mono', 'Noto Sans Mono CJK KR',
+                   ui-monospace, 'SF Mono', 'Cascadia Code', 'Liberation Mono',
+                   'Noto Color Emoji', monospace;
+}
+
+:lang(ko) {
+  --zyl-font-sans: 'Noto Sans', 'Noto Sans CJK KR', 'Noto Color Emoji',
+                   system-ui, -apple-system, sans-serif;
+  --zyl-font-mono: 'Noto Sans Mono', 'Noto Sans Mono CJK KR',
+                   ui-monospace, 'SF Mono', 'Liberation Mono',
+                   'Noto Color Emoji', monospace;
+}
+
+:lang(ja) {
+  --zyl-font-sans: 'Noto Sans', 'Noto Sans CJK JP', 'Noto Color Emoji',
+                   system-ui, -apple-system, sans-serif;
+  --zyl-font-mono: 'Noto Sans Mono', 'Noto Sans Mono CJK JP',
+                   ui-monospace, 'SF Mono', 'Liberation Mono',
+                   'Noto Color Emoji', monospace;
+}
+
+:lang(zh) {
+  --zyl-font-sans: 'Noto Sans', 'Noto Sans CJK SC', 'Noto Color Emoji',
+                   system-ui, -apple-system, sans-serif;
+  --zyl-font-mono: 'Noto Sans Mono', 'Noto Sans Mono CJK SC',
+                   ui-monospace, 'SF Mono', 'Liberation Mono',
+                   'Noto Color Emoji', monospace;
+}
+
+/* Traditional Chinese regions draw Han differently again */
+:lang(zh-TW), :lang(zh-HK), :lang(zh-Hant) {
+  --zyl-font-sans: 'Noto Sans', 'Noto Sans CJK TC', 'Noto Color Emoji',
+                   system-ui, -apple-system, sans-serif;
+  --zyl-font-mono: 'Noto Sans Mono', 'Noto Sans Mono CJK TC',
+                   ui-monospace, 'SF Mono', 'Liberation Mono',
+                   'Noto Color Emoji', monospace;
+}
+
+/* An element that switches language must re-resolve the stack itself.
+   font-family inherits as an already-resolved list, so changing only the
+   variable on a <span lang="ja"> inside a Korean page would keep the Korean
+   faces. Scoped under body so the compositor's own <html> is not restyled
+   when it loads this file for the keyboard. */
+body [lang] {
+  font-family: var(--zyl-font-sans);
+}
+
+/* Only variables here, so the compositor can load this for the keyboard
+   without restyling its own chrome. Apps apply the stack in runtime.css. */

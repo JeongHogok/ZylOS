@@ -149,6 +149,21 @@ U-Boot bootargs에 추가:
    ```
 3. SD 카드 마운트 후 Zyl OS 파일 설치
 
+### 글꼴 패키지 (필수)
+
+Bianbu 기본 이미지에는 CJK·컬러 이모지 글꼴이 없습니다. 설치하지 않으면
+한국어·일본어·중국어 UI 와 이모지가 전부 두부(▯)로 표시됩니다 — 5개 언어
+번역이 있어도 보이지 않습니다.
+
+```bash
+sudo systemd-nspawn -D $ROOTFS apt-get install -y \
+  fonts-noto-core fonts-noto-mono fonts-noto-cjk fonts-noto-color-emoji
+# Arch 계열 rootfs: pacman -S noto-fonts noto-fonts-cjk noto-fonts-emoji
+```
+
+`ninja install` 이 `/etc/fonts/conf.d/50-zyl-fonts.conf` 를 설치해 기본 글꼴과
+언어별 한자 자형(한·중·일은 같은 코드포인트를 다르게 그린다)을 정합니다.
+
 ### 파일 설치
 ```bash
 ROOTFS=/mnt/sdcard/rootfs
