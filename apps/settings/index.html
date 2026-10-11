@@ -47,6 +47,18 @@
         </div>
         <svg class="chevron" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
       </div>
+
+      <!-- 데이터 사용량 — 청구 주기, 경고, 모바일 데이터 한도 -->
+      <div class="setting-item" data-page="datausage" role="button" tabindex="0">
+        <div class="setting-icon icon-emerald">
+          <svg viewBox="0 0 24 24"><path d="M16 17.01V10h-2v7.01h-3L15 21l4-3.99h-3zM9 3L5 6.99h3V14h2V6.99h3L9 3z"/></svg>
+        </div>
+        <div class="setting-text">
+          <span class="setting-label" data-i18n="settings.datausage">Data usage</span>
+          <span class="setting-value" id="datausage-status"></span>
+        </div>
+        <svg class="chevron" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+      </div>
     </div>
 
     <!-- 디스플레이 & 사운드 -->
@@ -268,6 +280,9 @@
       </div>
     </div>
   </div>
+
+  <!-- 데이터 사용량 서브 페이지 — 처음 열 때 settings.js 가 채운다 (시작 DOM 예산) -->
+  <div id="page-datausage" class="sub-page hidden"></div>
 
   <!-- 날짜 및 시간 서브 페이지 — 목록은 Intl 이 아는 시간대에서 생성 -->
   <div id="page-datetime" class="sub-page hidden">

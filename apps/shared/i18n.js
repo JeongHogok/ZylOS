@@ -3,7 +3,7 @@
 //
 // 역할: 통합 국제화(i18n) 엔진 — 다국어 번역 및 DOM 자동 번역
 // 수행범위: ko/en/ja/zh/es/ar/he 로케일 지원, 파라미터 치환, 날짜 포맷,
-//           복수형(tp), 숫자 포맷(formatNumber), 시간 포맷(formatTime),
+//           복수형(tp), 숫자·용량 포맷(formatNumber, formatBytes), 시간 포맷(formatTime),
 //           RTL 감지(isRtl), data-i18n 속성 번역
 //           앱별 키는 각 앱의 i18n.js에서 addTranslations으로 등록
 // 의존방향: 없음 (다른 앱 모듈이 이 모듈에 의존)
@@ -470,6 +470,15 @@ window.zylI18n = (function () {
     return result;
   }
 
+  /* formatBytes(n): decimal units (1 GB = 10^9 bytes) — what carriers bill and
+     storage vendors print. One decimal from MB up, in the locale's separator. */
+  function formatBytes(n) {
+    n = Number(n) || 0;
+    if (n < 1e6) return formatNumber(Math.round(n / 1e3)) + ' KB';
+    if (n < 1e9) return formatNumber(Math.round(n / 1e5) / 10) + ' MB';
+    return formatNumber(Math.round(n / 1e8) / 10) + ' GB';
+  }
+
   /* ─── Time Formatting ────────────────────────────────────────
    *
    * formatTime(date)
@@ -799,6 +808,7 @@ window.zylI18n = (function () {
     tp: tp,
     formatDate: formatDate,
     formatNumber: formatNumber,
+    formatBytes: formatBytes,
     formatTime: formatTime,
     formatLunarDate: formatLunarDate,
     formatRelative: formatRelative,

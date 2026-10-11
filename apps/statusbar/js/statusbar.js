@@ -54,6 +54,42 @@
   setInterval(updateBattery, 60000);
 
   /* ════════════════════════════════════════════
+   *  Data usage — the netstats daemon cuts mobile data at the limit by
+   *  itself; the status bar is what tells the user, in their language.
+   *  The emulator reports supported:false, so nothing is ever posted there.
+   * ════════════════════════════════════════════ */
+  var dataFlags = null;
+  function postDataNotice(titleKey, body, priority) {
+    ZylBridge.requestService('notification', 'post', {
+      appId: 'com.zylos.settings',
+      channelId: 'datausage',
+      title: zylI18n.t(titleKey),
+      body: body,
+      icon: '',
+      priority: priority
+    });
+  }
+  function checkDataUsage() {
+    ZylBridge.requestService('netstats', 'getUsage').then(function (u) {
+      if (!u || u.supported !== true) return;
+      var prev = dataFlags;
+      dataFlags = { warned: u.warned === true, limited: u.limited === true };
+      /* shortcut: the first reading only sets the baseline, so a crossing while
+         the status bar was not running goes unannounced; persist the last
+         announced state if that turns out to matter. */
+      if (!prev) return;
+      if (dataFlags.limited && !prev.limited) {
+        postDataNotice('notif.data_limit_title', zylI18n.t('notif.data_limit_body'), 2);
+      } else if (dataFlags.warned && !prev.warned) {
+        postDataNotice('notif.data_warning_title', zylI18n.t('notif.data_warning_body',
+          { used: zylI18n.formatBytes(u.mobileRx + u.mobileTx) }), 1);
+      }
+    }, function () { /* service unavailable — try again next round */ });
+  }
+  checkDataUsage();
+  setInterval(checkDataUsage, 60000);
+
+  /* ════════════════════════════════════════════
    *  Quick Settings — toggles with service calls
    * ════════════════════════════════════════════ */
   var qsBtns = {

@@ -75,7 +75,7 @@ var moduleFiles = [
   'notification.js', 'power.js', 'display.js', 'input.js', 'sensors.js',
   'location.js', 'telephony.js', 'contacts.js', 'messaging.js', 'usb.js',
   'user.js', 'credential.js', 'appstore.js', 'updater.js', 'sandbox.js',
-  'logger.js', 'accessibility.js', 'audio.js', 'telemetry.js'
+  'logger.js', 'accessibility.js', 'audio.js', 'telemetry.js', 'netstats.js'
 ];
 
 /* Provide window.addEventListener stub before loading modules */
@@ -931,6 +931,51 @@ var telemetryTests = (function () {
 })();
 
 /* ═══════════════════════════════════════════════════════
+   Data usage policy (JS service, emulator contract)
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ netstats service');
+
+var netstatsTests = (function () {
+  function make() {
+    var store = {};
+    var settingsSvc = {
+      _getSetting: function (cat) { return Promise.resolve(store[cat] || null); },
+      _updateSetting: function (cat, k, v) { store[cat] = store[cat] || {}; store[cat][k] = v; }
+    };
+    return { svc: ns.netstats({ settingsSvc: settingsSvc }), store: store };
+  }
+
+  return Promise.all([
+    asyncTest('the emulator reports usage as unsupported, never invented', function () {
+      return make().svc.getUsage().then(function (u) {
+        assert.deepStrictEqual(u, { supported: false });
+      });
+    }),
+    asyncTest('policy defaults to cycle day 1 with no warning or limit', function () {
+      return make().svc.getPolicy().then(function (p) {
+        assert.deepStrictEqual(p, { cycleDay: 1, warningBytes: 0, limitBytes: 0 });
+      });
+    }),
+    asyncTest('policy is stored and read back', function () {
+      var t = make();
+      return t.svc.setPolicy({ cycleDay: 15, warningBytes: 2e9, limitBytes: 3e9 }).then(function () {
+        return t.svc.getPolicy();
+      }).then(function (p) {
+        assert.deepStrictEqual(p, { cycleDay: 15, warningBytes: 2e9, limitBytes: 3e9 });
+      });
+    }),
+    asyncTest('a cycle day missing from some months is rejected (daemon contract)', function () {
+      var t = make();
+      return t.svc.setPolicy({ cycleDay: 31, warningBytes: 0, limitBytes: 0 }).then(function () {
+        throw new Error('accepted day 31');
+      }, function () {
+        assert.strictEqual(t.store.datausage, undefined, 'nothing stored');
+      });
+    })
+  ]);
+})();
+
+/* ═══════════════════════════════════════════════════════
    Compositor instance-state store (emulator-app/ui/js/app-state.js)
    ═══════════════════════════════════════════════════════ */
 console.log('\n■ ZylAppStateStore');
@@ -1044,6 +1089,17 @@ console.log('\n■ zylI18n time');
   var I = ctx.window.zylI18n || ctx.zylI18n;
   var instant = new Date('2026-10-11T03:30:00Z');
 
+  test('formatBytes uses decimal units and the locale separator', function () {
+    var before = I.getLocale();
+    I.setLocale('en');
+    assert.strictEqual(I.formatBytes(0), '0 KB');
+    assert.strictEqual(I.formatBytes(1500000), '1.5 MB');
+    assert.strictEqual(I.formatBytes(2.25e9), '2.3 GB');
+    I.setLocale('es');
+    assert.strictEqual(I.formatBytes(1.5e9), '1,5 GB');
+    I.setLocale(before);
+  });
+
   test('automatic zone reads the system clock', function () {
     I.setTimeZone('auto');
     assert.strictEqual(I.isAutoTimeZone(), true);
@@ -1133,7 +1189,7 @@ console.log('\n■ zylI18n time');
    ═══════════════════════════════════════════════════════ */
 Promise.all([settingsTests, displayTests, inputTests, sensorsTests,
              usbTests, powerTests, audioTests, fsTests, updaterTests, telemetryTests,
-             appStateTests])
+             netstatsTests, appStateTests])
   .then(function () {
     console.log('\n════════════════════════');
     console.log('Total: ' + total + '  Passed: ' + passed + '  Failed: ' + failed);

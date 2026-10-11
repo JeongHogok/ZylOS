@@ -44,6 +44,9 @@ window.ZylPermissions = (function () {
     /* Only system apps (OOBE, Settings) may read or change telemetry consent —
        a third-party app able to switch collection on would void the consent */
     'telemetry':    ['system'],
+    /* Usage per network and the mobile data limit: Settings and the status
+       bar only — the limit switches mobile data off for every app */
+    'netstats':     ['system'],
     /* Services with no special permission required */
     'device':        [],
     'storage':       [],

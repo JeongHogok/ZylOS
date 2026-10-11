@@ -302,7 +302,8 @@ main, .sub-page {
 .scan-btn.scanning { opacity:0.6; pointer-events:none; }
 
 /* ─── Time zone search field ─── */
-.tz-search {
+.tz-search,
+.field-input {
   width: 100%;
   padding: 10px 12px;
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -312,5 +313,6 @@ main, .sub-page {
   font: inherit;
   font-size: 15px;
 }
+.field-narrow { width: 6.5em; flex: none; text-align: end; }
 .tz-item .setting-text { min-width: 0; }
 .tz-item .setting-value { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

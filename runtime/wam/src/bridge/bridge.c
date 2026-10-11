@@ -824,6 +824,7 @@ static const ServiceRoute SERVICE_ROUTES[] = {
     {"wifi",         "org.zylos.WifiService",        "/org/zylos/WifiService",        "org.zylos.WifiService"},
     {"settings",     "org.zylos.Settings",           "/org/zylos/Settings",           "org.zylos.Settings"},
     {"telemetry",    "org.zylos.Telemetry",          "/org/zylos/Telemetry",          "org.zylos.Telemetry"},
+    {"netstats",     "org.zylos.NetStats",           "/org/zylos/NetStats",           "org.zylos.NetStats"},
     {NULL, NULL, NULL, NULL}
 };
 
@@ -865,6 +866,7 @@ static const ServicePermission SERVICE_PERMISSIONS[] = {
     {"telephony",     {"telephony", NULL}},
     {"location",      {"location", NULL}},
     {"telemetry",     {"system", NULL}},
+    {"netstats",      {"system", NULL}},
     {"device",        {NULL}},
     {"storage",       {NULL}},
     {"apps",          {NULL}},

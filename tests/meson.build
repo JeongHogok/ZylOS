@@ -76,6 +76,16 @@ test('telemetry-consent',
   )
 )
 
+# Test: data usage accounting (double-count guards, billing cycle, mobile
+# data limit). Uses the real daemon source with main() compiled out.
+test('netstats',
+  executable('test-netstats',
+    'test_netstats.c',
+    dependencies: [gio_dep],
+    c_args: ['-DZYL_TEST'],
+  )
+)
+
 # Test: device app scan — a user app must not replace a system app by reusing its id
 test('manifest-scan',
   executable('test-manifest-scan',

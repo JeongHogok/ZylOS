@@ -76,9 +76,12 @@
     page.classList.remove('hidden');
     btnBack.classList.remove('hidden');
     currentPage = pageId;
+    /* Before the title: building re-runs applyTranslations, which resets it */
+    if (pageId === 'datausage') buildDataUsagePage();
 
     headerTitle.textContent = t(PAGE_TITLES[pageId] || 'settings.' + pageId);
     if (pageId === 'datetime') renderTimeZoneState();
+    if (pageId === 'datausage') renderDataUsage();
     return true;
   }
 
@@ -550,12 +553,120 @@
     });
   }
 
+  /* ─── 데이터 사용량 ───
+     측정과 한도 집행은 기기의 netstats 데몬이 한다. 여기서는 보여주고 정책만 바꾼다.
+     GB 는 통신사 청구와 같은 10진 단위(zylI18n.formatBytes 와 동일). 0 또는 빈칸은 "설정 안 함". */
+  var GB = 1e9;
+  var duDay = null, duWarning = null, duLimit = null;
+
+  function duRow(id, labelKey, valueId, hidden) {
+    return '<div class="setting-item no-tap' + (hidden ? ' hidden' : '') + '"' +
+      (id ? ' id="' + id + '"' : '') + '><span class="setting-label" data-i18n="' + labelKey + '"></span>' +
+      (valueId ? '<span class="setting-value" id="' + valueId + '"></span>' : '') + '</div>';
+  }
+
+  function duField(id, labelKey, hintKey, control) {
+    return '<div class="setting-item no-tap"><div class="setting-text">' +
+      '<label class="setting-label" for="' + id + '" data-i18n="' + labelKey + '"></label>' +
+      (hintKey ? '<span class="setting-value" data-i18n="' + hintKey + '"></span>' : '') +
+      '</div>' + control + '</div>';
+  }
+
+  /* Built on first open, like the time zone list: every sub-page in the static
+     HTML is paid for at startup, and this one is rarely visited.
+     Constant markup only — no data goes through innerHTML. */
+  function buildDataUsagePage() {
+    var page = document.getElementById('page-datausage');
+    if (!page || duDay) return;
+    var num = ' class="field-input field-narrow" min="0" step="0.1" inputmode="decimal">';
+    page.innerHTML =
+      '<div class="settings-group hidden" id="datausage-unsupported">' +
+        duRow(null, 'settings.datausage_unsupported') + '</div>' +
+      '<div class="settings-group hidden" id="datausage-usage">' +
+        duRow('datausage-limited', 'settings.datausage_limited', null, true) +
+        duRow(null, 'settings.datausage_mobile', 'datausage-mobile') +
+        duRow(null, 'settings.wifi', 'datausage-wifi') +
+        duRow('datausage-ethernet-row', 'settings.datausage_ethernet', 'datausage-ethernet', true) +
+        duRow(null, 'settings.datausage_since_label', 'datausage-since') + '</div>' +
+      '<div class="settings-group">' +
+        duField('datausage-cycle-day', 'settings.datausage_cycle_day', null,
+          '<select id="datausage-cycle-day" class="field-input field-narrow"></select>') +
+        duField('datausage-warning', 'settings.datausage_warning', 'settings.datausage_off_hint',
+          '<input type="number" id="datausage-warning"' + num) +
+        duField('datausage-limit', 'settings.datausage_limit', 'settings.datausage_limit_desc',
+          '<input type="number" id="datausage-limit"' + num) + '</div>';
+    zylI18n.applyTranslations();
+    duDay = document.getElementById('datausage-cycle-day');
+    duWarning = document.getElementById('datausage-warning');
+    duLimit = document.getElementById('datausage-limit');
+    for (var cd = 1; cd <= 28; cd++) {
+      var opt = document.createElement('option');
+      opt.value = String(cd);
+      opt.textContent = zylI18n.formatNumber(cd);
+      duDay.appendChild(opt);
+    }
+    duDay.addEventListener('change', saveDataPolicy);
+    duWarning.addEventListener('change', saveDataPolicy);
+    duLimit.addEventListener('change', saveDataPolicy);
+  }
+
+  function setText(id, text) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = text;
+  }
+
+  function showEl(id, on) {
+    var el = document.getElementById(id);
+    if (el) el.classList.toggle('hidden', !on);
+  }
+
+  function renderDataUsage() {
+    requestService('netstats', 'getUsage').then(function (u) {
+      var ok = !!u && u.supported === true;
+      showEl('datausage-unsupported', !ok);
+      showEl('datausage-usage', ok);
+      setText('datausage-status', ok ? zylI18n.formatBytes(u.mobileRx + u.mobileTx) : '');
+      if (!ok) return;
+      setText('datausage-mobile', zylI18n.formatBytes(u.mobileRx + u.mobileTx));
+      setText('datausage-wifi', zylI18n.formatBytes(u.wifiRx + u.wifiTx));
+      setText('datausage-ethernet', zylI18n.formatBytes(u.ethernetRx + u.ethernetTx));
+      showEl('datausage-ethernet-row', u.ethernetRx + u.ethernetTx > 0);
+      setText('datausage-since', t('settings.datausage_since', {
+        date: zylI18n.formatDate(new Date(u.cycleStart * 1000))
+      }));
+      showEl('datausage-limited', u.limited === true);
+    }).catch(function () {
+      showEl('datausage-unsupported', true);
+      showEl('datausage-usage', false);
+    });
+    requestService('netstats', 'getPolicy').then(function (p) {
+      if (!p || !duDay) return;
+      duDay.value = String(p.cycleDay || 1);
+      duWarning.value = p.warningBytes > 0 ? String(Math.round(p.warningBytes / GB * 10) / 10) : '';
+      duLimit.value = p.limitBytes > 0 ? String(Math.round(p.limitBytes / GB * 10) / 10) : '';
+    });
+  }
+
+  function gbToBytes(input) {
+    var v = parseFloat(input.value);
+    return v > 0 ? Math.round(v * GB) : 0;
+  }
+
+  function saveDataPolicy() {
+    requestService('netstats', 'setPolicy', {
+      cycleDay: parseInt(duDay.value, 10) || 1,
+      warningBytes: gbToBytes(duWarning),
+      limitBytes: gbToBytes(duLimit)
+    }).then(renderDataUsage, renderDataUsage);   /* either way show what is stored */
+  }
+
   /* ─── 초기화 ─── */
   applyTranslations();
   updateLangChecks();
   renderDeviceClassList();
   updateDeviceClassValue();
   if (tzMenuValue) tzMenuValue.textContent = describeZone(zylI18n.getTimeZone());
+  renderDataUsage();
 
   /* Re-sync language checks when locale changes from outside (e.g. emulator inject) */
   zylI18n.onLocaleChange(function () {
