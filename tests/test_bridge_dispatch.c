@@ -134,12 +134,12 @@ static void test_malformed_json_does_not_respond(void)
     free_manifest_members(&manifest);
 }
 
-/* Regression: a complete top-level value followed by more content is not one
-   message. json-glib builds the leading object, then fails on the trailing
-   token without attaching it to the parser, so unreffing the parser cannot
-   free it — a leak the fuzzer reduced to the 4-byte input "{}{}".
-   json_prevalidate() must reject such input before the parser sees it. */
-static void test_trailing_content_is_rejected(void)
+/* Regression: a bridge message must be exactly one JSON object. Anything with
+   a value before or after it makes json-glib build the leading value and then
+   fail without attaching it to the parser, so unreffing the parser cannot free
+   it. The fuzzer reduced two such leaks to "{}{}" and "0{\"type\":\"x\"}".
+   json_prevalidate() must reject both before the parser sees the data. */
+static void test_only_one_json_object_accepted(void)
 {
     WebKitWebView view = {0};
     ZylAppManifest manifest = make_manifest();
@@ -154,12 +154,33 @@ static void test_trailing_content_is_rejected(void)
                         "{\"type\":\"test.echo\",\"callbackId\":3}{}");
     assert(view.last_script == NULL);
 
-    /* The exact input the fuzzer reduced the leak to. */
+    /* The exact inputs the fuzzer reduced the two leaks to. */
     reset_webview(&view);
     zyl_bridge_dispatch(&view, &manifest, "{}{}");
     assert(view.last_script == NULL);
 
-    /* Trailing whitespace is still a single message and must be accepted. */
+    reset_webview(&view);
+    zyl_bridge_dispatch(&view, &manifest, "0{\"type\":\"te>cho\"}");
+    assert(view.last_script == NULL);
+
+    /* A value before the object is rejected even when the object is valid. */
+    reset_webview(&view);
+    zyl_bridge_dispatch(&view, &manifest,
+                        "0{\"type\":\"test.echo\",\"callbackId\":6}");
+    assert(view.last_script == NULL);
+
+    /* A non-object top level never reaches the parser now. */
+    reset_webview(&view);
+    zyl_bridge_dispatch(&view, &manifest, "[1,2]");
+    assert(view.last_script == NULL);
+
+    /* Surrounding whitespace is still a single message and must be accepted. */
+    reset_webview(&view);
+    zyl_bridge_dispatch(&view, &manifest,
+                        "  {\"type\":\"test.echo\",\"callbackId\":7}  ");
+    assert(view.last_script != NULL);
+    assert(strstr(view.last_script, "_zylCb_7") != NULL);
+
     reset_webview(&view);
     zyl_bridge_dispatch(&view, &manifest,
                         "{\"type\":\"test.echo\",\"callbackId\":4}  \n");
@@ -188,7 +209,7 @@ int main(void)
     RUN_TEST(test_dispatch_supports_legacy_cbid);
     RUN_TEST(test_unknown_type_returns_error);
     RUN_TEST(test_malformed_json_does_not_respond);
-    RUN_TEST(test_trailing_content_is_rejected);
+    RUN_TEST(test_only_one_json_object_accepted);
     printf("\nResults: %d/%d passed\n", tests_pass, tests_run);
     return tests_pass == tests_run ? 0 : 1;
 }
