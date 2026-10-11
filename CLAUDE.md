@@ -104,6 +104,23 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
   (권한 체크는 ZylContentProvider가 직접 수행)
 - content:// URI 형식 엄수: `content://authority/path`
 
+
+### 11. 폼팩터 — 1 OS × N 프로파일
+
+- 새 앱의 `app.json` 에는 `formFactors` 선언 필수 (`["*"]` = 범용).
+  유효 ID는 `apps/shared/form-factor.js` 의 `PROFILES` 가 유일한 권위이며
+  `tests/test_manifests.sh` 가 검증한다
+- 폼팩터별 스타일은 `html.ff-<id>` 선택자로만 작성. 화면 크기 분기를 앱 JS에
+  하드코딩 금지 → `ZylFormFactor.getProfile()` 경유
+- 그리드/레이아웃 기하는 CSS 변수가 단일 출처. JS가 상수로 중복 보관 금지
+  (`home.js` 가 `--grid-cols`/`--grid-rows` 를 읽는 방식 참조)
+- CSS에서 `zoom: var(...)` 사용 금지 — legacy 속성이라 var() 치환이 무시되고
+  조용히 1이 된다. 루트 스케일링은 `ZylFormFactor.apply()` 소관
+- 새 폼팩터 추가 시: `PROFILES` + `meson_options.txt` choices +
+  `meson.build` 의 `zyl_profile_extras` + 보드의 `board_form_factors` 를 함께 갱신
+- 새 보드 추가 시: `board/<id>/meson.build` 에 `board_*` 계약 전부 선언.
+  지원 못 하는 폼팩터는 `board_form_factors` 에서 빼서 빌드가 거부하게 할 것
+
 ---
 
 ## 빌드 & 검증

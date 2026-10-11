@@ -148,9 +148,9 @@ for svc in compositor wam accessibility account alarm apparmor audio auth blueto
         SVC_MISSING=$((SVC_MISSING + 1))
     fi
 done
-if [ ! -f "$PROJECT_DIR/system/zyl-os.target" ]; then
+if [ ! -f "$PROJECT_DIR/system/zyl-os.target.in" ]; then
     echo ""
-    echo "  MISSING: system/zyl-os.target"
+    echo "  MISSING: system/zyl-os.target.in"
     SVC_MISSING=$((SVC_MISSING + 1))
 fi
 if [ $SVC_MISSING -eq 0 ]; then

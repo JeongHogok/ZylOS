@@ -503,7 +503,7 @@ static uint32_t permission_from_string(const char *perm) {
     if (strcmp(perm, "bluetooth")       == 0) return ZYL_PERM_BLUETOOTH;
     if (strcmp(perm, "phone")           == 0) return ZYL_PERM_PHONE;
     if (strcmp(perm, "contacts")        == 0) return ZYL_PERM_CONTACTS;
-    if (strcmp(perm, "notifications")   == 0) return ZYL_PERM_NOTIFICATIONS;
+    if (strcmp(perm, "notifications")   == 0) return ZYL_PERM_NOTIFICATION;
     if (strcmp(perm, "system")          == 0) return ZYL_PERM_SYSTEM;
     return 0;
 }

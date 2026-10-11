@@ -8,6 +8,14 @@
     "storage",
     "audio"
   ],
+  "formFactors": [
+    "phone",
+    "tablet",
+    "tv",
+    "auto",
+    "watch",
+    "desktop"
+  ],
   "type": "system",
   "color": "icon-red",
   "iconKey": "music",

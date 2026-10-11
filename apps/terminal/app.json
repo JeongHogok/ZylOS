@@ -10,6 +10,12 @@
     "files.write",
     "system"
   ],
+  "formFactors": [
+    "phone",
+    "tablet",
+    "desktop",
+    "pda"
+  ],
   "type": "system",
   "color": "icon-gray",
   "iconKey": "terminal",

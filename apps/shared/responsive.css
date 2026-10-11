@@ -1,0 +1,107 @@
+/* ──────────────────────────────────────────────────────────
+   [Clean Architecture] Shared Layer - Form-Factor Style
+   Role: Form-factor adaptation layer — scales and reshapes the UI for
+         phone / tablet / tv / auto / watch / desktop / appliance / pda
+   Scope: Form-factor CSS variables, root scaling, focus ring for
+          pointer-less devices, status bar visibility, geometry backstop
+   Dependency: ZylFormFactor sets .ff-<id> and --ff-* on <html>
+   SOLID: SRP — form-factor presentation only, no app-specific rules
+          OCP — a new form factor is one .ff-<id> block, no edits elsewhere
+
+   Clean Architecture, SOLID principles, i18n rules strictly followed
+   Built for real device runtime; no mock/demo or hardcoded data allowed
+   ────────────────────────────────────────────────────────── */
+
+/* ─── Defaults — valid before ZylFormFactor.apply() runs ─── */
+:root {
+  --ff-font-scale: 1;
+  --ff-touch-target: 44px;
+  --ff-focus-ring: 3px;
+  --ff-focus-color: #4a9eff;
+  --ff-safe-top: 0px;
+  --ff-safe-bottom: 0px;
+}
+
+/* ─── Root scaling ────────────────────────────────────────
+   The app CSS is authored in px against a phone viewport. Scaling the root
+   with zoom adapts every px value, layout box and hit target at once, which
+   is what a 10-foot TV UI and a watch both need.
+
+   Applied by ZylFormFactor.apply() as an inline style, NOT here: the legacy
+   `zoom` property ignores var() substitution, so `zoom: var(--ff-font-scale)`
+   silently computes to 1. The factor lives in the PROFILES table.
+
+   shortcut: zoom does not scale vw/vh units (27 such values exist in
+   apps/*/css). Convert those to px or to a --ff-* variable if an app
+   shows a layout seam on tv/watch/auto.
+   ─────────────────────────────────────────────────────────── */
+
+/* ─── Focus ring — mandatory where there is no pointer ────
+   Without a visible ring a D-pad user cannot tell what is selected.
+   This is an accessibility requirement, not decoration.
+   ─────────────────────────────────────────────────────────── */
+html[data-nav-model="focus"] .zyl-focus,
+html[data-nav-model="focus"] :focus {
+  outline: var(--ff-focus-ring) solid var(--ff-focus-color);
+  outline-offset: 2px;
+}
+
+/* Pointer devices keep the browser default and hide our ring */
+html[data-nav-model="gesture"] .zyl-focus,
+html[data-nav-model="pointer"] .zyl-focus {
+  outline: none;
+}
+
+/* ─── Minimum hit target ──────────────────────────────────
+   Applies to anything the OS marks focusable, so apps inherit correct
+   target sizes on auto (76px) and tv (64px) without per-app CSS.
+   ─────────────────────────────────────────────────────────── */
+html[data-nav-model="focus"] button,
+html[data-nav-model="focus"] [data-focusable] {
+  min-height: var(--ff-touch-target);
+  min-width: var(--ff-touch-target);
+}
+
+/* ─── Status bar ──────────────────────────────────────────
+   TV, automotive, watch and appliance have no phone status bar.
+   ─────────────────────────────────────────────────────────── */
+html.ff-tv #statusbar,
+html.ff-auto #statusbar,
+html.ff-watch #statusbar,
+html.ff-appliance #statusbar {
+  display: none;
+}
+
+/* ─── Watch: round display safe inset ─────────────────────
+   Corners of a round panel are not drawable; keep content inside the
+   inscribed square so nothing is clipped.
+   ─────────────────────────────────────────────────────────── */
+html.ff-watch body {
+  padding: 8% 8%;
+  box-sizing: border-box;
+}
+
+/* ─── Desktop: text selection is expected ─────────────────
+   runtime.css disables selection for touch devices; restore it here.
+   ─────────────────────────────────────────────────────────── */
+html.ff-desktop * {
+  -webkit-user-select: auto;
+  user-select: auto;
+}
+
+/* ─── Geometry backstop ───────────────────────────────────
+   If form-factor.js failed to load, keep large screens readable rather
+   than rendering a phone layout in the top-left corner.
+   ─────────────────────────────────────────────────────────── */
+@media (min-width: 1280px) and (pointer: none) {
+  html:not([data-form-factor]) {
+    zoom: 1.8;
+  }
+}
+
+@media (max-width: 520px) and (max-height: 520px) {
+  html:not([data-form-factor]) body {
+    padding: 8%;
+    box-sizing: border-box;
+  }
+}

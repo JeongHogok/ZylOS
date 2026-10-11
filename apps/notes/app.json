@@ -9,6 +9,12 @@
     "files.read",
     "files.write"
   ],
+  "formFactors": [
+    "phone",
+    "tablet",
+    "desktop",
+    "pda"
+  ],
   "type": "system",
   "color": "icon-amber",
   "iconKey": "notes",

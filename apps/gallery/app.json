@@ -9,6 +9,12 @@
     "files.read",
     "files.delete"
   ],
+  "formFactors": [
+    "phone",
+    "tablet",
+    "tv",
+    "desktop"
+  ],
   "type": "system",
   "color": "icon-pink",
   "iconKey": "gallery",

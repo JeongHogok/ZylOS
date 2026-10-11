@@ -8,6 +8,15 @@
     "i18n",
     "audio"
   ],
+  "formFactors": [
+    "phone",
+    "tablet",
+    "tv",
+    "auto",
+    "watch",
+    "appliance",
+    "pda"
+  ],
   "type": "system",
   "color": "icon-gray",
   "iconKey": "keyboard",

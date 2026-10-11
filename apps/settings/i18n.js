@@ -88,7 +88,17 @@
     'settings.wifi_toggle_error': 'Wi-Fi \uC804\uD658\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4',
     'settings.wifi_scan_error': 'Wi-Fi \uAC80\uC0C9\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4',
     'settings.bt_toggle_error': '\uBE14\uB8E8\uD22C\uC2A4 \uC804\uD658\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4',
-    'settings.bt_scan_error': '\uBE14\uB8E8\uD22C\uC2A4 \uAC80\uC0C9\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4'
+    'settings.bt_scan_error': '\uBE14\uB8E8\uD22C\uC2A4 \uAC80\uC0C9\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4',
+    /* ─── Form factor / device type ─── */
+    'settings.device_class': '\uAE30\uAE30 \uC720\uD615',
+    'settings.ff_phone': '\uD734\uB300\uD3F0',
+    'settings.ff_tablet': '\uD0DC\uBE14\uB9BF',
+    'settings.ff_tv': 'TV',
+    'settings.ff_auto': '\uC790\uB3D9\uCC28',
+    'settings.ff_watch': '\uC6CC\uCE58',
+    'settings.ff_desktop': '\uB370\uC2A4\uD06C\uD1B1',
+    'settings.ff_appliance': '\uAC00\uC804',
+    'settings.ff_pda': 'PDA\u00B7\uC0B0\uC5C5\uC6A9 \uB2E8\uB9D0'
   });
 
   zylI18n.addTranslations('en', {
@@ -170,7 +180,17 @@
     'settings.wifi_toggle_error': 'Failed to toggle Wi-Fi',
     'settings.wifi_scan_error': 'Failed to scan Wi-Fi',
     'settings.bt_toggle_error': 'Failed to toggle Bluetooth',
-    'settings.bt_scan_error': 'Failed to scan Bluetooth'
+    'settings.bt_scan_error': 'Failed to scan Bluetooth',
+    /* ─── Form factor / device type ─── */
+    'settings.device_class': 'Device Type',
+    'settings.ff_phone': 'Phone',
+    'settings.ff_tablet': 'Tablet',
+    'settings.ff_tv': 'TV',
+    'settings.ff_auto': 'Automotive',
+    'settings.ff_watch': 'Watch',
+    'settings.ff_desktop': 'Desktop',
+    'settings.ff_appliance': 'Appliance',
+    'settings.ff_pda': 'PDA / Handheld'
   });
 
   zylI18n.addTranslations('ja', {
@@ -252,7 +272,17 @@
     'settings.wifi_toggle_error': 'Wi-Fi\u306E\u5207\u308A\u66FF\u3048\u306B\u5931\u6557\u3057\u307E\u3057\u305F',
     'settings.wifi_scan_error': 'Wi-Fi\u30B9\u30AD\u30E3\u30F3\u306B\u5931\u6557\u3057\u307E\u3057\u305F',
     'settings.bt_toggle_error': 'Bluetooth\u306E\u5207\u308A\u66FF\u3048\u306B\u5931\u6557\u3057\u307E\u3057\u305F',
-    'settings.bt_scan_error': 'Bluetooth\u30B9\u30AD\u30E3\u30F3\u306B\u5931\u6557\u3057\u307E\u3057\u305F'
+    'settings.bt_scan_error': 'Bluetooth\u30B9\u30AD\u30E3\u30F3\u306B\u5931\u6557\u3057\u307E\u3057\u305F',
+    /* ─── Form factor / device type ─── */
+    'settings.device_class': '\u30C7\u30D0\u30A4\u30B9\u306E\u7A2E\u985E',
+    'settings.ff_phone': '\u30B9\u30DE\u30FC\u30C8\u30D5\u30A9\u30F3',
+    'settings.ff_tablet': '\u30BF\u30D6\u30EC\u30C3\u30C8',
+    'settings.ff_tv': '\u30C6\u30EC\u30D3',
+    'settings.ff_auto': '\u8ECA\u8F09',
+    'settings.ff_watch': '\u30B9\u30DE\u30FC\u30C8\u30A6\u30A9\u30C3\u30C1',
+    'settings.ff_desktop': '\u30C7\u30B9\u30AF\u30C8\u30C3\u30D7',
+    'settings.ff_appliance': '\u5BB6\u96FB',
+    'settings.ff_pda': 'PDA\u30FB\u696D\u52D9\u7528\u7AEF\u672B'
   });
 
   zylI18n.addTranslations('zh', {
@@ -334,7 +364,17 @@
     'settings.wifi_toggle_error': 'Wi-Fi\u5207\u6362\u5931\u8D25',
     'settings.wifi_scan_error': 'Wi-Fi\u626B\u63CF\u5931\u8D25',
     'settings.bt_toggle_error': '\u84DD\u7259\u5207\u6362\u5931\u8D25',
-    'settings.bt_scan_error': '\u84DD\u7259\u626B\u63CF\u5931\u8D25'
+    'settings.bt_scan_error': '\u84DD\u7259\u626B\u63CF\u5931\u8D25',
+    /* ─── Form factor / device type ─── */
+    'settings.device_class': '\u8BBE\u5907\u7C7B\u578B',
+    'settings.ff_phone': '\u624B\u673A',
+    'settings.ff_tablet': '\u5E73\u677F\u7535\u8111',
+    'settings.ff_tv': '\u7535\u89C6',
+    'settings.ff_auto': '\u8F66\u8F7D',
+    'settings.ff_watch': '\u667A\u80FD\u624B\u8868',
+    'settings.ff_desktop': '\u684C\u9762',
+    'settings.ff_appliance': '\u5BB6\u7535',
+    'settings.ff_pda': 'PDA\u00B7\u624B\u6301\u7EC8\u7AEF'
   });
 
   zylI18n.addTranslations('es', {
@@ -416,6 +456,16 @@
     'settings.wifi_toggle_error': 'Error al cambiar Wi-Fi',
     'settings.wifi_scan_error': 'Error al buscar Wi-Fi',
     'settings.bt_toggle_error': 'Error al cambiar Bluetooth',
-    'settings.bt_scan_error': 'Error al buscar Bluetooth'
+    'settings.bt_scan_error': 'Error al buscar Bluetooth',
+    /* ─── Form factor / device type ─── */
+    'settings.device_class': 'Tipo de dispositivo',
+    'settings.ff_phone': 'Tel\u00E9fono',
+    'settings.ff_tablet': 'Tableta',
+    'settings.ff_tv': 'TV',
+    'settings.ff_auto': 'Automoci\u00F3n',
+    'settings.ff_watch': 'Reloj',
+    'settings.ff_desktop': 'Escritorio',
+    'settings.ff_appliance': 'Electrodom\u00E9stico',
+    'settings.ff_pda': 'PDA / Industrial'
   });
 })();

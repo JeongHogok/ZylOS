@@ -17,7 +17,7 @@
 window.ZylAppRegistry = (function () {
   'use strict';
 
-  var _apps = {}; // appId -> {name, path, system, icon, color, permissions, iconSvg}
+  var _apps = {}; // appId -> {name, path, system, icon, color, permissions, formFactors, iconSvg}
 
   /* ═══ OS Policy Config ═══ */
   var OS_CONFIG = {
@@ -39,6 +39,7 @@ window.ZylAppRegistry = (function () {
         icon: app.icon || appName,
         color: app.color || 'icon-blue',
         permissions: app.permissions || [],
+        formFactors: app.formFactors || [],
         iconSvg: app.iconSvg || ''
       };
     });
@@ -72,7 +73,15 @@ window.ZylAppRegistry = (function () {
 
   /* ═══ OS Policy ═══ */
   function isHiddenFromGrid(appId) {
-    return OS_CONFIG.hiddenFromGrid.indexOf(appId) !== -1;
+    if (OS_CONFIG.hiddenFromGrid.indexOf(appId) !== -1) return true;
+    /* Form-factor policy: an app that does not declare this device class must
+       not appear in the launcher — a watch has no terminal, a TV has no dialer.
+       Routed through the existing visibility seam so every consumer inherits it. */
+    var app = _apps[appId];
+    if (app && typeof ZylFormFactor !== 'undefined') {
+      return !ZylFormFactor.supportsApp(app.formFactors);
+    }
+    return false;
   }
 
   function isUndeletable(appId) {

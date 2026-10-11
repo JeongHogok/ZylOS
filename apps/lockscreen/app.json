@@ -10,6 +10,9 @@
     "system",
     "time"
   ],
+  "formFactors": [
+    "*"
+  ],
   "type": "system",
   "role": "lockscreen",
   "color": "icon-blue",

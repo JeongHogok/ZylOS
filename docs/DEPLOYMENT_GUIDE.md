@@ -166,8 +166,15 @@ sudo cp -r apps/* $ROOTFS/usr/share/zyl-os/apps/
 sudo mkdir -p $ROOTFS/usr/share/zyl-os/wam
 sudo cp runtime/wam/src/bridge/bridge.js $ROOTFS/usr/share/zyl-os/wam/
 
-# systemd 서비스 (25개)
-sudo cp system/*.service system/*.target $ROOTFS/usr/lib/systemd/system/
+# systemd 서비스 + 세션 타겟
+# zyl-os.target 은 -Dprofile 에 따라 빌드 디렉토리에 생성된다 (system/ 에는
+# .target.in 템플릿만 있다). 프로파일이 빌드하지 않은 서비스를 Wants= 에
+# 넣지 않으려면 반드시 생성된 파일을 쓸 것.
+sudo cp system/*.service $ROOTFS/usr/lib/systemd/system/
+sudo cp builddir/zyl-os.target $ROOTFS/usr/lib/systemd/system/
+
+# 또는 전체를 프로파일에 맞게 한 번에 설치 (권장)
+#   sudo DESTDIR=$ROOTFS ninja -C builddir install
 
 # 디바이스 트리 오버레이
 sudo cp system/dts/bpi-f3-zyl.dts $ROOTFS/boot/
