@@ -371,6 +371,7 @@ console.log('\n■ ZylFormFactor / ZylFocusNav');
   };
 
   var pointerMode = 'coarse';
+  global.window.location = { search: '' };
   global.window.matchMedia = function (q) {
     return {
       matches: (q.indexOf('pointer: fine') !== -1 && pointerMode === 'fine') ||
@@ -416,6 +417,57 @@ console.log('\n■ ZylFormFactor / ZylFocusNav');
   test('detect: 800x1280 touch → tablet', function () {
     geom(800, 1280);
     assert.strictEqual(FF.detect(), 'tablet');
+  });
+
+  /* ─── container-reported input hardware ─── */
+  function withInput(q, fn) {
+    var prev = global.window.location.search;
+    global.window.location.search = q;
+    try { fn(); } finally { global.window.location.search = prev; }
+  }
+
+  test('hardwareInput reads the container hint from the app URL', function () {
+    withInput('?v=123&zylInput=dpad', function () {
+      assert.strictEqual(FF.hardwareInput(), 'dpad');
+    });
+    withInput('?v=123', function () {
+      assert.strictEqual(FF.hardwareInput(), null);
+    });
+  });
+
+  test('input hardware outranks pointer media queries', function () {
+    /* A host mouse answers "pointer: fine", so geometry alone would say
+       desktop; the container says the device only has a remote. */
+    geom(1920, 1080, 'fine');
+    assert.strictEqual(FF.detect(), 'desktop');
+    withInput('?zylInput=dpad', function () {
+      assert.strictEqual(FF.detect(), 'tv');
+    });
+  });
+
+  test('input hardware distinguishes the geometry-blind form factors', function () {
+    geom(1080, 2400);
+    withInput('?zylInput=crown', function () {
+      assert.strictEqual(FF.detect(), 'watch');
+    });
+    withInput('?zylInput=touch-rotary', function () {
+      assert.strictEqual(FF.detect(), 'auto');
+    });
+    withInput('?zylInput=touch-keypad', function () {
+      assert.strictEqual(FF.detect(), 'pda');
+    });
+    /* A D-pad on a small panel is an appliance, not a TV. */
+    geom(1024, 600, 'none');
+    withInput('?zylInput=dpad', function () {
+      assert.strictEqual(FF.detect(), 'appliance');
+    });
+  });
+
+  test('plain touch hint falls through to geometry', function () {
+    geom(1920, 1080, 'none');
+    withInput('?zylInput=touch', function () {
+      assert.strictEqual(FF.detect(), 'tv');
+    });
   });
 
   /* ─── override ─── */

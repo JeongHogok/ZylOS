@@ -67,10 +67,11 @@ window.ZylFormFactor = (function () {
   var _active = null;
 
   /* ═══ Detection ═══════════════════════════════════════════
-     Geometry + input capability — a FALLBACK only. On a shipped device
-     the form factor comes from the build profile (meson -Dprofile) or
-     from provisioning, which is always authoritative. Detection exists
-     so the emulator and unprovisioned boards still render correctly.
+     Resolution order: container-reported input hardware (?zylInput=) first,
+     then geometry + pointer capability. On a shipped device the build profile
+     (meson -Dprofile) or provisioning is authoritative; the user override
+     below outranks everything. Detection exists so the emulator and
+     unprovisioned boards still render correctly.
 
      Note: Zyl OS maps device pixels to layout pixels 1:1 — a 1080x2400
      panel reports innerWidth 1080 — so size alone cannot separate a
@@ -85,12 +86,37 @@ window.ZylFormFactor = (function () {
   var TABLET_MAX_ASPECT = 1.75;  /* just under 16:9 (1.778) */
   var TABLET_MIN_SHORT_SIDE = 600;
 
+  /**
+   * Input hardware reported by the runtime container (compositor/WAM/emulator)
+   * via the app URL, e.g. "?zylInput=dpad". Media queries cannot see this: a
+   * host mouse answers `pointer: fine` even when the device only has a remote.
+   * The container states the hardware fact; this module still decides the class.
+   * @returns {string|null} 'touch' | 'dpad' | 'crown' | 'mouse-keyboard' | ...
+   */
+  function hardwareInput() {
+    try {
+      var m = /[?&]zylInput=([a-z-]+)/.exec(window.location.search || '');
+      return m ? m[1] : null;
+    } catch (e) {
+      return null; /* no location (sandboxed document) — fall back to geometry */
+    }
+  }
+
   function detect() {
     var w = window.innerWidth || 0;
     var h = window.innerHeight || 0;
     var shortSide = w < h ? w : h;
     var longSide = w < h ? h : w;
     var aspect = shortSide > 0 ? (longSide / shortSide) : 1;
+
+    /* Input hardware is decisive where it exists: a crown means a watch, a
+       D-pad on a large panel means a TV, a rotary dial means a dashboard. */
+    var input = hardwareInput();
+    if (input === 'crown') return 'watch';
+    if (input === 'touch-rotary') return 'auto';
+    if (input === 'touch-keypad') return 'pda';
+    if (input === 'dpad') return longSide >= 1280 ? 'tv' : 'appliance';
+    if (input === 'mouse-keyboard') return 'desktop';
 
     var hasFinePointer = false;
     var hasNoPointer = false;
@@ -215,6 +241,7 @@ window.ZylFormFactor = (function () {
   return {
     PROFILES: PROFILES,
     detect: detect,
+    hardwareInput: hardwareInput,
     getProfile: getProfile,
     getId: getId,
     getAllIds: getAllIds,

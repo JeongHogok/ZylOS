@@ -48,28 +48,38 @@ var ZylConfigUI = (function () {
   }
 
   // ── 프로필 로드 ──
+  // 목록은 device-profiles.json 단일 출처. Tauri 백엔드는 같은 파일을
+  // include_str! 로 컴파일해 들고 있으므로 두 경로가 어긋나지 않는다.
   function loadProfiles() {
-    // 즉시 기본 프로필 렌더링 (화면 빈칸 방지)
-    renderProfiles(getDefaultProfiles());
-
-    // Tauri 백엔드에서 프로필 조회 시도 (있으면 업데이트)
     var result = invoke('get_device_profiles');
     if (result && typeof result.then === 'function') {
       result.then(function (profiles) {
         if (profiles && profiles.length > 0) {
           renderProfiles(profiles);
+        } else {
+          loadProfilesFromFile();
         }
-      }).catch(function () { /* 기본 프로필 유지 */ });
+      }).catch(loadProfilesFromFile);
+      return;
     }
+    // 브라우저 개발 모드: Tauri 없음 → 같은 파일을 직접 읽는다
+    loadProfilesFromFile();
   }
 
-  function getDefaultProfiles() {
-    return [
-      { id: 'zyl-f3-gesture', name: 'BPI-F3 Gesture', description: 'iOS style gesture', soc: 'SpacemiT K1', screen_label: '1080x2400', nav_mode: 'Gesture', has_notch: true, frame_width: 393, frame_height: 852, frame_radius: 52, screen_width: 1080, screen_height: 2400, ram_options: [512, 1024, 2048, 4096] },
-      { id: 'zyl-f3-softkeys', name: 'BPI-F3 Lite', description: '3-button softkeys', soc: 'SpacemiT K1', screen_label: '1080x2340', nav_mode: 'Softkeys', has_notch: false, frame_width: 393, frame_height: 852, frame_radius: 44, screen_width: 1080, screen_height: 2340, ram_options: [512, 1024, 2048] },
-      { id: 'zyl-f3-hardware', name: 'BPI-F3 Classic', description: 'Hardware buttons', soc: 'SpacemiT K1', screen_label: '720x1280', nav_mode: 'Hardware', has_notch: false, frame_width: 380, frame_height: 820, frame_radius: 36, screen_width: 720, screen_height: 1280, ram_options: [512, 1024] }
-    ];
+  function loadProfilesFromFile() {
+    fetch('device-profiles.json').then(function (r) {
+      return r.json();
+    }).then(function (data) {
+      if (data && data.profiles && data.profiles.length > 0) {
+        renderProfiles(data.profiles);
+      }
+    }).catch(function () {
+      /* 목록 없이 렌더하면 선택 불가 — 호스트에 파일이 없는 설치 오류 */
+      var c = document.getElementById('profile-cards');
+      if (c) c.setAttribute('data-load-error', 'device-profiles.json');
+    });
   }
+
 
   function renderProfiles(profiles) {
     var container = document.getElementById('profile-cards');
@@ -253,6 +263,7 @@ var ZylConfigUI = (function () {
       frame_height: _selectedProfile.frame_height,
       frame_radius: _selectedProfile.frame_radius,
       nav_mode: _selectedProfile.nav_mode,
+      input_model: _selectedProfile.input_model || 'touch',
       has_notch: _selectedProfile.has_notch,
       storage_gb: _selectedStorage,
       ram_mb: _selectedRam,

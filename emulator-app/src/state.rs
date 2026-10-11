@@ -13,11 +13,15 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+/// On-screen navigation chrome the emulator draws for a device.
+/// `None` covers devices with no nav chrome at all (TV, watch, dashboard).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
 pub enum NavMode {
     Gesture,
     Softkeys,
     Hardware,
+    None,
 }
 
 impl std::fmt::Display for NavMode {
@@ -26,6 +30,7 @@ impl std::fmt::Display for NavMode {
             NavMode::Gesture => write!(f, "gesture"),
             NavMode::Softkeys => write!(f, "softkeys"),
             NavMode::Hardware => write!(f, "hardware"),
+            NavMode::None => write!(f, "none"),
         }
     }
 }
@@ -41,10 +46,18 @@ pub struct DeviceProfile {
     pub screen_height: u32,
     pub screen_label: String,
     pub nav_mode: NavMode,
+    /// Primary input hardware, passed to the OS as a form-factor hint.
+    /// The OS classifies the form factor; the emulator never declares one.
+    pub input_model: String,
     pub has_notch: bool,
     pub frame_width: u32,
     pub frame_height: u32,
     pub frame_radius: u32,
+}
+
+/// Saved configs written before input_model existed must still load.
+fn default_input_model() -> String {
+    "touch".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -57,6 +70,10 @@ pub struct DeviceConfig {
     pub frame_height: u32,
     pub frame_radius: u32,
     pub nav_mode: NavMode,
+    /// Carried from the profile so the booted session can hand the OS its
+    /// input-hardware hint (see apps/shared/form-factor.js).
+    #[serde(default = "default_input_model")]
+    pub input_model: String,
     pub has_notch: bool,
     pub storage_gb: u32,
     pub ram_mb: u32,

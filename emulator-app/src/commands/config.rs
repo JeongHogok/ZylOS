@@ -10,61 +10,33 @@
 // 에뮬레이터는 실제 디바이스 구동 환경 제공이 목적이며, OS 이미지 영역의 콘텐츠를 포함하지 않는다
 // ──────────────────────────────────────────────────────────
 
-use crate::state::{AppState, DeviceConfig, DeviceProfile, NavMode, SavedDevice};
+use crate::state::{AppState, DeviceConfig, DeviceProfile, SavedDevice};
 use std::fs;
 use std::sync::Mutex;
 use tauri::State;
 
 /// 사전 정의 디바이스 프로필 반환
+///
+/// 목록은 ui/device-profiles.json 단일 출처에서 온다. 설정 UI와 컴포지터도
+/// 같은 파일을 읽으므로 세 곳에 중복 정의하지 않는다.
 #[tauri::command]
 pub fn get_device_profiles() -> Vec<DeviceProfile> {
-    vec![
-        DeviceProfile {
-            id: "zyl-f3-gesture".into(),
-            name: "BPI-F3 Gesture".into(),
-            description: "iOS-style gesture navigation".into(),
-            soc: "SpacemiT K1 (8x X60)".into(),
-            ram_options: vec![512, 1024, 2048, 4096],
-            screen_width: 1080,
-            screen_height: 2400,
-            screen_label: "1080×2400".into(),
-            nav_mode: NavMode::Gesture,
-            has_notch: true,
-            frame_width: 393,
-            frame_height: 852,
-            frame_radius: 52,
-        },
-        DeviceProfile {
-            id: "zyl-f3-softkeys".into(),
-            name: "BPI-F3 Lite".into(),
-            description: "3-button software navigation".into(),
-            soc: "SpacemiT K1 (8x X60)".into(),
-            ram_options: vec![512, 1024, 2048],
-            screen_width: 1080,
-            screen_height: 2340,
-            screen_label: "1080×2340".into(),
-            nav_mode: NavMode::Softkeys,
-            has_notch: false,
-            frame_width: 393,
-            frame_height: 852,
-            frame_radius: 44,
-        },
-        DeviceProfile {
-            id: "zyl-f3-hardware".into(),
-            name: "BPI-F3 Classic".into(),
-            description: "Physical hardware buttons".into(),
-            soc: "SpacemiT K1 (8x X60)".into(),
-            ram_options: vec![512, 1024],
-            screen_width: 720,
-            screen_height: 1280,
-            screen_label: "720×1280".into(),
-            nav_mode: NavMode::Hardware,
-            has_notch: false,
-            frame_width: 380,
-            frame_height: 820,
-            frame_radius: 36,
-        },
-    ]
+    #[derive(serde::Deserialize)]
+    struct ProfileFile {
+        profiles: Vec<DeviceProfile>,
+    }
+
+    // Compiled in: the file ships with the binary, so a missing or malformed
+    // descriptor is a build-time error rather than an empty device list.
+    const RAW: &str = include_str!("../../ui/device-profiles.json");
+
+    match serde_json::from_str::<ProfileFile>(RAW) {
+        Ok(f) => f.profiles,
+        Err(e) => {
+            log::error!("device-profiles.json is malformed: {e}");
+            Vec::new()
+        }
+    }
 }
 
 /// 저장공간 옵션 반환

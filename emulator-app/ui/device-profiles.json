@@ -1,0 +1,120 @@
+{
+  "_comment": [
+    "Virtual device hardware descriptors — the single source for the Rust",
+    "backend (include_str!), the pre-boot config UI and the compositor.",
+    "Do not duplicate this list in JS or Rust.",
+    "",
+    "These are hardware facts only. The OS classifies the form factor itself",
+    "from geometry + input_model (apps/shared/form-factor.js); the emulator",
+    "never declares a form factor.",
+    "",
+    "nav_mode  = on-screen navigation chrome the emulator draws",
+    "            gesture | softkeys | hardware | none",
+    "input_model = primary input hardware, passed to the OS as a hint",
+    "            touch | dpad | crown | mouse-keyboard | touch-rotary | touch-keypad",
+    "screen_*  = panel resolution reported to the OS",
+    "frame_*   = on-screen size of the device frame in the emulator window"
+  ],
+  "profiles": [
+    {
+      "id": "zyl-f3-gesture",
+      "name": "BPI-F3 Gesture",
+      "description": "Gesture navigation (iOS style)",
+      "soc": "SpacemiT K1 (8x X60)",
+      "ram_options": [512, 1024, 2048, 4096],
+      "screen_width": 1080, "screen_height": 2400, "screen_label": "1080x2400",
+      "nav_mode": "gesture", "input_model": "touch", "has_notch": true,
+      "frame_width": 393, "frame_height": 852, "frame_radius": 52
+    },
+    {
+      "id": "zyl-f3-softkeys",
+      "name": "BPI-F3 Lite",
+      "description": "3-button software navigation",
+      "soc": "SpacemiT K1 (8x X60)",
+      "ram_options": [512, 1024, 2048],
+      "screen_width": 1080, "screen_height": 2340, "screen_label": "1080x2340",
+      "nav_mode": "softkeys", "input_model": "touch", "has_notch": false,
+      "frame_width": 393, "frame_height": 852, "frame_radius": 44
+    },
+    {
+      "id": "zyl-f3-hardware",
+      "name": "BPI-F3 Classic",
+      "description": "Physical hardware buttons",
+      "soc": "SpacemiT K1 (8x X60)",
+      "ram_options": [512, 1024],
+      "screen_width": 720, "screen_height": 1280, "screen_label": "720x1280",
+      "nav_mode": "hardware", "input_model": "touch", "has_notch": false,
+      "frame_width": 380, "frame_height": 820, "frame_radius": 36
+    },
+    {
+      "id": "zyl-tab-10",
+      "name": "Zyl Tablet 10",
+      "description": "10 inch tablet, gesture navigation",
+      "soc": "SpacemiT K1 (8x X60)",
+      "ram_options": [2048, 4096, 8192],
+      "screen_width": 1600, "screen_height": 2560, "screen_label": "1600x2560",
+      "nav_mode": "gesture", "input_model": "touch", "has_notch": false,
+      "frame_width": 480, "frame_height": 768, "frame_radius": 24
+    },
+    {
+      "id": "zyl-tv-fhd",
+      "name": "Zyl TV FHD",
+      "description": "Living room display, remote D-pad only",
+      "soc": "SpacemiT K1 (8x X60)",
+      "ram_options": [2048, 4096],
+      "screen_width": 1920, "screen_height": 1080, "screen_label": "1920x1080",
+      "nav_mode": "none", "input_model": "dpad", "has_notch": false,
+      "frame_width": 960, "frame_height": 540, "frame_radius": 8
+    },
+    {
+      "id": "zyl-watch-round",
+      "name": "Zyl Watch",
+      "description": "Round panel, crown and bezel input",
+      "soc": "SpacemiT K1 (low power bin)",
+      "ram_options": [512, 1024],
+      "screen_width": 454, "screen_height": 454, "screen_label": "454x454",
+      "nav_mode": "none", "input_model": "crown", "has_notch": false,
+      "frame_width": 240, "frame_height": 240, "frame_radius": 120
+    },
+    {
+      "id": "zyl-desktop-fhd",
+      "name": "Zyl Desktop",
+      "description": "Monitor with mouse and keyboard",
+      "soc": "x86_64 (generic)",
+      "ram_options": [4096, 8192, 16384],
+      "screen_width": 1920, "screen_height": 1080, "screen_label": "1920x1080",
+      "nav_mode": "none", "input_model": "mouse-keyboard", "has_notch": false,
+      "frame_width": 1000, "frame_height": 563, "frame_radius": 6
+    },
+    {
+      "id": "zyl-auto-dash",
+      "name": "Zyl Auto Dashboard",
+      "description": "In-vehicle head unit, touch and rotary dial",
+      "soc": "SpacemiT K1 (8x X60)",
+      "ram_options": [2048, 4096],
+      "screen_width": 1920, "screen_height": 720, "screen_label": "1920x720",
+      "nav_mode": "none", "input_model": "touch-rotary", "has_notch": false,
+      "frame_width": 800, "frame_height": 300, "frame_radius": 12
+    },
+    {
+      "id": "zyl-appliance-panel",
+      "name": "Zyl Appliance Panel",
+      "description": "Fixed-function panel, D-pad keys",
+      "soc": "SpacemiT K1 (8x X60)",
+      "ram_options": [512, 1024],
+      "screen_width": 1024, "screen_height": 600, "screen_label": "1024x600",
+      "nav_mode": "none", "input_model": "dpad", "has_notch": false,
+      "frame_width": 512, "frame_height": 300, "frame_radius": 10
+    },
+    {
+      "id": "zyl-pda-rugged",
+      "name": "Zyl PDA Rugged",
+      "description": "Industrial handheld, touch with keypad",
+      "soc": "SpacemiT K1 (8x X60)",
+      "ram_options": [1024, 2048, 4096],
+      "screen_width": 480, "screen_height": 800, "screen_label": "480x800",
+      "nav_mode": "softkeys", "input_model": "touch-keypad", "has_notch": false,
+      "frame_width": 360, "frame_height": 600, "frame_radius": 18
+    }
+  ]
+}
