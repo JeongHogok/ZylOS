@@ -178,8 +178,16 @@ static gboolean json_prevalidate(const char *str)
     int bracket_depth = 0;
     gboolean in_string = FALSE;
     gboolean escaped   = FALSE;
+    gboolean top_closed = FALSE;   /* one complete top-level value already read */
 
     for (const char *p = str; *p; p++) {
+        /* Reject trailing content after the first complete top-level value.
+           A bridge message is exactly one JSON object, and "{}{}" is not one:
+           json-glib builds the object for the leading "{}", then fails on the
+           trailing "{" without attaching it to the parser, so unreffing the
+           parser cannot free it. Found by tests/fuzz/fuzz_json_dispatch. */
+        if (top_closed && !g_ascii_isspace((guchar)*p)) return FALSE;
+
         if (escaped) { escaped = FALSE; continue; }
         if (*p == '\\' && in_string) { escaped = TRUE; continue; }
         if (*p == '"') { in_string = !in_string; continue; }
@@ -192,6 +200,8 @@ static gboolean json_prevalidate(const char *str)
         case ']': bracket_depth--; break;
         }
         if (brace_depth < 0 || bracket_depth < 0) return FALSE;
+        if (brace_depth == 0 && bracket_depth == 0 && (*p == '}' || *p == ']'))
+            top_closed = TRUE;
     }
 
     return (brace_depth == 0 && bracket_depth == 0 && !in_string);

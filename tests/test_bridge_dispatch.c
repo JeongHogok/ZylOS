@@ -134,6 +134,50 @@ static void test_malformed_json_does_not_respond(void)
     free_manifest_members(&manifest);
 }
 
+/* Regression: a complete top-level value followed by more content is not one
+   message. json-glib builds the leading object, then fails on the trailing
+   token without attaching it to the parser, so unreffing the parser cannot
+   free it — a leak the fuzzer reduced to the 4-byte input "{}{}".
+   json_prevalidate() must reject such input before the parser sees it. */
+static void test_trailing_content_is_rejected(void)
+{
+    WebKitWebView view = {0};
+    ZylAppManifest manifest = make_manifest();
+
+    zyl_bridge_init();
+    assert(zyl_bridge_register_handler("test.echo", test_handler,
+                                       "{\"value\":1}") == 0);
+
+    /* The leading object alone is a valid message with a callbackId, so if
+       prevalidation let this through the handler would have replied. */
+    zyl_bridge_dispatch(&view, &manifest,
+                        "{\"type\":\"test.echo\",\"callbackId\":3}{}");
+    assert(view.last_script == NULL);
+
+    /* The exact input the fuzzer reduced the leak to. */
+    reset_webview(&view);
+    zyl_bridge_dispatch(&view, &manifest, "{}{}");
+    assert(view.last_script == NULL);
+
+    /* Trailing whitespace is still a single message and must be accepted. */
+    reset_webview(&view);
+    zyl_bridge_dispatch(&view, &manifest,
+                        "{\"type\":\"test.echo\",\"callbackId\":4}  \n");
+    assert(view.last_script != NULL);
+    assert(strstr(view.last_script, "_zylCb_4") != NULL);
+
+    /* A nested object closing mid-message must not be mistaken for the end. */
+    reset_webview(&view);
+    zyl_bridge_dispatch(&view, &manifest,
+                        "{\"type\":\"test.echo\",\"d\":{\"k\":[1,2]},\"callbackId\":5}");
+    assert(view.last_script != NULL);
+    assert(strstr(view.last_script, "_zylCb_5") != NULL);
+
+    zyl_bridge_cleanup();
+    reset_webview(&view);
+    free_manifest_members(&manifest);
+}
+
 /* Pull real implementation into this test binary. */
 #include "../runtime/wam/src/bridge/bridge.c"
 
@@ -144,6 +188,7 @@ int main(void)
     RUN_TEST(test_dispatch_supports_legacy_cbid);
     RUN_TEST(test_unknown_type_returns_error);
     RUN_TEST(test_malformed_json_does_not_respond);
+    RUN_TEST(test_trailing_content_is_rejected);
     printf("\nResults: %d/%d passed\n", tests_pass, tests_run);
     return tests_pass == tests_run ? 0 : 1;
 }
