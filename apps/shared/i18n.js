@@ -700,6 +700,11 @@ window.zylI18n = (function () {
     document.querySelectorAll('[data-i18n-placeholder]').forEach(function (el) {
       el.placeholder = t(el.getAttribute('data-i18n-placeholder'));
     });
+    /* Controls with no visible text of their own (switches) still need a
+       spoken name in the user's language */
+    document.querySelectorAll('[data-i18n-aria-label]').forEach(function (el) {
+      el.setAttribute('aria-label', t(el.getAttribute('data-i18n-aria-label')));
+    });
     document.documentElement.lang = currentLocale;
     applyDirection(currentLocale);
   }

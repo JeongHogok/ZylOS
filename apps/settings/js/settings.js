@@ -579,7 +579,17 @@
     var page = document.getElementById('page-datausage');
     if (!page || duDay) return;
     var num = ' class="field-input field-narrow" min="0" step="0.1" inputmode="decimal">';
+    var toggle = function (id, labelKey) {
+      return '<label class="toggle"><input type="checkbox" id="' + id + '" data-i18n-aria-label="' +
+        labelKey + '"><span class="toggle-slider"></span></label>';
+    };
     page.innerHTML =
+      /* Shown only with a modem: switching mobile data off, roaming (off by default) */
+      '<div class="settings-group hidden" id="mobiledata-group">' +
+        duField('mobiledata-toggle', 'settings.datausage_mobile', null,
+          toggle('mobiledata-toggle', 'settings.datausage_mobile')) +
+        duField('roaming-toggle', 'settings.data_roaming', 'settings.data_roaming_desc',
+          toggle('roaming-toggle', 'settings.data_roaming')) + '</div>' +
       '<div class="settings-group hidden" id="datausage-unsupported">' +
         duRow(null, 'settings.datausage_unsupported') + '</div>' +
       '<div class="settings-group hidden" id="datausage-usage">' +
@@ -606,6 +616,8 @@
       duDay.appendChild(opt);
     }
     duDay.addEventListener('change', saveDataPolicy);
+    document.getElementById('mobiledata-toggle').addEventListener('change', saveMobileData);
+    document.getElementById('roaming-toggle').addEventListener('change', saveMobileData);
     duWarning.addEventListener('change', saveDataPolicy);
     duLimit.addEventListener('change', saveDataPolicy);
   }
@@ -620,7 +632,25 @@
     if (el) el.classList.toggle('hidden', !on);
   }
 
+  function renderMobileData() {
+    requestService('telephony', 'getMobileData').then(function (m) {
+      var ok = !!m && m.supported === true;
+      showEl('mobiledata-group', ok);
+      if (!ok) return;
+      document.getElementById('mobiledata-toggle').checked = m.enabled === true;
+      document.getElementById('roaming-toggle').checked = m.roaming === true;
+    }, function () { showEl('mobiledata-group', false); });
+  }
+
+  function saveMobileData() {
+    requestService('telephony', 'setMobileData', {
+      enabled: document.getElementById('mobiledata-toggle').checked,
+      roaming: document.getElementById('roaming-toggle').checked
+    }).then(renderMobileData, renderMobileData);   /* show what was applied */
+  }
+
   function renderDataUsage() {
+    if (duDay) renderMobileData();
     requestService('netstats', 'getUsage').then(function (u) {
       var ok = !!u && u.supported === true;
       showEl('datausage-unsupported', !ok);

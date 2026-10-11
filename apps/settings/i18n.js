@@ -117,6 +117,8 @@
     'settings.datausage_off_hint': '\uBE44\uC6B0\uBA74 \uC0AC\uC6A9 \uC548 \uD568',
     'settings.datausage_limit': '\uB370\uC774\uD130 \uD55C\uB3C4 (GB)',
     'settings.datausage_limit_desc': '\uD55C\uB3C4\uC5D0 \uB3C4\uB2EC\uD558\uBA74 \uBAA8\uBC14\uC77C \uB370\uC774\uD130\uAC00 \uAEBC\uC9D1\uB2C8\uB2E4. \uD1B5\uD654\uC640 \uBB38\uC790\uB294 \uC720\uC9C0\uB429\uB2C8\uB2E4',
+    'settings.data_roaming': '\uB370\uC774\uD130 \uB85C\uBC0D',
+    'settings.data_roaming_desc': '\uD574\uC678\uC5D0\uC11C\uB294 \uC694\uAE08\uC774 \uB9CE\uC774 \uB098\uC62C \uC218 \uC788\uC2B5\uB2C8\uB2E4',
     'settings.timezone_auto_desc': '\uAE30\uAE30\uC758 \uC2DC\uC2A4\uD15C \uC2DC\uAC04\uB300\uB97C \uB530\uB985\uB2C8\uB2E4',
     'settings.timezone': '\uC2DC\uAC04\uB300',
     'settings.timezone_search': '\uB3C4\uC2DC \uB610\uB294 \uC2DC\uAC04\uB300 \uAC80\uC0C9'
@@ -230,6 +232,8 @@
     'settings.datausage_off_hint': 'Leave empty for none',
     'settings.datausage_limit': 'Data limit (GB)',
     'settings.datausage_limit_desc': 'Mobile data turns off at the limit. Calls and texts keep working',
+    'settings.data_roaming': 'Data roaming',
+    'settings.data_roaming_desc': 'Charges abroad can be high',
     'settings.timezone_auto_desc': 'Follow the system time zone',
     'settings.timezone': 'Time zone',
     'settings.timezone_search': 'Search city or time zone'
@@ -343,6 +347,8 @@
     'settings.datausage_off_hint': '\u7A7A\u6B04\u3067\u7121\u52B9',
     'settings.datausage_limit': '\u30C7\u30FC\u30BF\u4E0A\u9650 (GB)',
     'settings.datausage_limit_desc': '\u4E0A\u9650\u306B\u9054\u3059\u308B\u3068\u30E2\u30D0\u30A4\u30EB\u30C7\u30FC\u30BF\u304C\u30AA\u30D5\u306B\u306A\u308A\u307E\u3059\u3002\u901A\u8A71\u3068SMS\u306F\u4F7F\u3048\u307E\u3059',
+    'settings.data_roaming': '\u30C7\u30FC\u30BF\u30ED\u30FC\u30DF\u30F3\u30B0',
+    'settings.data_roaming_desc': '\u6D77\u5916\u3067\u306F\u9AD8\u984D\u306A\u6599\u91D1\u304C\u304B\u304B\u308B\u5834\u5408\u304C\u3042\u308A\u307E\u3059',
     'settings.timezone_auto_desc': '\u7AEF\u672B\u306E\u30B7\u30B9\u30C6\u30E0\u30BF\u30A4\u30E0\u30BE\u30FC\u30F3\u306B\u5F93\u3044\u307E\u3059',
     'settings.timezone': '\u30BF\u30A4\u30E0\u30BE\u30FC\u30F3',
     'settings.timezone_search': '\u90FD\u5E02\u307E\u305F\u306F\u30BF\u30A4\u30E0\u30BE\u30FC\u30F3\u3092\u691C\u7D22'
@@ -456,6 +462,8 @@
     'settings.datausage_off_hint': '\u7559\u7A7A\u5219\u4E0D\u8BBE\u7F6E',
     'settings.datausage_limit': '\u6570\u636E\u4E0A\u9650 (GB)',
     'settings.datausage_limit_desc': '\u8FBE\u5230\u4E0A\u9650\u65F6\u5173\u95ED\u79FB\u52A8\u6570\u636E\uFF0C\u901A\u8BDD\u548C\u77ED\u4FE1\u4E0D\u53D7\u5F71\u54CD',
+    'settings.data_roaming': '\u6570\u636E\u6F2B\u6E38',
+    'settings.data_roaming_desc': '\u5728\u5883\u5916\u53EF\u80FD\u4EA7\u751F\u9AD8\u989D\u8D39\u7528',
     'settings.timezone_auto_desc': '\u8DDF\u968F\u8BBE\u5907\u7684\u7CFB\u7EDF\u65F6\u533A',
     'settings.timezone': '\u65F6\u533A',
     'settings.timezone_search': '\u641C\u7D22\u57CE\u5E02\u6216\u65F6\u533A'
@@ -569,6 +577,8 @@
     'settings.datausage_off_hint': 'Vac\u00EDo para desactivar',
     'settings.datausage_limit': 'L\u00EDmite de datos (GB)',
     'settings.datausage_limit_desc': 'Los datos m\u00F3viles se desactivan al llegar al l\u00EDmite. Las llamadas y los SMS siguen funcionando',
+    'settings.data_roaming': 'Itinerancia de datos',
+    'settings.data_roaming_desc': 'En el extranjero puede tener costes elevados',
     'settings.timezone_auto_desc': 'Sigue la zona horaria del sistema',
     'settings.timezone': 'Zona horaria',
     'settings.timezone_search': 'Buscar ciudad o zona horaria'

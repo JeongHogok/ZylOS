@@ -97,10 +97,11 @@ test('cbs',
 )
 
 # Test: the real telephony daemon against a fake ModemManager on a private
-# bus — channel setup, alert delivery, acknowledgement (skips without dbus-daemon)
-test('telephony-cbs',
-  executable('test-telephony-cbs',
-    'test_telephony_cbs.c',
+# bus and a fake nmcli — emergency alerts (channel setup, delivery, ack) and
+# the mobile data connection (IPv4v6, CLAT, roaming). Skips without dbus-daemon.
+test('telephony-dbus',
+  executable('test-telephony-dbus',
+    'test_telephony_dbus.c',
     '../runtime/services/telephony/cbs.c',
     include_directories: include_directories('../runtime/services/telephony'),
     dependencies: [gio_dep],

@@ -164,6 +164,24 @@ sudo systemd-nspawn -D $ROOTFS apt-get install -y \
 `ninja install` 이 `/etc/fonts/conf.d/50-zyl-fonts.conf` 를 설치해 기본 글꼴과
 언어별 한자 자형(한·중·일은 같은 코드포인트를 다르게 그린다)을 정합니다.
 
+### 네트워크·모뎀 패키지 (필수)
+
+모바일 데이터, 데이터 한도, 재난문자는 NetworkManager·ModemManager 위에서
+동작합니다. APN 은 통신사별 표를 OS 에 두지 않고 `mobile-broadband-provider-info`
+데이터베이스에서 자동으로 고릅니다 (`gsm.auto-config`).
+
+```bash
+sudo systemd-nspawn -D $ROOTFS apt-get install -y \
+  network-manager modemmanager mobile-broadband-provider-info
+# Arch 계열 rootfs: pacman -S networkmanager modemmanager mobile-broadband-provider-info
+```
+
+| 구성요소 | 최소 버전 | 없을 때 |
+|---------|----------|--------|
+| ModemManager | 1.24 | 재난문자(Cell Broadcast) 수신 불가 |
+| NetworkManager | 1.22 | APN 자동 설정 불가 |
+| NetworkManager | 1.58 | IPv6 전용망에서 IPv4 앱 불가 (464XLAT CLAT) — 이중 스택은 동작 |
+
 ### 파일 설치
 ```bash
 ROOTFS=/mnt/sdcard/rootfs
@@ -187,6 +205,11 @@ sudo cp runtime/wam/src/bridge/bridge.js $ROOTFS/usr/share/zyl-os/wam/
 # 넣지 않으려면 반드시 생성된 파일을 쓸 것.
 sudo cp system/*.service $ROOTFS/usr/lib/systemd/system/
 sudo cp builddir/zyl-os.target $ROOTFS/usr/lib/systemd/system/
+
+# 서비스 사용자 + /data 디렉터리 — 없으면 WAM(User=zyl-wam)과 /data 를 쓰는
+# 서비스들이 기동 전에 실패한다
+sudo cp system/sysusers.d/*.conf $ROOTFS/usr/lib/sysusers.d/
+sudo cp system/tmpfiles.d/*.conf $ROOTFS/usr/lib/tmpfiles.d/
 
 # 또는 전체를 프로파일에 맞게 한 번에 설치 (권장)
 #   sudo DESTDIR=$ROOTFS ninja -C builddir install

@@ -1,9 +1,10 @@
 /* ──────────────────────────────────────────────────────────
  * [Clean Architecture] Application Layer - Service
  *
- * 역할: 전화 서비스 — ModemManager 연동, 음성통화, SMS, 재난문자, 네트워크 상태
+ * 역할: 전화 서비스 — ModemManager 연동, 음성통화, SMS, 재난문자, 모바일 데이터
  * 수행범위: ModemManager D-Bus 프록시, 모뎀 열거, SIM/신호 상태, 통화 제어,
- *           Cell Broadcast 채널 설정·수신 (분류·기록은 cbs.c)
+ *           Cell Broadcast 채널 설정·수신 (분류·기록은 cbs.c),
+ *           NetworkManager 모바일 데이터 연결 (APN 자동, IPv4v6, CLAT, 로밍)
  * 의존방향: telephony.h, gio/gio.h, ModemManager D-Bus API
  * SOLID: SRP — 전화/메시징 상태 관리만 담당
  * ────────────────────────────────────────────────────────── */
@@ -450,6 +451,94 @@ static GVariant *alerts_variant(const ZylTelephonyService *svc) {
     return g_variant_new("(aa{sv})", &list);
 }
 
+/* ─── 모바일 데이터 (NetworkManager) ───
+ * One connection for every SIM. gsm.auto-config takes the APN from the
+ * mobile-broadband-provider-info database for whichever network the modem
+ * registers to, so no per-carrier table lives here. Both IP families are on:
+ * Korean and many other carriers hand out IPv6, increasingly IPv6 only.
+ * There, ipv4.clat (464XLAT, NetworkManager >= 1.58) keeps IPv4-only apps
+ * and literals working through the carrier's NAT64. IPv6 uses temporary
+ * addresses so the address does not follow the user around. Data roaming
+ * starts off: NetworkManager's default (home-only no) would run up charges
+ * abroad before the user knew it was on. */
+#define ZYL_MOBILE_CONN "zyl-mobile"
+
+static int nmcli(const char *const *args, char **out) {
+    const char *argv[24] = { "nmcli" };
+    int n = 1;
+    for (int i = 0; args[i] && n < 23; i++) argv[n++] = args[i];
+    argv[n] = NULL;
+    int status = -1;
+    if (!g_spawn_sync(NULL, (char **)argv, NULL,
+                      G_SPAWN_SEARCH_PATH | G_SPAWN_STDERR_TO_DEV_NULL |
+                      (out ? 0 : G_SPAWN_STDOUT_TO_DEV_NULL),
+                      NULL, NULL, out, NULL, &status, NULL))
+        return -1;
+    return g_spawn_check_wait_status(status, NULL) ? 0 : 1;
+}
+
+static bool mobile_connection_exists(void) {
+    char *out = NULL;
+    const char *a[] = { "-g", "NAME", "connection", "show", NULL };
+    bool found = false;
+    if (nmcli(a, &out) == 0 && out) {
+        char **names = g_strsplit(out, "\n", -1);
+        for (int i = 0; names[i]; i++)
+            if (strcmp(names[i], ZYL_MOBILE_CONN) == 0) found = true;
+        g_strfreev(names);
+    }
+    g_free(out);
+    return found;
+}
+
+static void ensure_mobile_connection(void) {
+    if (mobile_connection_exists()) return;
+    const char *with_clat[] = { "connection", "add", "type", "gsm", "ifname", "*",
+        "con-name", ZYL_MOBILE_CONN, "gsm.auto-config", "yes", "gsm.home-only", "yes",
+        "ipv4.method", "auto", "ipv6.method", "auto",
+        "ipv6.addr-gen-mode", "stable-privacy", "ipv6.ip6-privacy", "2",
+        "ipv4.clat", "auto", NULL };
+    if (nmcli(with_clat, NULL) == 0) return;
+    /* NetworkManager before 1.58 rejects ipv4.clat: dual stack without it */
+    const char *plain[] = { "connection", "add", "type", "gsm", "ifname", "*",
+        "con-name", ZYL_MOBILE_CONN, "gsm.auto-config", "yes", "gsm.home-only", "yes",
+        "ipv4.method", "auto", "ipv6.method", "auto",
+        "ipv6.addr-gen-mode", "stable-privacy", "ipv6.ip6-privacy", "2", NULL };
+    if (nmcli(plain, NULL) != 0)
+        g_warning("[Telephony] could not create the mobile data connection");
+}
+
+/* enabled = autoconnect; roaming = not home-only */
+static bool read_mobile_data(bool *enabled, bool *roaming) {
+    char *out = NULL;
+    const char *a[] = { "-g", "connection.autoconnect,gsm.home-only",
+                        "connection", "show", ZYL_MOBILE_CONN, NULL };
+    bool ok = nmcli(a, &out) == 0 && out;
+    if (ok) {
+        char **v = g_strsplit(g_strstrip(out), "\n", -1);
+        ok = v[0] && v[1];
+        if (ok) {
+            *enabled = strcmp(v[0], "yes") == 0;
+            *roaming = strcmp(v[1], "no") == 0;
+        }
+        g_strfreev(v);
+    }
+    g_free(out);
+    return ok;
+}
+
+static bool write_mobile_data(bool enabled, bool roaming) {
+    const char *mod[] = { "connection", "modify", ZYL_MOBILE_CONN,
+        "connection.autoconnect", enabled ? "yes" : "no",
+        "gsm.home-only", roaming ? "no" : "yes", NULL };
+    if (nmcli(mod, NULL) != 0) return false;
+    /* Apply now, not at the next registration. Bringing it up can fail
+       without coverage; autoconnect then connects when the network appears. */
+    const char *now[] = { "connection", enabled ? "up" : "down", ZYL_MOBILE_CONN, NULL };
+    nmcli(now, NULL);
+    return true;
+}
+
 /* ─── ModemManager 시그널 구독 ─── */
 static void subscribe_mm_signals(ZylTelephonyService *svc) {
     if (!svc->system_bus || !svc->modem_found) return;
@@ -469,6 +558,7 @@ static void subscribe_mm_signals(ZylTelephonyService *svc) {
         on_mm_sms_added, svc, NULL);
 
     setup_cell_broadcast(svc);
+    ensure_mobile_connection();
 
     g_message("[Telephony] Subscribed to ModemManager signals");
 }
@@ -511,6 +601,14 @@ static const char *telephony_introspection_xml =
     "    <method name='SetEmergencyAlertEnabled'>"
     "      <arg type='s' name='category' direction='in'/>"
     "      <arg type='b' name='enabled' direction='in'/>"
+    "      <arg type='b' name='applied' direction='out'/>"
+    "    </method>"
+    "    <method name='GetMobileData'>"
+    "      <arg type='a{sv}' name='state' direction='out'/>"
+    "    </method>"
+    "    <method name='SetMobileData'>"
+    "      <arg type='b' name='enabled' direction='in'/>"
+    "      <arg type='b' name='roaming' direction='in'/>"
     "      <arg type='b' name='applied' direction='out'/>"
     "    </method>"
     "    <signal name='EmergencyAlert'>"
@@ -590,6 +688,20 @@ static void handle_telephony_method(GDBusConnection *conn, const gchar *sender,
         g_variant_get(params, "(t)", &id);
         g_dbus_method_invocation_return_value(inv,
             g_variant_new("(b)", zyl_cbs_store_ack(svc->cbs, id)));
+    } else if (g_strcmp0(method, "GetMobileData") == 0) {
+        bool enabled = false, roaming = false;
+        bool known = svc->modem_found && read_mobile_data(&enabled, &roaming);
+        GVariantBuilder d;
+        g_variant_builder_init(&d, G_VARIANT_TYPE("a{sv}"));
+        g_variant_builder_add(&d, "{sv}", "supported", g_variant_new_boolean(known));
+        g_variant_builder_add(&d, "{sv}", "enabled", g_variant_new_boolean(enabled));
+        g_variant_builder_add(&d, "{sv}", "roaming", g_variant_new_boolean(roaming));
+        g_dbus_method_invocation_return_value(inv, g_variant_new("(a{sv})", &d));
+    } else if (g_strcmp0(method, "SetMobileData") == 0) {
+        gboolean enabled = FALSE, roaming = FALSE;
+        g_variant_get(params, "(bb)", &enabled, &roaming);
+        g_dbus_method_invocation_return_value(inv, g_variant_new("(b)",
+            svc->modem_found && write_mobile_data(enabled, roaming)));
     } else if (g_strcmp0(method, "GetEmergencyAlertSettings") == 0) {
         GVariantBuilder d;
         g_variant_builder_init(&d, G_VARIANT_TYPE("a{sv}"));

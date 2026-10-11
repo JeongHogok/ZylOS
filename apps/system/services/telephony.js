@@ -65,6 +65,9 @@
           return entries;
         }).catch(function () { return []; });
       },
+      /* No modem in the emulator: there is no mobile data to switch */
+      getMobileData: function () { return Promise.resolve({ supported: false }); },
+      setMobileData: function () { return Promise.resolve(false); },
       /* Emergency alerts arrive from the modem; the emulator has none, so the
          history is always empty — never invented */
       getEmergencyAlerts: function () { return Promise.resolve([]); },

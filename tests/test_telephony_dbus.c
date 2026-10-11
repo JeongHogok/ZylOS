@@ -1,10 +1,13 @@
 /* ──────────────────────────────────────────────────────────
  * [Clean Architecture] Infrastructure Layer - Test
  *
- * 역할: 재난문자 수신 종단 테스트 — 실제 telephony.c + 사설 버스의 가짜 ModemManager
- * 수행범위: 모뎀 채널 설정(SetChannels), CellBroadcast.Added → 분류 → OS 시그널
- *           EmergencyAlert, 재전송 무시, 여러 조각 메시지 완료 시점 처리,
- *           모뎀 사본 삭제, GetEmergencyAlerts / AcknowledgeEmergencyAlert
+ * 역할: 텔레포니 종단 테스트 — 실제 telephony.c + 사설 버스의 가짜 ModemManager
+ *       + PATH 의 가짜 nmcli
+ * 수행범위: 재난문자 — 모뎀 채널 설정(SetChannels), CellBroadcast.Added → 분류 →
+ *           OS 시그널 EmergencyAlert, 재전송 무시, 여러 조각 메시지 완료 시점
+ *           처리, 모뎀 사본 삭제, GetEmergencyAlerts / AcknowledgeEmergencyAlert.
+ *           모바일 데이터 — IPv4v6 + CLAT 연결 생성(구버전 NM 폴백),
+ *           GetMobileData / SetMobileData (자동 연결·로밍)
  * 의존방향: runtime/services/telephony/telephony.c (main 이름 변경), cbs.c,
  *           gio, dbus-daemon (없으면 SKIP)
  * SOLID: SRP — 모뎀 ↔ 텔레포니 D-Bus 계약 검증만 담당
@@ -15,8 +18,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <gio/gio.h>
+#include <glib/gstdio.h>
 
 #define ZYL_ALERTS_FILE "/tmp/zyl-telephony-cbs-test/alerts"
+#define FAKE_NM_DIR     "/tmp/zyl-telephony-cbs-test/nm"
 #define main telephony_main
 #include "../runtime/services/telephony/telephony.c"
 #undef main
@@ -126,6 +131,44 @@ static GVariant *call_os(GDBusConnection *os, const char *method, GVariant *args
     return out;
 }
 
+/* Records every nmcli call and keeps the one connection's state */
+static const char *FAKE_NMCLI =
+    "#!/bin/sh\n"
+    "D=" FAKE_NM_DIR "; echo \"$*\" >> $D/log\n"
+    "case \"$*\" in\n"
+    "  '-g NAME connection show') cat $D/names 2>/dev/null; exit 0;;\n"
+    "  'connection add'*) case \"$*\" in *ipv4.clat*) [ -n \"$FAKE_NO_CLAT\" ] && exit 2;; esac\n"
+    "     echo zyl-mobile >> $D/names; echo yes > $D/auto; echo no > $D/home;\n"
+    "     case \"$*\" in *'gsm.home-only yes'*) echo yes > $D/home;; esac; exit 0;;\n"
+    "  'connection modify zyl-mobile'*) shift 3; while [ $# -gt 1 ]; do\n"
+    "     case \"$1\" in connection.autoconnect) echo $2 > $D/auto;; gsm.home-only) echo $2 > $D/home;; esac;\n"
+    "     shift 2; done; exit 0;;\n"
+    "  '-g connection.autoconnect,gsm.home-only connection show zyl-mobile') cat $D/auto $D/home; exit 0;;\n"
+    "  'connection up zyl-mobile'|'connection down zyl-mobile') exit 0;;\n"
+    "esac\n"
+    "exit 1\n";
+
+static char *nm_log(void) {
+    char *log = NULL;
+    g_file_get_contents(FAKE_NM_DIR "/log", &log, NULL, NULL);
+    return log ? log : g_strdup("");
+}
+
+static int count(const char *hay, const char *needle) {
+    int n = 0;
+    for (const char *p = strstr(hay, needle); p; p = strstr(p + 1, needle)) n++;
+    return n;
+}
+
+static void install_fake_nmcli(void) {
+    g_mkdir_with_parents(FAKE_NM_DIR, 0755);
+    g_assert_true(g_file_set_contents(FAKE_NM_DIR "/nmcli", FAKE_NMCLI, -1, NULL));
+    g_chmod(FAKE_NM_DIR "/nmcli", 0755);
+    char *path = g_strconcat(FAKE_NM_DIR ":", g_getenv("PATH"), NULL);
+    g_setenv("PATH", path, TRUE);
+    g_free(path);
+}
+
 static void emit_added(GDBusConnection *mm) {
     g_dbus_connection_emit_signal(mm, NULL, MODEM,
         "org.freedesktop.ModemManager1.Modem.CellBroadcast", "Added",
@@ -162,12 +205,13 @@ static gpointer fake_mm_thread(gpointer ready) {
 }
 
 int main(void) {
-    printf("=== Zyl OS Telephony Cell Broadcast (D-Bus) ===\n");
+    printf("=== Zyl OS Telephony (D-Bus: Cell Broadcast, mobile data) ===\n");
     if (!g_find_program_in_path("dbus-daemon")) {
         printf("  SKIP (no dbus-daemon)\n");
         return 0;
     }
     g_assert_true(system("rm -rf /tmp/zyl-telephony-cbs-test") == 0);
+    install_fake_nmcli();
 
     GTestDBus *bus = g_test_dbus_new(G_TEST_DBUS_NONE);
     g_test_dbus_up(bus);
@@ -239,6 +283,53 @@ int main(void) {
     assert(wait_for(&g_alerts, 2));
     printf("PASS\n");
 
+    printf("  %-56s ", "mobile data: dual stack, APN from the provider DB, CLAT");
+    char *log = nm_log();
+    assert(strstr(log, "connection add type gsm ifname * con-name zyl-mobile gsm.auto-config yes gsm.home-only yes "
+                       "ipv4.method auto ipv6.method auto ipv6.addr-gen-mode stable-privacy "
+                       "ipv6.ip6-privacy 2 ipv4.clat auto"));
+    g_free(log);
+    printf("PASS\n");
+
+    printf("  %-56s ", "mobile data: NetworkManager < 1.58 falls back without CLAT");
+    g_assert_true(system("rm -f " FAKE_NM_DIR "/names " FAKE_NM_DIR "/log") == 0);
+    g_setenv("FAKE_NO_CLAT", "1", TRUE);
+    ensure_mobile_connection();
+    g_unsetenv("FAKE_NO_CLAT");
+    log = nm_log();
+    char *retry = g_strrstr(log, "\nconnection add");
+    assert(count(log, "connection add") == 2 && strstr(log, "ipv4.clat auto"));
+    assert(retry && !strstr(retry, "clat") && strstr(retry, "ipv6.method auto"));
+    g_free(log);
+    ensure_mobile_connection();         /* exists now: not added again */
+    log = nm_log();
+    assert(count(log, "connection add") == 2);
+    g_free(log);
+    printf("PASS\n");
+
+    printf("  %-56s ", "mobile data: switch and roaming over D-Bus");
+    GVariant *st = call_os(os, "GetMobileData", NULL, "(a{sv})");
+    GVariant *dict = g_variant_get_child_value(st, 0);
+    gboolean sup = FALSE, en = FALSE, roam = TRUE;
+    g_variant_lookup(dict, "supported", "b", &sup);
+    g_variant_lookup(dict, "enabled", "b", &en);
+    g_variant_lookup(dict, "roaming", "b", &roam);
+    assert(sup && en && !roam);         /* created on, roaming off */
+    g_variant_unref(dict);
+    g_variant_unref(st);
+    GVariant *set = call_os(os, "SetMobileData", g_variant_new("(bb)", FALSE, TRUE), "(b)");
+    gboolean applied = FALSE;
+    g_variant_get(set, "(b)", &applied);
+    assert(applied);
+    g_variant_unref(set);
+    log = nm_log();
+    assert(strstr(log, "connection modify zyl-mobile connection.autoconnect no gsm.home-only no"));
+    assert(strstr(log, "connection down zyl-mobile"));
+    g_free(log);
+    bool e2 = true, r2 = false;
+    assert(read_mobile_data(&e2, &r2) && !e2 && r2);
+    printf("PASS\n");
+
     zyl_telephony_destroy(svc);
     g_object_unref(os);
     g_main_loop_quit(g_mm_loop);
@@ -246,6 +337,6 @@ int main(void) {
     g_object_unref(mm);
     g_test_dbus_down(bus);
     g_object_unref(bus);
-    printf("\nResults: 4/4 passed\n");
+    printf("\nResults: 7/7 passed\n");
     return 0;
 }
