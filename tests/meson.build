@@ -51,3 +51,17 @@ test('bridge-dispatch',
     c_args: ['-DZYL_USE_WEBKIT2GTK'],
   )
 )
+
+# Test: sandbox permission vocabulary mapping (Linux only — uses seccomp/namespaces)
+if host_machine.system() == 'linux'
+  test('sandbox-permissions',
+    executable('test-sandbox-permissions',
+      'test_sandbox_permissions.c',
+      include_directories: include_directories(
+        '../runtime/services/sandbox',
+      ),
+      dependencies: [gio_dep, json_glib_dep,
+                     dependency('libseccomp', version: '>=2.5.0')],
+    )
+  )
+endif

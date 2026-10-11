@@ -489,22 +489,59 @@ int zyl_sandbox_apply(ZylSandbox *sb, const ZylSandboxPolicy *policy,
 }
 
 /*
- * Permission string → bitmask mapping.
- * app.json "permissions" array entry → ZylPermission flag.
+ * Permission string → isolation bitmask.
+ *
+ * The vocabulary is the one app.json actually declares; ZylPermissions
+ * (apps/system/permissions.js) is the sole authority per CLAUDE.md rule 8 and
+ * this mapping follows it. Permissions with no isolation meaning (i18n, time,
+ * display, wifi, audio, app.*) return 0 deliberately — they gate service calls
+ * in the OS layer, not syscalls or D-Bus destinations here.
+ *
+ * Getting this wrong is not cosmetic: a missing bit makes the app lose the
+ * capability entirely. ZYL_PERM_NETWORK absent means unshare(CLONE_NEWNET),
+ * and ZYL_PERM_PHONE absent means no ModemManager1 D-Bus access — which is
+ * what happened to the dialer, since it declares "telephony" and this function
+ * only knew "phone".
  */
 static uint32_t permission_from_string(const char *perm) {
     if (!perm) return 0;
+
+    /* ── Storage ── */
+    if (strcmp(perm, "storage")         == 0) return ZYL_PERM_STORAGE_READ | ZYL_PERM_STORAGE_WRITE;
+    if (strcmp(perm, "files.read")      == 0) return ZYL_PERM_STORAGE_READ;
+    if (strcmp(perm, "files.write")     == 0) return ZYL_PERM_STORAGE_WRITE;
+    if (strcmp(perm, "files.delete")    == 0) return ZYL_PERM_STORAGE_WRITE;
+    if (strcmp(perm, "downloads")       == 0) return ZYL_PERM_STORAGE_WRITE;
+    if (strcmp(perm, "gallery")         == 0) return ZYL_PERM_STORAGE_READ;
+
+    /* ── Devices ── */
     if (strcmp(perm, "camera")          == 0) return ZYL_PERM_CAMERA;
+    if (strcmp(perm, "microphone")      == 0) return ZYL_PERM_MICROPHONE;
+    if (strcmp(perm, "location")        == 0) return ZYL_PERM_LOCATION;
+    if (strcmp(perm, "bluetooth")       == 0) return ZYL_PERM_BLUETOOTH;
+
+    /* ── Telephony: both the dialer and SMS reach the modem ── */
+    if (strcmp(perm, "telephony")       == 0) return ZYL_PERM_PHONE;
+    if (strcmp(perm, "messaging")       == 0) return ZYL_PERM_PHONE;
+
+    /* ── Data ── */
+    if (strcmp(perm, "contacts")        == 0) return ZYL_PERM_CONTACTS;
     if (strcmp(perm, "network")         == 0) return ZYL_PERM_NETWORK;
+    if (strcmp(perm, "notification")      == 0) return ZYL_PERM_NOTIFICATION;
+    if (strcmp(perm, "notification.read") == 0) return ZYL_PERM_NOTIFICATION;
+
+    /* ── System apps bypass every check (see zyl_sandbox_check_permission) ── */
+    if (strcmp(perm, "system")          == 0) return ZYL_PERM_SYSTEM;
+
+    /* ── Legacy spellings: .ospkg packages signed before the vocabulary was
+          unified still carry these, and rejecting them would break installed
+          apps on update. Accept, but do not document as current. ── */
     if (strcmp(perm, "storage.read")    == 0) return ZYL_PERM_STORAGE_READ;
     if (strcmp(perm, "storage.write")   == 0) return ZYL_PERM_STORAGE_WRITE;
     if (strcmp(perm, "storage.shared")  == 0) return ZYL_PERM_STORAGE_READ | ZYL_PERM_STORAGE_WRITE;
-    if (strcmp(perm, "location")        == 0) return ZYL_PERM_LOCATION;
-    if (strcmp(perm, "bluetooth")       == 0) return ZYL_PERM_BLUETOOTH;
     if (strcmp(perm, "phone")           == 0) return ZYL_PERM_PHONE;
-    if (strcmp(perm, "contacts")        == 0) return ZYL_PERM_CONTACTS;
     if (strcmp(perm, "notifications")   == 0) return ZYL_PERM_NOTIFICATION;
-    if (strcmp(perm, "system")          == 0) return ZYL_PERM_SYSTEM;
+
     return 0;
 }
 
