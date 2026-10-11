@@ -371,6 +371,7 @@ console.log('\n■ ZylFormFactor / ZylFocusNav');
   };
 
   var pointerMode = 'coarse';
+  global.window.location = { search: '' };
   global.window.matchMedia = function (q) {
     return {
       matches: (q.indexOf('pointer: fine') !== -1 && pointerMode === 'fine') ||
@@ -416,6 +417,57 @@ console.log('\n■ ZylFormFactor / ZylFocusNav');
   test('detect: 800x1280 touch → tablet', function () {
     geom(800, 1280);
     assert.strictEqual(FF.detect(), 'tablet');
+  });
+
+  /* ─── container-reported input hardware ─── */
+  function withInput(q, fn) {
+    var prev = global.window.location.search;
+    global.window.location.search = q;
+    try { fn(); } finally { global.window.location.search = prev; }
+  }
+
+  test('hardwareInput reads the container hint from the app URL', function () {
+    withInput('?v=123&zylInput=dpad', function () {
+      assert.strictEqual(FF.hardwareInput(), 'dpad');
+    });
+    withInput('?v=123', function () {
+      assert.strictEqual(FF.hardwareInput(), null);
+    });
+  });
+
+  test('input hardware outranks pointer media queries', function () {
+    /* A host mouse answers "pointer: fine", so geometry alone would say
+       desktop; the container says the device only has a remote. */
+    geom(1920, 1080, 'fine');
+    assert.strictEqual(FF.detect(), 'desktop');
+    withInput('?zylInput=dpad', function () {
+      assert.strictEqual(FF.detect(), 'tv');
+    });
+  });
+
+  test('input hardware distinguishes the geometry-blind form factors', function () {
+    geom(1080, 2400);
+    withInput('?zylInput=crown', function () {
+      assert.strictEqual(FF.detect(), 'watch');
+    });
+    withInput('?zylInput=touch-rotary', function () {
+      assert.strictEqual(FF.detect(), 'auto');
+    });
+    withInput('?zylInput=touch-keypad', function () {
+      assert.strictEqual(FF.detect(), 'pda');
+    });
+    /* A D-pad on a small panel is an appliance, not a TV. */
+    geom(1024, 600, 'none');
+    withInput('?zylInput=dpad', function () {
+      assert.strictEqual(FF.detect(), 'appliance');
+    });
+  });
+
+  test('plain touch hint falls through to geometry', function () {
+    geom(1920, 1080, 'none');
+    withInput('?zylInput=touch', function () {
+      assert.strictEqual(FF.detect(), 'tv');
+    });
   });
 
   /* ─── override ─── */
@@ -469,6 +521,51 @@ console.log('\n■ ZylFormFactor / ZylFocusNav');
   });
 
   FF.clearOverride();
+
+  test('apply(target) scopes the form factor and leaves <html> alone', function () {
+    /* The compositor hosts OS UI (the keyboard) in its own document; scaling
+       <html> there would scale the emulator chrome with it. */
+    var scopedClasses = {};
+    var scopedAttrs = {};
+    var scopedZoom = null;
+    var container = {
+      classList: {
+        add: function (c) { scopedClasses[c] = true; },
+        remove: function (c) { delete scopedClasses[c]; }
+      },
+      setAttribute: function (k, v) { scopedAttrs[k] = v; },
+      style: {
+        setProperty: function () {},
+        set zoom(v) { scopedZoom = v; },
+        get zoom() { return scopedZoom; }
+      }
+    };
+
+    /* No override, so the hardware hint decides — as it does in the shell.
+       An override would outrank it; that precedence is tested separately. */
+    FF.clearOverride();
+    geom(1080, 2400);
+    FF.reload();
+    assert.strictEqual(htmlAttrs['data-form-factor'], 'phone',
+      'baseline: <html> is a phone');
+    var htmlZoomBefore = htmlZoom;
+
+    FF.setHardwareInput('dpad');
+    geom(1920, 1080, 'fine');
+    FF.reload(container);
+
+    assert.strictEqual(scopedAttrs['data-form-factor'], 'tv');
+    assert.strictEqual(scopedClasses['ff-tv'], true);
+    assert.strictEqual(scopedZoom, '1.8');
+    assert.strictEqual(htmlZoom, htmlZoomBefore, '<html> zoom must not change');
+    assert.strictEqual(htmlAttrs['data-form-factor'], 'phone',
+      '<html> form factor must not change');
+
+    FF.setHardwareInput(null);
+    FF.clearOverride();
+    geom(1080, 2400);
+    FF.reload();
+  });
 
   test('focus-nav init is idempotent (no duplicate keydown listener)', function () {
     FF.setOverride('tv');

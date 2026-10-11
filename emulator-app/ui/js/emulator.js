@@ -17,40 +17,6 @@
   var IS_TAURI = (typeof window !== 'undefined' && typeof window.__TAURI__ !== 'undefined');
   var HAL = IS_TAURI ? window.ZylHalTauri : window.ZylHalBrowser;
 
-  /* ═══════════════════════════════════════════════════════
-     디바이스 프로필 정의
-     navMode는 하드웨어 속성 — 런타임에 변경 불가
-     ═══════════════════════════════════════════════════════ */
-  var DEVICE_PROFILES = [
-    {
-      id: 'zyl-f3-gesture',
-      name: 'Zyl Phone F3',
-      description: 'Gesture navigation (iOS style)',
-      soc: 'SpacemiT K1', ram: '16GB', screen: '1080×2400',
-      width: 393, height: 852, radius: 52,
-      navMode: 'gesture',     /* 제스처 바 */
-      hasNotch: true,
-    },
-    {
-      id: 'zyl-f3-softkeys',
-      name: 'Zyl Phone F3 Lite',
-      description: '3-button software navigation',
-      soc: 'SpacemiT K1', ram: '8GB', screen: '1080×2340',
-      width: 393, height: 852, radius: 44,
-      navMode: 'softkeys',    /* 소프트키 3버튼 */
-      hasNotch: false,
-    },
-    {
-      id: 'zyl-f3-hardware',
-      name: 'Zyl Phone F3 Classic',
-      description: 'Physical hardware buttons',
-      soc: 'SpacemiT K1', ram: '4GB', screen: '720×1280',
-      width: 380, height: 820, radius: 36,
-      navMode: 'hardware',    /* 물리 버튼 */
-      hasNotch: false,
-    },
-  ];
-
   /* ═══ 앱 경로 ═══
      부팅 시 Rust가 OS 이미지(.img)를 마운트 → apps/를 ui/apps/로 복사.
      셧다운 시 정리. 따라서 앱은 항상 상대 경로로 접근.
@@ -162,7 +128,12 @@
       return;
     }
 
-    var appUrl = ZylAppRegistry.getPath(appId) + '?v=' + Date.now();
+    /* Hardware input hint for the OS. The container reports what input
+       hardware exists; apps/shared/form-factor.js decides the form factor.
+       A host mouse cannot emulate a TV remote, so this cannot be detected. */
+    var inputHint = (device && device.inputModel) ? device.inputModel : 'touch';
+    var appUrl = ZylAppRegistry.getPath(appId) +
+                 '?v=' + Date.now() + '&zylInput=' + encodeURIComponent(inputHint);
     syslog('Launch: ' + app.name + ' → ' + appUrl, 'app');
     viewport.classList.add('launching');
     setTimeout(function () { viewport.classList.remove('launching'); }, 300);
@@ -433,6 +404,15 @@
     /* Set keyboard position based on nav mode */
     var kb = document.getElementById('keyboard-container');
     if (kb) kb.setAttribute('data-nav', mode || 'gesture');
+
+    /* The keyboard is OS UI mounted in this document, so it needs the form
+       factor too — a phone-sized keyboard is unreadable across a room. Scoped
+       to the container: applying it to <html> would scale the device frame.
+       The OS classifies; we only report which input hardware exists. */
+    if (kb && typeof ZylFormFactor !== 'undefined') {
+      if (device && device.inputModel) ZylFormFactor.setHardwareInput(device.inputModel);
+      ZylFormFactor.reload(kb);
+    }
   }
 
   /* ── 소프트키 ── */
@@ -1226,23 +1206,10 @@
   }
 
   /* ═══════════════════════════════════════════════════════
-     Device Selection Screen
+     Device Selection
+     디바이스 목록 UI 는 config-ui.js 가 device-profiles.json 에서 렌더한다.
+     선택 결과는 initFromConfig() 로 들어온다.
      ═══════════════════════════════════════════════════════ */
-  DEVICE_PROFILES.forEach(function (profile) {
-    var card = document.createElement('div');
-    card.className = 'picker-card';
-    card.innerHTML =
-      '<div class="picker-card-name">' + esc(profile.name) + '</div>' +
-      '<div class="picker-card-desc">' + esc(profile.description) + '</div>' +
-      '<div class="picker-card-specs">' +
-        esc(profile.soc) + ' · ' + esc(profile.ram) + ' · ' + esc(profile.screen) +
-        ' · Nav: ' + esc(profile.navMode) +
-      '</div>';
-    card.addEventListener('click', function () {
-      selectDevice(profile);
-    });
-    deviceListEl.appendChild(card);
-  });
 
   function selectDevice(profile) {
     device = profile;
@@ -1396,6 +1363,7 @@
       height: config.frame_height || 852,
       radius: config.frame_radius || 52,
       navMode: navMode,
+      inputModel: String(config.input_model || config.inputModel || 'touch'),
       hasNotch: config.has_notch !== false,
     };
 

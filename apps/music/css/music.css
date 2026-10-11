@@ -14,7 +14,7 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, sans-serif;
   background: #0a0a1a;
   color: #e0e0e0;
-  height: 100vh;
+  height: var(--ff-vh);
   overflow: hidden;
   display: -webkit-flex;
   display: flex;

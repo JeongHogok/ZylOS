@@ -116,6 +116,8 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
   (`home.js` 가 `--grid-cols`/`--grid-rows` 를 읽는 방식 참조)
 - CSS에서 `zoom: var(...)` 사용 금지 — legacy 속성이라 var() 치환이 무시되고
   조용히 1이 된다. 루트 스케일링은 `ZylFormFactor.apply()` 소관
+- apps/ CSS에서 raw `vh`/`vw` 사용 금지 → `var(--ff-vh)` / `var(--ff-vw)` 경유.
+  루트 zoom 이 뷰포트 단위를 스케일하지 않아 확대 폼팩터에서 Z배 넘친다
 - 새 폼팩터 추가 시: `PROFILES` + `meson_options.txt` choices +
   `meson.build` 의 `zyl_profile_extras` + 보드의 `board_form_factors` 를 함께 갱신
 - 새 보드 추가 시: `board/<id>/meson.build` 에 `board_*` 계약 전부 선언.

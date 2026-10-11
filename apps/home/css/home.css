@@ -35,8 +35,8 @@
 
 html, body {
   font-family: -apple-system, BlinkMacSystemFont, 'Noto Sans KR', 'Segoe UI', sans-serif;
-  width: 100vw;
-  height: 100vh;
+  width: var(--ff-vw);
+  height: var(--ff-vh);
   overflow: hidden;
   color: var(--text);
   -webkit-font-smoothing: antialiased;

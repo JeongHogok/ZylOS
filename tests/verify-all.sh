@@ -236,6 +236,35 @@ for cfile in $(find "$ROOT/runtime" -name '*.c' 2>/dev/null); do
 done
 if [ -n "$MISSING_C" ]; then warn "C 파일 CA 헤더 누락:\n$MISSING_C"; else pass "C 파일 CA 헤더 존재"; fi
 
+# C4: 샌드박스 권한 어휘가 app.json 선언과 일치하는지
+#     비트가 없으면 앱이 능력을 통째로 잃는다 (네트워크 네임스페이스 격리,
+#     ModemManager D-Bus 차단). 새 권한을 추가하고 매핑을 잊으면 조용히 0이 된다.
+UNMAPPED=$(python3 - "$ROOT" <<'PYCHK'
+import json, glob, re, sys
+root = sys.argv[1]
+# 격리 의미가 없어 의도적으로 0을 반환하는 권한 (OS 레이어에서만 게이트)
+NO_ISOLATION = {
+    'audio', 'wifi', 'display', 'input', 'i18n', 'time', 'webview',
+    'wallpaper', 'bookmarks', 'auth', 'battery', 'shell',
+    'app.launch', 'app.list', 'app.manage',
+}
+src = open(root + '/runtime/services/sandbox/sandbox.c').read()
+block = src.split('static uint32_t permission_from_string', 1)[1]
+block = block.split('\n}\n', 1)[0]
+mapped = set(re.findall(r'strcmp\(perm,\s*"([a-z_.]+)"', block))
+declared = set()
+for f in glob.glob(root + '/apps/*/app.json'):
+    declared |= set(json.load(open(f)).get('permissions', []))
+missing = sorted(declared - mapped - NO_ISOLATION)
+print(' '.join(missing))
+PYCHK
+)
+if [ -n "$UNMAPPED" ]; then
+  warn "샌드박스가 매핑하지 않는 app.json 권한: $UNMAPPED"
+else
+  pass "샌드박스 권한 어휘가 app.json 선언과 일치"
+fi
+
 # ═════════════════════════════════════════════════════════════
 # [D] system/ — 디바이스 설정
 # ═════════════════════════════════════════════════════════════

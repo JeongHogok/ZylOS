@@ -20,6 +20,10 @@
   --ff-focus-color: #4a9eff;
   --ff-safe-top: 0px;
   --ff-safe-bottom: 0px;
+  /* Viewport size that survives root zoom — ZylFormFactor.apply() divides
+     these by the scale factor. Valid as-is when nothing is scaled. */
+  --ff-vh: 100vh;
+  --ff-vw: 100vw;
 }
 
 /* ─── Root scaling ────────────────────────────────────────
@@ -31,9 +35,10 @@
    `zoom` property ignores var() substitution, so `zoom: var(--ff-font-scale)`
    silently computes to 1. The factor lives in the PROFILES table.
 
-   shortcut: zoom does not scale vw/vh units (27 such values exist in
-   apps/*/css). Convert those to px or to a --ff-* variable if an app
-   shows a layout seam on tv/watch/auto.
+   zoom also leaves vw/vh untouched — inside a root scaled by Z, 100vh still
+   means the unscaled viewport and so renders Z times too tall. App CSS uses
+   var(--ff-vh)/var(--ff-vw), which apply() divides by the scale factor.
+   Do not introduce raw vh/vw in apps/.
    ─────────────────────────────────────────────────────────── */
 
 /* ─── Focus ring — mandatory where there is no pointer ────

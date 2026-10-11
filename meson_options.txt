@@ -9,7 +9,7 @@
 
 option('board',
   type: 'combo',
-  choices: ['bpi-f3', 'generic-x86_64'],
+  choices: ['bpi-f3', 'generic-x86_64', 'emulator'],
   value: 'bpi-f3',
   description: 'Target board — selects SoC, arch, HAL backend, DTS and cross file (board/<id>/)')
 

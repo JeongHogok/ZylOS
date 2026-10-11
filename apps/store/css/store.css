@@ -16,7 +16,7 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, sans-serif;
   background: #0a0a1a;
   color: #e0e0e0;
-  height: 100vh;
+  height: var(--ff-vh);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -288,7 +288,7 @@ body {
 #detail-panel {
   background: #111118;
   border-radius: 16px 16px 0 0;
-  max-height: 85vh;
+  max-height: calc(var(--ff-vh) * 0.85);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }

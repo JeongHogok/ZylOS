@@ -16,7 +16,7 @@
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color: #fff;
-  height: 100vh;
+  height: var(--ff-vh);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -382,7 +382,7 @@ body.weather-night    { background: linear-gradient(180deg, #0d1b2a 0%, #1b2838 
 }
 #saved-cities-list {
   flex-shrink: 0;
-  max-height: 40vh;
+  max-height: calc(var(--ff-vh) * 0.4);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }

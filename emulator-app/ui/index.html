@@ -212,6 +212,10 @@
   <script src="js/hal-browser.js"></script>
   <script src="js/hal-tauri.js"></script>
   <!-- OS System Framework (loaded from OS image) -->
+  <!-- OS form-factor policy. responsive.css is deliberately NOT loaded here:
+       it would scale the emulator chrome. Applied scoped to the keyboard
+       container, which is OS UI hosted in this document. -->
+  <script src="apps/shared/form-factor.js"></script>
   <script src="apps/system/sandbox.js"></script>
   <script src="apps/system/security.js"></script>
   <script src="apps/system/permissions.js"></script>
