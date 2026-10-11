@@ -74,9 +74,19 @@ async function launchChrome() {
     /* Ubuntu 24.04 restricts unprivileged user namespaces, which Chrome's
        sandbox needs. Only our own repository is loaded, so CI drops it. */
     ...(process.env.CI ? ['--no-sandbox'] : []),
-  ], { stdio: 'ignore' });
+  ], { stdio: ['ignore', 'ignore', 'pipe'] });
+  /* Keep Chrome's last words: a launch failure on CI was otherwise just ENOENT */
+  let stderr = '';
+  let exited = null;
+  proc.stderr.on('data', (d) => { stderr = (stderr + d).slice(-4000); });
+  proc.on('exit', (code, sig) => { exited = sig || code; });
   const portFile = path.join(profile, 'DevToolsActivePort');
-  for (let i = 0; i < 100 && !fs.existsSync(portFile); i++) await sleep(100);
+  /* A cold start on a fresh CI image took longer than the 10 s this used to allow */
+  for (let i = 0; i < 300 && exited === null && !fs.existsSync(portFile); i++) await sleep(100);
+  if (!fs.existsSync(portFile)) {
+    proc.kill();
+    throw new Error(`Chrome did not start (${exited === null ? 'timed out after 30 s' : 'exited: ' + exited})\n${stderr}`);
+  }
   const port = fs.readFileSync(portFile, 'utf8').split('\n')[0];
   const ver = await (await fetch(`http://127.0.0.1:${port}/json/version`)).json();
   return { proc, profile, ws: ver.webSocketDebuggerUrl };
