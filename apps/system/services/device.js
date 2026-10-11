@@ -2,7 +2,7 @@
 // [Clean Architecture] Domain Layer - Service Module
 //
 // Role: DeviceInfo service — device metadata and uptime
-// Scope: deviceName, osVersion, SoC, RAM, kernel, build info
+// Scope: deviceName, osVersion, securityPatch, SoC, RAM, kernel, build info
 // Dependency Direction: Domain -> none (static data)
 // SOLID: SRP — device info only
 // ----------------------------------------------------------
@@ -11,9 +11,13 @@
   'use strict';
 
   ns.device = function (/* deps */) {
+    /* Version and patch level come from the OS image (apps/system/release.js),
+       not from a copy here — there used to be four copies of the version */
+    var release = (typeof window !== 'undefined' && window.ZylRelease) || {};
     var info = {
       deviceName: 'Zyl OS Device',
-      osVersion: '0.1.0',
+      osVersion: release.version || 'unknown',
+      securityPatch: release.securityPatch || 'unknown',
       soc: 'SpacemiT K1 (RISC-V)',
       ram: '2GB LPDDR4X',
       kernel: 'Linux 6.6.0-spacemit',

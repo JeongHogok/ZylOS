@@ -90,6 +90,8 @@ openssl dgst -sha256 -sign developer.key -out SIGNATURE manifest.hash
 - 부트 키 생성: `tools/gen-boot-keys.sh`
 - 이미지 서명 + verity 생성: `tools/sign-image.sh`
 - 에뮬레이터 환경에서는 비적용 (실기기 전용)
+- 슬롯별 서명 이미지: 커널 인자(슬롯 파티션, dm-verity 루트 해시, `zyl.slot`)가 서명되는 DTB 안에 있어 환경 변수로 바꿀 수 없다
+- **부트로더 잠금 해제** (GPLv3 §6): 설정에서 허용 + 부팅 시 기기 버튼 확인 + `/data` 삭제 후에만 전환, 해제 상태는 부팅마다 경고 — [INSTALLATION_INFORMATION.md](INSTALLATION_INFORMATION.md)
 
 ---
 

@@ -17,11 +17,11 @@ jobs:
             wayland wayland-protocols \
             libxkbcommon pixman libinput \
             libdrm mesa libglvnd \
-            gtk4 json-glib \
+            gtk4 webkitgtk-6.0 json-glib \
             hwdata libdisplay-info \
             seatd \
             openssl libseccomp libzip curl gpsd \
-            python nodejs
+            python nodejs dbus
       - name: Build wlroots from source
         run: |
           git clone --depth 1 --branch 0.18.2 https://gitlab.freedesktop.org/wlroots/wlroots.git /tmp/wlroots
@@ -89,6 +89,19 @@ jobs:
       - name: Run service module tests
         run: node tests/test_services.js
 
+  # ─── App performance budgets ───
+  # Startup time, main-thread blocking, heap, DOM and layout counts per app,
+  # on a throttled CPU without GPU. Fails when an app goes over budget.
+  perf:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: App performance budgets
+        run: node tests/perf/run.js --runs=3
+
   # ─── License audit ───
   audit-licenses:
     runs-on: ubuntu-24.04
@@ -130,10 +143,19 @@ jobs:
     needs: build-native
     steps:
       - uses: actions/checkout@v4
+      - name: Install boot image tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cryptsetup-bin u-boot-tools device-tree-compiler
       - name: Run integration tests
         run: |
           bash tests/test_manifests.sh
           bash tests/test_js_syntax.sh
+          # Boot policy (A/B tries, bootloader lock) executed from u-boot-env.txt
+          bash tests/test_boot_env.sh
+          # Slot-signed boot images; Ubuntu's u-boot-tools lack fit_check_sign,
+          # so signature verification itself runs where that tool exists
+          bash tests/test_sign_image.sh
           echo "Integration tests passed"
 
   # ─── Docker reproducible build ───

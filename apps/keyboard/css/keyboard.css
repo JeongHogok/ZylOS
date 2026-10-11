@@ -175,6 +175,17 @@
   background: rgba(255, 255, 255, 0.08);
 }
 
+/* 일본어·중국어 변환 후보: 전부 보여주고 가로로 스크롤 */
+.kb-candidate-bar--scroll {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.kb-candidate-bar--scroll .kb-candidate {
+  flex: none;
+  padding: 0 14px;
+  font-size: 17px;
+}
+
 /* 구분선 */
 .kb-candidate-sep {
   width: 1px;

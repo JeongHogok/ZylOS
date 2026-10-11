@@ -11,6 +11,21 @@ project('zyl-os', 'c',
 #   meson setup builddir -Dboard=bpi-f3 -Dprofile=tv
 # ═══════════════════════════════════════════════════════════
 zyl_profile = get_option('profile')
+
+# ─── OS image identity — apps/system/release.js is the only source ───
+_python = find_program('python3')
+_release_version = run_command(_python, files('tools/release_info.py'), 'version',
+                               check: true).stdout().strip()
+zyl_security_patch = run_command(_python, files('tools/release_info.py'), 'securityPatch',
+                                 check: true).stdout().strip()
+if _release_version != meson.project_version()
+  error('apps/system/release.js says version ' + _release_version +
+        ' but meson.build says ' + meson.project_version() + ' — keep them equal')
+endif
+add_project_arguments('-DZYL_OS_VERSION="' + meson.project_version() + '"',
+                      '-DZYL_SECURITY_PATCH="' + zyl_security_patch + '"',
+                      language: 'c')
+
 subdir('board')   # defines board_id / board_soc / board_arch / board_hal_backend
                   # and validates that this board supports zyl_profile
 
@@ -19,6 +34,7 @@ subdir('board')   # defines board_id / board_soc / board_arch / board_hal_backen
 zyl_core_services = [
   'dbus', 'logger', 'display', 'input', 'power', 'sandbox', 'crash',
   'credential', 'user', 'accessibility', 'notification', 'updater', 'telemetry',
+  'netstats', 'bootctl',
 ]
 
 # Hardware-dependent services, added per form factor.
@@ -91,6 +107,7 @@ install_subdir('apps/oobe',        install_dir: get_option('datadir') / 'zyl-os'
 install_subdir('apps/phone',       install_dir: get_option('datadir') / 'zyl-os' / 'apps')
 install_subdir('apps/store',       install_dir: get_option('datadir') / 'zyl-os' / 'apps')
 install_subdir('apps/weather',     install_dir: get_option('datadir') / 'zyl-os' / 'apps')
+install_subdir('apps/alerts',      install_dir: get_option('datadir') / 'zyl-os' / 'apps')
 install_subdir('apps/shared',      install_dir: get_option('datadir') / 'zyl-os' / 'apps')
 
 # Install HAL header
@@ -132,6 +149,26 @@ configure_file(
 )
 
 install_data('system/timesyncd.conf', install_dir: get_option('sysconfdir') / 'systemd')
+# Service users and the /data directories units write to. Without them the
+# WAM (User=zyl-wam) and every ProtectSystem=strict unit with a /data path
+# fail before they start.
+install_data('system/sysusers.d/zyl-wam.conf',
+             install_dir: get_option('prefix') / 'lib' / 'sysusers.d')
+install_data('system/tmpfiles.d/zyl-wam.conf', 'system/tmpfiles.d/zyl-data.conf',
+             install_dir: get_option('prefix') / 'lib' / 'tmpfiles.d')
+
+configure_file(
+  input: 'system/zyl-release.in',
+  output: 'zyl-release',
+  configuration: configuration_data({
+    'ZYL_OS_VERSION':     meson.project_version(),
+    'ZYL_SECURITY_PATCH': zyl_security_patch,
+    'ZYL_BOARD':          board_id,
+    'ZYL_PROFILE':        zyl_profile,
+  }),
+  install: true,
+  install_dir: get_option('sysconfdir'),
+)
 
 # Native font defaults + per-language CJK glyph selection (web apps use
 # apps/shared/fonts.css). Requires the Noto packages listed in DEPLOYMENT_GUIDE.

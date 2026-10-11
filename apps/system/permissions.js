@@ -21,7 +21,8 @@ window.ZylPermissions = (function () {
     'com.zylos.gallery', 'com.zylos.music', 'com.zylos.clock',
     'com.zylos.calc', 'com.zylos.notes', 'com.zylos.weather',
     'com.zylos.store', 'com.zylos.keyboard',
-    'com.zylos.phone', 'com.zylos.messages', 'com.zylos.contacts'
+    'com.zylos.phone', 'com.zylos.messages', 'com.zylos.contacts',
+    'com.zylos.alerts'
   ];
 
   /* Service → required permission(s). App needs at least ONE of these. */
@@ -44,6 +45,11 @@ window.ZylPermissions = (function () {
     /* Only system apps (OOBE, Settings) may read or change telemetry consent —
        a third-party app able to switch collection on would void the consent */
     'telemetry':    ['system'],
+    /* Usage per network and the mobile data limit: Settings and the status
+       bar only — the limit switches mobile data off for every app */
+    'netstats':     ['system'],
+    /* Bootloader lock: only Settings may ask — an unlock erases the device */
+    'bootctl':      ['system'],
     /* Services with no special permission required */
     'device':        [],
     'storage':       [],

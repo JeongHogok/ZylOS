@@ -76,6 +76,49 @@ test('telemetry-consent',
   )
 )
 
+# Test: data usage accounting (double-count guards, billing cycle, mobile
+# data limit). Uses the real daemon source with main() compiled out.
+test('netstats',
+  executable('test-netstats',
+    'test_netstats.c',
+    dependencies: [gio_dep],
+    c_args: ['-DZYL_TEST'],
+  )
+)
+
+# Test: emergency alerts (Cell Broadcast) — classification, repeats, history
+test('cbs',
+  executable('test-cbs',
+    'test_cbs.c',
+    '../runtime/services/telephony/cbs.c',
+    include_directories: include_directories('../runtime/services/telephony'),
+    dependencies: [gio_dep],
+  )
+)
+
+# Test: the real telephony daemon against a fake ModemManager on a private
+# bus and a fake nmcli — emergency alerts (channel setup, delivery, ack) and
+# the mobile data connection (IPv4v6, CLAT, roaming). Skips without dbus-daemon.
+test('telephony-dbus',
+  executable('test-telephony-dbus',
+    'test_telephony_dbus.c',
+    '../runtime/services/telephony/cbs.c',
+    include_directories: include_directories('../runtime/services/telephony'),
+    dependencies: [gio_dep],
+  )
+)
+
+# Test: bootloader lock requests (GPLv3 §6 unlock path) against fake
+# fw_printenv/fw_setenv, and the variable names in board/bpi-f3/u-boot-env.txt
+test('bootctl',
+  executable('test-bootctl',
+    'test_bootctl.c',
+    dependencies: [gio_dep],
+    c_args: ['-DZYL_TEST'],
+  ),
+  workdir: meson.project_source_root(),
+)
+
 # Test: device app scan — a user app must not replace a system app by reusing its id
 test('manifest-scan',
   executable('test-manifest-scan',

@@ -8,6 +8,10 @@
  * SOLID: SRP — OTA 업데이트 프로세스만 담당
  * ────────────────────────────────────────────────────────── */
 
+#ifndef ZYL_OS_VERSION
+#define ZYL_OS_VERSION "unknown"   /* meson sets it from apps/system/release.js */
+#endif
+
 #include "updater.h"
 
 #include <stdio.h>
@@ -292,12 +296,18 @@ static ZylUpdateType parse_update_type(const char *type_str) {
 }
 
 /* ─── 활성 슬롯 감지 ─── */
+/* The slot that actually booted: its signed FIT carries zyl.slot= (tools/
+ * sign-image.sh), so this is the truth even while U-Boot is trying an update
+ * and zyl_active_slot still names the previous slot. */
 static char *detect_active_slot(void) {
-    /*
-     * 실제 구현에서는 U-Boot 환경변수 또는 커널 커맨드라인에서 읽음:
-     *   cat /proc/cmdline | grep -o 'zyl.slot=[ab]'
-     *   또는 fw_printenv zyl_active_slot
-     */
+    char *cmdline = read_file_string("/proc/cmdline");
+    const char *p = cmdline ? strstr(cmdline, "zyl.slot=") : NULL;
+    if (p && (p[9] == 'a' || p[9] == 'b')) {
+        char *slot = strndup(p + 9, 1);
+        free(cmdline);
+        return slot;
+    }
+    free(cmdline);
     char *slot = read_file_string(SLOT_METADATA_PATH);
     return slot ? slot : strdup("a");
 }
@@ -326,7 +336,7 @@ ZylUpdater *zyl_updater_create(const char *update_server_url,
     /* 현재 슬롯/버전 감지 */
     u->active_slot = detect_active_slot();
     u->current_version = read_file_string(CURRENT_VERSION_FILE);
-    if (!u->current_version) u->current_version = strdup("0.1.0");
+    if (!u->current_version) u->current_version = strdup(ZYL_OS_VERSION);
 
     u->auto_check_enabled = true;
     u->auto_check_interval_h = 24;
@@ -755,9 +765,14 @@ bool zyl_updater_apply(ZylUpdater *u,
 
     /* 1. 비활성 슬롯 결정 */
     const char *inactive = strcmp(u->active_slot, "a") == 0 ? "b" : "a";
-    /* 파티션 번호 매핑: slot a → 파티션 2, slot b → 파티션 3 */
-    const char *inactive_part = strcmp(inactive, "a") == 0 ? "2" : "3";
-    const char *active_part   = strcmp(u->active_slot, "a") == 0 ? "2" : "3";
+    /* 파티션 번호 매핑: slot a → 파티션 2, slot b → 파티션 4 */
+    /* rootfs partitions per board/bpi-f3/README.md: p2 = A, p4 = B. p3 is
+       slot A's verity tree — writing slot B there destroyed the running slot.
+       shortcut: a full update writes the rootfs only; the slot's verity tree
+       (p3/p5) and signed fit-image-<slot>.itb must ship in the package too
+       before OTA can produce a slot that verifies. */
+    const char *inactive_part = strcmp(inactive, "a") == 0 ? "2" : "4";
+    const char *active_part   = strcmp(u->active_slot, "a") == 0 ? "2" : "4";
 
     char pkg_path[512];
     snprintf(pkg_path, sizeof(pkg_path), "%s/update.pkg", u->cache_dir);
@@ -1008,6 +1023,14 @@ bool zyl_updater_mark_verified(ZylUpdater *u) {
         if (ret != 0) {
             fprintf(stderr, "[UPDATER] fw_setenv zyl_active_slot failed (exit %d)\n", ret);
         }
+    }
+    /* The try is over: U-Boot (board/bpi-f3/u-boot-env.txt) would otherwise
+       keep counting boots of this slot and roll it back after three */
+    {
+        const char *fwse_next[] = {"/usr/sbin/fw_setenv", "zyl_next_slot", NULL};
+        const char *fwse_count[] = {"/usr/sbin/fw_setenv", "zyl_boot_count", "0", NULL};
+        if (safe_exec(fwse_next) != 0 || safe_exec(fwse_count) != 0)
+            fprintf(stderr, "[UPDATER] fw_setenv could not end the boot try\n");
     }
 
     /* 파일 기반 폴백 */

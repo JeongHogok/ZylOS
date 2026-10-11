@@ -47,6 +47,18 @@
         </div>
         <svg class="chevron" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
       </div>
+
+      <!-- 데이터 사용량 — 청구 주기, 경고, 모바일 데이터 한도 -->
+      <div class="setting-item" data-page="datausage" role="button" tabindex="0">
+        <div class="setting-icon icon-emerald">
+          <svg viewBox="0 0 24 24"><path d="M16 17.01V10h-2v7.01h-3L15 21l4-3.99h-3zM9 3L5 6.99h3V14h2V6.99h3L9 3z"/></svg>
+        </div>
+        <div class="setting-text">
+          <span class="setting-label" data-i18n="settings.datausage">Data usage</span>
+          <span class="setting-value" id="datausage-status"></span>
+        </div>
+        <svg class="chevron" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+      </div>
     </div>
 
     <!-- 디스플레이 & 사운드 -->
@@ -115,6 +127,18 @@
         </div>
         <div class="setting-text">
           <span class="setting-label" data-i18n="settings.privacy">Privacy</span>
+        </div>
+        <svg class="chevron" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+      </div>
+
+      <!-- 날짜 및 시간 — 시간대 -->
+      <div class="setting-item" data-page="datetime" role="button" tabindex="0">
+        <div class="setting-icon icon-blue">
+          <svg viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
+        </div>
+        <div class="setting-text">
+          <span class="setting-label" data-i18n="settings.datetime">Date &amp; time</span>
+          <span class="setting-value" id="current-timezone"></span>
         </div>
         <svg class="chevron" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
       </div>
@@ -254,6 +278,38 @@
           <span class="toggle-slider"></span>
         </label>
       </div>
+    </div>
+  </div>
+
+  <!-- 데이터 사용량 서브 페이지 — 처음 열 때 settings.js 가 채운다 (시작 DOM 예산) -->
+  <div id="page-datausage" class="sub-page hidden"></div>
+
+  <!-- 날짜 및 시간 서브 페이지 — 목록은 Intl 이 아는 시간대에서 생성 -->
+  <div id="page-datetime" class="sub-page hidden">
+    <div class="settings-group">
+      <div class="setting-item no-tap">
+        <div class="setting-text">
+          <span class="setting-label" data-i18n="settings.timezone_auto">Automatic time zone</span>
+          <span class="setting-value" data-i18n="settings.timezone_auto_desc"></span>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="timezone-auto-toggle" data-i18n-aria-label="settings.timezone_auto">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="setting-item no-tap">
+        <span class="setting-label" data-i18n="settings.timezone">Time zone</span>
+        <span class="setting-value" id="timezone-current"></span>
+      </div>
+    </div>
+    <div id="timezone-picker" class="hidden">
+      <div class="settings-group">
+        <div class="setting-item no-tap">
+          <input type="search" id="timezone-search" class="tz-search"
+                 data-i18n-placeholder="settings.timezone_search" data-i18n-aria-label="settings.timezone_search">
+        </div>
+      </div>
+      <div class="settings-group" id="timezone-list"></div>
     </div>
   </div>
 
@@ -531,9 +587,35 @@
 
   <!-- 개발자 옵션 서브 페이지 (placeholder) -->
   <div id="page-developer" class="sub-page hidden">
+    <!-- 부트로더 잠금 — 소유자가 수정한 소프트웨어를 설치하는 경로 (GPLv3 §6) -->
+    <div class="settings-group hidden" id="bootctl-group">
+      <div class="setting-item no-tap">
+        <span class="setting-label" data-i18n="settings.bootloader">Bootloader</span>
+        <span class="setting-value" id="bootctl-state"></span>
+      </div>
+      <div class="setting-item no-tap">
+        <div class="setting-text">
+          <span class="setting-label" data-i18n="settings.oem_unlock">Allow bootloader unlocking</span>
+          <span class="setting-value" data-i18n="settings.oem_unlock_desc"></span>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="oem-unlock-toggle" data-i18n-aria-label="settings.oem_unlock">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="setting-item" id="bootctl-request" role="button" tabindex="0">
+        <span class="setting-label" id="bootctl-request-label"></span>
+      </div>
+      <div class="setting-item no-tap hidden" id="bootctl-confirm">
+        <div class="setting-text">
+          <span class="setting-value" data-i18n="settings.bootloader_warning"></span>
+          <button type="button" id="bootctl-confirm-btn" class="danger-btn" data-i18n="settings.bootloader_confirm">Request</button>
+        </div>
+      </div>
+    </div>
     <div class="settings-group">
       <div class="setting-item no-tap" style="opacity:0.5">
-        <span class="setting-label" data-i18n="settings.developer_placeholder">Developer options (USB debugging, mock locations) will be available in a future update.</span>
+        <span class="setting-label" data-i18n="settings.developer_placeholder">USB debugging and simulated locations will be available in a future update.</span>
       </div>
     </div>
   </div>

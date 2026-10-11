@@ -53,7 +53,8 @@
     'clock.add_city': '\uB3C4\uC2DC \uCD94\uAC00',
     'clock.no_cities': '\uCD94\uAC00\uB41C \uB3C4\uC2DC \uC5C6\uC74C',
     'clock.search_city': '\uB3C4\uC2DC \uAC80\uC0C9...',
-    'clock.same_time': '\uAC19\uC740 \uC2DC\uAC04'
+    'clock.same_time': '\uAC19\uC740 \uC2DC\uAC04',
+    'clock.offset_hours': '{offset}\uC2DC\uAC04'
   });
 
   zylI18n.addTranslations('en', {
@@ -100,7 +101,8 @@
     'clock.add_city': 'Add City',
     'clock.no_cities': 'No cities added',
     'clock.search_city': 'Search city...',
-    'clock.same_time': 'Same time'
+    'clock.same_time': 'Same time',
+    'clock.offset_hours': '{offset}h'
   });
 
   zylI18n.addTranslations('ja', {
@@ -147,7 +149,8 @@
     'clock.add_city': '\u90FD\u5E02\u3092\u8FFD\u52A0',
     'clock.no_cities': '\u90FD\u5E02\u304C\u8FFD\u52A0\u3055\u308C\u3066\u3044\u307E\u305B\u3093',
     'clock.search_city': '\u90FD\u5E02\u3092\u691C\u7D22...',
-    'clock.same_time': '\u540C\u3058\u6642\u9593'
+    'clock.same_time': '\u540C\u3058\u6642\u9593',
+    'clock.offset_hours': '{offset}\u6642\u9593'
   });
 
   zylI18n.addTranslations('zh', {
@@ -194,7 +197,8 @@
     'clock.add_city': '\u6DFB\u52A0\u57CE\u5E02',
     'clock.no_cities': '\u672A\u6DFB\u52A0\u57CE\u5E02',
     'clock.search_city': '\u641C\u7D22\u57CE\u5E02...',
-    'clock.same_time': '\u76F8\u540C\u65F6\u95F4'
+    'clock.same_time': '\u76F8\u540C\u65F6\u95F4',
+    'clock.offset_hours': '{offset}\u5C0F\u65F6'
   });
 
   zylI18n.addTranslations('es', {
@@ -241,6 +245,7 @@
     'clock.add_city': 'Agregar ciudad',
     'clock.no_cities': 'Sin ciudades agregadas',
     'clock.search_city': 'Buscar ciudad...',
-    'clock.same_time': 'Misma hora'
+    'clock.same_time': 'Misma hora',
+    'clock.offset_hours': '{offset} h'
   });
 })();

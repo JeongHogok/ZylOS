@@ -36,8 +36,13 @@ var ZylClock = (function () {
 
     function update() {
       var now = new Date();
-      var h = pad(now.getHours());
-      var m = pad(now.getMinutes());
+      /* Wall-clock fields in the user's configured time zone */
+      var p = (window.zylI18n && typeof window.zylI18n.parts === 'function')
+        ? window.zylI18n.parts(now)
+        : { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate(),
+            hour: now.getHours(), minute: now.getMinutes() };
+      var h = pad(p.hour);
+      var m = pad(p.minute);
 
       if (timeEl) {
         timeEl.textContent = h + ':' + m;
@@ -45,8 +50,7 @@ var ZylClock = (function () {
 
       if (showDate && dateEl) {
         if (dateFormat === 'short') {
-          dateEl.textContent =
-            now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
+          dateEl.textContent = p.year + '-' + pad(p.month) + '-' + pad(p.day);
         } else {
           /* 'long' - use zylI18n if available, otherwise fallback */
           if (window.zylI18n && typeof window.zylI18n.formatDate === 'function') {

@@ -172,11 +172,15 @@
   function updateClock() {
     var now = new Date();
     if (clockDisplay) {
-      clockDisplay.textContent = pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds());
+      var cp = zylI18n.parts(now);
+      clockDisplay.textContent = pad(cp.hour) + ':' + pad(cp.minute) + ':' + pad(cp.second);
     }
     if (clockDate) {
       if (window.zylI18n && typeof window.zylI18n.formatDate === 'function') {
-        clockDate.textContent = window.zylI18n.formatDate(now);
+        /* Korean and Chinese users read the lunar date alongside: holidays and
+           many birthdays follow it. null for other locales. */
+        var lunar = window.zylI18n.formatLunarDate(now);
+        clockDate.textContent = window.zylI18n.formatDate(now) + (lunar ? ' \u00B7 ' + lunar : '');
       } else {
         clockDate.textContent = now.toLocaleDateString(zylI18n.getLocale(), {
           weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
@@ -458,10 +462,12 @@
 
   function checkAlarms() {
     if (alarms.length === 0) return;
-    var now = new Date();
-    var currentHour = now.getHours();
-    var currentMinute = now.getMinutes();
-    var currentDay = now.getDay(); // 0=Sun, 1=Mon, ... 6=Sat
+    /* An alarm set for 07:00 rings at 07:00 in the user's time zone — reading
+       Date#getHours() would follow the process zone instead */
+    var nowParts = zylI18n.parts(new Date());
+    var currentHour = nowParts.hour;
+    var currentMinute = nowParts.minute;
+    var currentDay = nowParts.weekday; // 0=Sun, 1=Mon, ... 6=Sat
     var timeKey = currentHour + ':' + currentMinute;
 
     for (var i = 0; i < alarms.length; i++) {
@@ -496,6 +502,7 @@
     /* Send notification via IPC */
     requestService('notification', 'post', {
       appId: 'com.zylos.clock',
+      channelId: 'alarm',
       title: alarm.label || zylI18n.t('clock.alarm'),
       body: pad(alarm.hour) + ':' + pad(alarm.minute),
       icon: '',
@@ -574,11 +581,17 @@
     { name: 'Kuala Lumpur', tz: 'Asia/Kuala_Lumpur' }
   ];
 
+  /* Locale tag for Intl — the clock is read in the user's language */
+  function intlLocale() {
+    var map = { ko: 'ko-KR', en: 'en-US', ja: 'ja-JP', zh: 'zh-CN', es: 'es-ES' };
+    return map[zylI18n.getLocale()] || 'en-US';
+  }
+
   function getTimeInTimezone(tz) {
     try {
-      var now = new Date();
-      var parts = now.toLocaleString('en-US', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false });
-      return parts;
+      return new Date().toLocaleTimeString(intlLocale(), {
+        timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+      });
     } catch (err) {
       return '--:--';
     }
@@ -586,32 +599,31 @@
 
   function getDateInTimezone(tz) {
     try {
-      var now = new Date();
-      var parts = now.toLocaleString('en-US', { timeZone: tz, weekday: 'short', month: 'short', day: 'numeric' });
-      return parts;
+      return new Date().toLocaleDateString(intlLocale(), {
+        timeZone: tz, weekday: 'short', month: 'short', day: 'numeric'
+      });
     } catch (err) {
       return '';
     }
   }
 
+  /* Difference from the user's configured zone, not the process zone */
   function getOffsetLabel(tz) {
     try {
       var now = new Date();
-      var localOffset = now.getTimezoneOffset(); /* in minutes, inverted sign */
-      /* Get target offset by comparing date strings */
-      var localStr = now.toLocaleString('en-US', { timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone });
-      var targetStr = now.toLocaleString('en-US', { timeZone: tz });
-      var localDate = new Date(localStr);
-      var targetDate = new Date(targetStr);
-      var diffMs = targetDate.getTime() - localDate.getTime();
-      var diffHours = Math.round(diffMs / 3600000);
-      if (diffHours === 0) return zylI18n.t('clock.same_time');
-      var sign = diffHours > 0 ? '+' : '';
-      return sign + diffHours + 'h';
+      var diff = zylI18n.zoneOffsetMinutes(tz, now) - zylI18n.zoneOffsetMinutes(zylI18n.getTimeZone(), now);
+      if (diff === 0) return zylI18n.t('clock.same_time');
+      var sign = diff > 0 ? '+' : '-';
+      var abs = Math.abs(diff);
+      var h = Math.floor(abs / 60);
+      var m = abs % 60;
+      if (m === 0) return zylI18n.t('clock.offset_hours', { offset: sign + h });
+      return sign + h + ':' + (m < 10 ? '0' : '') + m;
     } catch (err) {
       return '';
     }
   }
+
 
   function renderWorldClock() {
     if (!worldList) return;
@@ -806,6 +818,7 @@
     /* Notification */
     requestService('notification', 'post', {
       appId: 'com.zylos.clock',
+      channelId: 'timer',
       title: zylI18n.t('clock.timer'),
       body: zylI18n.t('clock.timer_done'),
       icon: '',

@@ -237,9 +237,8 @@
     var ts = parseInt(dateStr, 10);
     var d = (ts > 1000000000) ? new Date(ts * 1000) : new Date(dateStr);
     if (isNaN(d.getTime())) return '';
-    var m = d.getMonth() + 1;
-    var day = d.getDate();
-    return d.getFullYear() + '.' + (m < 10 ? '0' : '') + m + '.' + (day < 10 ? '0' : '') + day;
+    var p = zylI18n.parts(d);
+    return p.year + '.' + (p.month < 10 ? '0' : '') + p.month + '.' + (p.day < 10 ? '0' : '') + p.day;
   }
 
   function getIconClass(type) {

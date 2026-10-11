@@ -23,7 +23,7 @@ RUN pacman-key --init && \
       wayland wayland-protocols \
       libxkbcommon pixman libinput \
       libdrm mesa libglvnd \
-      gtk4 json-glib \
+      gtk4 webkitgtk-6.0 json-glib \
       hwdata libdisplay-info \
       seatd \
       openssl libseccomp libzip curl gpsd \

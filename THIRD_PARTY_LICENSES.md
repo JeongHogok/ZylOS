@@ -43,6 +43,16 @@ MIT 라이선스는 GPL-3.0과 완전 호환됩니다.
 | libcurl | MIT/X-style | HTTP 클라이언트 (OTA, 앱스토어) |
 | libgps (GPSD) | BSD-2-Clause | GPS 위치 서비스 |
 
+### 입력기 변환 사전 (OS 이미지 데이터)
+
+`apps/keyboard/dict/` — `tools/build_ime_dict.py` 로 빈도 상위만 생성. 원문 고지는
+`apps/keyboard/dict/LICENSES.txt` 에 함께 배포한다.
+
+| 데이터 | 원본 | 라이선스 | 용도 |
+|--------|------|---------|------|
+| zh.js | AOSP PinyinIME rawdict_utf16_65105_freq.txt | Apache-2.0 (GPL-3.0 호환) | 병음 → 간체 |
+| ja.js | Mozc dictionary_oss | BSD-3-Clause (Google) + IPAdic + ICOT Free Software + 沖縄辞書(Public Domain) | 히라가나 → 한자 |
+
 ### Rust Dependencies (에뮬레이터)
 
 | 크레이트 | 라이선스 | 용도 |

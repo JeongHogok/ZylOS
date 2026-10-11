@@ -1,0 +1,43 @@
+/* ──────────────────────────────────────────────────────────
+   [Clean Architecture] Presentation Layer - Style
+   역할: 재난문자 앱 스타일
+   수행범위: 전체 화면 경보(등급별 색), 받은 경보 목록, 수신 설정 토글
+   의존방향: alerts/index.html
+   SOLID: SRP — alerts 앱 스타일만 담당
+
+   클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
+   실제 디바이스 구동 기준이며, mock/demo 등 하드코딩 데이터가 있어서는 안 된다
+   ────────────────────────────────────────────────────────── */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: var(--zyl-font-sans); background: #0b0b14; color: #e8e8f0; height: var(--ff-vh); overflow: hidden; display: flex; flex-direction: column; }
+.hidden { display: none !important; }
+
+.hdr { padding: 18px 20px 10px; flex-shrink: 0; }
+.hdr h1 { font-size: 22px; font-weight: 600; }
+.content { flex: 1; overflow-y: auto; padding: 0 16px 24px; }
+.group-title { font-size: 13px; font-weight: 600; color: #9a9ab0; margin: 18px 4px 8px; }
+.group { background: #16162a; border-radius: 14px; overflow: hidden; }
+.empty { color: #8a8aa0; font-size: 14px; padding: 18px 8px; text-align: center; }
+
+.item { padding: 14px 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
+.item:last-child { border-bottom: none; }
+.item-head { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: #b0b0c8; margin-bottom: 6px; }
+.item-cat { font-weight: 600; }
+.item-text { font-size: 15px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+
+.row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); font-size: 15px; }
+.row:last-child { border-bottom: none; }
+.row-note { font-size: 13px; color: #9a9ab0; }
+.row input[type="checkbox"] { width: 22px; height: 22px; accent-color: #ef4444; flex: none; }
+
+/* Full-screen alert: solid colours only — it must read on any GPU */
+.alert { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 32px 24px; background: #7f1d1d; color: #fff; text-align: center; }
+.alert.cat-severe, .alert.cat-public_safety { background: #9a3412; }
+.alert.cat-amber { background: #92400e; }
+.alert.cat-test { background: #1e3a8a; }
+.alert-icon { width: 72px; height: 72px; fill: #fde68a; }
+.alert-title { font-size: 26px; font-weight: 700; }
+.alert-time { font-size: 14px; opacity: 0.85; }
+.alert-text { font-size: 19px; line-height: 1.5; max-height: calc(var(--ff-vh) * 0.45); overflow-y: auto; white-space: pre-wrap; word-break: break-word; }
+.alert-ok { margin-top: 12px; min-width: 60%; padding: 16px 24px; border: none; border-radius: 14px; background: #fff; color: #7f1d1d; font-size: 18px; font-weight: 700; cursor: pointer; }
+.alert-ok:focus-visible { outline: 3px solid #fde68a; outline-offset: 3px; }

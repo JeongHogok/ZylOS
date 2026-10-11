@@ -52,6 +52,7 @@
     language: 'settings.language',
     'device-class': 'settings.device_class',
     privacy: 'settings.privacy',
+    datetime: 'settings.datetime',
     wallpaper: 'settings.wallpaper',
     security: 'settings.security',
     storage: 'settings.storage',
@@ -66,20 +67,30 @@
   /* ─── Navigation stack for multi-level pages ─── */
   var navStack = [];
 
+  /* 서브 페이지 열기 — 메뉴 클릭과 상태 복원이 같은 경로를 쓴다 */
+  function openPage(pageId) {
+    var page = document.getElementById('page-' + pageId);
+    if (!page) return false;
+
+    mainMenu.classList.add('hidden');
+    page.classList.remove('hidden');
+    btnBack.classList.remove('hidden');
+    currentPage = pageId;
+    /* Before the title: building re-runs applyTranslations, which resets it */
+    if (pageId === 'datausage') buildDataUsagePage();
+
+    headerTitle.textContent = t(PAGE_TITLES[pageId] || 'settings.' + pageId);
+    if (pageId === 'datetime') renderTimeZoneState();
+    if (pageId === 'datausage') renderDataUsage();
+    if (pageId === 'developer') renderBootctl();
+    return true;
+  }
+
   /* 메뉴 항목 클릭 → 서브 페이지 */
   document.querySelectorAll('.setting-item[data-page]').forEach(function (item) {
     addButtonKeyHandler(item);
     item.addEventListener('click', function () {
-      var pageId = item.dataset.page;
-      var page = document.getElementById('page-' + pageId);
-      if (!page) return;
-
-      mainMenu.classList.add('hidden');
-      page.classList.remove('hidden');
-      btnBack.classList.remove('hidden');
-      currentPage = pageId;
-
-      headerTitle.textContent = t(PAGE_TITLES[pageId] || 'settings.' + pageId);
+      openPage(item.dataset.page);
     });
   });
 
@@ -221,6 +232,22 @@
   });
 
   /* ─── About Device Renderer ─── */
+  /* textContent, not innerHTML: deviceName is user-editable, and markup in it
+     used to execute inside Settings — a system app with every permission */
+  function infoRow(labelText, valueText) {
+    var el = document.createElement('div');
+    el.className = 'setting-item no-tap';
+    var label = document.createElement('span');
+    label.className = 'setting-label';
+    label.textContent = labelText;
+    var value = document.createElement('span');
+    value.className = 'setting-value';
+    value.textContent = (valueText === undefined || valueText === null) ? '' : String(valueText);
+    el.appendChild(label);
+    el.appendChild(value);
+    return el;
+  }
+
   function renderAboutInfo(info) {
     var list = document.getElementById('about-info-list');
     if (!list) return;
@@ -228,18 +255,14 @@
     var items = [
       { label: t('settings.device_name'), value: info.deviceName },
       { label: t('settings.os_version'),  value: info.osVersion },
+      { label: t('settings.security_patch'), value: info.securityPatch },
       { label: t('settings.soc') || 'SoC', value: info.soc },
       { label: t('settings.ram') || 'RAM', value: info.ram },
       { label: t('settings.kernel'),      value: info.kernel },
       { label: t('settings.build'),       value: info.build }
     ];
     items.forEach(function (item) {
-      var el = document.createElement('div');
-      el.className = 'setting-item no-tap';
-      el.innerHTML =
-        '<span class="setting-label">' + item.label + '</span>' +
-        '<span class="setting-value">' + item.value + '</span>';
-      list.appendChild(el);
+      list.appendChild(infoRow(item.label, item.value));
     });
   }
 
@@ -259,12 +282,7 @@
       { label: t('settings.storage_available') || 'Available', value: data.available }
     ];
     items.forEach(function (item) {
-      var el = document.createElement('div');
-      el.className = 'setting-item no-tap';
-      el.innerHTML =
-        '<span class="setting-label">' + item.label + '</span>' +
-        '<span class="setting-value">' + item.value + '</span>';
-      list.appendChild(el);
+      list.appendChild(infoRow(item.label, item.value));
     });
   }
 
@@ -377,6 +395,142 @@
     });
   }
 
+  /* ─── 날짜 및 시간: 시간대 ───
+     목록은 엔진이 아는 IANA 시간대 전부(Intl.supportedValuesOf), 이름은 ICU 가
+     사용자 언어로 지역화한다("한국 표준시") — 번역 문자열을 따로 두지 않는다.
+     목록은 페이지를 열 때만 그린다(418개를 앱 시작 때 그리면 DOM 예산을 넘는다). */
+  var TZ_FALLBACK = [
+    'Pacific/Honolulu', 'America/Anchorage', 'America/Los_Angeles', 'America/Denver',
+    'America/Chicago', 'America/New_York', 'America/Sao_Paulo', 'Atlantic/Azores',
+    'UTC', 'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'Europe/Madrid',
+    'Africa/Cairo', 'Europe/Moscow', 'Asia/Dubai', 'Asia/Karachi', 'Asia/Kolkata',
+    'Asia/Kathmandu', 'Asia/Dhaka', 'Asia/Bangkok', 'Asia/Shanghai', 'Asia/Singapore',
+    'Asia/Taipei', 'Asia/Seoul', 'Asia/Tokyo', 'Australia/Adelaide', 'Australia/Sydney',
+    'Pacific/Auckland'
+  ];
+  /* ICU keeps the old IANA ids as canonical for compatibility and lists only
+     them: searching "kolkata" found nothing because the engine says
+     "Asia/Calcutta". Show and search the current city names. */
+  var TZ_CURRENT_NAME = {
+    'Asia/Calcutta': 'Asia/Kolkata', 'Asia/Katmandu': 'Asia/Kathmandu',
+    'Europe/Kiev': 'Europe/Kyiv', 'Asia/Saigon': 'Asia/Ho_Chi_Minh',
+    'Asia/Rangoon': 'Asia/Yangon', 'America/Godthab': 'America/Nuuk',
+    'Atlantic/Faeroe': 'Atlantic/Faroe', 'Pacific/Truk': 'Pacific/Chuuk',
+    'Pacific/Ponape': 'Pacific/Pohnpei', 'America/Coral_Harbour': 'America/Atikokan',
+    'Pacific/Enderbury': 'Pacific/Kanton'
+  };
+  function zoneCityName(id) {
+    return (TZ_CURRENT_NAME[id] || id).replace(/_/g, ' ');
+  }
+  var tzToggle = document.getElementById('timezone-auto-toggle');
+  var tzCurrent = document.getElementById('timezone-current');
+  var tzMenuValue = document.getElementById('current-timezone');
+  var tzPicker = document.getElementById('timezone-picker');
+  var tzList = document.getElementById('timezone-list');
+  var tzSearch = document.getElementById('timezone-search');
+  var _zones = null;
+
+  function allZones() {
+    if (_zones) return _zones;
+    var ids;
+    try { ids = Intl.supportedValuesOf('timeZone'); } catch (e) { ids = TZ_FALLBACK; }
+    if (!ids || !ids.length) ids = TZ_FALLBACK;
+    var now = new Date();
+    _zones = ids.map(function (id) {
+      return { id: id, offset: zylI18n.zoneOffsetMinutes(id, now) };
+    }).sort(function (a, b) {
+      return (a.offset - b.offset) || (a.id < b.id ? -1 : 1);
+    });
+    return _zones;
+  }
+
+  function describeZone(id) {
+    return zylI18n.zoneName(id) + ' (' + zylI18n.formatOffset(zylI18n.zoneOffsetMinutes(id)) + ')';
+  }
+
+  function saveTimeZone(value) {
+    /* Apply here at once; the compositor stores it and tells every other app */
+    zylI18n.setTimeZone(value);
+    requestService('settings', 'update', { category: 'datetime', key: 'timezone', value: value });
+  }
+
+  function renderZoneList() {
+    if (!tzList) return;
+    var query = tzSearch ? tzSearch.value.toLowerCase().replace(/^\s+|\s+$/g, '') : '';
+    var current = zylI18n.getTimeZone();
+    var frag = document.createDocumentFragment();
+    allZones().forEach(function (z) {
+      var name = zylI18n.zoneName(z.id);
+      var city = zoneCityName(z.id);
+      if (query && city.toLowerCase().indexOf(query) === -1 &&
+          z.id.toLowerCase().replace(/_/g, ' ').indexOf(query) === -1 &&
+          name.toLowerCase().indexOf(query) === -1) return;
+      var row = document.createElement('div');
+      row.className = 'setting-item tz-item';
+      row.setAttribute('role', 'button');
+      row.dataset.tz = z.id;
+      var text = document.createElement('div');
+      text.className = 'setting-text';
+      var label = document.createElement('span');
+      label.className = 'setting-label';
+      label.textContent = name + ' (' + zylI18n.formatOffset(z.offset) + ')';
+      var value = document.createElement('span');
+      value.className = 'setting-value';
+      value.textContent = city;
+      text.appendChild(label);
+      text.appendChild(value);
+      row.appendChild(text);
+      if (z.id === current) {
+        row.insertAdjacentHTML('beforeend', '<svg class="check-icon" viewBox="0 0 24 24" aria-hidden="true">' +
+          '<path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>');
+        row.setAttribute('aria-current', 'true');
+      }
+      addButtonKeyHandler(row);
+      row.addEventListener('click', function () {
+        saveTimeZone(z.id);
+        renderTimeZoneState();
+      });
+      frag.appendChild(row);
+    });
+    tzList.innerHTML = '';
+    tzList.appendChild(frag);
+  }
+
+  function renderTimeZoneState() {
+    var auto = zylI18n.isAutoTimeZone();
+    var label = describeZone(zylI18n.getTimeZone());
+    if (tzToggle) tzToggle.checked = auto;
+    if (tzCurrent) tzCurrent.textContent = label;
+    if (tzMenuValue) tzMenuValue.textContent = label;
+    if (tzPicker) tzPicker.classList.toggle('hidden', auto);
+    if (!auto && currentPage === 'datetime') renderZoneList();
+  }
+
+  if (tzToggle) {
+    tzToggle.addEventListener('change', function () {
+      /* Turning automatic off keeps the zone the user is in, then lets them pick */
+      saveTimeZone(tzToggle.checked ? 'auto' : zylI18n.getTimeZone());
+      renderTimeZoneState();
+    });
+  }
+  if (tzSearch) tzSearch.addEventListener('input', renderZoneList);
+
+  /* ─── Instance state: come back to the page the user was on ───
+     Only top-level pages listed in the main menu are restored; a nested detail
+     page depends on data that has to be fetched again. */
+  ZylBridge.onSaveState(function () {
+    if (!currentPage) return null;
+    if (!document.querySelector('.setting-item[data-page="' + currentPage + '"]')) return null;
+    return { page: currentPage };
+  });
+  ZylBridge.onRestoreState(function (st) {
+    /* The value ends up inside a selector — accept page ids only */
+    if (st && typeof st.page === 'string' && /^[a-z][a-z-]*$/.test(st.page) &&
+        document.querySelector('.setting-item[data-page="' + st.page + '"]')) {
+      openPage(st.page);
+    }
+  });
+
   /* ─── 개인정보 보호: 진단 데이터 동의 ───
      토글은 수집 주체의 현재 상태를 그대로 보여준다. 끄면 기기에서는 수집 데몬이
      저장된 이벤트와 기기 ID 를 지운다. 응답이 오기 전에는 꺼진 상태로 둔다 —
@@ -400,11 +554,191 @@
     });
   }
 
+  /* ─── 데이터 사용량 ───
+     측정과 한도 집행은 기기의 netstats 데몬이 한다. 여기서는 보여주고 정책만 바꾼다.
+     GB 는 통신사 청구와 같은 10진 단위(zylI18n.formatBytes 와 동일). 0 또는 빈칸은 "설정 안 함". */
+  var GB = 1e9;
+  var duDay = null, duWarning = null, duLimit = null;
+
+  function duRow(id, labelKey, valueId, hidden) {
+    return '<div class="setting-item no-tap' + (hidden ? ' hidden' : '') + '"' +
+      (id ? ' id="' + id + '"' : '') + '><span class="setting-label" data-i18n="' + labelKey + '"></span>' +
+      (valueId ? '<span class="setting-value" id="' + valueId + '"></span>' : '') + '</div>';
+  }
+
+  function duField(id, labelKey, hintKey, control) {
+    return '<div class="setting-item no-tap"><div class="setting-text">' +
+      '<label class="setting-label" for="' + id + '" data-i18n="' + labelKey + '"></label>' +
+      (hintKey ? '<span class="setting-value" data-i18n="' + hintKey + '"></span>' : '') +
+      '</div>' + control + '</div>';
+  }
+
+  /* Built on first open, like the time zone list: every sub-page in the static
+     HTML is paid for at startup, and this one is rarely visited.
+     Constant markup only — no data goes through innerHTML. */
+  function buildDataUsagePage() {
+    var page = document.getElementById('page-datausage');
+    if (!page || duDay) return;
+    var num = ' class="field-input field-narrow" min="0" step="0.1" inputmode="decimal">';
+    var toggle = function (id, labelKey) {
+      return '<label class="toggle"><input type="checkbox" id="' + id + '" data-i18n-aria-label="' +
+        labelKey + '"><span class="toggle-slider"></span></label>';
+    };
+    page.innerHTML =
+      /* Shown only with a modem: switching mobile data off, roaming (off by default) */
+      '<div class="settings-group hidden" id="mobiledata-group">' +
+        duField('mobiledata-toggle', 'settings.datausage_mobile', null,
+          toggle('mobiledata-toggle', 'settings.datausage_mobile')) +
+        duField('roaming-toggle', 'settings.data_roaming', 'settings.data_roaming_desc',
+          toggle('roaming-toggle', 'settings.data_roaming')) + '</div>' +
+      '<div class="settings-group hidden" id="datausage-unsupported">' +
+        duRow(null, 'settings.datausage_unsupported') + '</div>' +
+      '<div class="settings-group hidden" id="datausage-usage">' +
+        duRow('datausage-limited', 'settings.datausage_limited', null, true) +
+        duRow(null, 'settings.datausage_mobile', 'datausage-mobile') +
+        duRow(null, 'settings.wifi', 'datausage-wifi') +
+        duRow('datausage-ethernet-row', 'settings.datausage_ethernet', 'datausage-ethernet', true) +
+        duRow(null, 'settings.datausage_since_label', 'datausage-since') + '</div>' +
+      '<div class="settings-group">' +
+        duField('datausage-cycle-day', 'settings.datausage_cycle_day', null,
+          '<select id="datausage-cycle-day" class="field-input field-narrow"></select>') +
+        duField('datausage-warning', 'settings.datausage_warning', 'settings.datausage_off_hint',
+          '<input type="number" id="datausage-warning"' + num) +
+        duField('datausage-limit', 'settings.datausage_limit', 'settings.datausage_limit_desc',
+          '<input type="number" id="datausage-limit"' + num) + '</div>';
+    zylI18n.applyTranslations();
+    duDay = document.getElementById('datausage-cycle-day');
+    duWarning = document.getElementById('datausage-warning');
+    duLimit = document.getElementById('datausage-limit');
+    for (var cd = 1; cd <= 28; cd++) {
+      var opt = document.createElement('option');
+      opt.value = String(cd);
+      opt.textContent = zylI18n.formatNumber(cd);
+      duDay.appendChild(opt);
+    }
+    duDay.addEventListener('change', saveDataPolicy);
+    document.getElementById('mobiledata-toggle').addEventListener('change', saveMobileData);
+    document.getElementById('roaming-toggle').addEventListener('change', saveMobileData);
+    duWarning.addEventListener('change', saveDataPolicy);
+    duLimit.addEventListener('change', saveDataPolicy);
+  }
+
+  function setText(id, text) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = text;
+  }
+
+  function showEl(id, on) {
+    var el = document.getElementById(id);
+    if (el) el.classList.toggle('hidden', !on);
+  }
+
+  function renderMobileData() {
+    requestService('telephony', 'getMobileData').then(function (m) {
+      var ok = !!m && m.supported === true;
+      showEl('mobiledata-group', ok);
+      if (!ok) return;
+      document.getElementById('mobiledata-toggle').checked = m.enabled === true;
+      document.getElementById('roaming-toggle').checked = m.roaming === true;
+    }, function () { showEl('mobiledata-group', false); });
+  }
+
+  function saveMobileData() {
+    requestService('telephony', 'setMobileData', {
+      enabled: document.getElementById('mobiledata-toggle').checked,
+      roaming: document.getElementById('roaming-toggle').checked
+    }).then(renderMobileData, renderMobileData);   /* show what was applied */
+  }
+
+  function renderDataUsage() {
+    if (duDay) renderMobileData();
+    requestService('netstats', 'getUsage').then(function (u) {
+      var ok = !!u && u.supported === true;
+      showEl('datausage-unsupported', !ok);
+      showEl('datausage-usage', ok);
+      setText('datausage-status', ok ? zylI18n.formatBytes(u.mobileRx + u.mobileTx) : '');
+      if (!ok) return;
+      setText('datausage-mobile', zylI18n.formatBytes(u.mobileRx + u.mobileTx));
+      setText('datausage-wifi', zylI18n.formatBytes(u.wifiRx + u.wifiTx));
+      setText('datausage-ethernet', zylI18n.formatBytes(u.ethernetRx + u.ethernetTx));
+      showEl('datausage-ethernet-row', u.ethernetRx + u.ethernetTx > 0);
+      setText('datausage-since', t('settings.datausage_since', {
+        date: zylI18n.formatDate(new Date(u.cycleStart * 1000))
+      }));
+      showEl('datausage-limited', u.limited === true);
+    }).catch(function () {
+      showEl('datausage-unsupported', true);
+      showEl('datausage-usage', false);
+    });
+    requestService('netstats', 'getPolicy').then(function (p) {
+      if (!p || !duDay) return;
+      duDay.value = String(p.cycleDay || 1);
+      duWarning.value = p.warningBytes > 0 ? String(Math.round(p.warningBytes / GB * 10) / 10) : '';
+      duLimit.value = p.limitBytes > 0 ? String(Math.round(p.limitBytes / GB * 10) / 10) : '';
+    });
+  }
+
+  function gbToBytes(input) {
+    var v = parseFloat(input.value);
+    return v > 0 ? Math.round(v * GB) : 0;
+  }
+
+  function saveDataPolicy() {
+    requestService('netstats', 'setPolicy', {
+      cycleDay: parseInt(duDay.value, 10) || 1,
+      warningBytes: gbToBytes(duWarning),
+      limitBytes: gbToBytes(duLimit)
+    }).then(renderDataUsage, renderDataUsage);   /* either way show what is stored */
+  }
+
+  /* ─── 부트로더 잠금 (개발자 옵션) ───
+     여기서는 요청만 기록한다. 다음 부팅 때 부트로더가 기기 버튼으로 확인을 받고
+     사용자 데이터를 지운 뒤에 상태를 바꾼다 — 원격으로도, 도난 기기에서도
+     데이터를 남긴 채 잠금을 풀 수 없다. */
+  var bootState = null;
+
+  function renderBootctl() {
+    requestService('bootctl', 'getState').then(function (st) {
+      bootState = (st && st.supported === true) ? st : null;
+      showEl('bootctl-group', !!bootState);
+      showEl('bootctl-confirm', false);
+      if (!bootState) return;
+      setText('bootctl-state', t(st.unlocked ? 'settings.bootloader_unlocked' : 'settings.bootloader_locked') +
+        (st.pending ? ' \u00B7 ' + t('settings.bootloader_pending') : ''));
+      document.getElementById('oem-unlock-toggle').checked = st.unlockAllowed === true;
+      setText('bootctl-request-label', t(st.unlocked ? 'settings.bootloader_relock' : 'settings.bootloader_unlock'));
+      /* Unlocking needs the permission switch; relocking never does */
+      document.getElementById('bootctl-request').classList.toggle('disabled',
+        !st.unlocked && st.unlockAllowed !== true);
+    }, function () { showEl('bootctl-group', false); });
+  }
+
+  var oemToggle = document.getElementById('oem-unlock-toggle');
+  if (oemToggle) {
+    oemToggle.addEventListener('change', function () {
+      requestService('bootctl', 'setUnlockAllowed', { allowed: oemToggle.checked })
+        .then(renderBootctl, renderBootctl);
+    });
+    document.getElementById('bootctl-request').addEventListener('click', function () {
+      showEl('bootctl-confirm', true);    /* the warning comes before the request */
+    });
+    addButtonKeyHandler(document.getElementById('bootctl-request'));
+    document.getElementById('bootctl-confirm-btn').addEventListener('click', function () {
+      if (!bootState) return;
+      requestService('bootctl', 'requestLockState', { unlocked: !bootState.unlocked }).then(function (ok) {
+        if (ok === true && typeof ZylToast !== 'undefined') ZylToast.info(t('settings.bootloader_requested'));
+        renderBootctl();
+      }, renderBootctl);
+    });
+  }
+
   /* ─── 초기화 ─── */
   applyTranslations();
   updateLangChecks();
   renderDeviceClassList();
   updateDeviceClassValue();
+  if (tzMenuValue) tzMenuValue.textContent = describeZone(zylI18n.getTimeZone());
+  renderDataUsage();
 
   /* Re-sync language checks when locale changes from outside (e.g. emulator inject) */
   zylI18n.onLocaleChange(function () {
@@ -414,6 +748,7 @@
     if (curLangEl) curLangEl.textContent = LANG_NAMES[zylI18n.getLocale()] || '';
     renderDeviceClassList();
     updateDeviceClassValue();
+    renderTimeZoneState();   /* zone names are localised; also fires on zone changes */
   });
 
 })();

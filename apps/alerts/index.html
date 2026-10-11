@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<!-- 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수. 실제 디바이스 구동 기준이며, mock/demo 등 하드코딩 데이터가 있어서는 안 된다 -->
+<!-- 재난문자(Cell Broadcast) — 전체 화면 경보, 받은 경보 기록, 유형별 수신 설정 -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Zyl OS Emergency Alerts</title>
+  <link rel="stylesheet" href="../shared/runtime.css">
+  <link rel="stylesheet" href="../shared/responsive.css">
+  <script src="../shared/form-factor.js"></script>
+  <script src="../shared/focus-nav.js"></script>
+  <script src="../shared/touch-scroll.js" defer></script>
+  <link rel="stylesheet" href="css/alerts.css">
+</head>
+<body>
+  <!-- An unacknowledged alert covers everything until the user confirms it -->
+  <div id="alert" class="alert hidden" role="alertdialog" aria-modal="true"
+       aria-labelledby="alert-title" aria-describedby="alert-text">
+    <svg class="alert-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
+    <h1 id="alert-title" class="alert-title"></h1>
+    <div id="alert-time" class="alert-time"></div>
+    <div id="alert-text" class="alert-text"></div>
+    <button id="alert-ok" class="alert-ok" type="button" data-i18n="alerts.ok">OK</button>
+  </div>
+
+  <header class="hdr"><h1 data-i18n="alerts.title">Emergency alerts</h1></header>
+
+  <main class="content">
+    <h2 class="group-title" data-i18n="alerts.history">Received alerts</h2>
+    <div id="history" class="group"></div>
+    <div id="history-empty" class="empty hidden" data-i18n="alerts.none">No alerts received</div>
+
+    <h2 class="group-title" data-i18n="alerts.settings">Alert settings</h2>
+    <div id="settings" class="group"></div>
+  </main>
+
+  <script src="../shared/i18n.js"></script>
+  <script src="i18n.js"></script>
+  <script src="../shared/bridge.js"></script>
+  <script src="js/alerts.js"></script>
+</body>
+</html>

@@ -75,13 +75,16 @@ var moduleFiles = [
   'notification.js', 'power.js', 'display.js', 'input.js', 'sensors.js',
   'location.js', 'telephony.js', 'contacts.js', 'messaging.js', 'usb.js',
   'user.js', 'credential.js', 'appstore.js', 'updater.js', 'sandbox.js',
-  'logger.js', 'accessibility.js', 'audio.js', 'telemetry.js'
+  'logger.js', 'accessibility.js', 'audio.js', 'telemetry.js', 'netstats.js', 'bootctl.js'
 ];
 
 /* Provide window.addEventListener stub before loading modules */
 global.window.addEventListener = function () {};
 global.window.innerWidth = 1080;
 global.window.innerHeight = 2400;
+
+/* OS image identity, read by the device service */
+eval(fs.readFileSync(path.join(__dirname, '..', 'apps', 'system', 'release.js'), 'utf8'));
 
 moduleFiles.forEach(function (f) {
   var code = fs.readFileSync(path.join(servicesDir, f), 'utf8');
@@ -639,6 +642,117 @@ console.log('\n■ ZylFormFactor / ZylFocusNav');
 })();
 
 /* ═══════════════════════════════════════════════════════
+   Japanese / Chinese conversion (apps/keyboard/js/ime.js + dict/)
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ ZylIme');
+
+(function () {
+  var M = require(path.join(__dirname, '..', 'apps', 'keyboard', 'js', 'ime.js'));
+  var I = M.ZylIme;
+  /* The dictionary files call the global ZylImeDict.register, as in a page */
+  global.ZylImeDict = M.ZylImeDict;
+  require(path.join(__dirname, '..', 'apps', 'keyboard', 'dict', 'ja.js'));
+  require(path.join(__dirname, '..', 'apps', 'keyboard', 'dict', 'zh.js'));
+
+  /* Applies edits the way apps/shared/bridge.js applies input.text */
+  function apply(field, e) {
+    assert.strictEqual(field.slice(field.length - e.expect.length), e.expect, 'expect is before the caret');
+    return field.slice(0, field.length - e.expect.length) + e.text;
+  }
+  function type(c, keys, field) {
+    field = field || '';
+    keys.split('').forEach(function (k) { field = apply(field, c.feed(k)); });
+    return field;
+  }
+  function kana(keys) { return type(I.create('ja'), keys); }
+
+  test('romaji becomes kana as it is typed', function () {
+    assert.strictEqual(kana('nihongo'), 'にほんご');
+    assert.strictEqual(kana('shinbun'), 'しんぶn');          /* last n still undecided */
+    assert.strictEqual(kana('sinbunn'), 'しんぶん');
+    assert.strictEqual(kana('kyouha'), 'きょうは');
+    assert.strictEqual(kana('chotto'), 'ちょっと');
+    assert.strictEqual(kana('matcha'), 'まっちゃ');
+    assert.strictEqual(kana('tsukue'), 'つくえ');
+    assert.strictEqual(kana('fairu'), 'ふぁいる');
+    assert.strictEqual(kana('ko-hi-'), 'こーひー');
+    assert.strictEqual(kana('xtsu'), 'っ');
+    assert.strictEqual(kana('kan\'i'), 'かんい');
+    assert.strictEqual(kana('k'), 'k');
+  });
+
+  test('katakana mirrors hiragana', function () {
+    assert.strictEqual(I.toKatakana('こーひー'), 'コーヒー');
+  });
+
+  test('space-first candidate converts the longest match; the rest keeps composing', function () {
+    var c = I.create('ja');
+    var field = type(c, 'watashiha', '> ');
+    assert.strictEqual(field, '> わたしは');
+    var cands = c.candidates();
+    assert.strictEqual(cands[0].text, '私');
+    assert.ok(cands.some(function (x) { return x.text === 'わたしは'; }), 'as typed');
+    assert.ok(cands.some(function (x) { return x.text === 'ワタシハ'; }), 'katakana');
+    field = apply(field, c.choose(cands[0]));
+    assert.strictEqual(field, '> 私は');
+    assert.strictEqual(c.reading(), 'は', 'は still composing');
+    field = apply(field, c.finish());
+    assert.strictEqual(field, '> 私は');
+    assert.strictEqual(c.isComposing(), false);
+  });
+
+  test('a whole-word match outranks its parts', function () {
+    var c = I.create('ja');
+    type(c, 'henkan');
+    assert.strictEqual(c.candidates()[0].text, '変換');   /* trailing n read as ん */
+  });
+
+  test('Enter keeps the reading, a trailing n becomes ん', function () {
+    var c = I.create('ja');
+    var field = type(c, 'hon');
+    assert.strictEqual(apply(field, c.finish()), 'ほん');
+  });
+
+  test('backspace removes one character of the reading', function () {
+    var c = I.create('ja');
+    var field = type(c, 'kana');
+    field = apply(field, c.backspace());
+    assert.strictEqual(field, 'か');
+  });
+
+  test('pinyin gives hanzi words, longest first', function () {
+    var c = I.create('zh');
+    var field = type(c, 'nihao');
+    assert.strictEqual(field, 'nihao');
+    var cands = c.candidates();
+    assert.strictEqual(cands[0].text, '你好');
+    assert.strictEqual(cands[cands.length - 1].text, 'nihao', 'latin kept as last resort');
+    assert.strictEqual(apply(field, c.choose(cands[0])), '你好');
+  });
+
+  test('partial pinyin converts the known part', function () {
+    var c = I.create('zh');
+    var field = type(c, 'womenzou');
+    var first = c.candidates()[0];
+    assert.strictEqual(first.text, '我们');
+    field = apply(field, c.choose(first));
+    assert.strictEqual(field, '我们zou');
+    assert.strictEqual(c.candidates()[0].text, '走');
+  });
+
+  test('ü is typed as v', function () {
+    var c = I.create('zh');
+    type(c, 'lvse');
+    assert.strictEqual(c.candidates()[0].text, '绿色');
+  });
+
+  test('only lowercase letters (and ー for Japanese) feed the reading', function () {
+    assert.ok(I.accepts('ja', 'a') && I.accepts('ja', '-') && I.accepts('zh', 'v'));
+    assert.ok(!I.accepts('zh', '-') && !I.accepts('ja', 'A') && !I.accepts('ja', '1'));
+  });
+})();
+
+/* ═══════════════════════════════════════════════════════
    Hangul 2-beolsik composition automaton
    ═══════════════════════════════════════════════════════ */
 console.log('\n■ ZylHangul');
@@ -928,10 +1042,316 @@ var telemetryTests = (function () {
 })();
 
 /* ═══════════════════════════════════════════════════════
+   Data usage policy (JS service, emulator contract)
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ netstats service');
+
+var netstatsTests = (function () {
+  function make() {
+    var store = {};
+    var settingsSvc = {
+      _getSetting: function (cat) { return Promise.resolve(store[cat] || null); },
+      _updateSetting: function (cat, k, v) { store[cat] = store[cat] || {}; store[cat][k] = v; }
+    };
+    return { svc: ns.netstats({ settingsSvc: settingsSvc }), store: store };
+  }
+
+  return Promise.all([
+    asyncTest('the emulator reports usage as unsupported, never invented', function () {
+      return make().svc.getUsage().then(function (u) {
+        assert.deepStrictEqual(u, { supported: false });
+      });
+    }),
+    asyncTest('policy defaults to cycle day 1 with no warning or limit', function () {
+      return make().svc.getPolicy().then(function (p) {
+        assert.deepStrictEqual(p, { cycleDay: 1, warningBytes: 0, limitBytes: 0 });
+      });
+    }),
+    asyncTest('policy is stored and read back', function () {
+      var t = make();
+      return t.svc.setPolicy({ cycleDay: 15, warningBytes: 2e9, limitBytes: 3e9 }).then(function () {
+        return t.svc.getPolicy();
+      }).then(function (p) {
+        assert.deepStrictEqual(p, { cycleDay: 15, warningBytes: 2e9, limitBytes: 3e9 });
+      });
+    }),
+    asyncTest('the emulator has no bootloader to unlock', function () {
+      var b = ns.bootctl({});
+      return Promise.all([b.getState(), b.setUnlockAllowed({ allowed: true }),
+                          b.requestLockState({ unlocked: true })]).then(function (r) {
+        assert.deepStrictEqual(r, [{ supported: false }, false, false]);
+      });
+    }),
+    asyncTest('a cycle day missing from some months is rejected (daemon contract)', function () {
+      var t = make();
+      return t.svc.setPolicy({ cycleDay: 31, warningBytes: 0, limitBytes: 0 }).then(function () {
+        throw new Error('accepted day 31');
+      }, function () {
+        assert.strictEqual(t.store.datausage, undefined, 'nothing stored');
+      });
+    })
+  ]);
+})();
+
+/* ═══════════════════════════════════════════════════════
+   Emergency alerts (JS telephony, emulator contract of cbs.c)
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ emergency alerts');
+
+var alertTests = (function () {
+  function make() {
+    var store = {};
+    var settingsSvc = {
+      _getSetting: function (cat) { return Promise.resolve(store[cat] || null); },
+      _updateSetting: function (cat, k, v) { store[cat] = store[cat] || {}; store[cat][k] = v; }
+    };
+    return ns.telephony({ settingsSvc: settingsSvc });
+  }
+  return Promise.all([
+    asyncTest('no modem, no alerts — never invented', function () {
+      return make().getEmergencyAlerts().then(function (l) { assert.deepStrictEqual(l, []); });
+    }),
+    asyncTest('defaults: everything but tests, presidential always', function () {
+      return make().getEmergencyAlertSettings().then(function (e) {
+        assert.strictEqual(e.presidential, true);
+        assert.strictEqual(e.extreme, true);
+        assert.strictEqual(e.test, false);
+      });
+    }),
+    asyncTest('a choice is kept; presidential cannot be turned off', function () {
+      var tel = make();
+      return tel.setEmergencyAlertEnabled({ category: 'presidential', enabled: false }).then(function (ok) {
+        assert.strictEqual(ok, false);
+        return tel.setEmergencyAlertEnabled({ category: 'severe', enabled: false });
+      }).then(function (ok) {
+        assert.strictEqual(ok, true);
+        return tel.setEmergencyAlertEnabled({ category: 'bogus', enabled: true });
+      }).then(function (ok) {
+        assert.strictEqual(ok, false);
+        return tel.getEmergencyAlertSettings();
+      }).then(function (e) {
+        assert.strictEqual(e.severe, false);
+        assert.strictEqual(e.presidential, true);
+      });
+    })
+  ]);
+})();
+
+/* ═══════════════════════════════════════════════════════
+   Compositor instance-state store (emulator-app/ui/js/app-state.js)
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ ZylAppStateStore');
+
+var appStateTests = (function () {
+  var Store = require(path.join(__dirname, '..', 'emulator-app', 'ui', 'js', 'app-state.js'));
+  function make(running, onAsk) {
+    return Store.create({
+      ask: onAsk || function () {}, timeoutMs: 40, maxBytes: 100,
+      isRunning: function (id) { return running.indexOf(id) !== -1; }
+    });
+  }
+  function saveThen(store, id) { return new Promise(function (r) { store.saveThen(id, r); }); }
+
+  return Promise.all([
+    asyncTest('a reply is stored and handed back once', function () {
+      var st = make(['a'], null);
+      var p = saveThen(st, 'a');
+      st.onState({ draft: 'x' });
+      return p.then(function () {
+        assert.deepStrictEqual(st.take('a'), { found: true, state: { draft: 'x' } });
+        assert.deepStrictEqual(st.take('a'), { found: false }, 'one-shot');
+      });
+    }),
+    asyncTest('a hung app does not block the switch', function () {
+      /* No reply ever comes; the switch must still go ahead via the timeout.
+         A tight wall-clock bound flaked on loaded CI runners, so the guard
+         only tells "finished" from "never finished". */
+      var st = make(['a']);
+      var guard;
+      return Promise.race([
+        saveThen(st, 'a').then(function () { return 'done'; }),
+        new Promise(function (r) { guard = setTimeout(function () { r('blocked'); }, 5000); })
+      ]).then(function (how) {
+        clearTimeout(guard);
+        assert.strictEqual(how, 'done', 'switch went ahead without a reply');
+        assert.strictEqual(st.take('a').found, false);
+      });
+    }),
+    asyncTest('a closed app has its state discarded', function () {
+      var st = make([]);                       /* no longer running */
+      var p = saveThen(st, 'a');
+      st.onState({ draft: 'x' });
+      return p.then(function () { assert.strictEqual(st.take('a').found, false); });
+    }),
+    asyncTest('oversized state is dropped', function () {
+      var st = make(['a']);
+      var p = saveThen(st, 'a');
+      st.onState({ blob: new Array(200).join('x') });
+      return p.then(function () { assert.strictEqual(st.take('a').found, false); });
+    }),
+    asyncTest('done fires exactly once even if a late reply follows the timeout', function () {
+      var st = make(['a']);
+      var calls = 0;
+      return new Promise(function (resolve) {
+        st.saveThen('a', function () { calls++; });
+        setTimeout(function () { st.onState({ late: true }); }, 60);
+        setTimeout(resolve, 120);
+      }).then(function () { assert.strictEqual(calls, 1); });
+    }),
+    asyncTest('an older timeout does not cancel a newer request (rapid switching)', function () {
+      /* The inline version this replaced cleared the shared waiter on any
+         timeout, so a reply to the newer request was dropped and lost. */
+      var st = make(['a', 'b']);
+      var first = saveThen(st, 'a');
+      var second;
+      return new Promise(function (resolve) {
+        setTimeout(function () {
+          second = saveThen(st, 'b');          /* newer request, first still pending */
+          setTimeout(function () {             /* first has timed out by now */
+            st.onState({ who: 'b' });          /* the reply to the newer request */
+            resolve();
+          }, 30);
+        }, 20);
+      }).then(function () { return Promise.all([first, second]); }).then(function () {
+        assert.deepStrictEqual(st.take('b'), { found: true, state: { who: 'b' } });
+        assert.strictEqual(st.take('a').found, false);
+      });
+    }),
+    asyncTest('discard removes saved state', function () {
+      var st = make(['a']);
+      var p = saveThen(st, 'a');
+      st.onState({ x: 1 });
+      return p.then(function () {
+        st.discard('a');
+        assert.strictEqual(st.take('a').found, false);
+      });
+    })
+  ]);
+})();
+
+/* ═══════════════════════════════════════════════════════
+   Time zone, relative time, lunar date (real apps/shared/i18n.js, isolated)
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ zylI18n time');
+
+(function () {
+  var vm = require('vm');
+  var noop = function () {};
+  var doc = {
+    readyState: 'complete', addEventListener: noop, querySelectorAll: function () { return []; },
+    documentElement: { lang: '', dir: '', setAttribute: noop, classList: { add: noop, remove: noop } },
+    body: { classList: { add: noop, remove: noop } }
+  };
+  var ctx = { window: { addEventListener: noop, parent: null }, document: doc, console: console,
+              navigator: { language: 'ko-KR' }, Intl: Intl, Date: Date, setTimeout: setTimeout };
+  ctx.window.window = ctx.window;
+  ctx.window.document = doc;
+  vm.createContext(ctx);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'apps', 'shared', 'i18n.js'), 'utf8'), ctx);
+  var I = ctx.window.zylI18n || ctx.zylI18n;
+  var instant = new Date('2026-10-11T03:30:00Z');
+
+  test('formatBytes uses decimal units and the locale separator', function () {
+    var before = I.getLocale();
+    I.setLocale('en');
+    assert.strictEqual(I.formatBytes(0), '0 KB');
+    assert.strictEqual(I.formatBytes(1500000), '1.5 MB');
+    assert.strictEqual(I.formatBytes(2.25e9), '2.3 GB');
+    I.setLocale('es');
+    assert.strictEqual(I.formatBytes(1.5e9), '1,5 GB');
+    I.setLocale(before);
+  });
+
+  test('automatic zone reads the system clock', function () {
+    I.setTimeZone('auto');
+    assert.strictEqual(I.isAutoTimeZone(), true);
+    assert.strictEqual(I.parts(instant).hour, instant.getHours());
+  });
+
+  test('a chosen zone moves the wall clock, half-hour offsets included', function () {
+    assert.strictEqual(I.setTimeZone('Asia/Kolkata'), true);
+    var p = I.parts(instant);
+    assert.deepStrictEqual([p.year, p.month, p.day, p.hour, p.minute], [2026, 10, 11, 9, 0]);
+    assert.strictEqual(I.formatTime(instant), '09:00');
+  });
+
+  test('the calendar date follows the zone across midnight', function () {
+    I.setTimeZone('America/New_York');
+    var p = I.parts(instant);
+    assert.deepStrictEqual([p.day, p.hour, p.minute, p.weekday], [10, 23, 30, 6]);
+  });
+
+  test('an unknown zone is rejected and the current one kept', function () {
+    I.setTimeZone('Asia/Seoul');
+    assert.strictEqual(I.setTimeZone('Mars/Olympus'), false);
+    assert.strictEqual(I.parts(instant).hour, 12);
+  });
+
+  test('modern and legacy ids are the same zone', function () {
+    I.setTimeZone('Asia/Kolkata');
+    var a = I.getTimeZone();
+    I.setTimeZone('Asia/Calcutta');
+    assert.strictEqual(I.getTimeZone(), a, 'stored in one canonical form');
+  });
+
+  test('zone offsets in minutes and their labels', function () {
+    assert.strictEqual(I.zoneOffsetMinutes('Asia/Seoul', instant), 540);
+    assert.strictEqual(I.zoneOffsetMinutes('Asia/Kolkata', instant), 330);
+    assert.strictEqual(I.zoneOffsetMinutes('Asia/Kathmandu', instant), 345);
+    assert.strictEqual(I.zoneOffsetMinutes('UTC', instant), 0);
+    assert.strictEqual(I.formatOffset(330), 'GMT+5:30');
+    assert.strictEqual(I.formatOffset(-300), 'GMT-5');
+    assert.strictEqual(I.formatOffset(0), 'GMT');
+  });
+
+  test('relative times are translated, not "5m" / "Yesterday"', function () {
+    I.setLocale('ko');
+    I.setTimeZone('Asia/Seoul');
+    var now = new Date('2026-10-11T03:30:00Z');
+    var ago = function (ms) { return I.formatRelative(new Date(now.getTime() - ms), now); };
+    assert.strictEqual(ago(20e3), '방금');
+    assert.strictEqual(ago(5 * 6e4), '5분');
+    assert.strictEqual(ago(3 * 36e5), '3시간');
+    assert.strictEqual(ago(26 * 36e5), '어제');
+    assert.strictEqual(ago(5 * 864e5), '10/6');
+  });
+
+  test('"yesterday" is the yesterday of the configured zone', function () {
+    I.setLocale('ko');
+    /* 01:00 in Seoul on the 11th; 25h earlier is the 10th in Seoul */
+    var now = new Date('2026-10-10T16:00:00Z');
+    I.setTimeZone('Asia/Seoul');
+    assert.strictEqual(I.formatRelative(new Date(now.getTime() - 25 * 36e5), now), '어제');
+  });
+
+  test('lunar date only for Korean and Chinese', function () {
+    I.setLocale('ko');
+    I.setTimeZone('Asia/Seoul');
+    var ko = I.formatLunarDate(instant);
+    assert.ok(ko && ko.indexOf('음력') === 0, 'ko gets a lunar date: ' + ko);
+    I.setLocale('en');
+    assert.strictEqual(I.formatLunarDate(instant), null);
+    I.setLocale('ja');
+    assert.strictEqual(I.formatLunarDate(instant), null);
+  });
+
+  test('clocks are told when the zone changes, and only then', function () {
+    var calls = 0;
+    var off = I.onLocaleChange(function () { calls++; });
+    I.setTimeZone('Asia/Tokyo');
+    I.setTimeZone('Asia/Tokyo');
+    off();
+    assert.strictEqual(calls, 1);
+    I.setTimeZone('auto');
+  });
+})();
+
+/* ═══════════════════════════════════════════════════════
    Wait for all async tests and report
    ═══════════════════════════════════════════════════════ */
 Promise.all([settingsTests, displayTests, inputTests, sensorsTests,
-             usbTests, powerTests, audioTests, fsTests, updaterTests, telemetryTests])
+             usbTests, powerTests, audioTests, fsTests, updaterTests, telemetryTests,
+             netstatsTests, alertTests, appStateTests])
   .then(function () {
     console.log('\n════════════════════════');
     console.log('Total: ' + total + '  Passed: ' + passed + '  Failed: ' + failed);

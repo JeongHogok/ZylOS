@@ -149,7 +149,14 @@ bash tests/verify-all.sh
 bash tests/check-os-independence.sh  # OS 이미지만
 bash tests/test_js_syntax.sh         # JS 문법
 bash tests/test_manifests.sh         # app.json
+node tests/perf/run.js               # 앱 성능 예산 (Chrome 필요, CI 'perf' 잡)
 ```
+
+### 성능 예산
+앱마다 시작 시간·메인스레드 블로킹·힙·DOM 노드·레이아웃 수를 CPU 스로틀 +
+GPU 없이 측정해 `tests/perf/budgets.json` 과 비교한다. 의도된 변경으로 수치가
+바뀌면 `node tests/perf/run.js --update` 로 예산을 갱신하고 그 이유를 커밋에 적는다.
+예산을 올리는 것으로 회귀를 덮지 말 것.
 
 ### Git Pre-Commit Hook
 커밋 시 자동으로 apps/ 변경분에 대해 검사 실행:

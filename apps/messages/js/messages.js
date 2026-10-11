@@ -487,33 +487,12 @@
 
   function formatRelativeTime(ts) {
     if (!ts) return '';
-    var d = new Date(ts);
-    var now = new Date();
-    var diffMs = now.getTime() - d.getTime();
-    var diffMin = Math.floor(diffMs / 60000);
-    var t = typeof zylI18n !== 'undefined' ? zylI18n : null;
-
-    if (diffMin < 1) {
-      return t ? (t.t('messages.just_now') || 'Just now') : 'Just now';
-    }
-    if (diffMin < 60) return diffMin + 'm';
-    var diffH = Math.floor(diffMin / 60);
-    if (diffH < 24) return diffH + 'h';
-    /* Check if yesterday */
-    var yesterday = new Date(now);
-    yesterday.setDate(yesterday.getDate() - 1);
-    if (d.toDateString() === yesterday.toDateString()) {
-      return t ? (t.t('messages.yesterday') || 'Yesterday') : 'Yesterday';
-    }
-    var padTime = function (n) { return (n < 10 ? '0' : '') + n; };
-    return padTime(d.getMonth() + 1) + '/' + padTime(d.getDate());
+    return zylI18n.formatRelative(ts);
   }
 
   function formatMessageTime(ts) {
     if (!ts) return '';
-    var d = new Date(ts);
-    var padTime = function (n) { return (n < 10 ? '0' : '') + n; };
-    return padTime(d.getHours()) + ':' + padTime(d.getMinutes());
+    return zylI18n.formatTime(new Date(ts));
   }
 
   /* ═══════════════════════════════════════════════════════════

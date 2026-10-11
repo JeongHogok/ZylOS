@@ -80,10 +80,7 @@
   /* ═══ Clock ═══ */
   function updateClock() {
     if (!emuTime) return;
-    var now = new Date();
-    emuTime.textContent =
-      String(now.getHours()).padStart(2, '0') + ':' +
-      String(now.getMinutes()).padStart(2, '0');
+    emuTime.textContent = deviceClockText(new Date());
   }
   updateClock();
   var _clockInterval = setInterval(updateClock, 1000);
@@ -107,6 +104,24 @@
   }
 
   /* ═══ App Lifecycle ═══ */
+  /* ═══ App instance state (Android onSaveInstanceState) ═══
+     Before the frame leaves an app, the app is asked for its UI state; on its
+     next launch the state is handed back. Asking first is the only reliable
+     way — a message posted from pagehide is dropped when the iframe navigates
+     (verified: only removing the iframe delivers it). Kept in memory, like
+     Android instance state: it survives switching apps, not a reboot. */
+  var _displayedApp = null;             /* app whose document is in the frame */
+  var _navGen = 0;
+  var _appStates = ZylAppStateStore.create({
+    ask: function () { broadcastToCurrentApp('lifecycle.save', {}); },
+    isRunning: function (id) {
+      return state.runningApps.some(function (a) { return a.id === id; });
+    },
+    log: function (m) { syslog(m, 'warn'); },
+    timeoutMs: 150,                     /* a hung app must not block switching */
+    maxBytes: 64 * 1024                 /* UI state — drafts, scroll, tab — not data */
+  });
+
   function launchApp(appId) {
     var app = ZylAppRegistry.getApp(appId);
     if (!app) {
@@ -141,59 +156,70 @@
     state.previousApp = state.currentApp;
     state.currentApp = appId;
 
-    /* Background execution limit — iframe unload on app switch
-     * 앱 전환 시 이전 앱의 iframe src를 about:blank으로 설정하여
-     * 백그라운드 JS 실행을 중단한다. recents에서 앱 카드를 클릭하면
-     * launchApp()이 다시 호출되어 iframe을 재로드한다. */
-    if (state.previousApp && state.previousApp !== appId) {
-      appFrame.src = 'about:blank';
-    }
+    /* Leaving the displayed app: ask for its state, then navigate. Navigating
+       the frame unloads the old document, which is the background execution
+       limit. A newer launch during the wait supersedes this one (gen check),
+       so rapid switching never attaches one app's state to another. */
+    var gen = ++_navGen;
+    var leaving = _displayedApp;
+    _appStates.saveThen(leaving, function () {
+      if (gen !== _navGen) return;
 
-    /* Apply OS sandbox policy before loading app */
-    if (typeof ZylSandbox !== 'undefined') {
-      appFrame.setAttribute('sandbox', ZylSandbox.SANDBOX_FLAGS);
-      var effectivePerms = (typeof ZylPermissions !== 'undefined')
-        ? ZylPermissions.getEffectivePermissions(appId) : [];
-      appFrame.setAttribute('allow', ZylSandbox.getPolicy(appId, effectivePerms));
-    }
+      /* Apply OS sandbox policy before loading app */
+      if (typeof ZylSandbox !== 'undefined') {
+        appFrame.setAttribute('sandbox', ZylSandbox.SANDBOX_FLAGS);
+        var effectivePerms = (typeof ZylPermissions !== 'undefined')
+          ? ZylPermissions.getEffectivePermissions(appId) : [];
+        appFrame.setAttribute('allow', ZylSandbox.getPolicy(appId, effectivePerms));
+      }
 
-    appFrame.src = appUrl;
+      appFrame.src = appUrl;
+      _displayedApp = appId;
 
-    /* iframe 로드 에러 감지 */
-    appFrame.onerror = function () {
-      syslog('[ERROR] Failed to load: ' + appUrl, 'warn');
-    };
+      /* iframe 로드 에러 감지 */
+      appFrame.onerror = function () {
+        syslog('[ERROR] Failed to load: ' + appUrl, 'warn');
+      };
 
-    /* 앱 로드 후 상태 전달 — JS 실행 완료 대기 위해 200ms 지연 */
-    var loadAppId = appId;
-    appFrame.onload = function () {
-      syslog('[LOADED] ' + loadAppId, 'sys');
-      /* Runtime CSS is loaded by each app via <link> in its own HTML.
-         The emulator does NOT inject anything into iframes. */
-      setTimeout(function () {
-        /* Inject saved locale into every app — always send, even if 'en' */
-        var savedLocale = ZylEmuI18n.getLocale();
-        if (savedLocale) {
-          broadcastToCurrentApp('system.setLocale', { locale: savedLocale });
-        }
-
-        /* Lockscreen: notifications + PIN */
-        if (loadAppId === 'com.zylos.lockscreen') {
-          notifications.forEach(function (n) {
-            broadcastToCurrentApp('notification.push', n);
-          });
-          /* Always send PIN state — lockscreen decides behavior based on empty vs set */
-          broadcastToCurrentApp('settings.pinChanged', { pin: _currentPin });
-        }
-        /* Home: wallpaper */
-        if (loadAppId === 'com.zylos.home') {
-          if (_currentWallpaper !== 'default') {
-            broadcastToCurrentApp('settings.wallpaperChanged', { wallpaper: _currentWallpaper });
+      /* 앱 로드 후 상태 전달 — JS 실행 완료 대기 위해 200ms 지연 */
+      var loadAppId = appId;
+      appFrame.onload = function () {
+        syslog('[LOADED] ' + loadAppId, 'sys');
+        /* Runtime CSS is loaded by each app via <link> in its own HTML.
+           The emulator does NOT inject anything into iframes. */
+        setTimeout(function () {
+          /* Inject saved locale into every app — always send, even if 'en' */
+          var savedLocale = ZylEmuI18n.getLocale();
+          if (savedLocale) {
+            broadcastToCurrentApp('system.setLocale', { locale: savedLocale });
           }
-        }
-      }, 200);
-      appFrame.onload = null;
-    };
+          broadcastToCurrentApp('system.setTimeZone', { timeZone: _currentTimeZone });
+
+          /* Hand back the state saved when the user left this app (one-shot:
+             leaving again saves it again) */
+          var restored = _appStates.take(loadAppId);
+          if (restored.found) {
+            broadcastToCurrentApp('lifecycle.restore', { state: restored.state });
+          }
+
+          /* Lockscreen: notifications + PIN */
+          if (loadAppId === 'com.zylos.lockscreen') {
+            notifications.forEach(function (n) {
+              broadcastToCurrentApp('notification.push', n);
+            });
+            /* Always send PIN state — lockscreen decides behavior based on empty vs set */
+            broadcastToCurrentApp('settings.pinChanged', { pin: _currentPin });
+          }
+          /* Home: wallpaper */
+          if (loadAppId === 'com.zylos.home') {
+            if (_currentWallpaper !== 'default') {
+              broadcastToCurrentApp('settings.wallpaperChanged', { wallpaper: _currentWallpaper });
+            }
+          }
+        }, 200);
+        appFrame.onload = null;
+      };
+    });
 
     /* System-only apps never appear in recents — policy from OS */
     var excludeFromRecents = (typeof ZylAppRegistry !== 'undefined' && ZylAppRegistry.isExcludedFromRecents)
@@ -207,6 +233,9 @@
   }
 
   function closeApp(appId) {
+    /* Closing discards instance state — it is removed from running apps first,
+       so the save that goHome() triggers below is not stored either */
+    _appStates.discard(appId);
     state.runningApps = state.runningApps.filter(function (a) { return a.id !== appId; });
     var closedApp = ZylAppRegistry.getApp(appId);
     syslog('Close: ' + (closedApp ? closedApp.name : appId), 'sys');
@@ -228,6 +257,7 @@
     var appFrame = document.getElementById('app-frame');
     if (appFrame && state.currentApp === appId) {
       appFrame.src = 'about:blank';
+      _displayedApp = null;     /* a hung app is not asked for its state */
     }
     /* Remove from running apps */
     closeApp(appId);
@@ -455,9 +485,15 @@
 
   function updateQsClock() {
     var now = new Date();
-    if (qsTime) qsTime.textContent = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    if (qsTime) qsTime.textContent = deviceClockText(now);
     var emuLocale = (typeof ZylEmuI18n !== 'undefined') ? ZylEmuI18n.getLocale() : 'en';
-    if (qsDate) qsDate.textContent = now.toLocaleDateString(emuLocale, { month: 'long', day: 'numeric', weekday: 'long' });
+    if (qsDate) {
+      try {
+        qsDate.textContent = now.toLocaleDateString(emuLocale, zoneOpts({ month: 'long', day: 'numeric', weekday: 'long' }));
+      } catch (e) {
+        qsDate.textContent = now.toLocaleDateString(emuLocale, { month: 'long', day: 'numeric', weekday: 'long' });
+      }
+    }
   }
 
   var qsBackdrop = document.getElementById('qs-backdrop');
@@ -908,6 +944,24 @@
   /* ── Apply real side effects when a setting changes ── */
   /* ─── 설정 변경 → 에뮬레이터에 실제 반영 ─── */
   var _currentPin = '';
+  /* The device's configured time zone (Settings > Date & time); 'auto' follows
+     the system zone. Broadcast to every app on load, like the locale. */
+  var _currentTimeZone = 'auto';
+
+  /* The emulator draws the virtual device's status bar clock, so it follows
+     the device's zone — not the host's. (syslog stamps stay in host time:
+     they are emulator diagnostics.) */
+  function zoneOpts(opts) {
+    if (_currentTimeZone && _currentTimeZone !== 'auto') opts.timeZone = _currentTimeZone;
+    return opts;
+  }
+  function deviceClockText(now) {
+    try {
+      return now.toLocaleTimeString('en-GB', zoneOpts({ hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }));
+    } catch (e) {
+      return String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    }
+  }
   var _systemSilentMode = false;
   var _currentWallpaper = 'default';
   var _wallpaperGradients = {
@@ -1000,6 +1054,14 @@
       syslog('Locale: ' + value, 'sys');
     }
 
+    /* ── Time zone → current app now, every other app when it loads ── */
+    if (category === 'datetime' && key === 'timezone') {
+      _currentTimeZone = String(value || 'auto');
+      broadcastToCurrentApp('system.setTimeZone', { timeZone: _currentTimeZone });
+      updateClock();
+      syslog('Time zone: ' + _currentTimeZone, 'sys');
+    }
+
     /* ── PIN changed → save (sent to lockscreen on load) ── */
     if (category === 'security' && key === 'pin') {
       _currentPin = String(value);
@@ -1041,6 +1103,9 @@
           break;
         case 'input.compositionFallback':
           if (typeof ZylKeyboard !== 'undefined') ZylKeyboard.adoptFallback();
+          break;
+        case 'lifecycle.state':
+          _appStates.onState(msg.state);
           break;
         case 'app.launch':
           if (!isLocked()) launchApp(msg.appId);
@@ -1294,6 +1359,14 @@
       if (pinLoad && typeof pinLoad.then === 'function') {
         pinLoad.then(function (sec) {
           if (sec && sec.pin) _currentPin = String(sec.pin);
+        });
+      }
+
+      /* Load persisted time zone */
+      var tzLoad = ZylServices.handleRequest('settings', 'get', { category: 'datetime' });
+      if (tzLoad && typeof tzLoad.then === 'function') {
+        tzLoad.then(function (dt) {
+          if (dt && dt.timezone) { _currentTimeZone = String(dt.timezone); updateClock(); }
         });
       }
 

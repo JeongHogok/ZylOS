@@ -2,13 +2,13 @@
 // [Clean Architecture] Presentation Layer - UI Component
 //
 // 역할: Zyl OS 가상 키보드 — 다국어 레이아웃 지원 (en/ko/es/ja/zh), 한글 조합(ZylHangul),
-//       bigram 기반 예측 변환 후보 바 포함
+//       일본어·중국어 변환(ZylIme), bigram 기반 예측 변환 후보 바 포함
 // 수행범위: 다국어 QWERTY/한글/스페인어 레이아웃 렌더링,
 //          키 입력 콜백 전달, Shift/Symbol 토글, 언어 순환,
 //          키 높이 설정, 터치 사운드/진동 피드백,
 //          예측 변환 후보 바 렌더링 (ZylPrediction 모듈 연동)
 // 의존방향: 에뮬레이터가 window.ZylKeyboard.init() 호출,
-//           window.ZylPrediction (prediction.js, optional)
+//           window.ZylPrediction (prediction.js, optional), ZylIme (ime.js, optional)
 // SOLID: SRP — 키보드 UI 렌더링과 입력 콜백 전달만 담당
 //        OCP — LAYOUTS 객체에 언어 추가로 확장 가능
 //        DIP — 에뮬레이터가 콜백 주입, 키보드는 구현에 비의존
@@ -40,6 +40,16 @@ window.ZylKeyboard = (function () {
   /* Hangul composition session — only used while the Korean layout is active */
   var _hangul = (typeof ZylHangul !== 'undefined') ? ZylHangul.create() : null;
 
+  /* Japanese / Chinese conversion session — only for those layouts */
+  var _ime = null;
+  function imeFor(lang) {
+    if (typeof ZylIme === 'undefined' || ZylIme.LANGS.indexOf(lang) === -1) return null;
+    ZylImeDict.load(lang);
+    return ZylIme.create(lang);
+  }
+  /* Candidates appear as soon as the dictionary arrives mid-word */
+  if (typeof ZylImeDict !== 'undefined') ZylImeDict.onLoad(function () { updatePredictions(); });
+
   /* Composer to switch to if the receiver could not apply the last edit as
      planned (see adoptFallback). One keystroke ahead at most. */
   var _pendingFallback = null;
@@ -53,7 +63,8 @@ window.ZylKeyboard = (function () {
    * only if "expect" is really just before the caret. Otherwise the field was
    * changed behind the keyboard's back — the app cleared it after "send",
    * say — and it deletes "fallbackDelete" characters and inserts "fallback"
-   * instead, then tells us so we can adopt the matching composer state.
+   * instead, then tells us so we can adopt the matching composer state
+   * (fallbackComposer: { hangul: composer } or { ime: composer }).
    */
   function emitEdit(edit, fallbackDelete, fallback, fallbackComposer) {
     _pendingFallback = fallbackComposer || null;
@@ -75,6 +86,7 @@ window.ZylKeyboard = (function () {
    */
   function commitComposition() {
     if (_hangul) _hangul.commit();
+    if (_ime) _ime.commit();
     _pendingFallback = null;
   }
 
@@ -83,7 +95,8 @@ window.ZylKeyboard = (function () {
    * match what is now in the field, so the next jamo composes onto it.
    */
   function adoptFallback() {
-    if (_pendingFallback) _hangul = _pendingFallback;
+    if (_pendingFallback && _pendingFallback.hangul) _hangul = _pendingFallback.hangul;
+    if (_pendingFallback && _pendingFallback.ime) _ime = _pendingFallback.ime;
     _pendingFallback = null;
     _currentFieldText = '';
   }
@@ -307,6 +320,7 @@ window.ZylKeyboard = (function () {
     if (!LAYOUTS[lang]) return;
     commitComposition();
     _currentLang = lang;
+    _ime = imeFor(lang);
     /* Key caps follow the typing language, not the host page: a kana or hanzi
        key drawn with Korean glyph shapes reads as the wrong script. */
     if (_container) _container.setAttribute('lang', lang);
@@ -439,7 +453,7 @@ window.ZylKeyboard = (function () {
       /* If the field moved on without us, this key starts a fresh syllable */
       var fresh = ZylHangul.create();
       var freshEdit = fresh.feed(key);
-      emitEdit(edit, 0, freshEdit.text, fresh);
+      emitEdit(edit, 0, freshEdit.text, { hangul: fresh });
       updatePredictions();
       if (_shifted && !_capsLock) {
         _shifted = false;
@@ -452,9 +466,34 @@ window.ZylKeyboard = (function () {
     if (key === 'Backspace' && _hangul && _hangul.isComposing()) {
       var back = _hangul.backspace();
       /* If the composing syllable is gone, this is an ordinary Backspace */
-      emitEdit(back, 1, '', ZylHangul.create());
+      emitEdit(back, 1, '', { hangul: ZylHangul.create() });
       updatePredictions();
       return;
+    }
+
+    /* Japanese / Chinese: letters build the reading (k a → か, n i → ni) */
+    /* '-' lives on the symbols page and is the long vowel ー in Japanese */
+    if (_ime && (!_symbols || key === '-') && ZylIme.accepts(_currentLang, key)) {
+      var imeEdit = _ime.feed(key);
+      var freshIme = ZylIme.create(_currentLang);
+      emitEdit(imeEdit, 0, freshIme.feed(key).text, { ime: freshIme });
+      updatePredictions();
+      return;
+    }
+
+    if (_ime && _ime.isComposing()) {
+      if (key === 'Backspace') {
+        emitEdit(_ime.backspace(), 1, '', { ime: ZylIme.create(_currentLang) });
+        updatePredictions();
+        return;
+      }
+      /* Space converts with the best candidate; Enter keeps the reading as typed */
+      if (key === ' ' || key === 'Enter') {
+        var best = key === ' ' ? _ime.candidates()[0] : null;
+        emitEdit(best ? _ime.choose(best) : _ime.finish(), 0, '', null);
+        updatePredictions();
+        return;
+      }
     }
 
     /* Any other key (space, enter, punctuation, digits) ends the syllable */
@@ -486,9 +525,13 @@ window.ZylKeyboard = (function () {
 
   /* ─── 예측 후보 바 ─── */
 
-  function renderCandidateBar(candidates) {
+  /* onSelect given: conversion candidates — all of them, scrolling sideways.
+     Otherwise the three word predictions. */
+  function renderCandidateBar(candidates, onSelect) {
     if (!_candidateBar) return;
     _candidateBar.innerHTML = '';
+    _candidateBar.classList.toggle('kb-candidate-bar--scroll', !!onSelect);
+    _candidateBar.scrollLeft = 0;
 
     if (!candidates || candidates.length === 0) {
       _candidateBar.classList.remove('visible');
@@ -496,8 +539,10 @@ window.ZylKeyboard = (function () {
     }
 
     _candidateBar.classList.add('visible');
-    for (var i = 0; i < candidates.length && i < 3; i++) {
-      (function (word) {
+    var limit = onSelect ? candidates.length : 3;
+    for (var i = 0; i < candidates.length && i < limit; i++) {
+      (function (word, index) {
+        var select = onSelect ? function () { onSelect(index); } : function () { handleCandidateSelect(word); };
         var btn = document.createElement('button');
         btn.className = 'kb-candidate';
         btn.setAttribute('type', 'button');
@@ -505,23 +550,23 @@ window.ZylKeyboard = (function () {
 
         btn.addEventListener('touchstart', function (e) {
           e.preventDefault();
-          handleCandidateSelect(word);
+          select();
         }, { passive: false });
 
         btn.addEventListener('mousedown', function (e) {
           e.preventDefault();
-          handleCandidateSelect(word);
+          select();
         });
 
         _candidateBar.appendChild(btn);
 
         /* 구분선 (마지막 제외) */
-        if (i < candidates.length - 1 && i < 2) {
+        if (i < candidates.length - 1 && i < limit - 1) {
           var sep = document.createElement('span');
           sep.className = 'kb-candidate-sep';
           _candidateBar.appendChild(sep);
         }
-      })(candidates[i]);
+      })(candidates[i], i);
     }
   }
 
@@ -555,6 +600,14 @@ window.ZylKeyboard = (function () {
   }
 
   function updatePredictions() {
+    if (_ime && _ime.isComposing()) {
+      var cands = _ime.candidates();
+      renderCandidateBar(cands.map(function (c) { return c.text; }), function (index) {
+        emitEdit(_ime.choose(cands[index]), 0, cands[index].text, null);
+        updatePredictions();
+      });
+      return;
+    }
     if (!window.ZylPrediction) return;
     window.ZylPrediction.updateContext(_currentFieldText);
     var candidates = window.ZylPrediction.getPredictions(_currentLang);
@@ -692,7 +745,7 @@ window.ZylKeyboard = (function () {
   }
 
   function isComposing() {
-    return !!(_hangul && _hangul.isComposing());
+    return !!((_hangul && _hangul.isComposing()) || (_ime && _ime.isComposing()));
   }
 
   function setSoundEnabled(v) { _soundEnabled = !!v; }

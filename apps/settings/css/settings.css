@@ -301,3 +301,20 @@ main, .sub-page {
 .scan-btn:active { background:#1a1a28; }
 .scan-btn.scanning { opacity:0.6; pointer-events:none; }
 
+/* ─── Time zone search field ─── */
+.tz-search,
+.field-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font: inherit;
+  font-size: 15px;
+}
+.danger-btn { margin-top: 10px; width: 100%; padding: 10px; border: 1px solid rgba(239, 68, 68, 0.5); border-radius: 8px; background: transparent; color: #ef4444; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.setting-item.disabled { opacity: 0.45; pointer-events: none; }
+.field-narrow { width: 6.5em; flex: none; text-align: end; }
+.tz-item .setting-text { min-width: 0; }
+.tz-item .setting-value { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

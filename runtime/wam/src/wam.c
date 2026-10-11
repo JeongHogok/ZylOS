@@ -101,13 +101,21 @@ static void wam_handle_app_launch(const char        *type,
  *  WebKit bridge message signal handler
  * ════════════════════════════════════════════════════════════════ */
 
+/* WebKitGTK 6.0 (the GTK 4 port) hands the JSCValue over directly; the
+   webkit2gtk-4.x API wrapped it in a WebKitJavascriptResult */
+#ifdef ZYL_USE_WEBKIT2GTK
 static void on_webkit_bridge_message(WebKitUserContentManager *manager,
                                      WebKitJavascriptResult   *result,
                                      gpointer                  user_data) {
+    JSCValue *value = webkit_javascript_result_get_js_value(result);
+#else
+static void on_webkit_bridge_message(WebKitUserContentManager *manager,
+                                     JSCValue                 *value,
+                                     gpointer                  user_data) {
+#endif
     ZylAppInstance *instance = user_data;
     (void)manager;
 
-    JSCValue *value = webkit_javascript_result_get_js_value(result);
     char *msg_str = jsc_value_to_string(value);
 
     /* H5: Dispatch via handler registry; H13: error handling inside */
@@ -141,16 +149,26 @@ static GtkWidget *webkit_create_webview(ZylWebEngine   *self,
     WebKitUserContentManager *ucm = webkit_user_content_manager_new();
     g_signal_connect(ucm, "script-message-received::bridge",
                      G_CALLBACK(on_webkit_bridge_message), instance_ctx);
+#ifdef ZYL_USE_WEBKIT2GTK
     webkit_user_content_manager_register_script_message_handler(ucm, "bridge");
-
     WebKitWebView *webview = WEBKIT_WEB_VIEW(
         webkit_web_view_new_with_user_content_manager(ucm));
+#else
+    webkit_user_content_manager_register_script_message_handler(ucm, "bridge", NULL);
+    WebKitWebView *webview = WEBKIT_WEB_VIEW(
+        g_object_new(WEBKIT_TYPE_WEB_VIEW, "user-content-manager", ucm, NULL));
+#endif
     webkit_web_view_set_settings(webview, settings);
 
-    /* H11: TLS certificate verification — reject invalid certificates */
-    WebKitWebContext *web_ctx = webkit_web_context_get_default();
-    webkit_web_context_set_tls_errors_policy(web_ctx,
+    /* H11: TLS certificate verification — reject invalid certificates.
+       6.0 moved the policy from the web context to the network session. */
+#ifdef ZYL_USE_WEBKIT2GTK
+    webkit_web_context_set_tls_errors_policy(webkit_web_context_get_default(),
         WEBKIT_TLS_ERRORS_POLICY_FAIL);
+#else
+    webkit_network_session_set_tls_errors_policy(webkit_network_session_get_default(),
+        WEBKIT_TLS_ERRORS_POLICY_FAIL);
+#endif
 
     /* Inject JS bridge from external file */
     zyl_bridge_inject(WAM_BRIDGE_JS, webview, manifest);
@@ -287,6 +305,52 @@ static const ZylDbusMethodEntry dbus_methods[] = {
 };
 
 /* ════════════════════════════════════════════════════════════════
+ *  Emergency alerts (Cell Broadcast)
+ *  The telephony daemon records each alert and signals it; the WAM puts
+ *  the alerts app in front. The app asks the daemon for unacknowledged
+ *  alerts when it loads, so an app still starting misses nothing; one
+ *  already running is told to look again.
+ * ════════════════════════════════════════════════════════════════ */
+
+#define WAM_ALERTS_APP "com.zylos.alerts"
+
+static void on_emergency_alert(GDBusConnection *conn, const gchar *sender,
+                               const gchar *path, const gchar *iface,
+                               const gchar *signal, GVariant *params, gpointer user_data) {
+    (void)conn; (void)sender; (void)path; (void)iface; (void)signal; (void)params;
+    ZylWam *wam = user_data;
+    gboolean running = wam->iface.get_instance(&wam->iface, WAM_ALERTS_APP) != NULL;
+    ZylAppInstance *inst = zyl_lifecycle_launch(&wam->iface, &wam->engine, WAM_ALERTS_APP);
+    if (!inst) {
+        g_warning("WAM: emergency alert received but %s could not start", WAM_ALERTS_APP);
+        return;
+    }
+    if (!running) zyl_oom_on_app_launched(g_oom, WAM_ALERTS_APP, true, 0);
+    zyl_oom_on_app_foreground(g_oom, WAM_ALERTS_APP);
+    if (running && inst->webview_widget)
+        webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(inst->webview_widget),
+            "window.postMessage(JSON.stringify({type:'emergency.alert'}),'*')",
+            -1, NULL, NULL, NULL, NULL, NULL);
+}
+
+static GDBusConnection *g_alert_bus;   /* held for the WAM's lifetime: the
+                                          subscription dies with the connection */
+
+static void subscribe_emergency_alerts(ZylWam *wam) {
+    GError *err = NULL;
+    GDBusConnection *session = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &err);
+    if (!session) {
+        g_warning("WAM: no session bus for emergency alerts: %s", err->message);
+        g_error_free(err);
+        return;
+    }
+    g_dbus_connection_signal_subscribe(session, "org.zylos.Telephony",
+        "org.zylos.Telephony", "EmergencyAlert", "/org/zylos/Telephony", NULL,
+        G_DBUS_SIGNAL_FLAGS_NONE, on_emergency_alert, wam, NULL);
+    g_alert_bus = session;
+}
+
+/* ════════════════════════════════════════════════════════════════
  *  GTK activate
  * ════════════════════════════════════════════════════════════════ */
 
@@ -303,6 +367,8 @@ static void on_activate(GApplication *app, gpointer user_data) {
     (void)zyl_lifecycle_launch(&wam->iface, &wam->engine, "com.zylos.home");
     zyl_oom_on_app_launched(g_oom, "com.zylos.home", true, 0);
     zyl_oom_on_app_foreground(g_oom, "com.zylos.home");
+
+    subscribe_emergency_alerts(wam);
 
     g_message("WAM activated, %d apps registered",
               g_hash_table_size(wam->manifests));

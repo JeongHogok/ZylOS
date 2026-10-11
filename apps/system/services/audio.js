@@ -2,7 +2,7 @@
 // [Clean Architecture] Domain Layer - Service Module
 //
 // Role: Audio service — volume, vibration, silent mode, sounds
-// Scope: per-stream volume, notification/beep/key sounds, vibrate
+// Scope: per-stream volume, notification/beep/key sounds, alert tones, vibrate
 // Dependency Direction: Domain -> settings service
 // SOLID: SRP — audio control only
 // ----------------------------------------------------------
@@ -131,6 +131,23 @@
               osc.stop(ctx.currentTime + delay + dur / 1000);
             })(i * (dur + 100) / 1000);
           }
+        } catch (e) { /* Web Audio unavailable */ }
+        return Promise.resolve(true);
+      },
+      /* One tone at full alarm volume, silent mode or not — the emergency
+         alert attention signal must be heard (same contract as the
+         device's PlayTone(freq_hz, duration_ms)) */
+      playTone: function (p) {
+        var freq = parseInt(p && p.freqHz, 10) || 853;
+        var dur = parseInt(p && p.durationMs, 10) || 250;
+        try {
+          var ctx = getAudioCtx();
+          var osc = ctx.createOscillator();
+          var gain = ctx.createGain();
+          gain.gain.value = 0.5;
+          osc.type = 'sine'; osc.frequency.value = freq;
+          osc.connect(gain); gain.connect(ctx.destination);
+          osc.start(); osc.stop(ctx.currentTime + dur / 1000);
         } catch (e) { /* Web Audio unavailable */ }
         return Promise.resolve(true);
       },

@@ -74,6 +74,29 @@ else
   pass "textContent에 하드코딩 미발견"
 fi
 
+# A5b: HTML 의 data-i18n* 키가 그 앱(또는 공용) i18n 에 정의돼 있는지
+#      없으면 applyTranslations 가 키 이름("settings.battery")을 그대로 그린다
+UNDEFINED_KEYS=$(python3 - "$ROOT" <<'PYCHK'
+import re, glob, os, sys
+root = sys.argv[1]
+shared = open(root + '/apps/shared/i18n.js').read()
+out = []
+for f in sorted(glob.glob(root + '/apps/*/index.html')):
+    app = f.split('/')[-2]
+    p = root + '/apps/%s/i18n.js' % app
+    own = open(p).read() if os.path.exists(p) else ''
+    for k in sorted(set(re.findall(r'data-i18n(?:-aria-label|-placeholder)?="([^"]+)"', open(f).read()))):
+        if "'%s'" % k not in own and "'%s'" % k not in shared:
+            out.append(app + ':' + k)
+print(' '.join(out))
+PYCHK
+)
+if [ -n "$UNDEFINED_KEYS" ]; then
+  fail "정의되지 않은 i18n 키 (화면에 키 이름이 그대로 보임): $UNDEFINED_KEYS"
+else
+  pass "HTML 의 i18n 키 전부 정의됨"
+fi
+
 # A6: 5개 언어 키 균등 검사 (각 앱 i18n.js에서 ko/en/ja/zh/es 블록 수 비교)
 I18N_MISMATCH=""
 for i18nfile in $(find "$ROOT/apps" -name 'i18n.js' -not -path '*/shared/*' -not -path '*/system/*' -not -path '*/home/js/*' 2>/dev/null); do
@@ -324,6 +347,54 @@ else
   pass "샌드박스 권한 어휘가 app.json 선언과 일치"
 fi
 
+# C5: 앱의 서비스 호출이 실기기 D-Bus 메서드와 맞는지 (래칫)
+#     브릿지는 params 의 멤버를 서비스 인트로스펙션의 인자 이름으로 채운다.
+#     메서드나 인자가 없으면 에뮬레이터에서는 되고 기기에서는 실패한다.
+#     기존 공백(settings 데몬 부재, JS 전용 메서드)은 상한으로 묶고, 늘면 실패.
+#     공백을 메우면 상한을 낮출 것.
+CONTRACT_GAP_MAX=34
+CONTRACT_GAPS=$(python3 - "$ROOT" <<'PYCHK'
+import re, glob, sys
+root = sys.argv[1]
+br = open(root + '/runtime/wam/src/bridge/bridge.c').read()
+routes = dict(re.findall(r'\{"(\w+)",\s*"org\.zylos\.\w+",\s*"/[^"]+",\s*"([^"]+)"\}', br))
+defs = {}
+for h in glob.glob(root + '/runtime/**/*.[ch]', recursive=True):
+    defs.update(re.findall(r'#define\s+(ZYL_\w+)\s+"([^"]*)"', open(h, errors='ignore').read()))
+ifaces = {}
+for f in glob.glob(root + '/runtime/services/**/*.c', recursive=True):
+    src = re.sub(r'"\s*(ZYL_\w+)\s*"', lambda m: defs.get(m.group(1), m.group(0)),
+                 open(f, errors='ignore').read())
+    xml = ''.join(re.findall(r'"((?:[^"\\\n]|\\.)*)"', src))
+    for name, body in re.findall(r"<interface name='([\w.]+)'>(.*?)</interface>", xml, re.S):
+        d = ifaces.setdefault(name, {})
+        for m in re.finditer(r"<method name='(\w+)'\s*(/?)>(.*?)(?=<method|$)", body, re.S):
+            args = [] if m.group(2) else re.findall(r'<arg\b([^>]*)>', m.group(3))
+            d[m.group(1)] = [re.search(r"name='(\w+)'", a).group(1) for a in args
+                             if "direction='in'" in a and "name='" in a]
+norm = lambda s: s.replace('_', '').lower()
+gaps = []
+for f in glob.glob(root + '/apps/**/*.js', recursive=True):
+    for svc, meth, obj in re.findall(
+            r"requestService(?:Fire)?\(\s*'(\w+)'\s*,\s*'(\w+)'\s*(?:,\s*(\{[^{}]*\}))?", open(f).read()):
+        if svc not in routes: continue
+        methods = ifaces.get(routes[svc])
+        M = meth[0].upper() + meth[1:]
+        keys = [norm(k) for k in re.findall(r'(\w+)\s*:', obj)]
+        if methods is None or M not in methods or any(norm(a) not in keys for a in methods[M]):
+            gaps.append(svc + '.' + meth)
+print(len(gaps), ' '.join(sorted(set(gaps))))
+PYCHK
+)
+GAP_COUNT=${CONTRACT_GAPS%% *}
+if [ "$GAP_COUNT" -gt "$CONTRACT_GAP_MAX" ]; then
+  fail "앱→기기 서비스 계약 공백 ${GAP_COUNT}건 (상한 ${CONTRACT_GAP_MAX}): ${CONTRACT_GAPS#* }"
+elif [ "$GAP_COUNT" -lt "$CONTRACT_GAP_MAX" ]; then
+  fail "앱→기기 서비스 계약 공백이 ${GAP_COUNT}건으로 줄었음 — CONTRACT_GAP_MAX 를 ${GAP_COUNT} 로 낮출 것"
+else
+  pass "앱→기기 서비스 계약 공백 ${GAP_COUNT}건 (상한 고정, 늘면 실패)"
+fi
+
 # ═════════════════════════════════════════════════════════════
 # [D] system/ — 디바이스 설정
 # ═════════════════════════════════════════════════════════════
@@ -337,10 +408,50 @@ else
   warn "systemd 서비스 파일 없음"
 fi
 
+# D2: 유닛이 쓰는 /data 경로가 tmpfiles.d 로 만들어지는지
+#     ProtectSystem=strict 유닛은 ReadWritePaths 경로가 없으면 기동 전에 실패한다
+UNPROVISIONED=$(python3 - "$ROOT" <<'PYCHK'
+import glob, re, sys
+root = sys.argv[1]
+made = set()
+for f in glob.glob(root + '/system/tmpfiles.d/*.conf'):
+    made |= set(re.findall(r'^d\s+(/data/\S+)', open(f).read(), re.M))
+need = set()
+for f in glob.glob(root + '/system/*.service'):
+    for line in re.findall(r'^ReadWritePaths=(.*)$', open(f).read(), re.M):
+        need |= {p.lstrip('-') for p in line.split() if p.lstrip('-').startswith('/data/')}
+print(' '.join(sorted(need - made)))
+PYCHK
+)
+if [ -n "$UNPROVISIONED" ]; then
+  fail "tmpfiles.d 가 만들지 않는 /data 경로 (유닛 기동 실패): $UNPROVISIONED"
+else
+  pass "유닛의 /data 경로 전부 tmpfiles.d 로 생성"
+fi
+
 # ═════════════════════════════════════════════════════════════
 # [E] 전체 — 기술부채 탐지
 # ═════════════════════════════════════════════════════════════
 section "전체 — 기술부채 + 코드 위생"
+
+# E0: OS 버전·보안 패치 수준은 apps/system/release.js 하나에서 온다
+#     meson 도 불일치 시 빌드를 거부하지만, meson 은 CI 빌드에서만 돈다.
+REL_VER=$(python3 "$ROOT/tools/release_info.py" version 2>&1)
+REL_PATCH=$(python3 "$ROOT/tools/release_info.py" securityPatch 2>&1)
+MESON_VER=$(grep -m1 -oE "version: '[^']+'" "$ROOT/meson.build" | sed "s/version: '//; s/'//")
+if [ "$REL_VER" != "$MESON_VER" ]; then
+  fail "release.js 버전($REL_VER) ≠ meson.build 버전($MESON_VER)"
+elif ! echo "$REL_PATCH" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
+  fail "보안 패치 수준이 올바르지 않음: $REL_PATCH"
+else
+  pass "OS 버전 $REL_VER / 보안 패치 수준 $REL_PATCH (release.js 단일 출처)"
+fi
+# A copy of the current version string in C code means it will go stale on
+# the next release ("0.0.0" sentinels for "no version" are fine)
+LEFTOVER_VER=$(grep -rnF "\"$MESON_VER\"" "$ROOT/runtime" --include='*.c' --include='*.h' 2>/dev/null || true)
+if [ -n "$LEFTOVER_VER" ]; then
+  warn "C 코드에 OS 버전 \"$MESON_VER\" 사본 (ZYL_OS_VERSION 사용):\n$(echo "$LEFTOVER_VER" | sed "s|$ROOT/||")"
+fi
 
 # E1: TODO/FIXME 전체 카운트
 ALL_TODO=$(grep -rEn 'TODO|FIXME|HACK' --exclude='verify-all.sh' "$ROOT" --include='*.js' --include='*.c' --include='*.h' --include='*.rs' 2>/dev/null \

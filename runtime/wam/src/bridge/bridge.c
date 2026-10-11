@@ -25,6 +25,11 @@ typedef struct {
 
 static GHashTable *handler_registry = NULL;
 
+/* service.request: introspection per D-Bus name, fetched on first use.
+ * shortcut: a service upgraded in place keeps its old signature here until WAM
+ * restarts — fine while services and WAM ship in the same OS image. */
+static GHashTable *introspect_cache = NULL;
+
 static void handler_entry_free(gpointer data)
 {
     g_free(data);
@@ -80,6 +85,10 @@ void zyl_bridge_cleanup(void)
     if (handler_registry) {
         g_hash_table_destroy(handler_registry);
         handler_registry = NULL;
+    }
+    if (introspect_cache) {
+        g_hash_table_destroy(introspect_cache);
+        introspect_cache = NULL;
     }
 }
 
@@ -815,6 +824,8 @@ static const ServiceRoute SERVICE_ROUTES[] = {
     {"wifi",         "org.zylos.WifiService",        "/org/zylos/WifiService",        "org.zylos.WifiService"},
     {"settings",     "org.zylos.Settings",           "/org/zylos/Settings",           "org.zylos.Settings"},
     {"telemetry",    "org.zylos.Telemetry",          "/org/zylos/Telemetry",          "org.zylos.Telemetry"},
+    {"netstats",     "org.zylos.NetStats",           "/org/zylos/NetStats",           "org.zylos.NetStats"},
+    {"bootctl",      "org.zylos.BootControl",        "/org/zylos/BootControl",        "org.zylos.BootControl"},
     {NULL, NULL, NULL, NULL}
 };
 
@@ -856,6 +867,8 @@ static const ServicePermission SERVICE_PERMISSIONS[] = {
     {"telephony",     {"telephony", NULL}},
     {"location",      {"location", NULL}},
     {"telemetry",     {"system", NULL}},
+    {"netstats",      {"system", NULL}},
+    {"bootctl",       {"system", NULL}},
     {"device",        {NULL}},
     {"storage",       {NULL}},
     {"apps",          {NULL}},
@@ -927,6 +940,161 @@ static char *capitalize_method(const char *method) {
     return cap;
 }
 
+/* == JSON params → typed D-Bus arguments ====================
+ * Apps send one JSON object; services declare typed arguments
+ * (Dial(s number), SetEnabled(b enabled), GetState()). This bridge used to
+ * pass the JSON as a lone string, which matched almost no method, so GDBus
+ * rejected nearly every device service call with InvalidArgs.
+ * The service's own introspection XML is the authority: each in-argument is
+ * filled from the JSON member of the same name. Case and '_' are ignored,
+ * so a JS appId fills a C app_id.
+ * An app_id argument from a third-party app is always the caller's own id:
+ * otherwise any app could post notifications as com.zylos.messages. */
+
+static gboolean arg_name_matches(const char *dbus_name, const char *json_key) {
+    const char *a = dbus_name, *b = json_key;
+    for (;;) {
+        while (*a == '_') a++;
+        while (*b == '_') b++;
+        if (!*a || !*b) return *a == *b;
+        if (g_ascii_tolower(*a) != g_ascii_tolower(*b)) return FALSE;
+        a++; b++;
+    }
+}
+
+static JsonNode *find_param(JsonObject *params, const char *arg_name) {
+    if (!params) return NULL;
+    GList *members = json_object_get_members(params);
+    JsonNode *found = NULL;
+    for (GList *l = members; l && !found; l = l->next)
+        if (arg_name_matches(arg_name, l->data))
+            found = json_object_get_member(params, l->data);
+    g_list_free(members);
+    return found;
+}
+
+/* Returns the argument tuple (floating), or NULL with *error naming the bad argument.
+ * caller_id: the calling app when it is not a system app, else NULL. */
+static GVariant *params_to_dbus_args(const GDBusMethodInfo *method,
+                                     JsonObject *params, const char *caller_id,
+                                     GError **error) {
+    GVariantBuilder b;
+    g_variant_builder_init(&b, G_VARIANT_TYPE_TUPLE);
+    for (int i = 0; method->in_args && method->in_args[i]; i++) {
+        const GDBusArgInfo *arg = method->in_args[i];
+        JsonNode *node = find_param(params, arg->name);
+        GVariant *v = NULL;
+        if (caller_id && strcmp(arg->signature, "s") == 0 &&
+            arg_name_matches(arg->name, "appid")) {
+            v = g_variant_new_string(caller_id);
+        } else if (!node) {
+            g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                        "missing argument '%s'", arg->name);
+        } else if (strcmp(arg->signature, "d") == 0 && JSON_NODE_HOLDS_VALUE(node) &&
+                   json_node_get_value_type(node) == G_TYPE_INT64) {
+            /* JS has one number type: 3 arrives as an integer for a double argument */
+            v = g_variant_new_double((double)json_node_get_int(node));
+        } else {
+            GError *inner = NULL;
+            v = json_gvariant_deserialize(node, arg->signature, &inner);
+            if (!v) {
+                g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                            "argument '%s' is not '%s'", arg->name, arg->signature);
+                g_clear_error(&inner);
+            }
+        }
+        if (!v) {
+            g_variant_builder_clear(&b);
+            return NULL;
+        }
+        g_variant_builder_add_value(&b, v);
+    }
+    return g_variant_builder_end(&b);
+}
+
+typedef struct {
+    const ServiceRoute *route;
+    char               *method;   /* D-Bus method name */
+    char               *caller_id; /* NULL for system apps */
+    JsonObject         *params;   /* owned ref, may be NULL */
+    ZylBridgeReplyCtx   reply;
+    GDBusConnection    *conn;     /* owned ref */
+} ServiceCall;
+
+static void service_call_free(ServiceCall *c) {
+    g_free(c->method);
+    g_free(c->caller_id);
+    if (c->params) json_object_unref(c->params);
+    g_object_unref(c->conn);
+    g_free(c);
+}
+
+static void service_call_invoke(ServiceCall *c, GDBusNodeInfo *node) {
+    GDBusInterfaceInfo *iface =
+        g_dbus_node_info_lookup_interface(node, c->route->dbus_iface);
+    GDBusMethodInfo *m =
+        iface ? g_dbus_interface_info_lookup_method(iface, c->method) : NULL;
+    if (!m) {
+        zyl_bridge_reply_error(&c->reply, "unknown method");
+        service_call_free(c);
+        return;
+    }
+
+    GError *err = NULL;
+    GVariant *args = params_to_dbus_args(m, c->params, c->caller_id, &err);
+    if (!args) {
+        g_warning("Bridge: %s.%s: %s", c->route->service, c->method, err->message);
+        zyl_bridge_reply_error(&c->reply, err->message);
+        g_error_free(err);
+        service_call_free(c);
+        return;
+    }
+
+    if (c->reply.callback_id >= 0) {
+        DbusReplyCtx *ctx = g_new(DbusReplyCtx, 1);
+        ctx->webview     = c->reply.webview;
+        ctx->callback_id = c->reply.callback_id;
+        g_object_ref(c->conn);   /* released by on_dbus_call_done */
+        g_dbus_connection_call(c->conn,
+            c->route->dbus_name, c->route->dbus_path,
+            c->route->dbus_iface, c->method, args,
+            NULL, G_DBUS_CALL_FLAGS_NONE, 5000, NULL,
+            on_dbus_call_done, ctx);
+    } else {
+        g_dbus_connection_call(c->conn,
+            c->route->dbus_name, c->route->dbus_path,
+            c->route->dbus_iface, c->method, args,
+            NULL, G_DBUS_CALL_FLAGS_NONE, 5000, NULL, NULL, NULL);
+    }
+    service_call_free(c);
+}
+
+static void on_introspect_done(GObject *source, GAsyncResult *res, gpointer data) {
+    ServiceCall *c = data;
+    GError *err = NULL;
+    GDBusNodeInfo *node = NULL;
+    GVariant *reply = g_dbus_connection_call_finish(G_DBUS_CONNECTION(source), res, &err);
+    if (reply) {
+        const char *xml = NULL;
+        g_variant_get(reply, "(&s)", &xml);
+        node = g_dbus_node_info_new_for_xml(xml, &err);
+        g_variant_unref(reply);
+    }
+    if (!node) {
+        g_warning("Bridge: cannot introspect %s: %s", c->route->dbus_name,
+                  err ? err->message : "no data");
+        zyl_bridge_reply_error(&c->reply, "service unavailable");
+        g_clear_error(&err);
+        service_call_free(c);
+        return;
+    }
+    if (!introspect_cache)
+        introspect_cache = g_hash_table_new_full(g_str_hash, g_str_equal, g_free,
+                                                 (GDestroyNotify)g_dbus_node_info_unref);
+    g_hash_table_replace(introspect_cache, g_strdup(c->route->dbus_name), node);
+    service_call_invoke(c, node);
+}
+
 static void handle_service_request(const char *type, gpointer msg_obj,
                                     ZylAppManifest *manifest,
                                     ZylBridgeReplyCtx *reply_ctx, gpointer data)
@@ -980,37 +1148,25 @@ static void handle_service_request(const char *type, gpointer msg_obj,
         return;
     }
 
-    GVariant *call_params = NULL;
-    if (json_object_has_member(msg, "params")) {
-        JsonNode *params_node = json_object_get_member(msg, "params");
-        JsonGenerator *gen = json_generator_new();
-        json_generator_set_root(gen, params_node);
-        gchar *params_json = json_generator_to_data(gen, NULL);
-        call_params = g_variant_new("(s)", params_json);
-        g_free(params_json);
-        g_object_unref(gen);
+    ServiceCall *call = g_new0(ServiceCall, 1);
+    call->route  = route;
+    call->method = dbus_method;
+    call->caller_id = manifest->is_system ? NULL : g_strdup(app_id);
+    call->reply  = *reply_ctx;
+    call->conn   = session;   /* g_bus_get_sync returned a ref; the call owns it */
+    JsonNode *params_node = json_object_get_member(msg, "params");
+    if (params_node && JSON_NODE_HOLDS_OBJECT(params_node))
+        call->params = json_object_ref(json_node_get_object(params_node));
+
+    GDBusNodeInfo *cached = introspect_cache
+        ? g_hash_table_lookup(introspect_cache, route->dbus_name) : NULL;
+    if (cached) {
+        service_call_invoke(call, cached);
+        return;
     }
-
-    if (reply_ctx->callback_id >= 0) {
-        /* Async with response routing */
-        DbusReplyCtx *ctx = g_new(DbusReplyCtx, 1);
-        ctx->webview     = reply_ctx->webview;
-        ctx->callback_id = reply_ctx->callback_id;
-        g_object_ref(session);
-
-        g_dbus_connection_call(session,
-            route->dbus_name, route->dbus_path,
-            route->dbus_iface, dbus_method, call_params,
-            NULL, G_DBUS_CALL_FLAGS_NONE, 5000, NULL,
-            on_dbus_call_done, ctx);
-    } else {
-        /* Fire-and-forget */
-        g_dbus_connection_call(session,
-            route->dbus_name, route->dbus_path,
-            route->dbus_iface, dbus_method, call_params,
-            NULL, G_DBUS_CALL_FLAGS_NONE, 5000, NULL, NULL, NULL);
-    }
-
-    g_object_unref(session);
-    g_free(dbus_method);
+    g_dbus_connection_call(session,
+        route->dbus_name, route->dbus_path,
+        "org.freedesktop.DBus.Introspectable", "Introspect", NULL,
+        G_VARIANT_TYPE("(s)"), G_DBUS_CALL_FLAGS_NONE, 5000, NULL,
+        on_introspect_done, call);
 }
