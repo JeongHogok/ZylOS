@@ -86,6 +86,27 @@ test('netstats',
   )
 )
 
+# Test: emergency alerts (Cell Broadcast) — classification, repeats, history
+test('cbs',
+  executable('test-cbs',
+    'test_cbs.c',
+    '../runtime/services/telephony/cbs.c',
+    include_directories: include_directories('../runtime/services/telephony'),
+    dependencies: [gio_dep],
+  )
+)
+
+# Test: the real telephony daemon against a fake ModemManager on a private
+# bus — channel setup, alert delivery, acknowledgement (skips without dbus-daemon)
+test('telephony-cbs',
+  executable('test-telephony-cbs',
+    'test_telephony_cbs.c',
+    '../runtime/services/telephony/cbs.c',
+    include_directories: include_directories('../runtime/services/telephony'),
+    dependencies: [gio_dep],
+  )
+)
+
 # Test: device app scan — a user app must not replace a system app by reusing its id
 test('manifest-scan',
   executable('test-manifest-scan',

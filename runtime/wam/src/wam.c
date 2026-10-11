@@ -287,6 +287,52 @@ static const ZylDbusMethodEntry dbus_methods[] = {
 };
 
 /* ════════════════════════════════════════════════════════════════
+ *  Emergency alerts (Cell Broadcast)
+ *  The telephony daemon records each alert and signals it; the WAM puts
+ *  the alerts app in front. The app asks the daemon for unacknowledged
+ *  alerts when it loads, so an app still starting misses nothing; one
+ *  already running is told to look again.
+ * ════════════════════════════════════════════════════════════════ */
+
+#define WAM_ALERTS_APP "com.zylos.alerts"
+
+static void on_emergency_alert(GDBusConnection *conn, const gchar *sender,
+                               const gchar *path, const gchar *iface,
+                               const gchar *signal, GVariant *params, gpointer user_data) {
+    (void)conn; (void)sender; (void)path; (void)iface; (void)signal; (void)params;
+    ZylWam *wam = user_data;
+    gboolean running = wam->iface.get_instance(&wam->iface, WAM_ALERTS_APP) != NULL;
+    ZylAppInstance *inst = zyl_lifecycle_launch(&wam->iface, &wam->engine, WAM_ALERTS_APP);
+    if (!inst) {
+        g_warning("WAM: emergency alert received but %s could not start", WAM_ALERTS_APP);
+        return;
+    }
+    if (!running) zyl_oom_on_app_launched(g_oom, WAM_ALERTS_APP, true, 0);
+    zyl_oom_on_app_foreground(g_oom, WAM_ALERTS_APP);
+    if (running && inst->webview_widget)
+        webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(inst->webview_widget),
+            "window.postMessage(JSON.stringify({type:'emergency.alert'}),'*')",
+            -1, NULL, NULL, NULL, NULL, NULL);
+}
+
+static GDBusConnection *g_alert_bus;   /* held for the WAM's lifetime: the
+                                          subscription dies with the connection */
+
+static void subscribe_emergency_alerts(ZylWam *wam) {
+    GError *err = NULL;
+    GDBusConnection *session = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &err);
+    if (!session) {
+        g_warning("WAM: no session bus for emergency alerts: %s", err->message);
+        g_error_free(err);
+        return;
+    }
+    g_dbus_connection_signal_subscribe(session, "org.zylos.Telephony",
+        "org.zylos.Telephony", "EmergencyAlert", "/org/zylos/Telephony", NULL,
+        G_DBUS_SIGNAL_FLAGS_NONE, on_emergency_alert, wam, NULL);
+    g_alert_bus = session;
+}
+
+/* ════════════════════════════════════════════════════════════════
  *  GTK activate
  * ════════════════════════════════════════════════════════════════ */
 
@@ -303,6 +349,8 @@ static void on_activate(GApplication *app, gpointer user_data) {
     (void)zyl_lifecycle_launch(&wam->iface, &wam->engine, "com.zylos.home");
     zyl_oom_on_app_launched(g_oom, "com.zylos.home", true, 0);
     zyl_oom_on_app_foreground(g_oom, "com.zylos.home");
+
+    subscribe_emergency_alerts(wam);
 
     g_message("WAM activated, %d apps registered",
               g_hash_table_size(wam->manifests));

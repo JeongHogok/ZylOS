@@ -21,7 +21,8 @@ window.ZylPermissions = (function () {
     'com.zylos.gallery', 'com.zylos.music', 'com.zylos.clock',
     'com.zylos.calc', 'com.zylos.notes', 'com.zylos.weather',
     'com.zylos.store', 'com.zylos.keyboard',
-    'com.zylos.phone', 'com.zylos.messages', 'com.zylos.contacts'
+    'com.zylos.phone', 'com.zylos.messages', 'com.zylos.contacts',
+    'com.zylos.alerts'
   ];
 
   /* Service → required permission(s). App needs at least ONE of these. */

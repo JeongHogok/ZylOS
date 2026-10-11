@@ -107,6 +107,7 @@ install_subdir('apps/oobe',        install_dir: get_option('datadir') / 'zyl-os'
 install_subdir('apps/phone',       install_dir: get_option('datadir') / 'zyl-os' / 'apps')
 install_subdir('apps/store',       install_dir: get_option('datadir') / 'zyl-os' / 'apps')
 install_subdir('apps/weather',     install_dir: get_option('datadir') / 'zyl-os' / 'apps')
+install_subdir('apps/alerts',      install_dir: get_option('datadir') / 'zyl-os' / 'apps')
 install_subdir('apps/shared',      install_dir: get_option('datadir') / 'zyl-os' / 'apps')
 
 # Install HAL header
@@ -148,6 +149,13 @@ configure_file(
 )
 
 install_data('system/timesyncd.conf', install_dir: get_option('sysconfdir') / 'systemd')
+# Service users and the /data directories units write to. Without them the
+# WAM (User=zyl-wam) and every ProtectSystem=strict unit with a /data path
+# fail before they start.
+install_data('system/sysusers.d/zyl-wam.conf',
+             install_dir: get_option('prefix') / 'lib' / 'sysusers.d')
+install_data('system/tmpfiles.d/zyl-wam.conf', 'system/tmpfiles.d/zyl-data.conf',
+             install_dir: get_option('prefix') / 'lib' / 'tmpfiles.d')
 
 configure_file(
   input: 'system/zyl-release.in',

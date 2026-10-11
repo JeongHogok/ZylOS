@@ -1,13 +1,15 @@
 /* ──────────────────────────────────────────────────────────
  * [Clean Architecture] Application Layer - Service
  *
- * 역할: 전화 서비스 — ModemManager 연동, 음성통화, SMS, 네트워크 상태
- * 수행범위: ModemManager D-Bus 프록시, 모뎀 열거, SIM/신호 상태, 통화 제어
+ * 역할: 전화 서비스 — ModemManager 연동, 음성통화, SMS, 재난문자, 네트워크 상태
+ * 수행범위: ModemManager D-Bus 프록시, 모뎀 열거, SIM/신호 상태, 통화 제어,
+ *           Cell Broadcast 채널 설정·수신 (분류·기록은 cbs.c)
  * 의존방향: telephony.h, gio/gio.h, ModemManager D-Bus API
  * SOLID: SRP — 전화/메시징 상태 관리만 담당
  * ────────────────────────────────────────────────────────── */
 
 #include "telephony.h"
+#include "cbs.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,6 +20,12 @@
 /* ─── 내부 상수 ─── */
 #define MAX_MODEM_PATH  256
 #define DBUS_PROP_IFACE "org.freedesktop.DBus.Properties"
+#define MM_CB_IFACE     "org.freedesktop.ModemManager1.Modem.CellBroadcast"   /* MM >= 1.24 */
+#define MM_CBM_IFACE    "org.freedesktop.ModemManager1.Cbm"
+#define MM_CBM_RECEIVED 2u
+#ifndef ZYL_ALERTS_FILE
+#define ZYL_ALERTS_FILE "/data/alerts/history"
+#endif
 
 /* ─── 내부 구조체 ─── */
 #define MAX_MODEMS 4  /* Support up to 4 modems / SIM slots */
@@ -46,6 +54,10 @@ struct ZylTelephonyService {
     guint dbus_owner_id;
     guint mm_signal_sub;             /* ModemManager 시그널 구독 */
     guint mm_sms_sub;                /* SMS 시그널 구독 */
+    guint mm_cbs_sub;                /* Cell Broadcast 수신 */
+    guint mm_cbm_props_sub;          /* 여러 조각 CBM 의 수신 완료 */
+
+    ZylCbsStore *cbs;                /* 재난문자 기록 */
 };
 
 /* ─── 현재 시각 밀리초 ─── */
@@ -341,6 +353,103 @@ static void on_mm_sms_added(GDBusConnection *conn,
     if (text_v) g_variant_unref(text_v);
 }
 
+/* ─── Cell Broadcast (재난문자) ─── */
+static unsigned cbm_uint(ZylTelephonyService *svc, const char *path, const char *prop) {
+    GVariant *v = get_dbus_property(svc->system_bus, MM_DBUS_NAME, path, MM_CBM_IFACE, prop);
+    unsigned out = v ? g_variant_get_uint32(v) : 0;
+    if (v) g_variant_unref(v);
+    return out;
+}
+
+/* A complete message: record it and, if it is new, tell the OS */
+static void process_cbm(ZylTelephonyService *svc, const char *path) {
+    if (cbm_uint(svc, path, "State") != MM_CBM_RECEIVED) return;   /* parts still arriving */
+    GVariant *text_v = get_dbus_property(svc->system_bus, MM_DBUS_NAME, path,
+                                         MM_CBM_IFACE, "Text");
+    const char *text = text_v ? g_variant_get_string(text_v, NULL) : "";
+    const ZylCbsAlert *a = zyl_cbs_store_receive(svc->cbs,
+        cbm_uint(svc, path, "Channel"), cbm_uint(svc, path, "MessageCode"),
+        cbm_uint(svc, path, "Update"), text, (int64_t)(now_ms() / 1000));
+    if (a && svc->session_bus) {
+        g_message("[Telephony] Emergency alert %" G_GUINT64_FORMAT ": %s (channel %u)",
+                  a->id, zyl_cbs_category_name(a->category), a->channel);
+        /* The WAM brings up the alerts app on this signal */
+        g_dbus_connection_emit_signal(svc->session_bus, NULL,
+            ZYL_TELEPHONY_DBUS_PATH, ZYL_TELEPHONY_DBUS_NAME, "EmergencyAlert",
+            g_variant_new("(tsus)", (guint64)a->id, zyl_cbs_category_name(a->category),
+                          a->channel, a->text), NULL);
+    }
+    if (text_v) g_variant_unref(text_v);
+    /* Recorded here; the modem's copy is no longer needed */
+    for (int i = 0; i < svc->modem_count; i++)
+        g_dbus_connection_call(svc->system_bus, MM_DBUS_NAME, svc->modem_path[i],
+            MM_CB_IFACE, "Delete", g_variant_new("(o)", path), NULL,
+            G_DBUS_CALL_FLAGS_NONE, 3000, NULL, NULL, NULL);
+}
+
+static void on_mm_cbm_added(GDBusConnection *conn, const gchar *sender,
+                            const gchar *object_path, const gchar *interface_name,
+                            const gchar *signal_name, GVariant *parameters, gpointer data) {
+    (void)conn; (void)sender; (void)object_path; (void)interface_name; (void)signal_name;
+    const gchar *cbm_path;
+    g_variant_get(parameters, "(&o)", &cbm_path);
+    process_cbm(data, cbm_path);
+}
+
+/* A multi-page message is announced while still RECEIVING; it is processed
+   when its State turns RECEIVED */
+static void on_mm_cbm_props(GDBusConnection *conn, const gchar *sender,
+                            const gchar *object_path, const gchar *interface_name,
+                            const gchar *signal_name, GVariant *parameters, gpointer data) {
+    (void)conn; (void)sender; (void)interface_name; (void)signal_name;
+    GVariant *changed = NULL;
+    g_variant_get(parameters, "(&s@a{sv}@as)", NULL, &changed, NULL);
+    guint32 state = 0;
+    if (changed && g_variant_lookup(changed, "State", "u", &state) && state == MM_CBM_RECEIVED)
+        process_cbm(data, object_path);
+    if (changed) g_variant_unref(changed);
+}
+
+static void setup_cell_broadcast(ZylTelephonyService *svc) {
+    GVariantBuilder ch;
+    g_variant_builder_init(&ch, G_VARIANT_TYPE("a(uu)"));
+    for (int i = 0; ZYL_CBS_CHANNELS[i].to; i++)
+        g_variant_builder_add(&ch, "(uu)", (guint32)ZYL_CBS_CHANNELS[i].from,
+                              (guint32)ZYL_CBS_CHANNELS[i].to);
+    GVariant *channels = g_variant_ref_sink(g_variant_builder_end(&ch));
+    for (int i = 0; i < svc->modem_count; i++)
+        g_dbus_connection_call(svc->system_bus, MM_DBUS_NAME, svc->modem_path[i],
+            MM_CB_IFACE, "SetChannels", g_variant_new("(@a(uu))", channels), NULL,
+            G_DBUS_CALL_FLAGS_NONE, 5000, NULL, NULL, NULL);
+    g_variant_unref(channels);
+
+    svc->mm_cbs_sub = g_dbus_connection_signal_subscribe(svc->system_bus,
+        MM_DBUS_NAME, MM_CB_IFACE, "Added", NULL, NULL,
+        G_DBUS_SIGNAL_FLAGS_NONE, on_mm_cbm_added, svc, NULL);
+    svc->mm_cbm_props_sub = g_dbus_connection_signal_subscribe(svc->system_bus,
+        MM_DBUS_NAME, DBUS_PROP_IFACE, "PropertiesChanged", NULL, MM_CBM_IFACE,
+        G_DBUS_SIGNAL_FLAGS_NONE, on_mm_cbm_props, svc, NULL);
+}
+
+static GVariant *alerts_variant(const ZylTelephonyService *svc) {
+    GVariantBuilder list;
+    g_variant_builder_init(&list, G_VARIANT_TYPE("aa{sv}"));
+    for (int i = 0; i < zyl_cbs_store_count(svc->cbs); i++) {
+        const ZylCbsAlert *a = zyl_cbs_store_get(svc->cbs, i);
+        GVariantBuilder d;
+        g_variant_builder_init(&d, G_VARIANT_TYPE("a{sv}"));
+        g_variant_builder_add(&d, "{sv}", "id", g_variant_new_uint64(a->id));
+        g_variant_builder_add(&d, "{sv}", "at", g_variant_new_int64(a->at));
+        g_variant_builder_add(&d, "{sv}", "channel", g_variant_new_uint32(a->channel));
+        g_variant_builder_add(&d, "{sv}", "category",
+                              g_variant_new_string(zyl_cbs_category_name(a->category)));
+        g_variant_builder_add(&d, "{sv}", "text", g_variant_new_string(a->text));
+        g_variant_builder_add(&d, "{sv}", "acked", g_variant_new_boolean(a->acked));
+        g_variant_builder_add_value(&list, g_variant_builder_end(&d));
+    }
+    return g_variant_new("(aa{sv})", &list);
+}
+
 /* ─── ModemManager 시그널 구독 ─── */
 static void subscribe_mm_signals(ZylTelephonyService *svc) {
     if (!svc->system_bus || !svc->modem_found) return;
@@ -358,6 +467,8 @@ static void subscribe_mm_signals(ZylTelephonyService *svc) {
         "Added", active_modem_path(svc), NULL,
         G_DBUS_SIGNAL_FLAGS_NONE,
         on_mm_sms_added, svc, NULL);
+
+    setup_cell_broadcast(svc);
 
     g_message("[Telephony] Subscribed to ModemManager signals");
 }
@@ -387,6 +498,27 @@ static const char *telephony_introspection_xml =
     "      <arg type='s' name='number' direction='in'/>"
     "      <arg type='s' name='body' direction='in'/>"
     "    </method>"
+    "    <method name='GetEmergencyAlerts'>"
+    "      <arg type='aa{sv}' name='alerts' direction='out'/>"
+    "    </method>"
+    "    <method name='AcknowledgeEmergencyAlert'>"
+    "      <arg type='t' name='id' direction='in'/>"
+    "      <arg type='b' name='found' direction='out'/>"
+    "    </method>"
+    "    <method name='GetEmergencyAlertSettings'>"
+    "      <arg type='a{sv}' name='enabled' direction='out'/>"
+    "    </method>"
+    "    <method name='SetEmergencyAlertEnabled'>"
+    "      <arg type='s' name='category' direction='in'/>"
+    "      <arg type='b' name='enabled' direction='in'/>"
+    "      <arg type='b' name='applied' direction='out'/>"
+    "    </method>"
+    "    <signal name='EmergencyAlert'>"
+    "      <arg type='t' name='id'/>"
+    "      <arg type='s' name='category'/>"
+    "      <arg type='u' name='channel'/>"
+    "      <arg type='s' name='text'/>"
+    "    </signal>"
     "    <signal name='CallStateChanged'>"
     "      <arg type='i' name='old_state'/>"
     "      <arg type='i' name='new_state'/>"
@@ -451,6 +583,26 @@ static void handle_telephony_method(GDBusConnection *conn, const gchar *sender,
             g_dbus_method_invocation_return_error(inv, G_DBUS_ERROR,
                 G_DBUS_ERROR_FAILED, "SMS send failed");
         }
+    } else if (g_strcmp0(method, "GetEmergencyAlerts") == 0) {
+        g_dbus_method_invocation_return_value(inv, alerts_variant(svc));
+    } else if (g_strcmp0(method, "AcknowledgeEmergencyAlert") == 0) {
+        guint64 id = 0;
+        g_variant_get(params, "(t)", &id);
+        g_dbus_method_invocation_return_value(inv,
+            g_variant_new("(b)", zyl_cbs_store_ack(svc->cbs, id)));
+    } else if (g_strcmp0(method, "GetEmergencyAlertSettings") == 0) {
+        GVariantBuilder d;
+        g_variant_builder_init(&d, G_VARIANT_TYPE("a{sv}"));
+        for (int c = 0; c < ZYL_CBS_CATEGORIES; c++)
+            g_variant_builder_add(&d, "{sv}", zyl_cbs_category_name((ZylCbsCategory)c),
+                g_variant_new_boolean(zyl_cbs_store_enabled(svc->cbs, (ZylCbsCategory)c)));
+        g_dbus_method_invocation_return_value(inv, g_variant_new("(a{sv})", &d));
+    } else if (g_strcmp0(method, "SetEmergencyAlertEnabled") == 0) {
+        const gchar *category = NULL;
+        gboolean on = FALSE;
+        g_variant_get(params, "(&sb)", &category, &on);
+        g_dbus_method_invocation_return_value(inv, g_variant_new("(b)",
+            zyl_cbs_store_set_enabled(svc->cbs, zyl_cbs_category_from_name(category), on)));
     }
 }
 
@@ -477,6 +629,8 @@ static void on_telephony_bus_acquired(GDBusConnection *conn, const gchar *name,
 ZylTelephonyService *zyl_telephony_create(void) {
     ZylTelephonyService *svc = g_new0(ZylTelephonyService, 1);
     svc->call_state = ZYL_CALL_STATE_IDLE;
+    /* History is kept even without a modem: alerts received before a SIM swap stay readable */
+    svc->cbs = zyl_cbs_store_open(ZYL_ALERTS_FILE);
 
     /* system bus 연결 (ModemManager) */
     GError *err = NULL;
@@ -514,10 +668,15 @@ void zyl_telephony_destroy(ZylTelephonyService *svc) {
             g_dbus_connection_signal_unsubscribe(svc->system_bus, svc->mm_signal_sub);
         if (svc->mm_sms_sub)
             g_dbus_connection_signal_unsubscribe(svc->system_bus, svc->mm_sms_sub);
+        if (svc->mm_cbs_sub)
+            g_dbus_connection_signal_unsubscribe(svc->system_bus, svc->mm_cbs_sub);
+        if (svc->mm_cbm_props_sub)
+            g_dbus_connection_signal_unsubscribe(svc->system_bus, svc->mm_cbm_props_sub);
         g_object_unref(svc->system_bus);
     }
 
     g_bus_unown_name(svc->dbus_owner_id);
+    zyl_cbs_store_free(svc->cbs);
     g_free(svc);
 }
 

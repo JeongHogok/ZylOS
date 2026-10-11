@@ -1087,6 +1087,50 @@ var netstatsTests = (function () {
 })();
 
 /* ═══════════════════════════════════════════════════════
+   Emergency alerts (JS telephony, emulator contract of cbs.c)
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ emergency alerts');
+
+var alertTests = (function () {
+  function make() {
+    var store = {};
+    var settingsSvc = {
+      _getSetting: function (cat) { return Promise.resolve(store[cat] || null); },
+      _updateSetting: function (cat, k, v) { store[cat] = store[cat] || {}; store[cat][k] = v; }
+    };
+    return ns.telephony({ settingsSvc: settingsSvc });
+  }
+  return Promise.all([
+    asyncTest('no modem, no alerts — never invented', function () {
+      return make().getEmergencyAlerts().then(function (l) { assert.deepStrictEqual(l, []); });
+    }),
+    asyncTest('defaults: everything but tests, presidential always', function () {
+      return make().getEmergencyAlertSettings().then(function (e) {
+        assert.strictEqual(e.presidential, true);
+        assert.strictEqual(e.extreme, true);
+        assert.strictEqual(e.test, false);
+      });
+    }),
+    asyncTest('a choice is kept; presidential cannot be turned off', function () {
+      var tel = make();
+      return tel.setEmergencyAlertEnabled({ category: 'presidential', enabled: false }).then(function (ok) {
+        assert.strictEqual(ok, false);
+        return tel.setEmergencyAlertEnabled({ category: 'severe', enabled: false });
+      }).then(function (ok) {
+        assert.strictEqual(ok, true);
+        return tel.setEmergencyAlertEnabled({ category: 'bogus', enabled: true });
+      }).then(function (ok) {
+        assert.strictEqual(ok, false);
+        return tel.getEmergencyAlertSettings();
+      }).then(function (e) {
+        assert.strictEqual(e.severe, false);
+        assert.strictEqual(e.presidential, true);
+      });
+    })
+  ]);
+})();
+
+/* ═══════════════════════════════════════════════════════
    Compositor instance-state store (emulator-app/ui/js/app-state.js)
    ═══════════════════════════════════════════════════════ */
 console.log('\n■ ZylAppStateStore');
@@ -1300,7 +1344,7 @@ console.log('\n■ zylI18n time');
    ═══════════════════════════════════════════════════════ */
 Promise.all([settingsTests, displayTests, inputTests, sensorsTests,
              usbTests, powerTests, audioTests, fsTests, updaterTests, telemetryTests,
-             netstatsTests, appStateTests])
+             netstatsTests, alertTests, appStateTests])
   .then(function () {
     console.log('\n════════════════════════');
     console.log('Total: ' + total + '  Passed: ' + passed + '  Failed: ' + failed);

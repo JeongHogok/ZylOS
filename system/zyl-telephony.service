@@ -14,6 +14,8 @@ TimeoutStopSec=5
 # Security hardening
 NoNewPrivileges=true
 ProtectSystem=strict
+# Emergency alert history (Cell Broadcast)
+ReadWritePaths=/data/alerts
 ProtectHome=true
 PrivateTmp=true
 PrivateDevices=false

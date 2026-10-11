@@ -385,6 +385,27 @@ else
   warn "systemd 서비스 파일 없음"
 fi
 
+# D2: 유닛이 쓰는 /data 경로가 tmpfiles.d 로 만들어지는지
+#     ProtectSystem=strict 유닛은 ReadWritePaths 경로가 없으면 기동 전에 실패한다
+UNPROVISIONED=$(python3 - "$ROOT" <<'PYCHK'
+import glob, re, sys
+root = sys.argv[1]
+made = set()
+for f in glob.glob(root + '/system/tmpfiles.d/*.conf'):
+    made |= set(re.findall(r'^d\s+(/data/\S+)', open(f).read(), re.M))
+need = set()
+for f in glob.glob(root + '/system/*.service'):
+    for line in re.findall(r'^ReadWritePaths=(.*)$', open(f).read(), re.M):
+        need |= {p.lstrip('-') for p in line.split() if p.lstrip('-').startswith('/data/')}
+print(' '.join(sorted(need - made)))
+PYCHK
+)
+if [ -n "$UNPROVISIONED" ]; then
+  fail "tmpfiles.d 가 만들지 않는 /data 경로 (유닛 기동 실패): $UNPROVISIONED"
+else
+  pass "유닛의 /data 경로 전부 tmpfiles.d 로 생성"
+fi
+
 # ═════════════════════════════════════════════════════════════
 # [E] 전체 — 기술부채 탐지
 # ═════════════════════════════════════════════════════════════
