@@ -470,6 +470,24 @@ console.log('\n■ ZylFormFactor / ZylFocusNav');
 
   FF.clearOverride();
 
+  /* ─── launcher filter: the predicate home.js applies to the app list ─── */
+  test('launcher filter hides apps the device class does not declare', function () {
+    FF.setOverride('tv');
+    FF.reload();
+    var appList = [
+      { id: 'com.zylos.home',     formFactors: ['*'] },
+      { id: 'com.zylos.terminal', formFactors: ['phone', 'tablet', 'desktop', 'pda'] },
+      { id: 'com.zylos.phone',    formFactors: ['phone', 'tablet', 'auto', 'watch', 'pda'] },
+      { id: 'com.zylos.browser',  formFactors: ['phone', 'tablet', 'tv', 'desktop', 'pda'] },
+      { id: 'com.zylos.legacy' }   /* no declaration → stays visible */
+    ];
+    var visible = appList.filter(function (a) {
+      return FF.supportsApp(a.formFactors);
+    }).map(function (a) { return a.id; });
+    assert.deepStrictEqual(visible,
+      ['com.zylos.home', 'com.zylos.browser', 'com.zylos.legacy']);
+  });
+
   /* ─── focus-nav spatial scoring ─── */
   var origin = { left: 100, top: 100, width: 100, height: 50 };
 

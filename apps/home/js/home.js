@@ -201,7 +201,15 @@
       if (msg.type === 'service.response' && msg.service === 'apps' && msg.method === 'getInstalled' && msg.data) {
         appListReceived = true;
         defaultApps = msg.data.filter(function (app) {
-          return !isHiddenFromGrid(app.id);
+          if (isHiddenFromGrid(app.id)) return false;
+          /* Form-factor policy is consumed here, not via the registry: the
+             registry lives in the parent context (window.parent), which does
+             not know this device's class, and on a real device each app runs in
+             its own WebView with no shared parent at all. The app list already
+             carries formFactors from app.json. */
+          if (typeof ZylFormFactor !== 'undefined' &&
+              !ZylFormFactor.supportsApp(app.formFactors)) return false;
+          return true;
         });
         renderDock();
         renderAppGrid(getSortedGridApps());
