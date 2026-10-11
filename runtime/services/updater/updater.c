@@ -8,6 +8,10 @@
  * SOLID: SRP — OTA 업데이트 프로세스만 담당
  * ────────────────────────────────────────────────────────── */
 
+#ifndef ZYL_OS_VERSION
+#define ZYL_OS_VERSION "unknown"   /* meson sets it from apps/system/release.js */
+#endif
+
 #include "updater.h"
 
 #include <stdio.h>
@@ -326,7 +330,7 @@ ZylUpdater *zyl_updater_create(const char *update_server_url,
     /* 현재 슬롯/버전 감지 */
     u->active_slot = detect_active_slot();
     u->current_version = read_file_string(CURRENT_VERSION_FILE);
-    if (!u->current_version) u->current_version = strdup("0.1.0");
+    if (!u->current_version) u->current_version = strdup(ZYL_OS_VERSION);
 
     u->auto_check_enabled = true;
     u->auto_check_interval_h = 24;

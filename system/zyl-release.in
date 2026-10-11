@@ -1,0 +1,10 @@
+# ──────────────────────────────────────────────────────────
+# [Clean Architecture] Infrastructure Layer - Release Identity
+# 역할: 기기에 설치되는 OS 정체성 (/etc/zyl-release) — 셸 스크립트·복구 모드용
+# 수행범위: 버전, 보안 패치 수준, 보드, 폼팩터 프로파일
+# 의존방향: meson 이 apps/system/release.js 에서 생성 — 기기에서 수정하지 말 것
+# ──────────────────────────────────────────────────────────
+ZYL_OS_VERSION=@ZYL_OS_VERSION@
+ZYL_SECURITY_PATCH=@ZYL_SECURITY_PATCH@
+ZYL_BOARD=@ZYL_BOARD@
+ZYL_PROFILE=@ZYL_PROFILE@

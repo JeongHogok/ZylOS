@@ -342,6 +342,25 @@ fi
 # ═════════════════════════════════════════════════════════════
 section "전체 — 기술부채 + 코드 위생"
 
+# E0: OS 버전·보안 패치 수준은 apps/system/release.js 하나에서 온다
+#     meson 도 불일치 시 빌드를 거부하지만, meson 은 CI 빌드에서만 돈다.
+REL_VER=$(python3 "$ROOT/tools/release_info.py" version 2>&1)
+REL_PATCH=$(python3 "$ROOT/tools/release_info.py" securityPatch 2>&1)
+MESON_VER=$(grep -m1 -oE "version: '[^']+'" "$ROOT/meson.build" | sed "s/version: '//; s/'//")
+if [ "$REL_VER" != "$MESON_VER" ]; then
+  fail "release.js 버전($REL_VER) ≠ meson.build 버전($MESON_VER)"
+elif ! echo "$REL_PATCH" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
+  fail "보안 패치 수준이 올바르지 않음: $REL_PATCH"
+else
+  pass "OS 버전 $REL_VER / 보안 패치 수준 $REL_PATCH (release.js 단일 출처)"
+fi
+# A copy of the current version string in C code means it will go stale on
+# the next release ("0.0.0" sentinels for "no version" are fine)
+LEFTOVER_VER=$(grep -rnF "\"$MESON_VER\"" "$ROOT/runtime" --include='*.c' --include='*.h' 2>/dev/null || true)
+if [ -n "$LEFTOVER_VER" ]; then
+  warn "C 코드에 OS 버전 \"$MESON_VER\" 사본 (ZYL_OS_VERSION 사용):\n$(echo "$LEFTOVER_VER" | sed "s|$ROOT/||")"
+fi
+
 # E1: TODO/FIXME 전체 카운트
 ALL_TODO=$(grep -rEn 'TODO|FIXME|HACK' --exclude='verify-all.sh' "$ROOT" --include='*.js' --include='*.c' --include='*.h' --include='*.rs' 2>/dev/null \
   | grep -v 'node_modules' | grep -v 'target/' | wc -l || echo 0)

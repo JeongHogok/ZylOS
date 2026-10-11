@@ -31,7 +31,10 @@
 #define DEVICE_UUID_FILE    TELEMETRY_DIR "/device_uuid"
 #define BOOT_COUNT_FILE     TELEMETRY_DIR "/boot_count"
 #define CONSENT_FILE        TELEMETRY_DIR "/consent"
-#define OS_VERSION          "0.1.0"
+#ifndef ZYL_OS_VERSION
+#define ZYL_OS_VERSION      "unknown"   /* meson sets it from apps/system/release.js */
+#endif
+#define OS_VERSION          ZYL_OS_VERSION
 
 
 static void ensure_dir(const char *path) {

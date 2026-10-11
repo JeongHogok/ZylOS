@@ -226,6 +226,22 @@
   });
 
   /* ─── About Device Renderer ─── */
+  /* textContent, not innerHTML: deviceName is user-editable, and markup in it
+     used to execute inside Settings — a system app with every permission */
+  function infoRow(labelText, valueText) {
+    var el = document.createElement('div');
+    el.className = 'setting-item no-tap';
+    var label = document.createElement('span');
+    label.className = 'setting-label';
+    label.textContent = labelText;
+    var value = document.createElement('span');
+    value.className = 'setting-value';
+    value.textContent = (valueText === undefined || valueText === null) ? '' : String(valueText);
+    el.appendChild(label);
+    el.appendChild(value);
+    return el;
+  }
+
   function renderAboutInfo(info) {
     var list = document.getElementById('about-info-list');
     if (!list) return;
@@ -233,18 +249,14 @@
     var items = [
       { label: t('settings.device_name'), value: info.deviceName },
       { label: t('settings.os_version'),  value: info.osVersion },
+      { label: t('settings.security_patch'), value: info.securityPatch },
       { label: t('settings.soc') || 'SoC', value: info.soc },
       { label: t('settings.ram') || 'RAM', value: info.ram },
       { label: t('settings.kernel'),      value: info.kernel },
       { label: t('settings.build'),       value: info.build }
     ];
     items.forEach(function (item) {
-      var el = document.createElement('div');
-      el.className = 'setting-item no-tap';
-      el.innerHTML =
-        '<span class="setting-label">' + item.label + '</span>' +
-        '<span class="setting-value">' + item.value + '</span>';
-      list.appendChild(el);
+      list.appendChild(infoRow(item.label, item.value));
     });
   }
 
@@ -264,12 +276,7 @@
       { label: t('settings.storage_available') || 'Available', value: data.available }
     ];
     items.forEach(function (item) {
-      var el = document.createElement('div');
-      el.className = 'setting-item no-tap';
-      el.innerHTML =
-        '<span class="setting-label">' + item.label + '</span>' +
-        '<span class="setting-value">' + item.value + '</span>';
-      list.appendChild(el);
+      list.appendChild(infoRow(item.label, item.value));
     });
   }
 

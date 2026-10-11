@@ -83,6 +83,9 @@ global.window.addEventListener = function () {};
 global.window.innerWidth = 1080;
 global.window.innerHeight = 2400;
 
+/* OS image identity, read by the device service */
+eval(fs.readFileSync(path.join(__dirname, '..', 'apps', 'system', 'release.js'), 'utf8'));
+
 moduleFiles.forEach(function (f) {
   var code = fs.readFileSync(path.join(servicesDir, f), 'utf8');
   try {
