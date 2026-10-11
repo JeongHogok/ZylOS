@@ -642,6 +642,117 @@ console.log('\n■ ZylFormFactor / ZylFocusNav');
 })();
 
 /* ═══════════════════════════════════════════════════════
+   Japanese / Chinese conversion (apps/keyboard/js/ime.js + dict/)
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ ZylIme');
+
+(function () {
+  var M = require(path.join(__dirname, '..', 'apps', 'keyboard', 'js', 'ime.js'));
+  var I = M.ZylIme;
+  /* The dictionary files call the global ZylImeDict.register, as in a page */
+  global.ZylImeDict = M.ZylImeDict;
+  require(path.join(__dirname, '..', 'apps', 'keyboard', 'dict', 'ja.js'));
+  require(path.join(__dirname, '..', 'apps', 'keyboard', 'dict', 'zh.js'));
+
+  /* Applies edits the way apps/shared/bridge.js applies input.text */
+  function apply(field, e) {
+    assert.strictEqual(field.slice(field.length - e.expect.length), e.expect, 'expect is before the caret');
+    return field.slice(0, field.length - e.expect.length) + e.text;
+  }
+  function type(c, keys, field) {
+    field = field || '';
+    keys.split('').forEach(function (k) { field = apply(field, c.feed(k)); });
+    return field;
+  }
+  function kana(keys) { return type(I.create('ja'), keys); }
+
+  test('romaji becomes kana as it is typed', function () {
+    assert.strictEqual(kana('nihongo'), 'にほんご');
+    assert.strictEqual(kana('shinbun'), 'しんぶn');          /* last n still undecided */
+    assert.strictEqual(kana('sinbunn'), 'しんぶん');
+    assert.strictEqual(kana('kyouha'), 'きょうは');
+    assert.strictEqual(kana('chotto'), 'ちょっと');
+    assert.strictEqual(kana('matcha'), 'まっちゃ');
+    assert.strictEqual(kana('tsukue'), 'つくえ');
+    assert.strictEqual(kana('fairu'), 'ふぁいる');
+    assert.strictEqual(kana('ko-hi-'), 'こーひー');
+    assert.strictEqual(kana('xtsu'), 'っ');
+    assert.strictEqual(kana('kan\'i'), 'かんい');
+    assert.strictEqual(kana('k'), 'k');
+  });
+
+  test('katakana mirrors hiragana', function () {
+    assert.strictEqual(I.toKatakana('こーひー'), 'コーヒー');
+  });
+
+  test('space-first candidate converts the longest match; the rest keeps composing', function () {
+    var c = I.create('ja');
+    var field = type(c, 'watashiha', '> ');
+    assert.strictEqual(field, '> わたしは');
+    var cands = c.candidates();
+    assert.strictEqual(cands[0].text, '私');
+    assert.ok(cands.some(function (x) { return x.text === 'わたしは'; }), 'as typed');
+    assert.ok(cands.some(function (x) { return x.text === 'ワタシハ'; }), 'katakana');
+    field = apply(field, c.choose(cands[0]));
+    assert.strictEqual(field, '> 私は');
+    assert.strictEqual(c.reading(), 'は', 'は still composing');
+    field = apply(field, c.finish());
+    assert.strictEqual(field, '> 私は');
+    assert.strictEqual(c.isComposing(), false);
+  });
+
+  test('a whole-word match outranks its parts', function () {
+    var c = I.create('ja');
+    type(c, 'henkan');
+    assert.strictEqual(c.candidates()[0].text, '変換');   /* trailing n read as ん */
+  });
+
+  test('Enter keeps the reading, a trailing n becomes ん', function () {
+    var c = I.create('ja');
+    var field = type(c, 'hon');
+    assert.strictEqual(apply(field, c.finish()), 'ほん');
+  });
+
+  test('backspace removes one character of the reading', function () {
+    var c = I.create('ja');
+    var field = type(c, 'kana');
+    field = apply(field, c.backspace());
+    assert.strictEqual(field, 'か');
+  });
+
+  test('pinyin gives hanzi words, longest first', function () {
+    var c = I.create('zh');
+    var field = type(c, 'nihao');
+    assert.strictEqual(field, 'nihao');
+    var cands = c.candidates();
+    assert.strictEqual(cands[0].text, '你好');
+    assert.strictEqual(cands[cands.length - 1].text, 'nihao', 'latin kept as last resort');
+    assert.strictEqual(apply(field, c.choose(cands[0])), '你好');
+  });
+
+  test('partial pinyin converts the known part', function () {
+    var c = I.create('zh');
+    var field = type(c, 'womenzou');
+    var first = c.candidates()[0];
+    assert.strictEqual(first.text, '我们');
+    field = apply(field, c.choose(first));
+    assert.strictEqual(field, '我们zou');
+    assert.strictEqual(c.candidates()[0].text, '走');
+  });
+
+  test('ü is typed as v', function () {
+    var c = I.create('zh');
+    type(c, 'lvse');
+    assert.strictEqual(c.candidates()[0].text, '绿色');
+  });
+
+  test('only lowercase letters (and ー for Japanese) feed the reading', function () {
+    assert.ok(I.accepts('ja', 'a') && I.accepts('ja', '-') && I.accepts('zh', 'v'));
+    assert.ok(!I.accepts('zh', '-') && !I.accepts('ja', 'A') && !I.accepts('ja', '1'));
+  });
+})();
+
+/* ═══════════════════════════════════════════════════════
    Hangul 2-beolsik composition automaton
    ═══════════════════════════════════════════════════════ */
 console.log('\n■ ZylHangul');
