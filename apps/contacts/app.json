@@ -4,7 +4,19 @@
   "version": "1.0.0",
   "entry": "index.html",
   "icon": "icon.png",
-  "permissions": ["storage", "files.read", "files.write", "contacts"],
+  "permissions": [
+    "storage",
+    "files.read",
+    "files.write",
+    "contacts"
+  ],
+  "formFactors": [
+    "phone",
+    "tablet",
+    "auto",
+    "watch",
+    "pda"
+  ],
   "type": "system",
   "color": "icon-cyan",
   "iconKey": "contacts",

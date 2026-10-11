@@ -13,6 +13,9 @@
     "app.manage",
     "i18n"
   ],
+  "formFactors": [
+    "*"
+  ],
   "type": "system",
   "color": "icon-purple",
   "iconKey": "settings",

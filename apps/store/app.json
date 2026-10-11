@@ -9,6 +9,13 @@
     "storage",
     "app.manage"
   ],
+  "formFactors": [
+    "phone",
+    "tablet",
+    "tv",
+    "desktop",
+    "pda"
+  ],
   "type": "system",
   "color": "icon-emerald",
   "iconKey": "store",

@@ -16,6 +16,18 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 ERRORS=0
 CHECKED=0
 
+# Valid form-factor ids come from the OS policy file, never a second list here.
+VALID_FF=$(python3 -c "
+import re, sys
+src = open('$PROJECT_DIR/apps/shared/form-factor.js').read()
+block = src.split('var PROFILES = {', 1)[1].split(chr(10) + chr(32)*2 + chr(125) + chr(59), 1)[0]
+print(','.join(re.findall(r'^    ([a-z]+): [{]', block, re.M)))
+")
+if [ -z "$VALID_FF" ]; then
+    echo "FAILED to read form-factor ids from apps/shared/form-factor.js"
+    exit 1
+fi
+
 for f in $(find "$PROJECT_DIR/apps/" -name 'app.json'); do
     CHECKED=$((CHECKED + 1))
     python3 -c "
@@ -32,8 +44,18 @@ for field in ['id', 'name', 'version', 'entry']:
 if not isinstance(m.get('id'), str) or len(m['id']) == 0:
     print(f'EMPTY id in $f')
     sys.exit(1)
+ff = m.get('formFactors')
+if ff is not None:
+    valid = set('$VALID_FF'.split(',')) | {'*'}
+    if not isinstance(ff, list) or not ff:
+        print(f'formFactors must be a non-empty list in $f')
+        sys.exit(1)
+    bad = [x for x in ff if x not in valid]
+    if bad:
+        print(f'UNKNOWN formFactors {bad} in $f (valid: {sorted(valid)})')
+        sys.exit(1)
 " || ERRORS=$((ERRORS + 1))
 done
 
-echo "Manifest validation: $CHECKED files checked, $ERRORS errors"
+echo "Manifest validation: $CHECKED files checked, $ERRORS errors (form factors: $VALID_FF)"
 exit $ERRORS

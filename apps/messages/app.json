@@ -4,7 +4,19 @@
   "version": "1.0.0",
   "entry": "index.html",
   "icon": "icon.png",
-  "permissions": ["messaging", "contacts", "notification", "storage"],
+  "permissions": [
+    "messaging",
+    "contacts",
+    "notification",
+    "storage"
+  ],
+  "formFactors": [
+    "phone",
+    "tablet",
+    "auto",
+    "watch",
+    "pda"
+  ],
   "type": "system",
   "color": "icon-emerald",
   "iconKey": "messages",

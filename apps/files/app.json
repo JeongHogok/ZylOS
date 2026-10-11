@@ -10,6 +10,12 @@
     "files.write",
     "files.delete"
   ],
+  "formFactors": [
+    "phone",
+    "tablet",
+    "desktop",
+    "pda"
+  ],
   "type": "system",
   "color": "icon-orange",
   "iconKey": "files",

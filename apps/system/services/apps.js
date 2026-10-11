@@ -32,6 +32,7 @@
               description: m.description || '',
               system: (SYSTEM_APPS.indexOf(m.id) !== -1),
               permissions: m.permissions || [],
+              formFactors: m.formFactors || [],
               iconSvg: m.iconSvg || ''
             };
           });

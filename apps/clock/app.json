@@ -10,6 +10,13 @@
     "storage",
     "system"
   ],
+  "formFactors": [
+    "phone",
+    "tablet",
+    "watch",
+    "desktop",
+    "appliance"
+  ],
   "type": "system",
   "color": "icon-indigo",
   "iconKey": "clock",

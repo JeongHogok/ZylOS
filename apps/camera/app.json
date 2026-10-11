@@ -10,6 +10,13 @@
     "storage",
     "gallery"
   ],
+  "formFactors": [
+    "phone",
+    "tablet",
+    "auto",
+    "desktop",
+    "pda"
+  ],
   "type": "system",
   "color": "icon-red",
   "iconKey": "camera",

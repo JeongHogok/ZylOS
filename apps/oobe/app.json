@@ -9,6 +9,9 @@
     "i18n",
     "system"
   ],
+  "formFactors": [
+    "*"
+  ],
   "type": "system",
   "role": "oobe",
   "color": "icon-blue",

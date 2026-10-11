@@ -5,6 +5,12 @@
   "entry": "index.html",
   "icon": "icon.png",
   "permissions": [],
+  "formFactors": [
+    "phone",
+    "tablet",
+    "desktop",
+    "pda"
+  ],
   "type": "system",
   "color": "icon-orange",
   "iconKey": "calc",

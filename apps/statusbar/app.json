@@ -11,6 +11,12 @@
     "notification.read",
     "time"
   ],
+  "formFactors": [
+    "phone",
+    "tablet",
+    "desktop",
+    "pda"
+  ],
   "type": "system",
   "role": "statusbar",
   "color": "icon-blue",

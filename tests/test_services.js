@@ -343,6 +343,152 @@ var updaterTests = (function () {
 })();
 
 /* ═══════════════════════════════════════════════════════
+   Form-factor policy + directional focus navigation
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ ZylFormFactor / ZylFocusNav');
+
+(function () {
+  /* DOM stubs — only what apply() touches */
+  var htmlClasses = {};
+  var htmlAttrs = {};
+  var htmlVars = {};
+  global.document = {
+    documentElement: {
+      classList: {
+        add: function (c) { htmlClasses[c] = true; },
+        remove: function (c) { delete htmlClasses[c]; }
+      },
+      setAttribute: function (k, v) { htmlAttrs[k] = v; },
+      style: { setProperty: function (k, v) { htmlVars[k] = v; } }
+    },
+    addEventListener: function () {},
+    querySelectorAll: function () { return []; }
+  };
+
+  var pointerMode = 'coarse';
+  global.window.matchMedia = function (q) {
+    return {
+      matches: (q.indexOf('pointer: fine') !== -1 && pointerMode === 'fine') ||
+               (q.indexOf('pointer: none') !== -1 && pointerMode === 'none')
+    };
+  };
+
+  var ffCode = fs.readFileSync(path.join(__dirname, '..', 'apps', 'shared', 'form-factor.js'), 'utf8');
+  eval(ffCode);
+  var fnCode = fs.readFileSync(path.join(__dirname, '..', 'apps', 'shared', 'focus-nav.js'), 'utf8');
+  eval(fnCode);
+
+  var FF = global.ZylFormFactor;
+  var FN = global.ZylFocusNav;
+
+  function geom(w, h, pointer) {
+    global.window.innerWidth = w;
+    global.window.innerHeight = h;
+    pointerMode = pointer || 'coarse';
+  }
+
+  /* ─── detect() ─── */
+  test('detect: 1080x2400 touch → phone', function () {
+    geom(1080, 2400);
+    assert.strictEqual(FF.detect(), 'phone');
+  });
+
+  test('detect: 454x454 → watch', function () {
+    geom(454, 454);
+    assert.strictEqual(FF.detect(), 'watch');
+  });
+
+  test('detect: 1920x1080 no pointer → tv', function () {
+    geom(1920, 1080, 'none');
+    assert.strictEqual(FF.detect(), 'tv');
+  });
+
+  test('detect: 1920x1080 fine pointer → desktop', function () {
+    geom(1920, 1080, 'fine');
+    assert.strictEqual(FF.detect(), 'desktop');
+  });
+
+  test('detect: 800x1280 touch → tablet', function () {
+    geom(800, 1280);
+    assert.strictEqual(FF.detect(), 'tablet');
+  });
+
+  /* ─── override ─── */
+  test('setOverride rejects an unknown form factor', function () {
+    assert.strictEqual(FF.setOverride('toaster'), false);
+    assert.strictEqual(FF.getOverride(), null);
+  });
+
+  test('setOverride wins over detection', function () {
+    geom(1080, 2400);                   /* would detect as phone */
+    assert.strictEqual(FF.setOverride('auto'), true);
+    assert.strictEqual(FF.reload().id, 'auto');
+  });
+
+  /* ─── apply() ─── */
+  test('apply writes form-factor class and nav model onto <html>', function () {
+    FF.setOverride('tv');
+    FF.reload();
+    assert.strictEqual(htmlAttrs['data-form-factor'], 'tv');
+    assert.strictEqual(htmlAttrs['data-nav-model'], 'focus');
+    assert.strictEqual(htmlClasses['ff-tv'], true);
+    assert.strictEqual(htmlClasses['ff-auto'], undefined, 'previous class must be removed');
+    assert.strictEqual(htmlVars['--ff-touch-target'], '64px');
+  });
+
+  /* ─── supportsApp() ─── */
+  test('supportsApp: "*" is universal', function () {
+    assert.strictEqual(FF.supportsApp(['*']), true);
+  });
+
+  test('supportsApp: phone-only app is unavailable on tv', function () {
+    assert.strictEqual(FF.getId(), 'tv');
+    assert.strictEqual(FF.supportsApp(['phone', 'tablet']), false);
+    assert.strictEqual(FF.supportsApp(['tv', 'desktop']), true);
+  });
+
+  test('supportsApp: missing declaration stays available (legacy manifests)', function () {
+    assert.strictEqual(FF.supportsApp([]), true);
+    assert.strictEqual(FF.supportsApp(null), true);
+  });
+
+  FF.clearOverride();
+
+  /* ─── focus-nav spatial scoring ─── */
+  var origin = { left: 100, top: 100, width: 100, height: 50 };
+
+  test('_score: rejects candidates opposite to the direction', function () {
+    var leftOf = { left: 0, top: 100, width: 100, height: 50 };
+    assert.strictEqual(FN._score(origin, leftOf, 'right'), -1);
+    assert.ok(FN._score(origin, leftOf, 'left') > 0);
+  });
+
+  test('_score: prefers the aligned target over a nearer misaligned one', function () {
+    var aligned  = { left: 400, top: 100, width: 100, height: 50 };  /* far, same row */
+    var offAxis  = { left: 250, top: 600, width: 100, height: 50 };  /* near, far row */
+    assert.ok(FN._score(origin, aligned, 'right') < FN._score(origin, offAxis, 'right'),
+      'aligned target must win');
+  });
+
+  test('_score: nearer wins when both are aligned', function () {
+    var near = { left: 250, top: 100, width: 100, height: 50 };
+    var far  = { left: 600, top: 100, width: 100, height: 50 };
+    assert.ok(FN._score(origin, near, 'right') < FN._score(origin, far, 'right'));
+  });
+
+  test('_score: up and down are symmetric', function () {
+    var above = { left: 100, top: 0,   width: 100, height: 50 };
+    var below = { left: 100, top: 200, width: 100, height: 50 };
+    assert.strictEqual(FN._score(origin, above, 'up'), FN._score(origin, below, 'down'));
+    assert.strictEqual(FN._score(origin, above, 'down'), -1);
+  });
+
+  test('_score: unknown direction is rejected', function () {
+    assert.strictEqual(FN._score(origin, origin, 'sideways'), -1);
+  });
+})();
+
+/* ═══════════════════════════════════════════════════════
    Wait for all async tests and report
    ═══════════════════════════════════════════════════════ */
 Promise.all([settingsTests, displayTests, inputTests, sensorsTests,
