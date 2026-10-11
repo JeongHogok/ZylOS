@@ -1,0 +1,20 @@
+# ──────────────────────────────────────────────────────────
+# [Clean Architecture] Infrastructure Layer - Build Configuration
+#
+# 역할: 빌드 타임 타겟 선택 — 보드(SoC) × 폼팩터 프로파일
+# 수행범위: board/<id> 디스패치, 프로파일별 서비스/유닛 집합 결정
+# 의존방향: 없음 (meson 빌트인)
+# SOLID: OCP — 새 보드/프로파일은 choices 확장으로 추가, 기존 수정 불필요
+# ──────────────────────────────────────────────────────────
+
+option('board',
+  type: 'combo',
+  choices: ['bpi-f3', 'generic-x86_64'],
+  value: 'bpi-f3',
+  description: 'Target board — selects SoC, arch, HAL backend, DTS and cross file (board/<id>/)')
+
+option('profile',
+  type: 'combo',
+  choices: ['phone', 'tablet', 'tv', 'auto', 'watch', 'desktop', 'appliance', 'pda'],
+  value: 'phone',
+  description: 'Form-factor profile — selects the C service set and systemd units to build/install')

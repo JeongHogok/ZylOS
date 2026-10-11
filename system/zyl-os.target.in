@@ -1,0 +1,22 @@
+# ──────────────────────────────────────────────────────────
+# [Clean Architecture] Infrastructure Layer - systemd Target Template
+#
+# 역할: 폼팩터 프로파일별 Zyl OS 세션 타겟 템플릿
+# 수행범위: @ZYL_WANTS@ 는 meson이 실제로 빌드/설치한 유닛 집합으로 치환된다
+# 의존방향: systemd
+# SOLID: SRP — 세션 구성만 선언
+#
+# 이 파일을 직접 수정하지 말고 meson.build 의 zyl_profile_extras 를 수정할 것.
+# 손으로 유지하던 Wants= 목록이 빌드되는 서비스 집합과 어긋나는 문제를
+# 없애기 위해 생성 방식으로 바꿨다. After= 는 Wants= 와 동일하게 두어
+# 기존 순서 보장을 잃지 않는다(기존 목록의 상위집합).
+# ──────────────────────────────────────────────────────────
+
+[Unit]
+Description=Zyl OS Session (profile=@ZYL_PROFILE@ board=@ZYL_BOARD@)
+Requires=zyl-compositor.service zyl-wam.service
+Wants=@ZYL_WANTS@
+After=zyl-compositor.service zyl-wam.service @ZYL_WANTS@
+
+[Install]
+WantedBy=graphical.target

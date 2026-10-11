@@ -3,6 +3,49 @@ project('zyl-os', 'c',
   default_options: ['c_std=c11', 'warning_level=2'],
 )
 
+# ═══════════════════════════════════════════════════════════
+# Target selection — board (SoC) × form-factor profile
+#   meson setup builddir -Dboard=bpi-f3 -Dprofile=tv
+# ═══════════════════════════════════════════════════════════
+zyl_profile = get_option('profile')
+subdir('board')   # defines board_id / board_soc / board_arch / board_hal_backend
+                  # and validates that this board supports zyl_profile
+
+# ─── Form-factor profile → C service set ───────────────────
+# Every profile needs these: display, input, power, security, logging, OTA.
+zyl_core_services = [
+  'dbus', 'logger', 'display', 'input', 'power', 'sandbox', 'crash',
+  'credential', 'user', 'accessibility', 'notification', 'updater', 'telemetry',
+]
+
+# Hardware-dependent services, added per form factor.
+# shortcut: cellular tablets and LTE watches must use -Dprofile=phone for now;
+#           split into tablet-lte / watch-lte variants when a board needs it.
+zyl_profile_extras = {
+  'phone':     ['account', 'alarm', 'appstore', 'audio', 'auth', 'bluetooth',
+                'camera', 'location', 'nfc', 'sensors', 'telephony', 'usb', 'wifi'],
+  'tablet':    ['account', 'alarm', 'appstore', 'audio', 'auth', 'bluetooth',
+                'camera', 'location', 'sensors', 'usb', 'wifi'],
+  'tv':        ['account', 'alarm', 'appstore', 'audio', 'auth', 'bluetooth',
+                'usb', 'wifi'],
+  'auto':      ['account', 'alarm', 'audio', 'auth', 'bluetooth', 'camera',
+                'location', 'sensors', 'telephony', 'usb', 'wifi'],
+  'watch':     ['account', 'alarm', 'audio', 'auth', 'bluetooth', 'location',
+                'nfc', 'sensors', 'wifi'],
+  'desktop':   ['account', 'alarm', 'appstore', 'audio', 'auth', 'bluetooth',
+                'camera', 'nfc', 'usb', 'wifi'],
+  'appliance': ['alarm', 'audio', 'wifi'],
+  'pda':       ['account', 'alarm', 'appstore', 'audio', 'auth', 'bluetooth',
+                'camera', 'location', 'nfc', 'usb', 'wifi'],
+}
+
+zyl_services = zyl_core_services + zyl_profile_extras[zyl_profile]
+
+# Services that ship no systemd unit (static library or on-demand binary).
+zyl_services_without_unit = ['appstore', 'dbus', 'sandbox', 'updater']
+# Unit basename differs from the service directory name.
+zyl_unit_overrides = {'crash': 'zyl-crash-handler'}
+
 # Subprojects
 subdir('compositor')
 
@@ -19,33 +62,10 @@ if _wam_webkit.found()
 else
   warning('WebKitGTK not found — skipping WAM build')
 endif
-subdir('runtime/services/notification')
-subdir('runtime/services/alarm')
-subdir('runtime/services/appstore')
-subdir('runtime/services/updater')
-subdir('runtime/services/power')
-subdir('runtime/services/sandbox')
-subdir('runtime/services/sensors')
-subdir('runtime/services/location')
-subdir('runtime/services/telephony')
-subdir('runtime/services/display')
-subdir('runtime/services/dbus')
-subdir('runtime/services/usb')
-subdir('runtime/services/input')
-subdir('runtime/services/user')
-subdir('runtime/services/credential')
-subdir('runtime/services/accessibility')
-subdir('runtime/services/logger')
-subdir('runtime/services/camera')
-subdir('runtime/services/audio')
-subdir('runtime/services/bluetooth')
-subdir('runtime/services/wifi')
-subdir('runtime/services/account')
 subdir('runtime/hal')
-subdir('runtime/services/crash')
-subdir('runtime/services/telemetry')
-subdir('runtime/services/auth')
-subdir('runtime/services/nfc')
+foreach svc : zyl_services
+  subdir('runtime/services/' + svc)
+endforeach
 
 # Install app files
 install_subdir('apps/home',       install_dir: get_option('datadir') / 'zyl-os' / 'apps')
@@ -73,34 +93,45 @@ install_subdir('apps/shared',      install_dir: get_option('datadir') / 'zyl-os'
 # Install HAL header
 install_headers('runtime/hal/hal.h', subdir: 'zyl-os')
 
-# Install systemd service files
-install_data('system/zyl-compositor.service', install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
-install_data('system/zyl-wam.service',        install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
-install_data('system/zyl-notification.service', install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
-install_data('system/zyl-alarm.service',        install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
-install_data('system/zyl-power.service',     install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
-install_data('system/zyl-sensors.service',   install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
-install_data('system/zyl-location.service',  install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
-install_data('system/zyl-telephony.service', install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
-install_data('system/zyl-display.service',  install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
-install_data('system/zyl-usb.service',      install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
-install_data('system/zyl-input.service',   install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
-install_data('system/zyl-user.service',       install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
-install_data('system/zyl-credential.service',    install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
-install_data('system/zyl-accessibility.service', install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
-install_data('system/zyl-logger.service',        install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
-install_data('system/zyl-camera.service',        install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
-install_data('system/zyl-audio.service',         install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
-install_data('system/zyl-bluetooth.service',     install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
-install_data('system/zyl-wifi.service',          install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
-install_data('system/zyl-auth.service',          install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
-install_data('system/zyl-nfc.service',           install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
-install_data('system/zyl-account.service',       install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
-install_data('system/zyl-os.target',             install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
-install_data('system/zyl-apparmor.service',      install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
-install_data('system/zyl-telemetry.service',     install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
-install_data('system/timesyncd.conf',            install_dir: get_option('sysconfdir') / 'systemd')
-install_data('system/zyl-crash-handler.service', install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
+# Install HAL header
+install_headers('runtime/hal/hal.h', subdir: 'zyl-os')
+
+# ─── systemd units — only those the profile actually builds ───
+zyl_units = ['zyl-compositor', 'zyl-wam', 'zyl-apparmor']
+foreach svc : zyl_services
+  if not zyl_services_without_unit.contains(svc)
+    zyl_units += zyl_unit_overrides.get(svc, 'zyl-' + svc)
+  endif
+endforeach
+
+_systemd_dir = get_option('prefix') / 'lib' / 'systemd' / 'system'
+
+foreach unit : zyl_units
+  install_data('system/' + unit + '.service', install_dir: _systemd_dir)
+endforeach
+
+# zyl-os.target is generated so Wants= can never drift from the built unit set:
+# a watch build that installs 15 units must not pull in 22.
+_target_wants = ['systemd-timesyncd.service']
+foreach unit : zyl_units
+  if unit != 'zyl-compositor' and unit != 'zyl-wam'
+    _target_wants += unit + '.service'
+  endif
+endforeach
+
+configure_file(
+  input: 'system/zyl-os.target.in',
+  output: 'zyl-os.target',
+  configuration: configuration_data({
+    'ZYL_PROFILE': zyl_profile,
+    'ZYL_BOARD':   board_id,
+    'ZYL_WANTS':   ' '.join(_target_wants),
+  }),
+  install: true,
+  install_dir: _systemd_dir,
+)
+
+install_data('system/timesyncd.conf', install_dir: get_option('sysconfdir') / 'systemd')
 
 # Install recovery scripts
 install_data('system/recovery/recovery.sh',       install_dir: get_option('datadir') / 'zyl-os' / 'recovery', install_mode: 'rwxr-xr-x')
