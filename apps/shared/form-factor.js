@@ -172,6 +172,13 @@ window.ZylFormFactor = (function () {
     style.setProperty('--ff-font-scale', String(p.fontScale));
     style.setProperty('--ff-touch-target', p.touchTarget + 'px');
     style.setProperty('--ff-density', p.density);
+
+    /* Root scaling adapts the px-authored app CSS to this device class.
+       Set here rather than in responsive.css because the legacy `zoom`
+       property is parsed outside the standard cascade and silently ignores
+       var() — verified in WebKit: `zoom: var(--x)` computes to 1 while a
+       literal applies. Keeping the factor in PROFILES avoids a second copy. */
+    style.zoom = p.fontScale === 1 ? '' : String(p.fontScale);
     return p;
   }
 

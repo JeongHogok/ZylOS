@@ -24,6 +24,7 @@
   --safe-top: 36px;
   --safe-bottom: 24px;
   --grid-cols: 4;
+  --grid-rows: 4;
   --grid-gap: 20px;
   --icon-size: 60px;
   --icon-radius: 16px;
@@ -467,4 +468,77 @@ body {
 .delete-confirm-ok {
   background: #ef4444;
   color: #fff;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Form-factor overrides — CSS owns the grid geometry and home.js
+   reads --grid-cols/--grid-rows, so these two never disagree.
+   ═══════════════════════════════════════════════════════════ */
+
+/* ─── TV: 10-foot UI, landscape, remote D-pad ─── */
+html.ff-tv {
+  --grid-cols: 6;
+  --grid-rows: 3;
+  --grid-gap: 28px;
+  --icon-size: 72px;
+  --icon-radius: 20px;
+  --safe-top: 48px;
+  --safe-bottom: 48px;
+  --dock-height: 0px;
+}
+/* A dock is a thumb affordance; a remote reaches the grid directly and the
+   same apps are already in it, so showing it would only steal focus stops. */
+html.ff-tv #dock,
+html.ff-tv #page-indicator {
+  display: none;
+}
+html.ff-tv #clock-widget {
+  text-align: left;
+  padding-left: 48px;
+}
+/* Focus must be unmistakable across a room */
+html.ff-tv .app-item.zyl-focus .app-icon-wrap,
+html.ff-tv .app-item:focus .app-icon-wrap {
+  transform: scale(1.12);
+  box-shadow: 0 0 0 4px #4a9eff, 0 12px 32px rgba(0, 0, 0, 0.6);
+}
+
+/* ─── Desktop: wide grid, pointer ─── */
+html.ff-desktop {
+  --grid-cols: 8;
+  --grid-rows: 4;
+}
+
+/* ─── Automotive: few, large targets; landscape dashboard ─── */
+html.ff-auto {
+  --grid-cols: 4;
+  --grid-rows: 2;
+  --icon-size: 84px;
+}
+html.ff-auto #search-bar {
+  display: none;   /* typing while driving is not an input model */
+}
+
+/* ─── Watch: one app at a time, tiny round panel ─── */
+html.ff-watch {
+  --grid-cols: 2;
+  --grid-rows: 2;
+  --grid-gap: 10px;
+  --icon-size: 44px;
+  --safe-top: 4px;
+  --safe-bottom: 4px;
+}
+html.ff-watch #search-bar,
+html.ff-watch #dock,
+html.ff-watch #page-indicator {
+  display: none;
+}
+
+/* ─── Appliance / PDA: dense, fixed-function panels ─── */
+html.ff-appliance {
+  --grid-cols: 3;
+  --grid-rows: 3;
+}
+html.ff-appliance #dock {
+  display: none;
 }

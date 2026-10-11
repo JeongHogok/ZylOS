@@ -271,21 +271,29 @@
   var pagesTrack = document.getElementById('app-pages-track');
   var pageIndicator = document.getElementById('page-indicator');
   var viewport = document.getElementById('app-pages-viewport');
-  var APPS_PER_PAGE = 16; /* 4 columns x 4 rows */
+  /* Page size follows the CSS grid so the two can never disagree.
+     CSS is the single source of truth for grid geometry per form factor. */
+  function appsPerPage() {
+    var cs = window.getComputedStyle(document.documentElement);
+    var cols = parseInt(cs.getPropertyValue('--grid-cols'), 10) || 4;
+    var rows = parseInt(cs.getPropertyValue('--grid-rows'), 10) || 4;
+    return (cols > 0 && rows > 0) ? cols * rows : 16;
+  }
   var currentPage = 0;
   var totalPages = 1;
 
   function renderAppGrid(apps) {
     if (!pagesTrack) return;
     pagesTrack.innerHTML = '';
-    totalPages = Math.max(1, Math.ceil(apps.length / APPS_PER_PAGE));
+    var perPage = appsPerPage();
+    totalPages = Math.max(1, Math.ceil(apps.length / perPage));
     currentPage = Math.min(currentPage, totalPages - 1);
 
     for (var p = 0; p < totalPages; p++) {
       var page = document.createElement('div');
       page.className = 'app-page';
-      var start = p * APPS_PER_PAGE;
-      var end = Math.min(start + APPS_PER_PAGE, apps.length);
+      var start = p * perPage;
+      var end = Math.min(start + perPage, apps.length);
 
       for (var i = start; i < end; i++) {
         var app = apps[i];

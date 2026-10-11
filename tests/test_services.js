@@ -352,6 +352,7 @@ console.log('\n■ ZylFormFactor / ZylFocusNav');
   var htmlClasses = {};
   var htmlAttrs = {};
   var htmlVars = {};
+  var htmlZoom = null;
   global.document = {
     documentElement: {
       classList: {
@@ -359,7 +360,11 @@ console.log('\n■ ZylFormFactor / ZylFocusNav');
         remove: function (c) { delete htmlClasses[c]; }
       },
       setAttribute: function (k, v) { htmlAttrs[k] = v; },
-      style: { setProperty: function (k, v) { htmlVars[k] = v; } }
+      style: {
+        setProperty: function (k, v) { htmlVars[k] = v; },
+        set zoom(v) { htmlZoom = v; },
+        get zoom() { return htmlZoom; }
+      }
     },
     addEventListener: function () {},
     querySelectorAll: function () { return []; }
@@ -434,6 +439,17 @@ console.log('\n■ ZylFormFactor / ZylFocusNav');
     assert.strictEqual(htmlClasses['ff-tv'], true);
     assert.strictEqual(htmlClasses['ff-auto'], undefined, 'previous class must be removed');
     assert.strictEqual(htmlVars['--ff-touch-target'], '64px');
+  });
+
+  test('apply sets root zoom from the profile (zoom ignores var())', function () {
+    FF.setOverride('tv');
+    FF.reload();
+    assert.strictEqual(htmlZoom, '1.8', 'tv must scale the root');
+    FF.setOverride('phone');
+    FF.reload();
+    assert.strictEqual(htmlZoom, '', 'phone must not scale the root');
+    FF.setOverride('tv');
+    FF.reload();
   });
 
   /* ─── supportsApp() ─── */

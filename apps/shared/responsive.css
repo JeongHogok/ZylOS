@@ -23,21 +23,18 @@
 }
 
 /* ─── Root scaling ────────────────────────────────────────
-   The app CSS is authored in px against a 1080x2400 phone. Scaling the
-   root with zoom adapts every px value, layout box and hit target at
-   once, which is what a 10-foot TV UI and a watch both need.
+   The app CSS is authored in px against a phone viewport. Scaling the root
+   with zoom adapts every px value, layout box and hit target at once, which
+   is what a 10-foot TV UI and a watch both need.
+
+   Applied by ZylFormFactor.apply() as an inline style, NOT here: the legacy
+   `zoom` property ignores var() substitution, so `zoom: var(--ff-font-scale)`
+   silently computes to 1. The factor lives in the PROFILES table.
 
    shortcut: zoom does not scale vw/vh units (27 such values exist in
    apps/*/css). Convert those to px or to a --ff-* variable if an app
    shows a layout seam on tv/watch/auto.
    ─────────────────────────────────────────────────────────── */
-html.ff-tv,
-html.ff-auto,
-html.ff-watch,
-html.ff-appliance,
-html.ff-tablet {
-  zoom: var(--ff-font-scale);
-}
 
 /* ─── Focus ring — mandatory where there is no pointer ────
    Without a visible ring a D-pad user cannot tell what is selected.
