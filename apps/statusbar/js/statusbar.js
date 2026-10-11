@@ -37,23 +37,10 @@
   };
 
   /* ─── Clock (shared ZylClock) ─── */
-  /* FIX: Guard against ZylClock not yet available (race condition on init) */
+  /* clock.js loads before this script (index.html), so ZylClock exists. The
+     fallback that lived here drew the process time zone, not the user's. */
   function initClock() {
-    if (typeof ZylClock !== 'undefined') {
-      ZylClock.create(sbTime, null, { showDate: false });
-    } else {
-      /* Fallback: simple time display until ZylClock loads */
-      function fallbackClock() {
-        if (sbTime) {
-          var now = new Date();
-          var h = now.getHours();
-          var m = now.getMinutes();
-          sbTime.textContent = (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
-        }
-      }
-      fallbackClock();
-      setInterval(fallbackClock, 10000);
-    }
+    ZylClock.create(sbTime, null, { showDate: false });
   }
   initClock();
 

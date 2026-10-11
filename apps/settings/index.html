@@ -119,6 +119,18 @@
         <svg class="chevron" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
       </div>
 
+      <!-- 날짜 및 시간 — 시간대 -->
+      <div class="setting-item" data-page="datetime" role="button" tabindex="0">
+        <div class="setting-icon icon-blue">
+          <svg viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
+        </div>
+        <div class="setting-text">
+          <span class="setting-label" data-i18n="settings.datetime">Date &amp; time</span>
+          <span class="setting-value" id="current-timezone"></span>
+        </div>
+        <svg class="chevron" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+      </div>
+
       <div class="setting-item" data-page="wallpaper" role="button" tabindex="0">
         <div class="setting-icon icon-purple">
           <svg viewBox="0 0 24 24"><path d="M4 4h7V2H4c-1.1 0-2 .9-2 2v7h2V4zm6 9l-4 5h12l-3-4-2.03 2.71L10 13zm7-4.5c0-.83-.67-1.5-1.5-1.5S14 7.67 14 8.5s.67 1.5 1.5 1.5S17 9.33 17 8.5zm3-6h-7v2h7v7h2V4c0-1.1-.9-2-2-2zm0 18h-7v2h7c1.1 0 2-.9 2-2v-7h-2v7zM4 13H2v7c0 1.1.9 2 2 2h7v-2H4v-7z"/></svg>
@@ -254,6 +266,35 @@
           <span class="toggle-slider"></span>
         </label>
       </div>
+    </div>
+  </div>
+
+  <!-- 날짜 및 시간 서브 페이지 — 목록은 Intl 이 아는 시간대에서 생성 -->
+  <div id="page-datetime" class="sub-page hidden">
+    <div class="settings-group">
+      <div class="setting-item no-tap">
+        <div class="setting-text">
+          <span class="setting-label" data-i18n="settings.timezone_auto">Automatic time zone</span>
+          <span class="setting-value" data-i18n="settings.timezone_auto_desc"></span>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="timezone-auto-toggle" data-i18n-aria-label="settings.timezone_auto">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="setting-item no-tap">
+        <span class="setting-label" data-i18n="settings.timezone">Time zone</span>
+        <span class="setting-value" id="timezone-current"></span>
+      </div>
+    </div>
+    <div id="timezone-picker" class="hidden">
+      <div class="settings-group">
+        <div class="setting-item no-tap">
+          <input type="search" id="timezone-search" class="tz-search"
+                 data-i18n-placeholder="settings.timezone_search" data-i18n-aria-label="settings.timezone_search">
+        </div>
+      </div>
+      <div class="settings-group" id="timezone-list"></div>
     </div>
   </div>
 

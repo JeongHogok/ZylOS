@@ -159,10 +159,7 @@
   }
 
   function formatTime(ts) {
-    var d = new Date(ts);
-    var h = d.getHours();
-    var m = d.getMinutes();
-    return (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
+    return zylI18n.formatTime(new Date(ts));
   }
 
   function renderHistory() {

@@ -52,6 +52,7 @@
     language: 'settings.language',
     'device-class': 'settings.device_class',
     privacy: 'settings.privacy',
+    datetime: 'settings.datetime',
     wallpaper: 'settings.wallpaper',
     security: 'settings.security',
     storage: 'settings.storage',
@@ -77,6 +78,7 @@
     currentPage = pageId;
 
     headerTitle.textContent = t(PAGE_TITLES[pageId] || 'settings.' + pageId);
+    if (pageId === 'datetime') renderTimeZoneState();
     return true;
   }
 
@@ -389,6 +391,126 @@
     });
   }
 
+  /* ─── 날짜 및 시간: 시간대 ───
+     목록은 엔진이 아는 IANA 시간대 전부(Intl.supportedValuesOf), 이름은 ICU 가
+     사용자 언어로 지역화한다("한국 표준시") — 번역 문자열을 따로 두지 않는다.
+     목록은 페이지를 열 때만 그린다(418개를 앱 시작 때 그리면 DOM 예산을 넘는다). */
+  var TZ_FALLBACK = [
+    'Pacific/Honolulu', 'America/Anchorage', 'America/Los_Angeles', 'America/Denver',
+    'America/Chicago', 'America/New_York', 'America/Sao_Paulo', 'Atlantic/Azores',
+    'UTC', 'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'Europe/Madrid',
+    'Africa/Cairo', 'Europe/Moscow', 'Asia/Dubai', 'Asia/Karachi', 'Asia/Kolkata',
+    'Asia/Kathmandu', 'Asia/Dhaka', 'Asia/Bangkok', 'Asia/Shanghai', 'Asia/Singapore',
+    'Asia/Taipei', 'Asia/Seoul', 'Asia/Tokyo', 'Australia/Adelaide', 'Australia/Sydney',
+    'Pacific/Auckland'
+  ];
+  /* ICU keeps the old IANA ids as canonical for compatibility and lists only
+     them: searching "kolkata" found nothing because the engine says
+     "Asia/Calcutta". Show and search the current city names. */
+  var TZ_CURRENT_NAME = {
+    'Asia/Calcutta': 'Asia/Kolkata', 'Asia/Katmandu': 'Asia/Kathmandu',
+    'Europe/Kiev': 'Europe/Kyiv', 'Asia/Saigon': 'Asia/Ho_Chi_Minh',
+    'Asia/Rangoon': 'Asia/Yangon', 'America/Godthab': 'America/Nuuk',
+    'Atlantic/Faeroe': 'Atlantic/Faroe', 'Pacific/Truk': 'Pacific/Chuuk',
+    'Pacific/Ponape': 'Pacific/Pohnpei', 'America/Coral_Harbour': 'America/Atikokan',
+    'Pacific/Enderbury': 'Pacific/Kanton'
+  };
+  function zoneCityName(id) {
+    return (TZ_CURRENT_NAME[id] || id).replace(/_/g, ' ');
+  }
+  var tzToggle = document.getElementById('timezone-auto-toggle');
+  var tzCurrent = document.getElementById('timezone-current');
+  var tzMenuValue = document.getElementById('current-timezone');
+  var tzPicker = document.getElementById('timezone-picker');
+  var tzList = document.getElementById('timezone-list');
+  var tzSearch = document.getElementById('timezone-search');
+  var _zones = null;
+
+  function allZones() {
+    if (_zones) return _zones;
+    var ids;
+    try { ids = Intl.supportedValuesOf('timeZone'); } catch (e) { ids = TZ_FALLBACK; }
+    if (!ids || !ids.length) ids = TZ_FALLBACK;
+    var now = new Date();
+    _zones = ids.map(function (id) {
+      return { id: id, offset: zylI18n.zoneOffsetMinutes(id, now) };
+    }).sort(function (a, b) {
+      return (a.offset - b.offset) || (a.id < b.id ? -1 : 1);
+    });
+    return _zones;
+  }
+
+  function describeZone(id) {
+    return zylI18n.zoneName(id) + ' (' + zylI18n.formatOffset(zylI18n.zoneOffsetMinutes(id)) + ')';
+  }
+
+  function saveTimeZone(value) {
+    /* Apply here at once; the compositor stores it and tells every other app */
+    zylI18n.setTimeZone(value);
+    requestService('settings', 'update', { category: 'datetime', key: 'timezone', value: value });
+  }
+
+  function renderZoneList() {
+    if (!tzList) return;
+    var query = tzSearch ? tzSearch.value.toLowerCase().replace(/^\s+|\s+$/g, '') : '';
+    var current = zylI18n.getTimeZone();
+    var frag = document.createDocumentFragment();
+    allZones().forEach(function (z) {
+      var name = zylI18n.zoneName(z.id);
+      var city = zoneCityName(z.id);
+      if (query && city.toLowerCase().indexOf(query) === -1 &&
+          z.id.toLowerCase().replace(/_/g, ' ').indexOf(query) === -1 &&
+          name.toLowerCase().indexOf(query) === -1) return;
+      var row = document.createElement('div');
+      row.className = 'setting-item tz-item';
+      row.setAttribute('role', 'button');
+      row.dataset.tz = z.id;
+      var text = document.createElement('div');
+      text.className = 'setting-text';
+      var label = document.createElement('span');
+      label.className = 'setting-label';
+      label.textContent = name + ' (' + zylI18n.formatOffset(z.offset) + ')';
+      var value = document.createElement('span');
+      value.className = 'setting-value';
+      value.textContent = city;
+      text.appendChild(label);
+      text.appendChild(value);
+      row.appendChild(text);
+      if (z.id === current) {
+        row.insertAdjacentHTML('beforeend', '<svg class="check-icon" viewBox="0 0 24 24" aria-hidden="true">' +
+          '<path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>');
+        row.setAttribute('aria-current', 'true');
+      }
+      addButtonKeyHandler(row);
+      row.addEventListener('click', function () {
+        saveTimeZone(z.id);
+        renderTimeZoneState();
+      });
+      frag.appendChild(row);
+    });
+    tzList.innerHTML = '';
+    tzList.appendChild(frag);
+  }
+
+  function renderTimeZoneState() {
+    var auto = zylI18n.isAutoTimeZone();
+    var label = describeZone(zylI18n.getTimeZone());
+    if (tzToggle) tzToggle.checked = auto;
+    if (tzCurrent) tzCurrent.textContent = label;
+    if (tzMenuValue) tzMenuValue.textContent = label;
+    if (tzPicker) tzPicker.classList.toggle('hidden', auto);
+    if (!auto && currentPage === 'datetime') renderZoneList();
+  }
+
+  if (tzToggle) {
+    tzToggle.addEventListener('change', function () {
+      /* Turning automatic off keeps the zone the user is in, then lets them pick */
+      saveTimeZone(tzToggle.checked ? 'auto' : zylI18n.getTimeZone());
+      renderTimeZoneState();
+    });
+  }
+  if (tzSearch) tzSearch.addEventListener('input', renderZoneList);
+
   /* ─── Instance state: come back to the page the user was on ───
      Only top-level pages listed in the main menu are restored; a nested detail
      page depends on data that has to be fetched again. */
@@ -433,6 +555,7 @@
   updateLangChecks();
   renderDeviceClassList();
   updateDeviceClassValue();
+  if (tzMenuValue) tzMenuValue.textContent = describeZone(zylI18n.getTimeZone());
 
   /* Re-sync language checks when locale changes from outside (e.g. emulator inject) */
   zylI18n.onLocaleChange(function () {
@@ -442,6 +565,7 @@
     if (curLangEl) curLangEl.textContent = LANG_NAMES[zylI18n.getLocale()] || '';
     renderDeviceClassList();
     updateDeviceClassValue();
+    renderTimeZoneState();   /* zone names are localised; also fires on zone changes */
   });
 
 })();

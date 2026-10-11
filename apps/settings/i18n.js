@@ -102,7 +102,12 @@
     'settings.privacy': '\uAC1C\uC778\uC815\uBCF4 \uBCF4\uD638',
     'settings.telemetry_share': '\uC9C4\uB2E8 \uB370\uC774\uD130 \uACF5\uC720',
     'settings.telemetry_desc': '\uC624\uB958\u00B7\uBD80\uD305\u00B7\uC5C5\uB370\uC774\uD2B8 \uD1B5\uACC4\uB9CC \uBCF4\uB0C5\uB2C8\uB2E4. \uB044\uBA74 \uC800\uC7A5\uB41C \uB370\uC774\uD130\uC640 \uAE30\uAE30 ID\uAC00 \uC0AD\uC81C\uB429\uB2C8\uB2E4.',
-    'settings.security_patch': '\uBCF4\uC548 \uD328\uCE58 \uC218\uC900'
+    'settings.security_patch': '\uBCF4\uC548 \uD328\uCE58 \uC218\uC900',
+    'settings.datetime': '\uB0A0\uC9DC \uBC0F \uC2DC\uAC04',
+    'settings.timezone_auto': '\uC790\uB3D9 \uC2DC\uAC04\uB300',
+    'settings.timezone_auto_desc': '\uAE30\uAE30\uC758 \uC2DC\uC2A4\uD15C \uC2DC\uAC04\uB300\uB97C \uB530\uB985\uB2C8\uB2E4',
+    'settings.timezone': '\uC2DC\uAC04\uB300',
+    'settings.timezone_search': '\uB3C4\uC2DC \uB610\uB294 \uC2DC\uAC04\uB300 \uAC80\uC0C9'
   });
 
   zylI18n.addTranslations('en', {
@@ -198,7 +203,12 @@
     'settings.privacy': 'Privacy',
     'settings.telemetry_share': 'Share diagnostic data',
     'settings.telemetry_desc': 'Sends only crash, boot and update statistics. Turning it off deletes stored data and the device ID.',
-    'settings.security_patch': 'Security patch level'
+    'settings.security_patch': 'Security patch level',
+    'settings.datetime': 'Date & time',
+    'settings.timezone_auto': 'Automatic time zone',
+    'settings.timezone_auto_desc': 'Follow the system time zone',
+    'settings.timezone': 'Time zone',
+    'settings.timezone_search': 'Search city or time zone'
   });
 
   zylI18n.addTranslations('ja', {
@@ -294,7 +304,12 @@
     'settings.privacy': '\u30D7\u30E9\u30A4\u30D0\u30B7\u30FC',
     'settings.telemetry_share': '\u8A3A\u65AD\u30C7\u30FC\u30BF\u3092\u5171\u6709',
     'settings.telemetry_desc': '\u30A8\u30E9\u30FC\u30FB\u8D77\u52D5\u30FB\u30A2\u30C3\u30D7\u30C7\u30FC\u30C8\u306E\u7D71\u8A08\u306E\u307F\u9001\u4FE1\u3057\u307E\u3059\u3002\u30AA\u30D5\u306B\u3059\u308B\u3068\u4FDD\u5B58\u6E08\u307F\u306E\u30C7\u30FC\u30BF\u3068\u7AEF\u672BID\u306F\u524A\u9664\u3055\u308C\u307E\u3059\u3002',
-    'settings.security_patch': '\u30BB\u30AD\u30E5\u30EA\u30C6\u30A3\u30D1\u30C3\u30C1\u30EC\u30D9\u30EB'
+    'settings.security_patch': '\u30BB\u30AD\u30E5\u30EA\u30C6\u30A3\u30D1\u30C3\u30C1\u30EC\u30D9\u30EB',
+    'settings.datetime': '\u65E5\u4ED8\u3068\u6642\u523B',
+    'settings.timezone_auto': '\u30BF\u30A4\u30E0\u30BE\u30FC\u30F3\u3092\u81EA\u52D5\u8A2D\u5B9A',
+    'settings.timezone_auto_desc': '\u7AEF\u672B\u306E\u30B7\u30B9\u30C6\u30E0\u30BF\u30A4\u30E0\u30BE\u30FC\u30F3\u306B\u5F93\u3044\u307E\u3059',
+    'settings.timezone': '\u30BF\u30A4\u30E0\u30BE\u30FC\u30F3',
+    'settings.timezone_search': '\u90FD\u5E02\u307E\u305F\u306F\u30BF\u30A4\u30E0\u30BE\u30FC\u30F3\u3092\u691C\u7D22'
   });
 
   zylI18n.addTranslations('zh', {
@@ -390,7 +405,12 @@
     'settings.privacy': '\u9690\u79C1',
     'settings.telemetry_share': '\u5171\u4EAB\u8BCA\u65AD\u6570\u636E',
     'settings.telemetry_desc': '\u4EC5\u53D1\u9001\u5D29\u6E83\u3001\u542F\u52A8\u548C\u66F4\u65B0\u7EDF\u8BA1\u3002\u5173\u95ED\u540E\u5C06\u5220\u9664\u5DF2\u5B58\u50A8\u7684\u6570\u636E\u548C\u8BBE\u5907ID\u3002',
-    'settings.security_patch': '\u5B89\u5168\u8865\u4E01\u7EA7\u522B'
+    'settings.security_patch': '\u5B89\u5168\u8865\u4E01\u7EA7\u522B',
+    'settings.datetime': '\u65E5\u671F\u548C\u65F6\u95F4',
+    'settings.timezone_auto': '\u81EA\u52A8\u8BBE\u7F6E\u65F6\u533A',
+    'settings.timezone_auto_desc': '\u8DDF\u968F\u8BBE\u5907\u7684\u7CFB\u7EDF\u65F6\u533A',
+    'settings.timezone': '\u65F6\u533A',
+    'settings.timezone_search': '\u641C\u7D22\u57CE\u5E02\u6216\u65F6\u533A'
   });
 
   zylI18n.addTranslations('es', {
@@ -486,6 +506,11 @@
     'settings.privacy': 'Privacidad',
     'settings.telemetry_share': 'Compartir datos de diagn\u00F3stico',
     'settings.telemetry_desc': 'Solo env\u00EDa estad\u00EDsticas de fallos, arranque y actualizaciones. Al desactivarlo se borran los datos guardados y el ID del dispositivo.',
-    'settings.security_patch': 'Nivel de parche de seguridad'
+    'settings.security_patch': 'Nivel de parche de seguridad',
+    'settings.datetime': 'Fecha y hora',
+    'settings.timezone_auto': 'Zona horaria autom\u00E1tica',
+    'settings.timezone_auto_desc': 'Sigue la zona horaria del sistema',
+    'settings.timezone': 'Zona horaria',
+    'settings.timezone_search': 'Buscar ciudad o zona horaria'
   });
 })();

@@ -399,9 +399,11 @@
           var name = entry.replace(/\/$/, '');
           var perms = isDir ? 'drwxr-xr-x' : '-rw-r--r--';
           var size = isDir ? '4096' : '0';
-          var now = new Date();
+          /* English month abbreviations are the ls(1) convention (LC_TIME=C);
+             the time itself follows the user's configured zone */
+          var np = zylI18n.parts(new Date());
           var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-          var date = months[now.getMonth()] + ' ' + strPadStart(String(now.getDate()), 2, ' ') + ' ' + strPadStart(String(now.getHours()), 2, '0') + ':' + strPadStart(String(now.getMinutes()), 2, '0');
+          var date = months[np.month - 1] + ' ' + strPadStart(String(np.day), 2, ' ') + ' ' + strPadStart(String(np.hour), 2, '0') + ':' + strPadStart(String(np.minute), 2, '0');
           var line = perms + '  1 user user ' + strPadStart(size, 8) + ' ' + date + ' ';
           addHtml(line + (isDir
             ? '<span class="line-info">' + escapeHtml(name) + '</span>'

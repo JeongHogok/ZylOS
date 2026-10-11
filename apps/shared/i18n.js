@@ -36,6 +36,12 @@ window.zylI18n = (function () {
       'app.messages': '\uBB38\uC790',
       'app.contacts': '\uC5F0\uB77D\uCC98',
       'date.format': '{y}\uB144 {m}\uC6D4 {d}\uC77C {day}',
+      'date.lunar': '\uC74C\uB825 {date}',
+      'time.just_now': '\uBC29\uAE08',
+      'time.min_short': '{n}\uBD84',
+      'time.hour_short': '{n}\uC2DC\uAC04',
+      'time.yesterday': '\uC5B4\uC81C',
+      'time.month_day': '{m}/{d}',
       'day.0': '\uC77C\uC694\uC77C', 'day.1': '\uC6D4\uC694\uC77C', 'day.2': '\uD654\uC694\uC77C',
       'day.3': '\uC218\uC694\uC77C', 'day.4': '\uBAA9\uC694\uC77C', 'day.5': '\uAE08\uC694\uC77C',
       'day.6': '\uD1A0\uC694\uC77C',
@@ -75,6 +81,12 @@ window.zylI18n = (function () {
       'app.messages': 'Messages',
       'app.contacts': 'Contacts',
       'date.format': '{day}, {monthName} {d}, {y}',
+      'date.lunar': 'Lunar {date}',
+      'time.just_now': 'Just now',
+      'time.min_short': '{n}m',
+      'time.hour_short': '{n}h',
+      'time.yesterday': 'Yesterday',
+      'time.month_day': '{m}/{d}',
       'day.0': 'Sunday', 'day.1': 'Monday', 'day.2': 'Tuesday',
       'day.3': 'Wednesday', 'day.4': 'Thursday', 'day.5': 'Friday',
       'day.6': 'Saturday',
@@ -114,6 +126,12 @@ window.zylI18n = (function () {
       'app.messages': '\u30E1\u30C3\u30BB\u30FC\u30B8',
       'app.contacts': '\u9023\u7D61\u5148',
       'date.format': '{y}\u5E74{m}\u6708{d}\u65E5 {day}',
+      'date.lunar': '\u65E7\u66A6 {date}',
+      'time.just_now': '\u305F\u3063\u305F\u4ECA',
+      'time.min_short': '{n}\u5206',
+      'time.hour_short': '{n}\u6642\u9593',
+      'time.yesterday': '\u6628\u65E5',
+      'time.month_day': '{m}/{d}',
       'day.0': '\u65E5\u66DC\u65E5', 'day.1': '\u6708\u66DC\u65E5', 'day.2': '\u706B\u66DC\u65E5',
       'day.3': '\u6C34\u66DC\u65E5', 'day.4': '\u6728\u66DC\u65E5', 'day.5': '\u91D1\u66DC\u65E5',
       'day.6': '\u571F\u66DC\u65E5',
@@ -153,6 +171,12 @@ window.zylI18n = (function () {
       'app.messages': '\u77ED\u4FE1',
       'app.contacts': '\u8054\u7CFB\u4EBA',
       'date.format': '{y}\u5E74{m}\u6708{d}\u65E5 {day}',
+      'date.lunar': '\u519C\u5386{date}',
+      'time.just_now': '\u521A\u521A',
+      'time.min_short': '{n}\u5206\u949F',
+      'time.hour_short': '{n}\u5C0F\u65F6',
+      'time.yesterday': '\u6628\u5929',
+      'time.month_day': '{m}/{d}',
       'day.0': '\u661F\u671F\u65E5', 'day.1': '\u661F\u671F\u4E00', 'day.2': '\u661F\u671F\u4E8C',
       'day.3': '\u661F\u671F\u4E09', 'day.4': '\u661F\u671F\u56DB', 'day.5': '\u661F\u671F\u4E94',
       'day.6': '\u661F\u671F\u516D',
@@ -192,6 +216,12 @@ window.zylI18n = (function () {
       'app.messages': 'Mensajes',
       'app.contacts': 'Contactos',
       'date.format': '{day}, {d} de {monthName} de {y}',
+      'date.lunar': 'Lunar {date}',
+      'time.just_now': 'Ahora',
+      'time.min_short': '{n} min',
+      'time.hour_short': '{n} h',
+      'time.yesterday': 'Ayer',
+      'time.month_day': '{d}/{m}',
       'day.0': 'Domingo', 'day.1': 'Lunes', 'day.2': 'Martes',
       'day.3': 'Mi\u00E9rcoles', 'day.4': 'Jueves', 'day.5': 'Viernes',
       'day.6': 'S\u00E1bado',
@@ -231,6 +261,12 @@ window.zylI18n = (function () {
       'app.messages': '\u0627\u0644\u0631\u0633\u0627\u0626\u0644',
       'app.contacts': '\u062C\u0647\u0627\u062A \u0627\u0644\u0627\u062A\u0635\u0627\u0644',
       'date.format': '{d}/{m}/{y} {day}',
+      'date.lunar': 'Lunar {date}',
+      'time.just_now': '\u0627\u0644\u0622\u0646',
+      'time.min_short': '{n} \u062F',
+      'time.hour_short': '{n} \u0633',
+      'time.yesterday': '\u0623\u0645\u0633',
+      'time.month_day': '{d}/{m}',
       'day.0': '\u0627\u0644\u0623\u062D\u062F', 'day.1': '\u0627\u0644\u0627\u062B\u0646\u064A\u0646', 'day.2': '\u0627\u0644\u062B\u0644\u0627\u062B\u0627\u0621',
       'day.3': '\u0627\u0644\u0623\u0631\u0628\u0639\u0627\u0621', 'day.4': '\u0627\u0644\u062E\u0645\u064A\u0633', 'day.5': '\u0627\u0644\u062C\u0645\u0639\u0629',
       'day.6': '\u0627\u0644\u0633\u0628\u062A'
@@ -242,7 +278,13 @@ window.zylI18n = (function () {
       'app.terminal': '\u05DE\u05E1\u05D5\u05E3',
       'app.settings': '\u05D4\u05D2\u05D3\u05E8\u05D5\u05EA',
       'app.camera': '\u05DE\u05E6\u05DC\u05DE\u05D4',
-      'date.format': '{d}/{m}/{y} {day}'
+      'date.format': '{d}/{m}/{y} {day}',
+      'date.lunar': 'Lunar {date}',
+      'time.just_now': '\u05E2\u05DB\u05E9\u05D9\u05D5',
+      'time.min_short': '{n} \u05D3\u05F3',
+      'time.hour_short': '{n} \u05E9\u05F3',
+      'time.yesterday': '\u05D0\u05EA\u05DE\u05D5\u05DC',
+      'time.month_day': '{d}/{m}'
     }
   };
 
@@ -440,11 +482,175 @@ window.zylI18n = (function () {
    * Returns a string.
    * ─────────────────────────────────────────────────────────── */
 
+  /* ─── Time zone ───────────────────────────────────────────────
+     The OS has one configured time zone (Settings > Date & time). null means
+     automatic: the system zone. Every date and time an app shows must come
+     through parts() — Date#getHours() reads the process zone, which is not
+     the user's choice when they picked one by hand. */
+  var currentTimeZone = null;
+  var _partsFormatter = null;
+  var WEEKDAY_INDEX = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+
+  function systemTimeZone() {
+    try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; }
+    catch (e) { return 'UTC'; }
+  }
+
+  /**
+   * @param {string|null} tz IANA id (e.g. "Asia/Seoul"), or null / "auto"
+   * @returns {boolean} false if the id is unknown — the zone is kept
+   */
+  function setTimeZone(tz) {
+    var next = null;
+    if (tz && tz !== 'auto') {
+      /* Store the engine's canonical id, so "Asia/Kolkata" and the "Asia/Calcutta"
+         the engine lists compare equal */
+      try { next = new Intl.DateTimeFormat('en-US', { timeZone: tz }).resolvedOptions().timeZone || tz; }
+      catch (e) { return false; }
+    }
+    if (next === currentTimeZone) return true;
+    currentTimeZone = next;
+    _partsFormatter = null;
+    /* Clocks and timestamps re-render on display-setting changes */
+    listeners.forEach(function (fn) { fn(currentLocale); });
+    return true;
+  }
+
+  function getTimeZone() { return currentTimeZone || systemTimeZone(); }
+  function isAutoTimeZone() { return currentTimeZone === null; }
+
+  /**
+   * Calendar fields of a moment in the configured zone.
+   * @param {Date} [date] defaults to now
+   * @returns {{year,month,day,hour,minute,second,weekday}|null}
+   *          month 1-12, weekday 0 (Sunday) - 6
+   */
+  function parts(date) {
+    var d = (date instanceof Date) ? date : new Date();
+    if (isNaN(d.getTime())) return null;
+    if (currentTimeZone && typeof Intl !== 'undefined' &&
+        Intl.DateTimeFormat && Intl.DateTimeFormat.prototype.formatToParts) {
+      try {
+        if (!_partsFormatter) {
+          _partsFormatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: currentTimeZone, hourCycle: 'h23',
+            year: 'numeric', month: 'numeric', day: 'numeric',
+            hour: 'numeric', minute: 'numeric', second: 'numeric', weekday: 'short'
+          });
+        }
+        var f = {};
+        _partsFormatter.formatToParts(d).forEach(function (p) { f[p.type] = p.value; });
+        var hour = parseInt(f.hour, 10);
+        return {
+          year: parseInt(f.year, 10), month: parseInt(f.month, 10), day: parseInt(f.day, 10),
+          hour: hour === 24 ? 0 : hour,            /* some engines print 24 at midnight */
+          minute: parseInt(f.minute, 10), second: parseInt(f.second, 10),
+          weekday: WEEKDAY_INDEX[f.weekday]
+        };
+      } catch (e) { /* engine without time zone support — fall back to local */ }
+    }
+    return {
+      year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate(),
+      hour: d.getHours(), minute: d.getMinutes(), second: d.getSeconds(),
+      weekday: d.getDay()
+    };
+  }
+
+  /* UTC offset of a zone at an instant, in minutes — whole minutes, so the
+     half- and quarter-hour zones (India +5:30, Nepal +5:45) come out right */
+  function zoneOffsetMinutes(tz, at) {
+    var when = (at instanceof Date) ? at : new Date();
+    try {
+      var f = new Intl.DateTimeFormat('en-US', {
+        timeZone: tz, hourCycle: 'h23',
+        year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric'
+      });
+      var p = {};
+      f.formatToParts(when).forEach(function (x) { p[x.type] = x.value; });
+      var wall = Date.UTC(+p.year, +p.month - 1, +p.day, (+p.hour) % 24, +p.minute);
+      var instant = when.getTime() - when.getSeconds() * 1000 - when.getMilliseconds();
+      return Math.round((wall - instant) / 60000);
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  /* "GMT+9", "GMT+5:30", "GMT" — digits read the same in every language */
+  function formatOffset(minutes) {
+    if (!minutes) return 'GMT';
+    var sign = minutes > 0 ? '+' : '-';
+    var abs = Math.abs(minutes);
+    var h = Math.floor(abs / 60);
+    var m = abs % 60;
+    return 'GMT' + sign + h + (m ? ':' + (m < 10 ? '0' : '') + m : '');
+  }
+
+  /* Localised zone name from ICU ("한국 표준시", "米国東部時間"); the id if the
+     engine has none */
+  var INTL_TAG = { ko: 'ko-KR', en: 'en-US', ja: 'ja-JP', zh: 'zh-CN', es: 'es-ES',
+                   ar: 'ar', he: 'he-IL' };
+  function zoneName(tz) {
+    try {
+      var f = new Intl.DateTimeFormat(INTL_TAG[currentLocale] || 'en-US',
+                                      { timeZone: tz, timeZoneName: 'longGeneric' });
+      var parts = f.formatToParts(new Date());
+      for (var i = 0; i < parts.length; i++) {
+        if (parts[i].type === 'timeZoneName') return parts[i].value;
+      }
+    } catch (e) { /* fall through */ }
+    return tz;
+  }
+
+  /* ─── Lunar date ──────────────────────────────────────────────
+     Korean (dangi) and Chinese calendars are lunisolar; holidays and many
+     birthdays follow them. ICU converts — no tables here: the two calendars
+     even disagree on some dates, because Seoul and Beijing use different
+     meridians for the new moon. Returns null for other locales, or when the
+     engine lacks the calendar. */
+  var LUNAR = { ko: { tag: 'ko-KR', cal: 'dangi' }, zh: { tag: 'zh-CN', cal: 'chinese' } };
+
+  function formatLunarDate(date) {
+    var l = LUNAR[currentLocale];
+    if (!l || typeof Intl === 'undefined' || !Intl.DateTimeFormat) return null;
+    try {
+      var opts = { month: 'long', day: 'numeric' };
+      if (currentTimeZone) opts.timeZone = currentTimeZone;
+      var f = new Intl.DateTimeFormat(l.tag + '-u-ca-' + l.cal, opts);
+      if (f.resolvedOptions().calendar !== l.cal) return null;
+      return t('date.lunar', { date: f.format(date instanceof Date ? date : new Date()) });
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /* ─── Relative time for lists (messages, call log) ────────────
+     One formatter for every app: three apps each had their own, two of them
+     printing English "5m" / "3h" / "Yesterday" whatever the language.
+     Calendar comparisons use the configured zone, so "yesterday" means the
+     user's yesterday. */
+  function dayKey(p) { return p.year * 10000 + p.month * 100 + p.day; }
+
+  function formatRelative(ts, now) {
+    var d = (ts instanceof Date) ? ts : new Date(ts);
+    if (isNaN(d.getTime())) return '';
+    var ref = (now instanceof Date) ? now : new Date();
+    var diffMin = Math.floor((ref.getTime() - d.getTime()) / 60000);
+    if (diffMin < 1) return t('time.just_now');
+    if (diffMin < 60) return t('time.min_short', { n: diffMin });
+    var diffH = Math.floor(diffMin / 60);
+    if (diffH < 24) return t('time.hour_short', { n: diffH });
+    var pd = parts(d);
+    var py = parts(new Date(ref.getTime() - 86400000));
+    if (pd && py && dayKey(pd) === dayKey(py)) return t('time.yesterday');
+    return t('time.month_day', { m: pd.month, d: pd.day });
+  }
+
   function formatTime(date) {
     if (!(date instanceof Date) || isNaN(date.getTime())) return '';
 
-    var h   = date.getHours();
-    var min = date.getMinutes();
+    var p   = parts(date);
+    var h   = p.hour;
+    var min = p.minute;
 
     /* Zero-pad helper */
     function pad2(n) { return n < 10 ? '0' + n : '' + n; }
@@ -463,10 +669,12 @@ window.zylI18n = (function () {
 
   /* ─── Date Formatting ─── */
   function formatDate(date) {
-    var y = date.getFullYear();
-    var m = date.getMonth() + 1;
-    var d = date.getDate();
-    var dayOfWeek = date.getDay();
+    var p = parts(date);
+    if (!p) return '';
+    var y = p.year;
+    var m = p.month;
+    var d = p.day;
+    var dayOfWeek = p.weekday;
     var dayName = t('day.' + dayOfWeek);
     var monthName = t('month.' + m) || String(m);
 
@@ -541,6 +749,9 @@ window.zylI18n = (function () {
         var loc = msg.locale || (msg.data && msg.data.locale);
         if (loc) setLocale(loc);
       }
+      if (msg.type === 'system.setTimeZone') {
+        setTimeZone(msg.timeZone !== undefined ? msg.timeZone : (msg.data && msg.data.timeZone));
+      }
     } catch (err) { /* ignore */ }
   });
 
@@ -589,6 +800,15 @@ window.zylI18n = (function () {
     formatDate: formatDate,
     formatNumber: formatNumber,
     formatTime: formatTime,
+    formatLunarDate: formatLunarDate,
+    formatRelative: formatRelative,
+    parts: parts,
+    setTimeZone: setTimeZone,
+    getTimeZone: getTimeZone,
+    isAutoTimeZone: isAutoTimeZone,
+    zoneOffsetMinutes: zoneOffsetMinutes,
+    formatOffset: formatOffset,
+    zoneName: zoneName,
     setLocale: setLocale,
     getLocale: getLocale,
     getSupportedLocales: getSupportedLocales,

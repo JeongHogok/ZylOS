@@ -80,10 +80,7 @@
   /* ═══ Clock ═══ */
   function updateClock() {
     if (!emuTime) return;
-    var now = new Date();
-    emuTime.textContent =
-      String(now.getHours()).padStart(2, '0') + ':' +
-      String(now.getMinutes()).padStart(2, '0');
+    emuTime.textContent = deviceClockText(new Date());
   }
   updateClock();
   var _clockInterval = setInterval(updateClock, 1000);
@@ -196,6 +193,7 @@
           if (savedLocale) {
             broadcastToCurrentApp('system.setLocale', { locale: savedLocale });
           }
+          broadcastToCurrentApp('system.setTimeZone', { timeZone: _currentTimeZone });
 
           /* Hand back the state saved when the user left this app (one-shot:
              leaving again saves it again) */
@@ -487,9 +485,15 @@
 
   function updateQsClock() {
     var now = new Date();
-    if (qsTime) qsTime.textContent = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    if (qsTime) qsTime.textContent = deviceClockText(now);
     var emuLocale = (typeof ZylEmuI18n !== 'undefined') ? ZylEmuI18n.getLocale() : 'en';
-    if (qsDate) qsDate.textContent = now.toLocaleDateString(emuLocale, { month: 'long', day: 'numeric', weekday: 'long' });
+    if (qsDate) {
+      try {
+        qsDate.textContent = now.toLocaleDateString(emuLocale, zoneOpts({ month: 'long', day: 'numeric', weekday: 'long' }));
+      } catch (e) {
+        qsDate.textContent = now.toLocaleDateString(emuLocale, { month: 'long', day: 'numeric', weekday: 'long' });
+      }
+    }
   }
 
   var qsBackdrop = document.getElementById('qs-backdrop');
@@ -940,6 +944,24 @@
   /* ── Apply real side effects when a setting changes ── */
   /* ─── 설정 변경 → 에뮬레이터에 실제 반영 ─── */
   var _currentPin = '';
+  /* The device's configured time zone (Settings > Date & time); 'auto' follows
+     the system zone. Broadcast to every app on load, like the locale. */
+  var _currentTimeZone = 'auto';
+
+  /* The emulator draws the virtual device's status bar clock, so it follows
+     the device's zone — not the host's. (syslog stamps stay in host time:
+     they are emulator diagnostics.) */
+  function zoneOpts(opts) {
+    if (_currentTimeZone && _currentTimeZone !== 'auto') opts.timeZone = _currentTimeZone;
+    return opts;
+  }
+  function deviceClockText(now) {
+    try {
+      return now.toLocaleTimeString('en-GB', zoneOpts({ hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }));
+    } catch (e) {
+      return String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    }
+  }
   var _systemSilentMode = false;
   var _currentWallpaper = 'default';
   var _wallpaperGradients = {
@@ -1030,6 +1052,14 @@
     if (category === 'language' && key === 'locale') {
       ZylEmuI18n.setLocale(String(value));
       syslog('Locale: ' + value, 'sys');
+    }
+
+    /* ── Time zone → current app now, every other app when it loads ── */
+    if (category === 'datetime' && key === 'timezone') {
+      _currentTimeZone = String(value || 'auto');
+      broadcastToCurrentApp('system.setTimeZone', { timeZone: _currentTimeZone });
+      updateClock();
+      syslog('Time zone: ' + _currentTimeZone, 'sys');
     }
 
     /* ── PIN changed → save (sent to lockscreen on load) ── */
@@ -1329,6 +1359,14 @@
       if (pinLoad && typeof pinLoad.then === 'function') {
         pinLoad.then(function (sec) {
           if (sec && sec.pin) _currentPin = String(sec.pin);
+        });
+      }
+
+      /* Load persisted time zone */
+      var tzLoad = ZylServices.handleRequest('settings', 'get', { category: 'datetime' });
+      if (tzLoad && typeof tzLoad.then === 'function') {
+        tzLoad.then(function (dt) {
+          if (dt && dt.timezone) { _currentTimeZone = String(dt.timezone); updateClock(); }
         });
       }
 

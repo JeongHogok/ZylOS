@@ -1016,6 +1016,112 @@ var appStateTests = (function () {
 })();
 
 /* ═══════════════════════════════════════════════════════
+   Time zone, relative time, lunar date (real apps/shared/i18n.js, isolated)
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ zylI18n time');
+
+(function () {
+  var vm = require('vm');
+  var noop = function () {};
+  var doc = {
+    readyState: 'complete', addEventListener: noop, querySelectorAll: function () { return []; },
+    documentElement: { lang: '', dir: '', setAttribute: noop, classList: { add: noop, remove: noop } },
+    body: { classList: { add: noop, remove: noop } }
+  };
+  var ctx = { window: { addEventListener: noop, parent: null }, document: doc, console: console,
+              navigator: { language: 'ko-KR' }, Intl: Intl, Date: Date, setTimeout: setTimeout };
+  ctx.window.window = ctx.window;
+  ctx.window.document = doc;
+  vm.createContext(ctx);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'apps', 'shared', 'i18n.js'), 'utf8'), ctx);
+  var I = ctx.window.zylI18n || ctx.zylI18n;
+  var instant = new Date('2026-10-11T03:30:00Z');
+
+  test('automatic zone reads the system clock', function () {
+    I.setTimeZone('auto');
+    assert.strictEqual(I.isAutoTimeZone(), true);
+    assert.strictEqual(I.parts(instant).hour, instant.getHours());
+  });
+
+  test('a chosen zone moves the wall clock, half-hour offsets included', function () {
+    assert.strictEqual(I.setTimeZone('Asia/Kolkata'), true);
+    var p = I.parts(instant);
+    assert.deepStrictEqual([p.year, p.month, p.day, p.hour, p.minute], [2026, 10, 11, 9, 0]);
+    assert.strictEqual(I.formatTime(instant), '09:00');
+  });
+
+  test('the calendar date follows the zone across midnight', function () {
+    I.setTimeZone('America/New_York');
+    var p = I.parts(instant);
+    assert.deepStrictEqual([p.day, p.hour, p.minute, p.weekday], [10, 23, 30, 6]);
+  });
+
+  test('an unknown zone is rejected and the current one kept', function () {
+    I.setTimeZone('Asia/Seoul');
+    assert.strictEqual(I.setTimeZone('Mars/Olympus'), false);
+    assert.strictEqual(I.parts(instant).hour, 12);
+  });
+
+  test('modern and legacy ids are the same zone', function () {
+    I.setTimeZone('Asia/Kolkata');
+    var a = I.getTimeZone();
+    I.setTimeZone('Asia/Calcutta');
+    assert.strictEqual(I.getTimeZone(), a, 'stored in one canonical form');
+  });
+
+  test('zone offsets in minutes and their labels', function () {
+    assert.strictEqual(I.zoneOffsetMinutes('Asia/Seoul', instant), 540);
+    assert.strictEqual(I.zoneOffsetMinutes('Asia/Kolkata', instant), 330);
+    assert.strictEqual(I.zoneOffsetMinutes('Asia/Kathmandu', instant), 345);
+    assert.strictEqual(I.zoneOffsetMinutes('UTC', instant), 0);
+    assert.strictEqual(I.formatOffset(330), 'GMT+5:30');
+    assert.strictEqual(I.formatOffset(-300), 'GMT-5');
+    assert.strictEqual(I.formatOffset(0), 'GMT');
+  });
+
+  test('relative times are translated, not "5m" / "Yesterday"', function () {
+    I.setLocale('ko');
+    I.setTimeZone('Asia/Seoul');
+    var now = new Date('2026-10-11T03:30:00Z');
+    var ago = function (ms) { return I.formatRelative(new Date(now.getTime() - ms), now); };
+    assert.strictEqual(ago(20e3), '방금');
+    assert.strictEqual(ago(5 * 6e4), '5분');
+    assert.strictEqual(ago(3 * 36e5), '3시간');
+    assert.strictEqual(ago(26 * 36e5), '어제');
+    assert.strictEqual(ago(5 * 864e5), '10/6');
+  });
+
+  test('"yesterday" is the yesterday of the configured zone', function () {
+    I.setLocale('ko');
+    /* 01:00 in Seoul on the 11th; 25h earlier is the 10th in Seoul */
+    var now = new Date('2026-10-10T16:00:00Z');
+    I.setTimeZone('Asia/Seoul');
+    assert.strictEqual(I.formatRelative(new Date(now.getTime() - 25 * 36e5), now), '어제');
+  });
+
+  test('lunar date only for Korean and Chinese', function () {
+    I.setLocale('ko');
+    I.setTimeZone('Asia/Seoul');
+    var ko = I.formatLunarDate(instant);
+    assert.ok(ko && ko.indexOf('음력') === 0, 'ko gets a lunar date: ' + ko);
+    I.setLocale('en');
+    assert.strictEqual(I.formatLunarDate(instant), null);
+    I.setLocale('ja');
+    assert.strictEqual(I.formatLunarDate(instant), null);
+  });
+
+  test('clocks are told when the zone changes, and only then', function () {
+    var calls = 0;
+    var off = I.onLocaleChange(function () { calls++; });
+    I.setTimeZone('Asia/Tokyo');
+    I.setTimeZone('Asia/Tokyo');
+    off();
+    assert.strictEqual(calls, 1);
+    I.setTimeZone('auto');
+  });
+})();
+
+/* ═══════════════════════════════════════════════════════
    Wait for all async tests and report
    ═══════════════════════════════════════════════════════ */
 Promise.all([settingsTests, displayTests, inputTests, sensorsTests,

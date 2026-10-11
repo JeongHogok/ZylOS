@@ -65,20 +65,9 @@
   /* ─── 시계 ─── */
   var lockTime = document.getElementById('lock-time');
   var lockDate = document.getElementById('lock-date');
-  if (typeof ZylClock !== 'undefined') {
-    ZylClock.create(lockTime, lockDate, { showDate: true, dateFormat: 'long' });
-  } else {
-    /* 폴백: ZylClock 미로드 시 직접 업데이트 */
-    function updateClock() {
-      var now = new Date();
-      var hh = now.getHours(); var mm = now.getMinutes();
-      lockTime.textContent = (hh < 10 ? '0' : '') + hh + ':' + (mm < 10 ? '0' : '') + mm;
-      var locale = (typeof zylI18n !== 'undefined' && zylI18n.getLocale) ? zylI18n.getLocale() : 'en';
-      lockDate.textContent = now.toLocaleDateString(locale, { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
-    }
-    updateClock();
-    setInterval(updateClock, 1000);
-  }
+  /* clock.js is loaded before this script (index.html), so ZylClock always
+     exists. The former fallback drew the process time zone, not the user's. */
+  ZylClock.create(lockTime, lockDate, { showDate: true, dateFormat: 'long' });
 
   /* ════════════════════════════════════════════
    *  스와이프: 실시간 드래그 피드백

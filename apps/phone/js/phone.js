@@ -501,18 +501,7 @@
 
   function formatRecentTime(ts) {
     if (!ts) return '';
-    var d = new Date(ts);
-    var now = new Date();
-    var diffMs = now.getTime() - d.getTime();
-    var diffMin = Math.floor(diffMs / 60000);
-    if (diffMin < 1) {
-      return typeof zylI18n !== 'undefined' ? zylI18n.t('phone.just_now') : '';
-    }
-    if (diffMin < 60) return diffMin + 'm';
-    var diffH = Math.floor(diffMin / 60);
-    if (diffH < 24) return diffH + 'h';
-    var pad = function (n) { return (n < 10 ? '0' : '') + n; };
-    return pad(d.getMonth() + 1) + '/' + pad(d.getDate());
+    return zylI18n.formatRelative(ts);
   }
 
   /* ═══════════════════════════════════════════════════════════
