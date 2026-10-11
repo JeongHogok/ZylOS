@@ -215,6 +215,11 @@ meson setup builddir -Dboard=bpi-f3 -Dprofile=tv
 
 보드가 선언하지 않은 조합은 configure 단계에서 실패한다
 (`generic-x86_64 × phone` → 모뎀/PMIC 없음, `bpi-f3 × watch` → 전력 예산 불가).
+
+보드 3종: `bpi-f3`(실기기), `generic-x86_64`(이식성 기준선),
+`emulator`(에뮬레이션·CI 전용, 물리 제약이 없어 8개 폼팩터 전부 지원).
+실기기 하드웨어가 정해지기 전에도 모든 폼팩터를 빌드·검증할 수 있는 경로이며,
+CI 가 매 빌드마다 8개 프로파일의 configure 를 확인한다.
 `system/zyl-os.target` 은 `.target.in` 에서 생성되므로 `Wants=` 가 실제 빌드된
 유닛 집합과 어긋날 수 없다.
 
