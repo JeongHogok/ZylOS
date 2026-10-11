@@ -93,9 +93,6 @@ install_subdir('apps/shared',      install_dir: get_option('datadir') / 'zyl-os'
 # Install HAL header
 install_headers('runtime/hal/hal.h', subdir: 'zyl-os')
 
-# Install HAL header
-install_headers('runtime/hal/hal.h', subdir: 'zyl-os')
-
 # ─── systemd units — only those the profile actually builds ───
 zyl_units = ['zyl-compositor', 'zyl-wam', 'zyl-apparmor']
 foreach svc : zyl_services
