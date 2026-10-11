@@ -1,0 +1,181 @@
+{
+  "_comment": "Performance budgets per app. Counts (domNodes, layouts) are deterministic across machines and gated tightly; times vary with the runner, so their budgets never drop below timeFloorsMs — they catch multi-fold slowdowns, not noise. throttle approximates the target SoC (estimate; calibrate on a device). Regenerate: node tests/perf/run.js --update",
+  "throttle": 4,
+  "viewport": {
+    "width": 393,
+    "height": 852
+  },
+  "settleMs": 1500,
+  "headroom": {
+    "time": 1.5,
+    "count": 1.25,
+    "heap": 1.5
+  },
+  "defaults": {
+    "loadMs": 3000,
+    "fcpMs": 3000,
+    "blockingMs": 500,
+    "heapMB": 16,
+    "domNodes": 2000,
+    "layouts": 60
+  },
+  "apps": {
+    "browser": {
+      "loadMs": 600,
+      "fcpMs": 800,
+      "blockingMs": 200,
+      "heapMB": 2,
+      "domNodes": 400,
+      "layouts": 25
+    },
+    "calc": {
+      "loadMs": 600,
+      "fcpMs": 800,
+      "blockingMs": 200,
+      "heapMB": 2,
+      "domNodes": 250,
+      "layouts": 24
+    },
+    "camera": {
+      "loadMs": 600,
+      "fcpMs": 800,
+      "blockingMs": 200,
+      "heapMB": 2,
+      "domNodes": 490,
+      "layouts": 24
+    },
+    "clock": {
+      "loadMs": 600,
+      "fcpMs": 800,
+      "blockingMs": 200,
+      "heapMB": 2,
+      "domNodes": 480,
+      "layouts": 24
+    },
+    "contacts": {
+      "loadMs": 600,
+      "fcpMs": 800,
+      "blockingMs": 200,
+      "heapMB": 2,
+      "domNodes": 380,
+      "layouts": 24
+    },
+    "files": {
+      "loadMs": 600,
+      "fcpMs": 800,
+      "blockingMs": 200,
+      "heapMB": 2,
+      "domNodes": 280,
+      "layouts": 23
+    },
+    "gallery": {
+      "loadMs": 600,
+      "fcpMs": 800,
+      "blockingMs": 200,
+      "heapMB": 2,
+      "domNodes": 240,
+      "layouts": 24
+    },
+    "home": {
+      "loadMs": 600,
+      "fcpMs": 800,
+      "blockingMs": 200,
+      "heapMB": 2,
+      "domNodes": 150,
+      "layouts": 26
+    },
+    "lockscreen": {
+      "loadMs": 600,
+      "fcpMs": 800,
+      "blockingMs": 200,
+      "heapMB": 2,
+      "domNodes": 300,
+      "layouts": 26
+    },
+    "messages": {
+      "loadMs": 600,
+      "fcpMs": 800,
+      "blockingMs": 200,
+      "heapMB": 2,
+      "domNodes": 250,
+      "layouts": 24
+    },
+    "music": {
+      "loadMs": 600,
+      "fcpMs": 800,
+      "blockingMs": 200,
+      "heapMB": 2,
+      "domNodes": 350,
+      "layouts": 24
+    },
+    "notes": {
+      "loadMs": 600,
+      "fcpMs": 800,
+      "blockingMs": 200,
+      "heapMB": 2,
+      "domNodes": 170,
+      "layouts": 23
+    },
+    "oobe": {
+      "loadMs": 600,
+      "fcpMs": 800,
+      "blockingMs": 200,
+      "heapMB": 2,
+      "domNodes": 360,
+      "layouts": 24
+    },
+    "phone": {
+      "loadMs": 600,
+      "fcpMs": 800,
+      "blockingMs": 200,
+      "heapMB": 2,
+      "domNodes": 440,
+      "layouts": 24
+    },
+    "settings": {
+      "loadMs": 600,
+      "fcpMs": 800,
+      "blockingMs": 200,
+      "heapMB": 2,
+      "domNodes": 1490,
+      "layouts": 24
+    },
+    "statusbar": {
+      "loadMs": 600,
+      "fcpMs": 800,
+      "blockingMs": 200,
+      "heapMB": 2,
+      "domNodes": 310,
+      "layouts": 24
+    },
+    "store": {
+      "loadMs": 600,
+      "fcpMs": 800,
+      "blockingMs": 200,
+      "heapMB": 2,
+      "domNodes": 150,
+      "layouts": 24
+    },
+    "terminal": {
+      "loadMs": 600,
+      "fcpMs": 800,
+      "blockingMs": 200,
+      "heapMB": 2,
+      "domNodes": 210,
+      "layouts": 26
+    },
+    "weather": {
+      "loadMs": 600,
+      "fcpMs": 800,
+      "blockingMs": 200,
+      "heapMB": 2,
+      "domNodes": 350,
+      "layouts": 24
+    }
+  },
+  "timeFloorsMs": {
+    "loadMs": 600,
+    "fcpMs": 800,
+    "blockingMs": 200
+  }
+}

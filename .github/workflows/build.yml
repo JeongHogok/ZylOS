@@ -89,6 +89,19 @@ jobs:
       - name: Run service module tests
         run: node tests/test_services.js
 
+  # ─── App performance budgets ───
+  # Startup time, main-thread blocking, heap, DOM and layout counts per app,
+  # on a throttled CPU without GPU. Fails when an app goes over budget.
+  perf:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: App performance budgets
+        run: node tests/perf/run.js --runs=3
+
   # ─── License audit ───
   audit-licenses:
     runs-on: ubuntu-24.04
