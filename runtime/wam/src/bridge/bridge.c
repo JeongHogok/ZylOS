@@ -170,24 +170,28 @@ gboolean zyl_bridge_inject(const char      *bridge_js_path,
 
 /* == JSON Pre-validation ==================================== */
 
+/* A bridge message is exactly one JSON object: "{...}" with nothing but
+   whitespace around it. Anything else is rejected here rather than handed to
+   json-glib — the parser builds the leading value, then fails on the rest
+   without attaching it to itself, so g_object_unref(parser) cannot free it.
+   Two such leaks were found by tests/fuzz/fuzz_json_dispatch:
+     "{}{}"                trailing object after a complete one
+     "0{\"type\":\"x\"}"       leading scalar before the object
+   Checking the shape instead of only brace balance closes the whole class. */
 static gboolean json_prevalidate(const char *str)
 {
-    if (!str || str[0] == '\0') return FALSE;
+    if (!str) return FALSE;
+
+    const char *p = str;
+    while (g_ascii_isspace((guchar)*p)) p++;
+    if (*p != '{') return FALSE;          /* must start with an object */
 
     int brace_depth   = 0;
     int bracket_depth = 0;
     gboolean in_string = FALSE;
     gboolean escaped   = FALSE;
-    gboolean top_closed = FALSE;   /* one complete top-level value already read */
 
-    for (const char *p = str; *p; p++) {
-        /* Reject trailing content after the first complete top-level value.
-           A bridge message is exactly one JSON object, and "{}{}" is not one:
-           json-glib builds the object for the leading "{}", then fails on the
-           trailing "{" without attaching it to the parser, so unreffing the
-           parser cannot free it. Found by tests/fuzz/fuzz_json_dispatch. */
-        if (top_closed && !g_ascii_isspace((guchar)*p)) return FALSE;
-
+    for (; *p; p++) {
         if (escaped) { escaped = FALSE; continue; }
         if (*p == '\\' && in_string) { escaped = TRUE; continue; }
         if (*p == '"') { in_string = !in_string; continue; }
@@ -200,11 +204,18 @@ static gboolean json_prevalidate(const char *str)
         case ']': bracket_depth--; break;
         }
         if (brace_depth < 0 || bracket_depth < 0) return FALSE;
-        if (brace_depth == 0 && bracket_depth == 0 && (*p == '}' || *p == ']'))
-            top_closed = TRUE;
+
+        if (brace_depth == 0) {
+            /* Top-level object closed. Brackets must balance with it, and
+               only whitespace may follow. */
+            if (bracket_depth != 0) return FALSE;
+            for (const char *q = p + 1; *q; q++)
+                if (!g_ascii_isspace((guchar)*q)) return FALSE;
+            return TRUE;
+        }
     }
 
-    return (brace_depth == 0 && bracket_depth == 0 && !in_string);
+    return FALSE;   /* input ended with the object still open */
 }
 
 /* == Send response back to JavaScript ======================= */
