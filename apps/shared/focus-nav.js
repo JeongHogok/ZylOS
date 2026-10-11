@@ -31,6 +31,7 @@ var ZylFocusNav = (function () {
   var _enabled = false;
   var _current = null;
   var _observer = null;
+  var _installed = false;   /* keydown listener registered exactly once */
 
   /* ═══ Candidate discovery ═══════════════════════════════ */
   function isVisible(el) {
@@ -197,12 +198,16 @@ var ZylFocusNav = (function () {
   /**
    * Enable directional navigation when the active form factor needs it.
    * No-op on pointer/gesture devices, so every app can call this blindly.
-   * @returns {boolean} whether directional navigation was enabled
+   * Idempotent: this module self-initialises on load, so an app calling it
+   * again must not end up with two listeners moving focus twice per key.
+   * @returns {boolean} whether directional navigation is enabled
    */
   function init() {
     var navModel = (window.ZylFormFactor && window.ZylFormFactor.getProfile().navModel) || 'gesture';
     if (navModel !== 'focus') return false;
+    if (_installed) return true;
 
+    _installed = true;
     _enabled = true;
     document.addEventListener('keydown', onKeyDown, true);
     focusFirst();
@@ -211,6 +216,7 @@ var ZylFocusNav = (function () {
   }
 
   function setEnabled(on) { _enabled = !!on; }
+  function isInstalled() { return _installed; }
   function getCurrent() { return _current; }
   function refresh() { if (_enabled && (!_current || !isVisible(_current))) focusFirst(); }
 
@@ -221,6 +227,7 @@ var ZylFocusNav = (function () {
     focusFirst: focusFirst,
     refresh: refresh,
     setEnabled: setEnabled,
+    isInstalled: isInstalled,
     getCurrent: getCurrent,
     /* Exposed for unit tests — pure function, no DOM needed */
     _score: score

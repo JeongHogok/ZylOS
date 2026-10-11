@@ -470,6 +470,25 @@ console.log('\n■ ZylFormFactor / ZylFocusNav');
 
   FF.clearOverride();
 
+  test('focus-nav init is idempotent (no duplicate keydown listener)', function () {
+    FF.setOverride('tv');
+    FF.reload();
+    var added = 0;
+    var realAdd = global.document.addEventListener;
+    global.document.addEventListener = function (type) {
+      if (type === 'keydown') added++;
+      return realAdd.apply(this, arguments);
+    };
+    var alreadyInstalled = FN.isInstalled();
+    FN.init();
+    FN.init();
+    FN.init();
+    global.document.addEventListener = realAdd;
+    assert.strictEqual(added, alreadyInstalled ? 0 : 1,
+      'three init() calls must register the keydown listener at most once');
+    assert.strictEqual(FN.isInstalled(), true);
+  });
+
   /* ─── launcher filter: the predicate home.js applies to the app list ─── */
   test('launcher filter hides apps the device class does not declare', function () {
     FF.setOverride('tv');
