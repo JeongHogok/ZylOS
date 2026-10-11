@@ -207,6 +207,9 @@
     </div>
   </div>
 
+  <!-- OS font stacks for the keyboard (OS UI hosted in this document).
+       Defines variables only — the emulator chrome keeps its own fonts. -->
+  <link rel="stylesheet" href="apps/shared/fonts.css">
   <link rel="stylesheet" href="apps/keyboard/css/keyboard.css">
   <script src="js/emu-i18n.js"></script>
   <script src="js/hal-browser.js"></script>
@@ -252,9 +255,11 @@
   <script src="apps/system/services/sandbox.js"></script>
   <script src="apps/system/services/logger.js"></script>
   <script src="apps/system/services/accessibility.js"></script>
+  <script src="apps/system/services/telemetry.js"></script>
   <script src="apps/system/services/audio.js"></script>
   <!-- Service Router (assembles modules) -->
   <script src="apps/system/services.js"></script>
+  <script src="apps/keyboard/js/hangul.js"></script>
   <script src="apps/keyboard/js/prediction.js"></script>
   <script src="apps/keyboard/js/keyboard.js"></script>
   <script src="apps/shared/touch-scroll.js"></script>

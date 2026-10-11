@@ -65,3 +65,21 @@ if host_machine.system() == 'linux'
     )
   )
 endif
+
+# Test: telemetry opt-in consent (no collection or identifier before consent,
+# erasure on withdrawal). Uses the real daemon source with main() compiled out.
+test('telemetry-consent',
+  executable('test-telemetry-consent',
+    'test_telemetry_consent.c',
+    dependencies: [gio_dep],
+    c_args: ['-DZYL_TEST'],
+  )
+)
+
+# Test: device app scan — a user app must not replace a system app by reusing its id
+test('manifest-scan',
+  executable('test-manifest-scan',
+    'test_manifest_scan.c',
+    dependencies: [gio_dep, json_glib_dep],
+  )
+)

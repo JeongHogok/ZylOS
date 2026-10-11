@@ -98,7 +98,10 @@
     'settings.ff_watch': '\uC6CC\uCE58',
     'settings.ff_desktop': '\uB370\uC2A4\uD06C\uD1B1',
     'settings.ff_appliance': '\uAC00\uC804',
-    'settings.ff_pda': 'PDA\u00B7\uC0B0\uC5C5\uC6A9 \uB2E8\uB9D0'
+    'settings.ff_pda': 'PDA\u00B7\uC0B0\uC5C5\uC6A9 \uB2E8\uB9D0',
+    'settings.privacy': '\uAC1C\uC778\uC815\uBCF4 \uBCF4\uD638',
+    'settings.telemetry_share': '\uC9C4\uB2E8 \uB370\uC774\uD130 \uACF5\uC720',
+    'settings.telemetry_desc': '\uC624\uB958\u00B7\uBD80\uD305\u00B7\uC5C5\uB370\uC774\uD2B8 \uD1B5\uACC4\uB9CC \uBCF4\uB0C5\uB2C8\uB2E4. \uB044\uBA74 \uC800\uC7A5\uB41C \uB370\uC774\uD130\uC640 \uAE30\uAE30 ID\uAC00 \uC0AD\uC81C\uB429\uB2C8\uB2E4.'
   });
 
   zylI18n.addTranslations('en', {
@@ -190,7 +193,10 @@
     'settings.ff_watch': 'Watch',
     'settings.ff_desktop': 'Desktop',
     'settings.ff_appliance': 'Appliance',
-    'settings.ff_pda': 'PDA / Handheld'
+    'settings.ff_pda': 'PDA / Handheld',
+    'settings.privacy': 'Privacy',
+    'settings.telemetry_share': 'Share diagnostic data',
+    'settings.telemetry_desc': 'Sends only crash, boot and update statistics. Turning it off deletes stored data and the device ID.'
   });
 
   zylI18n.addTranslations('ja', {
@@ -282,7 +288,10 @@
     'settings.ff_watch': '\u30B9\u30DE\u30FC\u30C8\u30A6\u30A9\u30C3\u30C1',
     'settings.ff_desktop': '\u30C7\u30B9\u30AF\u30C8\u30C3\u30D7',
     'settings.ff_appliance': '\u5BB6\u96FB',
-    'settings.ff_pda': 'PDA\u30FB\u696D\u52D9\u7528\u7AEF\u672B'
+    'settings.ff_pda': 'PDA\u30FB\u696D\u52D9\u7528\u7AEF\u672B',
+    'settings.privacy': '\u30D7\u30E9\u30A4\u30D0\u30B7\u30FC',
+    'settings.telemetry_share': '\u8A3A\u65AD\u30C7\u30FC\u30BF\u3092\u5171\u6709',
+    'settings.telemetry_desc': '\u30A8\u30E9\u30FC\u30FB\u8D77\u52D5\u30FB\u30A2\u30C3\u30D7\u30C7\u30FC\u30C8\u306E\u7D71\u8A08\u306E\u307F\u9001\u4FE1\u3057\u307E\u3059\u3002\u30AA\u30D5\u306B\u3059\u308B\u3068\u4FDD\u5B58\u6E08\u307F\u306E\u30C7\u30FC\u30BF\u3068\u7AEF\u672BID\u306F\u524A\u9664\u3055\u308C\u307E\u3059\u3002'
   });
 
   zylI18n.addTranslations('zh', {
@@ -374,7 +383,10 @@
     'settings.ff_watch': '\u667A\u80FD\u624B\u8868',
     'settings.ff_desktop': '\u684C\u9762',
     'settings.ff_appliance': '\u5BB6\u7535',
-    'settings.ff_pda': 'PDA\u00B7\u624B\u6301\u7EC8\u7AEF'
+    'settings.ff_pda': 'PDA\u00B7\u624B\u6301\u7EC8\u7AEF',
+    'settings.privacy': '\u9690\u79C1',
+    'settings.telemetry_share': '\u5171\u4EAB\u8BCA\u65AD\u6570\u636E',
+    'settings.telemetry_desc': '\u4EC5\u53D1\u9001\u5D29\u6E83\u3001\u542F\u52A8\u548C\u66F4\u65B0\u7EDF\u8BA1\u3002\u5173\u95ED\u540E\u5C06\u5220\u9664\u5DF2\u5B58\u50A8\u7684\u6570\u636E\u548C\u8BBE\u5907ID\u3002'
   });
 
   zylI18n.addTranslations('es', {
@@ -466,6 +478,9 @@
     'settings.ff_watch': 'Reloj',
     'settings.ff_desktop': 'Escritorio',
     'settings.ff_appliance': 'Electrodom\u00E9stico',
-    'settings.ff_pda': 'PDA / Industrial'
+    'settings.ff_pda': 'PDA / Industrial',
+    'settings.privacy': 'Privacidad',
+    'settings.telemetry_share': 'Compartir datos de diagn\u00F3stico',
+    'settings.telemetry_desc': 'Solo env\u00EDa estad\u00EDsticas de fallos, arranque y actualizaciones. Al desactivarlo se borran los datos guardados y el ID del dispositivo.'
   });
 })();

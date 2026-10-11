@@ -69,7 +69,7 @@
   background: #2a2a40;
   color: #e0e0e0;
   font-size: 16px;
-  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: var(--zyl-font-sans);
   cursor: pointer;
   flex: 1;
   max-width: 36px;
@@ -157,7 +157,7 @@
   background: transparent;
   color: #c8c8e8;
   font-size: 14px;
-  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: var(--zyl-font-sans);
   cursor: pointer;
   padding: 0 4px;
   display: flex;

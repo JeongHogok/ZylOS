@@ -9,6 +9,13 @@
    Built for real device runtime; no mock/demo or hardcoded data allowed
    ────────────────────────────────────────────────────────── */
 
+/* OS font stacks — apps use var(--zyl-font-sans) / var(--zyl-font-mono) */
+@import url('fonts.css');
+
+html {
+  font-family: var(--zyl-font-sans);
+}
+
 /* ─── Mobile simulation: prevent text selection (except inputs) ─── */
 * {
   -webkit-user-select: none;

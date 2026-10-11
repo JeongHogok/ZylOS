@@ -41,6 +41,9 @@ window.ZylPermissions = (function () {
     'network':      ['network'],
     'telephony':    ['telephony'],
     'location':     ['location'],
+    /* Only system apps (OOBE, Settings) may read or change telemetry consent —
+       a third-party app able to switch collection on would void the consent */
+    'telemetry':    ['system'],
     /* Services with no special permission required */
     'device':        [],
     'storage':       [],
@@ -67,6 +70,27 @@ window.ZylPermissions = (function () {
   /* User overrides from settings (revoked permissions) */
   var _userOverrides = {};
 
+  /* Permissions only the OS can hold. A third-party app that lists one of these
+     in app.json does not get it: declaring "system" is declaring yourself a
+     system app, which rule 8 says must not be trusted. Before this filter an
+     installed app could write ["system", "shell", "credential"] and receive
+     settings write access, command execution and the keychain.
+     Dangerous-but-legitimate permissions (camera, location...) stay grantable;
+     they are gated at runtime by the permission dialog instead. */
+  var RESERVED_PERMISSIONS = [
+    'system',             /* settings writes, telemetry consent */
+    'shell',              /* command execution */
+    'credential',         /* keychain */
+    'app.manage',         /* install / uninstall other apps */
+    'notification.read'   /* read every app's notifications */
+  ];
+
+  function grantableFromDeclaration(perms) {
+    return (perms || []).filter(function (p) {
+      return RESERVED_PERMISSIONS.indexOf(p) === -1;
+    });
+  }
+
   /* All known permission strings — system apps get all of these */
   var ALL_PERMISSIONS = [
     'storage', 'files.read', 'files.write', 'files.delete',
@@ -89,7 +113,7 @@ window.ZylPermissions = (function () {
       _appPermissions[appId] = ALL_PERMISSIONS.slice();
       _systemLocked[appId] = true;
     } else {
-      _appPermissions[appId] = (permissions || []).slice();
+      _appPermissions[appId] = grantableFromDeclaration(permissions);
     }
   }
 
@@ -112,7 +136,7 @@ window.ZylPermissions = (function () {
       var app = appList[i];
       if (!app.id) continue;
       if (_systemLocked[app.id]) continue; /* Reject spoofed system app IDs */
-      _appPermissions[app.id] = (app.permissions || []).slice();
+      _appPermissions[app.id] = grantableFromDeclaration(app.permissions);
     }
   }
 
@@ -188,6 +212,7 @@ window.ZylPermissions = (function () {
   }
 
   return {
+    RESERVED_PERMISSIONS: RESERVED_PERMISSIONS,
     checkPermission: checkPermission,
     hasPermission: hasPermission,
     registerApp: registerApp,

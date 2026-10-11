@@ -1034,6 +1034,14 @@
       var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
       if (!msg || !msg.type) return;
       switch (msg.type) {
+        /* Input-method state lives in the keyboard; the app reports when the
+           text context moved so composition does not run on a stale syllable */
+        case 'input.commitComposition':
+          if (typeof ZylKeyboard !== 'undefined') ZylKeyboard.commitComposition();
+          break;
+        case 'input.compositionFallback':
+          if (typeof ZylKeyboard !== 'undefined') ZylKeyboard.adoptFallback();
+          break;
         case 'app.launch':
           if (!isLocked()) launchApp(msg.appId);
           break;
@@ -1147,9 +1155,14 @@
   /* ═══ Virtual Keyboard (OS keyboard app, compositor-managed) ═══ */
   var kbContainer = document.getElementById('keyboard-container');
   if (typeof ZylKeyboard !== 'undefined' && kbContainer) {
-    ZylKeyboard.init(kbContainer, function (key) {
-      /* Forward key to current app iframe */
-      broadcastToCurrentApp('input.key', { key: key });
+    ZylKeyboard.init(kbContainer, function (key, edit) {
+      /* Forward to current app iframe. An edit is an atomic replace-and-insert
+         from input-method composition or candidate selection. */
+      if (edit) {
+        broadcastToCurrentApp('input.text', edit);
+      } else {
+        broadcastToCurrentApp('input.key', { key: key });
+      }
       /* Keypress feedback — ALL through audio service (clean architecture).
          The service handles silentMode check internally. */
       var kbSoundOn = ZylKeyboard.getSoundEnabled ? ZylKeyboard.getSoundEnabled() : true;

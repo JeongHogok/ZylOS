@@ -75,7 +75,7 @@ var moduleFiles = [
   'notification.js', 'power.js', 'display.js', 'input.js', 'sensors.js',
   'location.js', 'telephony.js', 'contacts.js', 'messaging.js', 'usb.js',
   'user.js', 'credential.js', 'appstore.js', 'updater.js', 'sandbox.js',
-  'logger.js', 'accessibility.js', 'audio.js'
+  'logger.js', 'accessibility.js', 'audio.js', 'telemetry.js'
 ];
 
 /* Provide window.addEventListener stub before loading modules */
@@ -639,10 +639,299 @@ console.log('\n■ ZylFormFactor / ZylFocusNav');
 })();
 
 /* ═══════════════════════════════════════════════════════
+   Hangul 2-beolsik composition automaton
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ ZylHangul');
+
+(function () {
+  var H = require(path.join(__dirname, '..', 'apps', 'keyboard', 'js', 'hangul.js'));
+
+  /* Replays edits the way apps/shared/bridge.js applies input.text */
+  function type(keys) {
+    var c = H.create(), out = '';
+    keys.split('').forEach(function (k) {
+      var r = c.feed(k);
+      if (!r) throw new Error('not jamo: ' + k);
+      out = out.slice(0, out.length - r.replace) + r.text;
+    });
+    return out;
+  }
+
+  function typeThenBack(keys, n) {
+    var c = H.create(), out = '';
+    keys.split('').forEach(function (k) {
+      var r = c.feed(k);
+      out = out.slice(0, out.length - r.replace) + r.text;
+    });
+    var steps = [out];
+    for (var i = 0; i < n; i++) {
+      var b = c.backspace();
+      if (!b) { steps.push('(not composing)'); break; }
+      out = out.slice(0, out.length - b.replace) + b.text;
+      steps.push(out);
+    }
+    return steps;
+  }
+
+  test('composes words', function () {
+    assert.strictEqual(type('ㅎㅏㄴㄱㅡㄹ'), '한글');
+    assert.strictEqual(type('ㅇㅏㄴㄴㅕㅇㅎㅏㅅㅔㅇㅛ'), '안녕하세요');
+    assert.strictEqual(type('ㄷㅐㅎㅏㄴㅁㅣㄴㄱㅜㄱ'), '대한민국');
+    assert.strictEqual(type('ㄱㅏㅁㅅㅏㅎㅏㅂㄴㅣㄷㅏ'), '감사합니다');
+  });
+
+  test('a final consonant moves to the next syllable before a vowel', function () {
+    assert.strictEqual(type('ㅎㅏㄴㅏ'), '하나');
+    assert.strictEqual(type('ㅅㅏㄹㅏㅇㅎㅐ'), '사랑해');
+    assert.strictEqual(type('ㅇㅣㄹㄱㅇㅓㅇㅛ'), '읽어요');
+  });
+
+  test('all seven compound vowels', function () {
+    assert.strictEqual(type('ㄱㅗㅏ'), '과');
+    assert.strictEqual(type('ㄱㅗㅐ'), '괘');
+    assert.strictEqual(type('ㄱㅗㅣ'), '괴');
+    assert.strictEqual(type('ㄱㅜㅓ'), '궈');
+    assert.strictEqual(type('ㄱㅜㅔ'), '궤');
+    assert.strictEqual(type('ㄱㅜㅣ'), '귀');
+    assert.strictEqual(type('ㅇㅡㅣ'), '의');
+  });
+
+  test('all eleven compound finals', function () {
+    assert.strictEqual(type('ㄴㅓㄱㅅ'), '넋');
+    assert.strictEqual(type('ㅇㅏㄴㅈ'), '앉');
+    assert.strictEqual(type('ㅇㅏㄴㅎ'), '않');
+    assert.strictEqual(type('ㄷㅏㄹㄱ'), '닭');
+    assert.strictEqual(type('ㅅㅏㄹㅁ'), '삶');
+    assert.strictEqual(type('ㄴㅓㄹㅂ'), '넓');
+    assert.strictEqual(type('ㄱㅗㄹㅅ'), '곬');
+    assert.strictEqual(type('ㅎㅏㄹㅌ'), '핥');
+    assert.strictEqual(type('ㅇㅡㄹㅍ'), '읊');
+    assert.strictEqual(type('ㅅㅣㄹㅎ'), '싫');
+    assert.strictEqual(type('ㄱㅏㅂㅅ'), '값');
+  });
+
+  test('a compound final splits before a vowel, keeping its first half', function () {
+    assert.strictEqual(type('ㄷㅏㄹㄱㅏ'), '달가');
+    assert.strictEqual(type('ㄱㅏㅂㅅㅣ'), '갑시');
+    assert.strictEqual(type('ㅇㅏㄴㅈㅏ'), '안자');
+  });
+
+  test('ㄸ ㅃ ㅉ never become finals', function () {
+    assert.strictEqual(type('ㄱㅏㄸ'), '가ㄸ');
+    assert.strictEqual(type('ㄱㅏㄸㅏ'), '가따');
+    assert.strictEqual(type('ㅇㅏㅃㅏ'), '아빠');
+    assert.strictEqual(type('ㄱㅏㅉㅏ'), '가짜');
+  });
+
+  test('ㄲ and ㅆ are valid finals', function () {
+    assert.strictEqual(type('ㅇㅣㅆ'), '있');
+    assert.strictEqual(type('ㅇㅣㅆㅇㅓ'), '있어');
+    assert.strictEqual(type('ㅂㅏㄲ'), '밖');
+  });
+
+  test('lone jamo and non-combining sequences', function () {
+    assert.strictEqual(type('ㄱ'), 'ㄱ');
+    assert.strictEqual(type('ㅏ'), 'ㅏ');
+    assert.strictEqual(type('ㄱㄴ'), 'ㄱㄴ');
+    assert.strictEqual(type('ㅏㅓ'), 'ㅏㅓ');
+    assert.strictEqual(type('ㅗㅏ'), 'ㅘ', 'a lone compound vowel still merges');
+    assert.strictEqual(type('ㅎㅏㅓ'), '하ㅓ');
+  });
+
+  test('a compound cannot absorb a third key', function () {
+    assert.strictEqual(type('ㄷㅏㄹㄱㅅ'), '닭ㅅ');
+    assert.strictEqual(type('ㄱㅗㅏㅣ'), '과ㅣ');
+  });
+
+  test('backspace removes one jamo at a time', function () {
+    assert.deepStrictEqual(typeThenBack('ㅎㅏㄴ', 4),
+      ['한', '하', 'ㅎ', '', '(not composing)']);
+  });
+
+  test('backspace undoes a compound one key at a time', function () {
+    assert.deepStrictEqual(typeThenBack('ㄱㅗㅏ', 3), ['과', '고', 'ㄱ', '']);
+    assert.deepStrictEqual(typeThenBack('ㄷㅏㄹㄱ', 3), ['닭', '달', '다', 'ㄷ']);
+  });
+
+  test('backspace only touches the composing syllable', function () {
+    /* 한 is committed when ㄱ starts a new syllable; backspace walks ㄱ only */
+    assert.deepStrictEqual(typeThenBack('ㅎㅏㄴㄱ', 2),
+      ['한ㄱ', '한', '(not composing)']);
+  });
+
+  test('replace is 0 for the first jamo and 1 while composing', function () {
+    var c = H.create();
+    assert.strictEqual(c.feed('ㅎ').replace, 0);
+    assert.strictEqual(c.feed('ㅏ').replace, 1);
+    assert.strictEqual(c.feed('ㄴ').replace, 1);
+    c.commit();
+    assert.strictEqual(c.isComposing(), false);
+    assert.strictEqual(c.feed('ㄱ').replace, 0, 'commit starts a fresh syllable');
+  });
+
+  test('each edit names the text it expects before the caret', function () {
+    /* The receiver checks expect before deleting: a field cleared behind the
+       keyboard (app empties it after "send") must not get a stale syllable
+       written back into it. */
+    var c = H.create();
+    var a = c.feed('ㅎ');
+    assert.strictEqual(a.expect, '');
+    assert.strictEqual(a.compose, 'ㅎ');
+    var b = c.feed('ㅏ');
+    assert.strictEqual(b.expect, 'ㅎ');
+    assert.strictEqual(b.text, '하');
+    var n = c.feed('ㄴ');
+    assert.strictEqual(n.expect, '하');
+    assert.strictEqual(n.compose, '한');
+    var carry = c.feed('ㅏ');                 /* 한 + ㅏ → 하 + 나 */
+    assert.strictEqual(carry.expect, '한');
+    assert.strictEqual(carry.text, '하나');
+    assert.strictEqual(carry.compose, '나', 'only 나 is still composing');
+    var back = c.backspace();
+    assert.strictEqual(back.expect, '나');
+    assert.strictEqual(back.text, 'ㄴ');
+  });
+
+  test('non-jamo input is rejected', function () {
+    var c = H.create();
+    assert.strictEqual(c.feed('a'), null);
+    assert.strictEqual(c.feed(' '), null);
+    assert.strictEqual(c.feed('가'), null, 'precomposed syllables are not keystrokes');
+    assert.strictEqual(H.isJamo('ㄱ'), true);
+    assert.strictEqual(H.isJamo('1'), false);
+  });
+
+  test('every key on the Korean layout is understood by the automaton', function () {
+    /* Ties the engine to the real layout: a layout key with a different
+       codepoint would otherwise be inserted raw and never compose. */
+    var src = fs.readFileSync(path.join(__dirname, '..', 'apps', 'keyboard', 'js',
+                              'keyboard.js'), 'utf8');
+    var ko = src.split('    ko: {')[1].split('    symbols:')[0];
+    var keys = (ko.match(/\\u31[3-6][0-9A-F]/g) || []).map(function (e) {
+      return String.fromCharCode(parseInt(e.slice(2), 16));
+    });
+    assert.ok(keys.length >= 30, 'found the Korean letter keys');
+    keys.forEach(function (k) {
+      assert.ok(H.isJamo(k), 'layout key U+' + k.charCodeAt(0).toString(16) + ' is jamo');
+    });
+  });
+})();
+
+/* ═══════════════════════════════════════════════════════
+   Permission policy — reserved permissions (real permissions.js, isolated)
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ ZylPermissions');
+
+(function () {
+  /* Load the real module in its own context: the rest of this file uses a
+     permissive stub, which must stay untouched. */
+  var vm = require('vm');
+  var ctx = { window: {}, console: console };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'apps', 'system',
+                     'permissions.js'), 'utf8'), ctx);
+  var P = ctx.window.ZylPermissions;
+
+  P.registerFromAppList([
+    { id: 'com.zylos.settings', permissions: [] },
+    { id: 'com.evil.app', permissions: ['system', 'shell', 'credential',
+                                        'app.manage', 'notification.read',
+                                        'camera', 'network'] },
+    { id: 'com.zylos.settings', permissions: ['camera'] }   /* ID spoof */
+  ]);
+
+  test('a third-party app cannot declare itself system permissions', function () {
+    var got = P.getEffectivePermissions('com.evil.app');
+    ['system', 'shell', 'credential', 'app.manage', 'notification.read'].forEach(function (r) {
+      assert.strictEqual(got.indexOf(r), -1, r + ' must not be grantable by declaration');
+    });
+  });
+
+  test('ordinary declared permissions are still granted', function () {
+    var got = P.getEffectivePermissions('com.evil.app');
+    assert.ok(got.indexOf('camera') !== -1);
+    assert.ok(got.indexOf('network') !== -1);
+  });
+
+  test('settings and telemetry stay closed to third-party apps', function () {
+    assert.strictEqual(P.checkPermission('com.evil.app', 'settings', 'set'), false);
+    assert.strictEqual(P.checkPermission('com.evil.app', 'telemetry', 'setEnabled'), false);
+    assert.strictEqual(P.checkPermission('com.evil.app', 'terminal', 'exec'), false);
+  });
+
+  test('system apps keep reserved permissions', function () {
+    assert.strictEqual(P.checkPermission('com.zylos.settings', 'settings', 'set'), true);
+    assert.strictEqual(P.checkPermission('com.zylos.settings', 'telemetry', 'setEnabled'), true);
+  });
+
+  test('a spoofed system app ID is not re-registered', function () {
+    var got = P.getEffectivePermissions('com.zylos.settings');
+    assert.ok(got.indexOf('system') !== -1, 'still the locked full set');
+  });
+
+  test('registerApp applies the same filter', function () {
+    P.registerApp('com.other.app', ['system', 'location']);
+    var got = P.getEffectivePermissions('com.other.app');
+    assert.strictEqual(got.indexOf('system'), -1);
+    assert.ok(got.indexOf('location') !== -1);
+  });
+})();
+
+/* ═══════════════════════════════════════════════════════
+   Telemetry consent (JS service, emulator contract)
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ telemetry service');
+
+var telemetryTests = (function () {
+  /* Each test gets its own store: they run concurrently under Promise.all */
+  function make() {
+    var store = {};
+    var settingsSvc = {
+      _getSetting: function (cat) { return Promise.resolve(store[cat] || null); },
+      _updateSetting: function (cat, k, v) { store[cat] = store[cat] || {}; store[cat][k] = v; }
+    };
+    return { tel: ns.telemetry({ settingsSvc: settingsSvc }), store: store };
+  }
+
+  return Promise.all([
+    asyncTest('telemetry is off when never asked (opt-in)', function () {
+      var t = make();
+      return t.tel.getEnabled().then(function (on) { assert.strictEqual(on, false); });
+    }),
+    asyncTest('consent is stored and read back', function () {
+      var t = make();
+      return t.tel.setEnabled({ enabled: true }).then(function () {
+        return t.tel.getEnabled();
+      }).then(function (on) {
+        assert.strictEqual(on, true);
+        assert.strictEqual(t.store.privacy.telemetry, true);
+      });
+    }),
+    asyncTest('withdrawal turns it back off', function () {
+      var t = make();
+      return t.tel.setEnabled({ enabled: true }).then(function () {
+        return t.tel.setEnabled({ enabled: false });
+      }).then(function () {
+        return t.tel.getEnabled();
+      }).then(function (on) { assert.strictEqual(on, false); });
+    }),
+    asyncTest('only an explicit true counts as consent', function () {
+      var t = make();
+      t.store.privacy = { telemetry: 'yes' };
+      return t.tel.getEnabled().then(function (on) {
+        assert.strictEqual(on, false);
+        return t.tel.setEnabled({ enabled: 'true' });
+      }).then(function (on) {
+        assert.strictEqual(on, false, 'a truthy non-boolean is not consent');
+      });
+    })
+  ]);
+})();
+
+/* ═══════════════════════════════════════════════════════
    Wait for all async tests and report
    ═══════════════════════════════════════════════════════ */
 Promise.all([settingsTests, displayTests, inputTests, sensorsTests,
-             usbTests, powerTests, audioTests, fsTests, updaterTests])
+             usbTests, powerTests, audioTests, fsTests, updaterTests, telemetryTests])
   .then(function () {
     console.log('\n════════════════════════');
     console.log('Total: ' + total + '  Passed: ' + passed + '  Failed: ' + failed);

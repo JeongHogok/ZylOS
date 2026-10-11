@@ -27,7 +27,7 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Noto Sans KR', sans-serif;
+  font-family: var(--zyl-font-sans);
   color: var(--sb-text);
   -webkit-font-smoothing: antialiased;
 }

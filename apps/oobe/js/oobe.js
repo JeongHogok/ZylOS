@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  var steps = ['step-welcome', 'step-language', 'step-wifi', 'step-pin', 'step-terms', 'step-complete'];
+  var steps = ['step-welcome', 'step-language', 'step-wifi', 'step-pin', 'step-terms', 'step-privacy', 'step-complete'];
   var currentStep = 0;
 
   /* ─── Navigation with directional slide animation ─── */
@@ -163,6 +163,20 @@
   window.acceptTerms = function () {
     var agreed = document.getElementById('terms-agree').checked;
     if (!agreed) return;
+    nextStep();
+  };
+
+  /* ─── Privacy: record the choice either way ───
+     An unchecked box is sent as an explicit refusal rather than skipped, so
+     the collector writes "denied" and erases anything left from before. */
+  window.applyPrivacy = function () {
+    var box = document.getElementById('telemetry-consent');
+    ZylBridge.sendToSystem({
+      type: 'service.request',
+      service: 'telemetry',
+      method: 'setEnabled',
+      params: { enabled: !!(box && box.checked) }
+    });
     nextStep();
   };
 

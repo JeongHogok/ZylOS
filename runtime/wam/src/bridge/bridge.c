@@ -814,8 +814,103 @@ static const ServiceRoute SERVICE_ROUTES[] = {
     {"bluetooth",    "org.zylos.BluetoothService",   "/org/zylos/BluetoothService",   "org.zylos.BluetoothService"},
     {"wifi",         "org.zylos.WifiService",        "/org/zylos/WifiService",        "org.zylos.WifiService"},
     {"settings",     "org.zylos.Settings",           "/org/zylos/Settings",           "org.zylos.Settings"},
+    {"telemetry",    "org.zylos.Telemetry",          "/org/zylos/Telemetry",          "org.zylos.Telemetry"},
     {NULL, NULL, NULL, NULL}
 };
+
+
+/* == Service permission policy ===============================
+ * Mirror of SERVICE_PERMISSIONS and RESERVED_PERMISSIONS in
+ * apps/system/permissions.js, which is the authority (CLAUDE.md rule 8).
+ * tests/verify-all.sh fails when the two drift apart, and when a routed
+ * service has no entry here (that would silently allow every app).
+ *
+ * Before this table the device bridge routed service.request straight to
+ * D-Bus with no check at all: the emulator enforced permissions in
+ * ZylSystemServices, the device did not, so any installed app could call
+ * credential, telephony or settings.
+ *
+ * An app needs at least ONE of the listed permissions; an empty list means
+ * none is required. */
+#define ZYL_POLICY_MAX_PERMS 6
+
+typedef struct {
+    const char *service;
+    const char *perms[ZYL_POLICY_MAX_PERMS];
+} ServicePermission;
+
+static const ServicePermission SERVICE_PERMISSIONS[] = {
+    {"fs",            {"storage", "files.read", "files.write", "files.delete", NULL}},
+    {"terminal",      {"shell", NULL}},
+    {"credential",    {"credential", NULL}},
+    {"settings",      {"system", NULL}},
+    {"wifi",          {"wifi", NULL}},
+    {"bluetooth",     {"bluetooth", NULL}},
+    {"notification",  {"notification", NULL}},
+    {"camera",        {"camera", NULL}},
+    {"audio",         {"audio", NULL}},
+    {"appstore",      {"app.manage", NULL}},
+    {"contacts",      {"contacts", NULL}},
+    {"messaging",     {"messaging", NULL}},
+    {"network",       {"network", NULL}},
+    {"telephony",     {"telephony", NULL}},
+    {"location",      {"location", NULL}},
+    {"telemetry",     {"system", NULL}},
+    {"device",        {NULL}},
+    {"storage",       {NULL}},
+    {"apps",          {NULL}},
+    {"browser",       {NULL}},
+    {"display",       {NULL}},
+    {"input",         {NULL}},
+    {"sensors",       {NULL}},
+    {"usb",           {NULL}},
+    {"user",          {NULL}},
+    {"updater",       {NULL}},
+    {"sandbox",       {NULL}},
+    {"logger",        {NULL}},
+    {"accessibility", {NULL}},
+    {"power",         {NULL}},
+    {NULL, {NULL}}
+};
+
+/* Never granted by declaring them in app.json — only system apps hold these */
+static const char *const RESERVED_PERMISSIONS[] = {
+    "system", "shell", "credential", "app.manage", "notification.read", NULL
+};
+
+static gboolean is_reserved_permission(const char *perm) {
+    for (int i = 0; RESERVED_PERMISSIONS[i]; i++)
+        if (strcmp(RESERVED_PERMISSIONS[i], perm) == 0) return TRUE;
+    return FALSE;
+}
+
+static gboolean manifest_holds(const ZylAppManifest *m, const char *perm) {
+    if (!m->is_system && is_reserved_permission(perm)) return FALSE;
+    for (int i = 0; i < m->n_permissions && m->permissions && m->permissions[i]; i++)
+        if (strcmp(m->permissions[i], perm) == 0) return TRUE;
+    return FALSE;
+}
+
+/**
+ * May this app call this service at all?
+ * System apps (installed on the verified read-only system partition) may call
+ * everything. Unknown apps may call nothing. A service missing from the table
+ * is denied: failing closed is the safe answer for an unreviewed service.
+ */
+static gboolean app_may_call(const ZylAppManifest *m, const char *service) {
+    if (!m || !m->id) return FALSE;
+    if (m->is_system) return TRUE;
+
+    for (int i = 0; SERVICE_PERMISSIONS[i].service; i++) {
+        if (strcmp(SERVICE_PERMISSIONS[i].service, service) != 0) continue;
+        const char *const *req = SERVICE_PERMISSIONS[i].perms;
+        if (!req[0]) return TRUE;                   /* no permission required */
+        for (int j = 0; req[j]; j++)
+            if (manifest_holds(m, req[j])) return TRUE;
+        return FALSE;
+    }
+    return FALSE;
+}
 
 static const ServiceRoute *find_route(const char *service) {
     for (int i = 0; SERVICE_ROUTES[i].service; i++) {
@@ -860,6 +955,13 @@ static void handle_service_request(const char *type, gpointer msg_obj,
         g_warning("Bridge: no D-Bus route for service '%s' from %s",
                   service, app_id);
         zyl_bridge_reply_error(reply_ctx, "unknown service");
+        return;
+    }
+
+    if (!app_may_call(manifest, service)) {
+        g_warning("Bridge: %s denied %s.%s (missing permission)",
+                  app_id, service, method);
+        zyl_bridge_reply_error(reply_ctx, "Permission denied");
         return;
     }
 

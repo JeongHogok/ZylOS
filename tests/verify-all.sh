@@ -93,6 +93,19 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────
+# I3: 글꼴은 OS 스택 경유 — 앱이 글꼴을 직접 지정하면 실기기에 없는 글꼴
+#     (-apple-system, Segoe UI)로 떨어지거나 한·중·일 자형이 섞인다
+RAW_FONTS=$(grep -rnE "font-family:" "$ROOT/apps" --include='*.css' 2>/dev/null \
+  | grep -v "/shared/fonts.css" | grep -vE "font-family:\s*(inherit|var\(--zyl-font-)" || true)
+if [ -n "$RAW_FONTS" ]; then
+  warn "글꼴을 직접 지정한 앱 CSS (var(--zyl-font-sans|mono) 사용):\n$(echo "$RAW_FONTS" | sed "s|$ROOT/||")"
+else
+  pass "앱 글꼴이 OS 스택(--zyl-font-*) 경유"
+fi
+if ! grep -q "system/fonts/50-zyl-fonts.conf" "$ROOT/meson.build"; then
+  warn "fontconfig 설정이 설치되지 않음 (meson.build)"
+fi
+
 section "apps/ — Clean Architecture 헤더"
 
 # A7: JS 파일에 Clean Architecture 헤더 존재 확인
@@ -235,6 +248,52 @@ for cfile in $(find "$ROOT/runtime" -name '*.c' 2>/dev/null); do
   fi
 done
 if [ -n "$MISSING_C" ]; then warn "C 파일 CA 헤더 누락:\n$MISSING_C"; else pass "C 파일 CA 헤더 존재"; fi
+
+# C5: 실기기 WAM 권한 정책이 permissions.js 와 같은지
+#     permissions.js 가 권위(규칙 8). bridge.c 는 사본이며, 어긋나면 에뮬레이터와
+#     실기기가 서로 다른 권한으로 동작한다. 라우트가 있는데 정책이 없는 서비스는
+#     모든 앱에 열리므로 따로 확인한다.
+POLICY_DRIFT=$(python3 - "$ROOT" <<'PYCHK'
+import re, sys
+root = sys.argv[1]
+js = open(root + '/apps/system/permissions.js').read()
+c = open(root + '/runtime/wam/src/bridge/bridge.c').read()
+
+def js_table():
+    blk = js.split('var SERVICE_PERMISSIONS = {', 1)[1].split('};', 1)[0]
+    return {n: set(re.findall(r"'([^']+)'", p))
+            for n, p in re.findall(r"'([a-z.]+)':\s*\[([^\]]*)\]", blk)}
+
+def c_table():
+    blk = c.split('SERVICE_PERMISSIONS[] = {', 1)[1].split('{NULL, {NULL}}', 1)[0]
+    return {n: set(re.findall(r'"([^"]+)"', p))
+            for n, p in re.findall(r'\{"([a-z.]+)",\s*\{([^}]*)\}\}', blk)}
+
+js_res = set(re.findall(r"'([a-z.]+)'",
+             js.split('var RESERVED_PERMISSIONS = [', 1)[1].split('];', 1)[0]))
+c_res = set(re.findall(r'"([a-z.]+)"',
+            c.split('RESERVED_PERMISSIONS[] = {', 1)[1].split('};', 1)[0]))
+routes = re.findall(r'^\s+\{"([a-z]+)",\s+"org\.zylos', c, re.M)
+
+J, C = js_table(), c_table()
+out = []
+for svc in sorted(set(J) | set(C)):
+    if J.get(svc) != C.get(svc):
+        out.append('%s: js=%s c=%s' % (svc, sorted(J.get(svc, [])) if svc in J else '-',
+                                        sorted(C.get(svc, [])) if svc in C else '-'))
+if js_res != c_res:
+    out.append('reserved: js=%s c=%s' % (sorted(js_res), sorted(c_res)))
+for r in routes:
+    if r not in C:
+        out.append('route "%s" has no policy entry (would deny all non-system apps)' % r)
+print('; '.join(out))
+PYCHK
+)
+if [ -n "$POLICY_DRIFT" ]; then
+  fail "실기기 권한 정책이 permissions.js 와 다름: $POLICY_DRIFT"
+else
+  pass "실기기 권한 정책(bridge.c) = permissions.js"
+fi
 
 # C4: 샌드박스 권한 어휘가 app.json 선언과 일치하는지
 #     비트가 없으면 앱이 능력을 통째로 잃는다 (네트워크 네임스페이스 격리,
