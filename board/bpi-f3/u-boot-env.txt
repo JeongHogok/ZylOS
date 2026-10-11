@@ -1,56 +1,121 @@
 # ──────────────────────────────────────────────────────────
 # [Clean Architecture] Infrastructure Layer - Bootloader Config
 #
-# 역할: U-Boot 환경 변수 — Verified Boot + A/B 파티션 전환
-# 수행범위: 부트 명령, 파티션 선택, 롤백 카운터
-# 의존방향: U-Boot FIT 서명 검증
+# 역할: U-Boot 기본 환경 — Verified Boot, A/B 시도 부팅·롤백, 부트로더 잠금
+# 수행범위: 슬롯 선택(업데이터가 지정한 슬롯을 3회까지 시도 후 롤백),
+#           잠금 상태 전환(설정에서 허용 + 기기 앞의 버튼 확인 + 사용자
+#           데이터 삭제), 잠금 해제 시 서명 검증 해제와 경고
+# 의존방향: U-Boot FIT 서명 검증, runtime/services/updater (zyl_next_slot,
+#           zyl_active_slot, zyl_boot_count), runtime/services/bootctl
+#           (zyl_unlocked, zyl_oem_unlock_allowed). 이 파일이 단일 출처이며
+#           tests/test_boot_env.sh 가 결정 로직을 실행해 검증한다
+#
+# Production U-Boot must take this as its built-in default environment and
+# accept from storage only the runtime variables below
+# (CONFIG_ENV_WRITEABLE_LIST): otherwise anyone able to write the env could
+# replace bootcmd and the verification it enforces. See docs/INSTALLATION_INFORMATION.md
 # ──────────────────────────────────────────────────────────
 
-# A/B slot selection
+# ── Runtime state (writable from storage; written by the OS) ──
+# Slot that last booted and was confirmed healthy by the OS
 zyl_active_slot=a
-zyl_retry_count=0
-zyl_max_retries=3
+# Slot an update installed and wants tried; empty when none
+zyl_next_slot=
+# Boots attempted on zyl_next_slot without the OS confirming it
+zyl_boot_count=0
+# 1 = the owner has unlocked the bootloader (requested from Settings)
+zyl_unlocked=0
+# Lock state the device actually ran with last time; a difference from
+# zyl_unlocked is a pending change that must be confirmed and wipe data
+zyl_lock_seen=0
+# Settings > Developer options > "Allow bootloader unlocking"
+zyl_oem_unlock_allowed=0
 
-# Partition layout (eMMC / SD)
-# p1: U-Boot env + FIT image (boot)
-# p2: rootfs slot A
-# p3: verity hash tree slot A
-# p4: rootfs slot B
-# p5: verity hash tree slot B
-# p6: userdata (ext4)
+# ── Board constants ──
+zyl_mmc=0
 zyl_boot_part=1
-zyl_rootfs_a=2
-zyl_verity_a=3
-zyl_rootfs_b=4
-zyl_verity_b=5
 zyl_data=6
-
-# FIT image load address
+zyl_boot_limit=3
+# Button the owner holds to confirm a lock change (DT label for `button`)
+zyl_unlock_button=user
 fit_addr=0x10000000
 
-# Boot command — verified boot with A/B fallback
+# Partition layout (eMMC / SD) — board/bpi-f3/README.md
+# p1 boot (fit-image-a.itb, fit-image-b.itb)   p2 rootfs A   p3 verity A
+# p4 rootfs B   p5 verity B   p6 userdata (/data)
+
+# ── Lock change confirmation: hold the button during a 10 s window ──
+zyl_confirm=\
+  setenv zyl_ok 0; \
+  for t in 1 2 3 4 5 6 7 8 9 10; do \
+    if button ${zyl_unlock_button}; then setenv zyl_ok 1; fi; \
+    sleep 1; \
+  done
+
+# ── Erase /data: unlocking must not hand the user's data to whoever holds
+#    the device, and a relock must not leave data an unverified OS wrote ──
+zyl_wipe=\
+  echo "ZylOS: erasing user data"; \
+  mmc dev ${zyl_mmc}; \
+  part start mmc ${zyl_mmc} ${zyl_data} zyl_data_start; \
+  part size mmc ${zyl_mmc} ${zyl_data} zyl_data_size; \
+  mmc erase ${zyl_data_start} ${zyl_data_size}
+
+zyl_check_lock=\
+  if test "${zyl_unlocked}" != "${zyl_lock_seen}"; then \
+    if test "${zyl_unlocked}" = "1" && test "${zyl_oem_unlock_allowed}" != "1"; then \
+      echo "ZylOS: bootloader unlocking is not allowed in Settings - staying locked"; \
+      setenv zyl_unlocked ${zyl_lock_seen}; \
+    else \
+      echo "ZylOS: bootloader lock change requested. ALL USER DATA WILL BE ERASED."; \
+      echo "ZylOS: hold the ${zyl_unlock_button} button now to confirm (10 s)"; \
+      run zyl_confirm; \
+      if test "${zyl_ok}" = "1"; then \
+        run zyl_wipe; \
+        setenv zyl_lock_seen ${zyl_unlocked}; \
+        setenv zyl_oem_unlock_allowed 0; \
+      else \
+        echo "ZylOS: not confirmed - lock state unchanged"; \
+        setenv zyl_unlocked ${zyl_lock_seen}; \
+      fi; \
+    fi; \
+    saveenv; \
+  fi
+
+# ── Slot choice: try an updated slot zyl_boot_limit times, then roll back ──
+zyl_pick_slot=\
+  setenv zyl_slot ${zyl_active_slot}; \
+  if test -n "${zyl_next_slot}"; then \
+    if test "${zyl_boot_count}" = "${zyl_boot_limit}"; then \
+      echo "ZylOS: slot ${zyl_next_slot} failed ${zyl_boot_limit} times - rolling back to ${zyl_active_slot}"; \
+      setenv zyl_next_slot; \
+      setenv zyl_boot_count 0; \
+    else \
+      setenv zyl_slot ${zyl_next_slot}; \
+      if test "${zyl_boot_count}" = "0"; then setenv zyl_boot_count 1; \
+      elif test "${zyl_boot_count}" = "1"; then setenv zyl_boot_count 2; \
+      else setenv zyl_boot_count 3; fi; \
+    fi; \
+    saveenv; \
+  fi
+
+# The slot's own signed FIT carries its kernel command line (its rootfs, its
+# verity root hash, zyl.slot); bootargs is never set here, so nothing in the
+# environment can change what a locked device verifies.
 bootcmd=\
-  if test "${zyl_active_slot}" = "b"; then \
-    setenv rootfs_part ${zyl_rootfs_b}; \
-    setenv verity_part ${zyl_verity_b}; \
+  run zyl_check_lock; \
+  run zyl_pick_slot; \
+  if test "${zyl_unlocked}" = "1"; then \
+    echo "ZylOS: WARNING - the bootloader is unlocked. The software on this device is not verified."; \
+    setenv verify no; \
   else \
-    setenv rootfs_part ${zyl_rootfs_a}; \
-    setenv verity_part ${zyl_verity_a}; \
+    setenv verify yes; \
   fi; \
-  load mmc 0:${zyl_boot_part} ${fit_addr} fit-image.itb; \
-  bootm ${fit_addr}
-
-# Rollback: if boot fails 3 times, switch slot
-altbootcmd=\
-  if test "${zyl_active_slot}" = "a"; then \
-    setenv zyl_active_slot b; \
-  else \
-    setenv zyl_active_slot a; \
-  fi; \
-  setenv zyl_retry_count 0; \
-  saveenv; \
-  echo "ZylOS: Rolled back to slot ${zyl_active_slot}"; \
-  run bootcmd
-
-# Boot count management (called by bootcount mechanism)
-bootlimit=3
+  load mmc ${zyl_mmc}:${zyl_boot_part} ${fit_addr} fit-image-${zyl_slot}.itb; \
+  bootm ${fit_addr}; \
+  echo "ZylOS: slot ${zyl_slot} did not boot"; \
+  if test -n "${zyl_next_slot}"; then \
+    setenv zyl_boot_count ${zyl_boot_limit}; \
+    saveenv; \
+    reset; \
+  fi

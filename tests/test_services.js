@@ -75,7 +75,7 @@ var moduleFiles = [
   'notification.js', 'power.js', 'display.js', 'input.js', 'sensors.js',
   'location.js', 'telephony.js', 'contacts.js', 'messaging.js', 'usb.js',
   'user.js', 'credential.js', 'appstore.js', 'updater.js', 'sandbox.js',
-  'logger.js', 'accessibility.js', 'audio.js', 'telemetry.js', 'netstats.js'
+  'logger.js', 'accessibility.js', 'audio.js', 'telemetry.js', 'netstats.js', 'bootctl.js'
 ];
 
 /* Provide window.addEventListener stub before loading modules */
@@ -1073,6 +1073,13 @@ var netstatsTests = (function () {
         return t.svc.getPolicy();
       }).then(function (p) {
         assert.deepStrictEqual(p, { cycleDay: 15, warningBytes: 2e9, limitBytes: 3e9 });
+      });
+    }),
+    asyncTest('the emulator has no bootloader to unlock', function () {
+      var b = ns.bootctl({});
+      return Promise.all([b.getState(), b.setUnlockAllowed({ allowed: true }),
+                          b.requestLockState({ unlocked: true })]).then(function (r) {
+        assert.deepStrictEqual(r, [{ supported: false }, false, false]);
       });
     }),
     asyncTest('a cycle day missing from some months is rejected (daemon contract)', function () {

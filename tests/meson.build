@@ -108,6 +108,17 @@ test('telephony-dbus',
   )
 )
 
+# Test: bootloader lock requests (GPLv3 §6 unlock path) against fake
+# fw_printenv/fw_setenv, and the variable names in board/bpi-f3/u-boot-env.txt
+test('bootctl',
+  executable('test-bootctl',
+    'test_bootctl.c',
+    dependencies: [gio_dep],
+    c_args: ['-DZYL_TEST'],
+  ),
+  workdir: meson.project_source_root(),
+)
+
 # Test: device app scan — a user app must not replace a system app by reusing its id
 test('manifest-scan',
   executable('test-manifest-scan',

@@ -1,0 +1,25 @@
+[Unit]
+Description=Zyl OS Boot Control (bootloader lock requests)
+After=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/zyl-bootctl
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=5
+
+# Writes only the U-Boot environment (fw_setenv: env storage under /dev, lock in /run/lock)
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/run/lock
+ProtectHome=true
+PrivateTmp=true
+PrivateNetwork=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+
+[Install]
+WantedBy=zyl-os.target

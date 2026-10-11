@@ -313,6 +313,8 @@ main, .sub-page {
   font: inherit;
   font-size: 15px;
 }
+.danger-btn { margin-top: 10px; width: 100%; padding: 10px; border: 1px solid rgba(239, 68, 68, 0.5); border-radius: 8px; background: transparent; color: #ef4444; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.setting-item.disabled { opacity: 0.45; pointer-events: none; }
 .field-narrow { width: 6.5em; flex: none; text-align: end; }
 .tz-item .setting-text { min-width: 0; }
 .tz-item .setting-value { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

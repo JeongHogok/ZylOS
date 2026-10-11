@@ -228,63 +228,50 @@ sudo systemd-nspawn -D $ROOTFS systemctl enable zyl-os.target
 
 ## 5. 파티션 레이아웃
 
-### A/B OTA 지원 파티션
-```
-디바이스: /dev/mmcblk0 (eMMC) 또는 /dev/mmcblk1 (SD)
+A/B OTA 와 dm-verity 를 위한 배치입니다. 부트 스크립트(`board/bpi-f3/u-boot-env.txt`),
+서명 도구(`tools/sign-image.sh`), 업데이터가 모두 이 번호를 씁니다 — 단일 출처는
+`board/bpi-f3/README.md` 의 표입니다.
 
-파티션    크기      마운트        용도
-──────────────────────────────────────────
-p1       256MB    /boot         부트로더 + FIT 이미지 (서명된 커널+DTB)
-p2       4GB      /             루트파일시스템 슬롯 A (dm-verity 보호)
-p3       4GB      (inactive)    루트파일시스템 슬롯 B (dm-verity 보호)
-p4       256MB    /recovery     복구 모드 이미지
-p5       나머지    /data         사용자 데이터 + 앱
+```
+p1  boot       256MB   FAT   fit-image-a.itb, fit-image-b.itb (슬롯별 서명 이미지)
+p2  rootfs_a   4GB           루트파일시스템 슬롯 A (dm-verity)
+p3  verity_a   256MB         슬롯 A 해시 트리
+p4  rootfs_b   4GB           루트파일시스템 슬롯 B (dm-verity)
+p5  verity_b   256MB         슬롯 B 해시 트리
+p6  userdata   나머지  ext4  /data — 부트로더 잠금 상태가 바뀌면 지워진다
 ```
 
-### 파티션 생성
 ```bash
 sudo parted /dev/mmcblk0 mklabel gpt
 sudo parted /dev/mmcblk0 mkpart boot fat32 1MiB 257MiB
 sudo parted /dev/mmcblk0 mkpart rootfs_a ext4 257MiB 4353MiB
-sudo parted /dev/mmcblk0 mkpart rootfs_b ext4 4353MiB 8449MiB
-sudo parted /dev/mmcblk0 mkpart recovery ext4 8449MiB 8705MiB
-sudo parted /dev/mmcblk0 mkpart userdata ext4 8705MiB 100%
+sudo parted /dev/mmcblk0 mkpart verity_a 4353MiB 4609MiB
+sudo parted /dev/mmcblk0 mkpart rootfs_b ext4 4609MiB 8705MiB
+sudo parted /dev/mmcblk0 mkpart verity_b 8705MiB 8961MiB
+sudo parted /dev/mmcblk0 mkpart userdata ext4 8961MiB 100%
+```
+
+`/data` 는 지워진 뒤 빈 파티션이 되므로 rootfs 의 `/etc/fstab` 에서 처음 마운트할 때
+포맷되게 둡니다:
+
+```
+PARTLABEL=userdata  /data  ext4  defaults,noatime,x-systemd.makefs,x-systemd.growfs  0 2
 ```
 
 ---
 
 ## 6. U-Boot 설정
 
-### 환경 변수
+부트 로직(A/B 시도·롤백, 부트로더 잠금)은 `board/bpi-f3/u-boot-env.txt` 가 유일한
+출처입니다. 문서에 스크립트를 따로 적지 않습니다 — 출하용은 U-Boot 기본 환경으로
+빌드에 넣고(`CONFIG_USE_DEFAULT_ENV_FILE`), 개발 보드에서는 환경 이미지로 씁니다:
+
 ```bash
-# A/B 슬롯 관리
-fw_setenv zyl_active_slot a
-fw_setenv zyl_slot_verified 1
-fw_setenv zyl_boot_count 0
-
-# Verified Boot 활성화
-fw_setenv zyl_verified_boot 1
-
-# 부팅 스크립트 (Verified Boot + dm-verity 포함)
-fw_setenv bootcmd 'run zyl_boot'
-fw_setenv zyl_boot '
-  if test "${zyl_active_slot}" = "a"; then
-    setenv bootpart 2;
-    setenv hashpart 2;
-  else
-    setenv bootpart 3;
-    setenv hashpart 3;
-  fi;
-  load mmc 0:1 ${kernel_addr_r} zylos.fit;
-  bootm ${kernel_addr_r};
-'
+mkenvimage -s 0x20000 -o uboot.env board/bpi-f3/u-boot-env.txt
 ```
 
-### dm-verity 부트 인자
-`verity-params.txt`에서 생성된 root-hash를 `bootargs`에 포함:
-```bash
-fw_setenv bootargs "... dm-mod.create=\"vroot ...\" root=/dev/dm-0"
-```
+슬롯별 이미지 서명과 소유자 빌드 설치 절차, 출하용 U-Boot 필수 설정은
+[INSTALLATION_INFORMATION.md](INSTALLATION_INFORMATION.md) 를 보세요.
 
 ---
 

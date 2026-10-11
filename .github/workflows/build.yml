@@ -143,10 +143,19 @@ jobs:
     needs: build-native
     steps:
       - uses: actions/checkout@v4
+      - name: Install boot image tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cryptsetup-bin u-boot-tools device-tree-compiler
       - name: Run integration tests
         run: |
           bash tests/test_manifests.sh
           bash tests/test_js_syntax.sh
+          # Boot policy (A/B tries, bootloader lock) executed from u-boot-env.txt
+          bash tests/test_boot_env.sh
+          # Slot-signed boot images; Ubuntu's u-boot-tools lack fit_check_sign,
+          # so signature verification itself runs where that tool exists
+          bash tests/test_sign_image.sh
           echo "Integration tests passed"
 
   # ─── Docker reproducible build ───

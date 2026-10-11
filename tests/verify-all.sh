@@ -74,6 +74,29 @@ else
   pass "textContent에 하드코딩 미발견"
 fi
 
+# A5b: HTML 의 data-i18n* 키가 그 앱(또는 공용) i18n 에 정의돼 있는지
+#      없으면 applyTranslations 가 키 이름("settings.battery")을 그대로 그린다
+UNDEFINED_KEYS=$(python3 - "$ROOT" <<'PYCHK'
+import re, glob, os, sys
+root = sys.argv[1]
+shared = open(root + '/apps/shared/i18n.js').read()
+out = []
+for f in sorted(glob.glob(root + '/apps/*/index.html')):
+    app = f.split('/')[-2]
+    p = root + '/apps/%s/i18n.js' % app
+    own = open(p).read() if os.path.exists(p) else ''
+    for k in sorted(set(re.findall(r'data-i18n(?:-aria-label|-placeholder)?="([^"]+)"', open(f).read()))):
+        if "'%s'" % k not in own and "'%s'" % k not in shared:
+            out.append(app + ':' + k)
+print(' '.join(out))
+PYCHK
+)
+if [ -n "$UNDEFINED_KEYS" ]; then
+  fail "정의되지 않은 i18n 키 (화면에 키 이름이 그대로 보임): $UNDEFINED_KEYS"
+else
+  pass "HTML 의 i18n 키 전부 정의됨"
+fi
+
 # A6: 5개 언어 키 균등 검사 (각 앱 i18n.js에서 ko/en/ja/zh/es 블록 수 비교)
 I18N_MISMATCH=""
 for i18nfile in $(find "$ROOT/apps" -name 'i18n.js' -not -path '*/shared/*' -not -path '*/system/*' -not -path '*/home/js/*' 2>/dev/null); do

@@ -82,6 +82,7 @@
     headerTitle.textContent = t(PAGE_TITLES[pageId] || 'settings.' + pageId);
     if (pageId === 'datetime') renderTimeZoneState();
     if (pageId === 'datausage') renderDataUsage();
+    if (pageId === 'developer') renderBootctl();
     return true;
   }
 
@@ -688,6 +689,47 @@
       warningBytes: gbToBytes(duWarning),
       limitBytes: gbToBytes(duLimit)
     }).then(renderDataUsage, renderDataUsage);   /* either way show what is stored */
+  }
+
+  /* ─── 부트로더 잠금 (개발자 옵션) ───
+     여기서는 요청만 기록한다. 다음 부팅 때 부트로더가 기기 버튼으로 확인을 받고
+     사용자 데이터를 지운 뒤에 상태를 바꾼다 — 원격으로도, 도난 기기에서도
+     데이터를 남긴 채 잠금을 풀 수 없다. */
+  var bootState = null;
+
+  function renderBootctl() {
+    requestService('bootctl', 'getState').then(function (st) {
+      bootState = (st && st.supported === true) ? st : null;
+      showEl('bootctl-group', !!bootState);
+      showEl('bootctl-confirm', false);
+      if (!bootState) return;
+      setText('bootctl-state', t(st.unlocked ? 'settings.bootloader_unlocked' : 'settings.bootloader_locked') +
+        (st.pending ? ' \u00B7 ' + t('settings.bootloader_pending') : ''));
+      document.getElementById('oem-unlock-toggle').checked = st.unlockAllowed === true;
+      setText('bootctl-request-label', t(st.unlocked ? 'settings.bootloader_relock' : 'settings.bootloader_unlock'));
+      /* Unlocking needs the permission switch; relocking never does */
+      document.getElementById('bootctl-request').classList.toggle('disabled',
+        !st.unlocked && st.unlockAllowed !== true);
+    }, function () { showEl('bootctl-group', false); });
+  }
+
+  var oemToggle = document.getElementById('oem-unlock-toggle');
+  if (oemToggle) {
+    oemToggle.addEventListener('change', function () {
+      requestService('bootctl', 'setUnlockAllowed', { allowed: oemToggle.checked })
+        .then(renderBootctl, renderBootctl);
+    });
+    document.getElementById('bootctl-request').addEventListener('click', function () {
+      showEl('bootctl-confirm', true);    /* the warning comes before the request */
+    });
+    addButtonKeyHandler(document.getElementById('bootctl-request'));
+    document.getElementById('bootctl-confirm-btn').addEventListener('click', function () {
+      if (!bootState) return;
+      requestService('bootctl', 'requestLockState', { unlocked: !bootState.unlocked }).then(function (ok) {
+        if (ok === true && typeof ZylToast !== 'undefined') ZylToast.info(t('settings.bootloader_requested'));
+        renderBootctl();
+      }, renderBootctl);
+    });
   }
 
   /* ─── 초기화 ─── */

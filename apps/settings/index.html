@@ -587,9 +587,35 @@
 
   <!-- 개발자 옵션 서브 페이지 (placeholder) -->
   <div id="page-developer" class="sub-page hidden">
+    <!-- 부트로더 잠금 — 소유자가 수정한 소프트웨어를 설치하는 경로 (GPLv3 §6) -->
+    <div class="settings-group hidden" id="bootctl-group">
+      <div class="setting-item no-tap">
+        <span class="setting-label" data-i18n="settings.bootloader">Bootloader</span>
+        <span class="setting-value" id="bootctl-state"></span>
+      </div>
+      <div class="setting-item no-tap">
+        <div class="setting-text">
+          <span class="setting-label" data-i18n="settings.oem_unlock">Allow bootloader unlocking</span>
+          <span class="setting-value" data-i18n="settings.oem_unlock_desc"></span>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="oem-unlock-toggle" data-i18n-aria-label="settings.oem_unlock">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="setting-item" id="bootctl-request" role="button" tabindex="0">
+        <span class="setting-label" id="bootctl-request-label"></span>
+      </div>
+      <div class="setting-item no-tap hidden" id="bootctl-confirm">
+        <div class="setting-text">
+          <span class="setting-value" data-i18n="settings.bootloader_warning"></span>
+          <button type="button" id="bootctl-confirm-btn" class="danger-btn" data-i18n="settings.bootloader_confirm">Request</button>
+        </div>
+      </div>
+    </div>
     <div class="settings-group">
       <div class="setting-item no-tap" style="opacity:0.5">
-        <span class="setting-label" data-i18n="settings.developer_placeholder">Developer options (USB debugging, mock locations) will be available in a future update.</span>
+        <span class="setting-label" data-i18n="settings.developer_placeholder">USB debugging and simulated locations will be available in a future update.</span>
       </div>
     </div>
   </div>

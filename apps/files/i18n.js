@@ -10,6 +10,7 @@
   if (typeof zylI18n === 'undefined') return;
 
   zylI18n.addTranslations('ko', {
+    'files.storage': '\uC800\uC7A5\uACF5\uAC04',
     'files.new_folder': '\uC0C8 \uD3F4\uB354',
     'files.confirm_delete': '\uC774 \uD30C\uC77C\uC744 \uC0AD\uC81C\uD558\uC2DC\uACA0\uC2B5\uB2C8\uAE4C?',
     'files.rename_prompt': '\uC774\uB984 \uBCC0\uACBD',
@@ -33,6 +34,7 @@
   });
 
   zylI18n.addTranslations('en', {
+    'files.storage': 'Storage',
     'files.new_folder': 'New Folder',
     'files.confirm_delete': 'Delete this file?',
     'files.rename_prompt': 'Rename',
@@ -56,6 +58,7 @@
   });
 
   zylI18n.addTranslations('ja', {
+    'files.storage': '\u30B9\u30C8\u30EC\u30FC\u30B8',
     'files.new_folder': '\u65B0\u898F\u30D5\u30A9\u30EB\u30C0',
     'files.confirm_delete': '\u3053\u306E\u30D5\u30A1\u30A4\u30EB\u3092\u524A\u9664\u3057\u307E\u3059\u304B\uFF1F',
     'files.rename_prompt': '\u540D\u524D\u3092\u5909\u66F4',
@@ -79,6 +82,7 @@
   });
 
   zylI18n.addTranslations('zh', {
+    'files.storage': '\u5B58\u50A8\u7A7A\u95F4',
     'files.new_folder': '\u65B0\u5EFA\u6587\u4EF6\u5939',
     'files.confirm_delete': '\u5220\u9664\u6B64\u6587\u4EF6\uFF1F',
     'files.rename_prompt': '\u91CD\u547D\u540D',
@@ -102,6 +106,7 @@
   });
 
   zylI18n.addTranslations('es', {
+    'files.storage': 'Almacenamiento',
     'files.new_folder': 'Nueva carpeta',
     'files.confirm_delete': '\u00BFEliminar este archivo?',
     'files.rename_prompt': 'Cambiar nombre',
