@@ -11,6 +11,11 @@
  * ModemManager1 D-Bus 접근이 막힌다.
  * ────────────────────────────────────────────────────────── */
 
+/* Must precede every include: sandbox.c uses unshare()/CLONE_NEW* and its own
+   #define _GNU_SOURCE comes too late once libc headers are already processed
+   by this file. */
+#define _GNU_SOURCE
+
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
