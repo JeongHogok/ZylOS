@@ -111,6 +111,17 @@ void zyl_manifest_scan_dir(GHashTable *manifests,
 
         ZylAppManifest *manifest = zyl_manifest_parse(app_dir);
         if (manifest) {
+            /* The user directory is scanned after the system one, and a plain
+               insert would let a user-installed app replace a system app just
+               by reusing its id — com.zylos.settings with is_system FALSE but
+               the real settings app gone. A system entry is never replaced. */
+            ZylAppManifest *existing = g_hash_table_lookup(manifests, manifest->id);
+            if (existing && existing->is_system) {
+                g_warning("Rejected app %s in %s: id belongs to a system app",
+                          manifest->id, base_dir);
+                zyl_manifest_free(manifest);
+                continue;
+            }
             manifest->is_system = is_system;
             g_hash_table_insert(manifests,
                                 g_strdup(manifest->id), manifest);

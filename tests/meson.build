@@ -75,3 +75,11 @@ test('telemetry-consent',
     c_args: ['-DZYL_TEST'],
   )
 )
+
+# Test: device app scan — a user app must not replace a system app by reusing its id
+test('manifest-scan',
+  executable('test-manifest-scan',
+    'test_manifest_scan.c',
+    dependencies: [gio_dep, json_glib_dep],
+  )
+)
