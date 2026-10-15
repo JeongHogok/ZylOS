@@ -1342,6 +1342,23 @@ var callTests = (function () {
         assert.strictEqual(typeof tel.addCallLog, 'undefined');   /* apps cannot write the log */
       });
     }),
+    asyncTest('vibration follows the sound setting at the moment it is asked', function () {
+      var sound = { vibration: false };
+      var buzzed = 0;
+      var nav = global.navigator.vibrate;
+      global.navigator.vibrate = function () { buzzed++; };
+      var audio = ns.audio({ settingsSvc: { _getSetting: function () { return Promise.resolve(sound); },
+                                            _updateSetting: function () {} } });
+      return audio.vibrate({}).then(function (r) {
+        assert.strictEqual(r, false);
+        sound.vibration = true;                 /* toggled in Settings */
+        return audio.vibrate({ pattern: [50] });
+      }).then(function (r) {
+        global.navigator.vibrate = nav;
+        assert.strictEqual(r, true);
+        assert.strictEqual(buzzed, 1);
+      });
+    }),
     asyncTest('wifi.connect answers true or false, like the device', function () {
       var wifi = ns.wifi({ invoke: function (cmd, a) {
         return Promise.resolve(cmd === 'wifi_connect' ? { success: a.password === 'secret88' } : null);
