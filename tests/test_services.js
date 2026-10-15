@@ -511,22 +511,33 @@ console.log('\n■ ZylFormFactor / ZylFocusNav');
     });
   });
 
-  /* ─── override ─── */
-  test('setOverride rejects an unknown form factor', function () {
-    assert.strictEqual(FF.setOverride('toaster'), false);
-    assert.strictEqual(FF.getOverride(), null);
+  /* ─── the device's declared class (the WAM: the image's build profile) ─── */
+  function declare(id) {
+    global.window.__zylFormFactor = id || undefined;
+    return FF.reload();
+  }
+
+  test('the declared class wins over detection', function () {
+    geom(1080, 2400);                   /* would detect as phone */
+    assert.strictEqual(declare('auto').id, 'auto');
   });
 
-  test('setOverride wins over detection', function () {
-    geom(1080, 2400);                   /* would detect as phone */
-    assert.strictEqual(FF.setOverride('auto'), true);
-    assert.strictEqual(FF.reload().id, 'auto');
+  test('a declared class that is not a profile is ignored', function () {
+    geom(1080, 2400);
+    assert.strictEqual(declare('toaster').id, 'phone');
+    assert.strictEqual(FF.declared(), null);
+  });
+
+  test('the device class is not a user setting: no override, nothing stored', function () {
+    ['setOverride', 'getOverride', 'clearOverride'].forEach(function (f) {
+      assert.strictEqual(typeof FF[f], 'undefined', f);
+    });
+    assert.ok(ffCode.indexOf('localStorage') === -1);
   });
 
   /* ─── apply() ─── */
   test('apply writes form-factor class and nav model onto <html>', function () {
-    FF.setOverride('tv');
-    FF.reload();
+    declare('tv');
     assert.strictEqual(htmlAttrs['data-form-factor'], 'tv');
     assert.strictEqual(htmlAttrs['data-nav-model'], 'focus');
     assert.strictEqual(htmlClasses['ff-tv'], true);
@@ -535,14 +546,11 @@ console.log('\n■ ZylFormFactor / ZylFocusNav');
   });
 
   test('apply sets root zoom from the profile (zoom ignores var())', function () {
-    FF.setOverride('tv');
-    FF.reload();
+    declare('tv');
     assert.strictEqual(htmlZoom, '1.8', 'tv must scale the root');
-    FF.setOverride('phone');
-    FF.reload();
+    declare('phone');
     assert.strictEqual(htmlZoom, '', 'phone must not scale the root');
-    FF.setOverride('tv');
-    FF.reload();
+    declare('tv');
   });
 
   /* ─── supportsApp() ─── */
@@ -561,7 +569,7 @@ console.log('\n■ ZylFormFactor / ZylFocusNav');
     assert.strictEqual(FF.supportsApp(null), true);
   });
 
-  FF.clearOverride();
+  declare(null);
 
   test('apply(target) scopes the form factor and leaves <html> alone', function () {
     /* The compositor hosts OS UI (the keyboard) in its own document; scaling
@@ -582,9 +590,9 @@ console.log('\n■ ZylFormFactor / ZylFocusNav');
       }
     };
 
-    /* No override, so the hardware hint decides — as it does in the shell.
-       An override would outrank it; that precedence is tested separately. */
-    FF.clearOverride();
+    /* Nothing declared, so the hardware hint decides — as in the emulator.
+       A declared class would outrank it; that precedence is tested separately. */
+    declare(null);
     geom(1080, 2400);
     FF.reload();
     assert.strictEqual(htmlAttrs['data-form-factor'], 'phone',
@@ -603,14 +611,13 @@ console.log('\n■ ZylFormFactor / ZylFocusNav');
       '<html> form factor must not change');
 
     FF.setHardwareInput(null);
-    FF.clearOverride();
+    declare(null);
     geom(1080, 2400);
     FF.reload();
   });
 
   test('focus-nav init is idempotent (no duplicate keydown listener)', function () {
-    FF.setOverride('tv');
-    FF.reload();
+    declare('tv');
     var added = 0;
     var realAdd = global.document.addEventListener;
     global.document.addEventListener = function (type) {
@@ -629,8 +636,7 @@ console.log('\n■ ZylFormFactor / ZylFocusNav');
 
   /* ─── launcher filter: the predicate home.js applies to the app list ─── */
   test('launcher filter hides apps the device class does not declare', function () {
-    FF.setOverride('tv');
-    FF.reload();
+    declare('tv');
     var appList = [
       { id: 'com.zylos.home',     formFactors: ['*'] },
       { id: 'com.example.desk',   formFactors: ['phone', 'tablet', 'desktop', 'pda'] },

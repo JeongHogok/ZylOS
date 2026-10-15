@@ -229,7 +229,7 @@ watch 22 / tv 21 / appliance 16.
 
 | 파일 | 역할 |
 |---|---|
-| `apps/shared/form-factor.js` | 8개 프로파일 테이블(navModel/inputModel/fontScale/touchTarget), 감지, 오버라이드, `<html>` 에 `.ff-<id>` + `--ff-*` 적용 |
+| `apps/shared/form-factor.js` | 8개 프로파일 테이블(navModel/inputModel/fontScale/touchTarget), 기기 선언(WAM 이 빌드 프로파일을 `window.__zylFormFactor` 로) 또는 하드웨어 감지, `<html>` 에 `.ff-<id>` + `--ff-*` 적용 — 사용자 설정이 아님 |
 | `apps/shared/focus-nav.js` | 방향 포커스 내비게이션 — 포인터 없는 기기(리모컨 D-pad, 로터리, 크라운)용 공간 탐색 |
 | `apps/shared/responsive.css` | 폼팩터 변수, 포커스 링, 상태바/선택 정책 |
 | `app.json` 의 `formFactors` | 앱이 지원하는 기기 종류. `app-registry.isHiddenFromGrid` 가 걸러낸다 |

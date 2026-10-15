@@ -50,7 +50,6 @@
     keyboard: 'settings.keyboard',
     sound: 'settings.sound',
     language: 'settings.language',
-    'device-class': 'settings.device_class',
     privacy: 'settings.privacy',
     datetime: 'settings.datetime',
     wallpaper: 'settings.wallpaper',
@@ -394,49 +393,6 @@
   /* FIX: Request battery state for battery status display */
   requestServiceFire('power', 'getState');
 
-  /* ─── 기기 유형 (폼팩터) ───
-     TV·자동차·워치·PDA 등 기하만으로 판별할 수 없는 단말의 프로비저닝 경로.
-     실기기에서는 빌드 프로파일(meson -Dprofile)이 우선이고, 이 설정은
-     커스텀 단말과 에뮬레이터에서 기기 유형을 명시 지정하는 수단이다.
-     선택은 즉시 이 앱에 적용되고, 다른 앱은 다음 실행 시 반영된다. */
-  function updateDeviceClassValue() {
-    var el = document.getElementById('current-device-class');
-    if (!el || typeof ZylFormFactor === 'undefined') return;
-    el.textContent = t('settings.ff_' + ZylFormFactor.getId());
-  }
-
-  function renderDeviceClassList() {
-    var list = document.getElementById('device-class-list');
-    if (!list || typeof ZylFormFactor === 'undefined') return;
-
-    var activeId = ZylFormFactor.getId();
-    list.innerHTML = '';
-
-    ZylFormFactor.getAllIds().forEach(function (ffId) {
-      var row = document.createElement('div');
-      row.className = 'setting-item ff-option';
-      row.dataset.ff = ffId;
-      row.setAttribute('role', 'button');
-      /* Static markup only — the label is set via textContent below */
-      row.innerHTML = '<span class="setting-label"></span>' +
-        '<svg class="check-icon hidden" viewBox="0 0 24 24" aria-hidden="true">' +
-        '<path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>';
-      row.querySelector('.setting-label').textContent = t('settings.ff_' + ffId);
-      row.setAttribute('aria-label', t('settings.ff_' + ffId));
-      if (ffId === activeId) {
-        row.querySelector('.check-icon').classList.remove('hidden');
-      }
-      addButtonKeyHandler(row);
-      row.addEventListener('click', function () {
-        if (!ZylFormFactor.setOverride(ffId)) return;
-        ZylFormFactor.reload();
-        renderDeviceClassList();
-        updateDeviceClassValue();
-      });
-      list.appendChild(row);
-    });
-  }
-
   /* ─── 날짜 및 시간: 시간대 ───
      목록은 엔진이 아는 IANA 시간대 전부(Intl.supportedValuesOf), 이름은 ICU 가
      사용자 언어로 지역화한다("한국 표준시") — 번역 문자열을 따로 두지 않는다.
@@ -777,8 +733,6 @@
   /* ─── 초기화 ─── */
   applyTranslations();
   updateLangChecks();
-  renderDeviceClassList();
-  updateDeviceClassValue();
   if (tzMenuValue) tzMenuValue.textContent = describeZone(zylI18n.getTimeZone());
   renderDataUsage();
 
@@ -788,8 +742,6 @@
     /* Also update main menu current language display */
     var curLangEl = document.getElementById('current-lang');
     if (curLangEl) curLangEl.textContent = LANG_NAMES[zylI18n.getLocale()] || '';
-    renderDeviceClassList();
-    updateDeviceClassValue();
     renderTimeZoneState();   /* zone names are localised; also fires on zone changes */
   });
 
