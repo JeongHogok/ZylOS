@@ -56,7 +56,9 @@ if [ -z "$ARCH" ] && [ -f "$BUILDDIR/zyl-board.conf" ]; then
     . "$BUILDDIR/zyl-board.conf"
     ARCH="$ZYL_ARCH"
 fi
-[ -z "$ARCH" ] || [ "$ARCH" = "native" ] && ARCH="$(uname -m)"
+if [ -z "$ARCH" ] || [ "$ARCH" = "native" ]; then
+    ARCH="$(uname -m)"
+fi
 
 # 직렬 콘솔 장치는 머신마다 다르다 — 틀리면 게스트가 아무것도 내보내지 않는다
 case "$ARCH" in
