@@ -156,6 +156,8 @@ jobs:
           # Slot-signed boot images; Ubuntu's u-boot-tools lack fit_check_sign,
           # so signature verification itself runs where that tool exists
           bash tests/test_sign_image.sh
+          # OTA package: both slots' verity trees and FITs, signed for the updater
+          bash tests/test_build_ota.sh
           echo "Integration tests passed"
 
   # ─── Docker reproducible build ───

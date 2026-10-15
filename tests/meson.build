@@ -140,6 +140,16 @@ test('lock',
   )
 )
 
+# Test: OTA install — signed package only, inactive slot's rootfs/verity/FIT
+# only, U-Boot pointed at it after every write (fake partitions and fw_*env)
+test('updater',
+  executable('test-updater',
+    'test_updater.c',
+    dependencies: [gio_dep, json_glib_dep, dependency('openssl', version: '>=1.1.1')],
+  ),
+  workdir: meson.project_source_root(),
+)
+
 # Test: device app scan — a user app must not replace a system app by reusing its id
 test('manifest-scan',
   executable('test-manifest-scan',
