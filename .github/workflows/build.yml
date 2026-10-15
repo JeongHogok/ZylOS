@@ -133,6 +133,38 @@ jobs:
           done
           echo "All fuzz runs passed"
 
+  # ─── Image build + emulated boot (no hardware needed) ───
+  # The same distro builds the binaries and the image: a compositor linked
+  # against the runner's wlroots would not find it inside the guest.
+  qemu-boot:
+    runs-on: ubuntu-24.04
+    container:
+      image: debian:trixie
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build, image and QEMU tools
+        run: |
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential meson ninja-build pkg-config python3 \
+            libglib2.0-dev libjson-glib-dev libgtk-4-dev libwebkitgtk-6.0-dev \
+            libssl-dev libcurl4-openssl-dev libzip-dev \
+            libwayland-dev wayland-protocols libxkbcommon-dev libpixman-1-dev \
+            libinput-dev libdrm-dev libegl-dev libgles-dev libdisplay-info-dev \
+            libseat-dev libgps-dev hwdata libwlroots-0.18-dev \
+            debootstrap systemd systemd-sysv fdisk e2fsprogs dbus ca-certificates \
+            qemu-system-x86 linux-image-amd64
+      - name: Build (board=emulator, profile=phone)
+        run: |
+          meson setup builddir --prefix=/usr -Dboard=emulator -Dprofile=phone
+          ninja -C builddir
+      - name: Every form factor still assembles
+        run: bash tests/test_image_profiles.sh
+      - name: Build the disk image
+        run: bash tools/build-image.sh --builddir builddir --out out/image
+      - name: Boot it in QEMU and run the self test
+        run: bash tools/run-qemu.sh --image out/image/zyl-os-emulator-phone.img --builddir builddir --check --timeout 600
+
   # ─── Integration tests ───
   test-integration:
     runs-on: ubuntu-24.04

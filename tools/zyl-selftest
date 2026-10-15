@@ -1,0 +1,80 @@
+#!/bin/bash
+# ──────────────────────────────────────────────────────────
+# [Clean Architecture] Infrastructure Layer - Diagnostics
+#
+# 역할: 부팅한 Zyl OS 가 제대로 서 있는지 스스로 점검해 한 줄로 보고한다
+# 수행범위: 설치된 zyl 유닛이 활성인지, 그 유닛이 선언한 D-Bus 이름이 실제로
+#           시스템 버스에 있는지, 앱 디렉터리와 /data 가 있는지
+# 의존방향: systemctl, gdbus. 기대 목록을 스스로 갖지 않고 **설치된 유닛의
+#           BusName= 에서 끌어낸다 (프로파일마다 서비스 집합이 다르다)
+# SOLID: SRP — 점검과 보고만. 고치지 않는다
+#        DIP — "무엇이 있어야 하는가"를 유닛 파일에서 읽는다
+#
+# 기본으로 켜지 않는다 (유닛에 [Install] 이 없다). 쓰는 두 가지 방법:
+#   systemctl start zyl-selftest          기기에서 손으로
+#   systemd.wants=zyl-selftest.service    커널 인자로 (QEMU 레인·공장 검사)
+# ──────────────────────────────────────────────────────────
+set -uo pipefail
+
+UNIT_DIRS=(/usr/lib/systemd/system /lib/systemd/system /etc/systemd/system)
+pass=0
+fail=0
+say() { echo "zyl-selftest: $*"; }
+ok()  { say "ok   $*"; pass=$((pass + 1)); }
+bad() { say "FAIL $*"; fail=$((fail + 1)); }
+
+# ── 1. 유닛: 설치된 zyl-* 서비스가 활성인가 ──
+units=""
+for d in "${UNIT_DIRS[@]}"; do
+    [ -d "$d" ] || continue
+    for u in "$d"/zyl-*.service; do
+        [ -e "$u" ] || continue
+        b="$(basename "$u")"
+        case " $units " in *" $b "*) continue ;; esac
+        units="$units $b"
+    done
+done
+[ -n "$units" ] || bad "설치된 zyl 유닛이 없다"
+
+for u in $units; do
+    # 자기점검 자신과 oneshot 보조 유닛은 활성 여부를 묻지 않는다
+    case "$u" in zyl-selftest.service|zyl-apparmor.service) continue ;; esac
+    state="$(systemctl is-active "$u" 2>/dev/null)"
+    if [ "$state" = "active" ]; then ok "unit $u"
+    else bad "unit $u ($state)"; fi
+done
+
+# ── 2. 버스: 유닛이 선언한 이름이 시스템 버스에 있는가 ──
+for u in $units; do
+    name=""
+    for d in "${UNIT_DIRS[@]}"; do
+        [ -f "$d/$u" ] || continue
+        name="$(sed -n 's/^BusName=//p' "$d/$u" | head -1)"
+        [ -n "$name" ] && break
+    done
+    [ -n "$name" ] || continue
+    path="/$(echo "$name" | tr '.' '/')"
+    if gdbus introspect --system -d "$name" -o "$path" >/dev/null 2>&1; then
+        ok "bus $name"
+    else
+        bad "bus $name (이름이 없거나 응답하지 않는다)"
+    fi
+done
+
+# ── 3. 이미지가 제자리에 있는가 ──
+[ -d /usr/share/zyl-os/apps/home ] && ok "apps /usr/share/zyl-os/apps" \
+    || bad "apps 디렉터리가 없다"
+[ -f /usr/share/zyl-os/wam/bridge.js ] && ok "wam bridge.js" \
+    || bad "wam/bridge.js 가 없다"
+mountpoint -q /data && ok "/data 마운트" || bad "/data 가 마운트되지 않았다"
+[ -f /etc/zyl-release ] && ok "release $(sed -n 's/^ZYL_OS_VERSION=//p' /etc/zyl-release | head -1)" \
+    || bad "/etc/zyl-release 가 없다"
+
+# ── 보고 ──
+total=$((pass + fail))
+if [ "$fail" -eq 0 ]; then
+    say "PASS ($pass/$total)"
+    exit 0
+fi
+say "FAILED ($fail/$total 실패)"
+exit 1
