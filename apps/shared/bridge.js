@@ -365,15 +365,57 @@ var ZylBridge = (function () {
      plain tap with no typing in between sends nothing. */
   var _keyboardEditActive = false;
 
-  function onAppTouch() {
+  function onAppTouch(e) {
     if (!_keyboardEditActive) return;
+    /* A key on the keyboard is typing, not a touch on the app */
+    if (window.ZylKeyboardHost && window.ZylKeyboardHost.owns(e.target)) return;
     _keyboardEditActive = false;
-    sendToSystem({ type: 'input.commitComposition' });
+    if (window.ZylKeyboard) window.ZylKeyboard.commitComposition();
+  }
+
+  /* ─── On-screen keyboard ───
+     The OS keyboard (apps/keyboard/js/inpage.js) is loaded into this page on
+     the first text focus, on the device and in the emulator alike. Not where
+     the device has a real keyboard. */
+  var KB_NOT_TEXT = ['checkbox', 'radio', 'range', 'file', 'color', 'hidden',
+                     'button', 'submit', 'reset', 'image'];
+  var _kbHostSrc = (function () {
+    var src = typeof document !== 'undefined' && document.currentScript && document.currentScript.src || '';
+    return /shared\/bridge\.js(\?.*)?$/.test(src) ? src.replace(/shared\/bridge\.js(\?.*)?$/, 'keyboard/js/inpage.js') : '';
+  })();
+
+  function isTextField(el) {
+    if (!el) return false;
+    if (el.tagName === 'TEXTAREA') return true;
+    return el.tagName === 'INPUT' && KB_NOT_TEXT.indexOf((el.type || 'text').toLowerCase()) === -1;
+  }
+
+  function withKeyboardHost(fn) {
+    if (window.ZylKeyboardHost) return fn(window.ZylKeyboardHost);
+    var s = document.createElement('script');
+    s.src = _kbHostSrc;
+    s.onload = function () { if (window.ZylKeyboardHost) fn(window.ZylKeyboardHost); };
+    document.head.appendChild(s);
+  }
+
+  function wantsOnScreenKeyboard() {
+    var p = (typeof ZylFormFactor !== 'undefined' && ZylFormFactor.getProfile) ? ZylFormFactor.getProfile() : null;
+    return !(p && p.inputModel === 'mouse-keyboard');
   }
 
   if (typeof document !== 'undefined' && document.addEventListener) {
     document.addEventListener('mousedown', onAppTouch, true);
     document.addEventListener('touchstart', onAppTouch, true);
+    if (_kbHostSrc) {
+      document.addEventListener('focusin', function (e) {
+        if (isTextField(e.target) && wantsOnScreenKeyboard()) withKeyboardHost(function (h) { h.show(); });
+      }, true);
+      document.addEventListener('focusout', function () {
+        setTimeout(function () {
+          if (!isTextField(document.activeElement) && window.ZylKeyboardHost) window.ZylKeyboardHost.hide();
+        }, 0);
+      }, true);
+    }
   }
 
   window.addEventListener('message', function (event) {
@@ -480,7 +522,7 @@ var ZylBridge = (function () {
         } catch (e) { /* input type without selection support — value is set */ }
         _keyboardEditActive = true;
         field.dispatchEvent(new Event('input', { bubbles: true }));
-        if (usedFallback) sendToSystem({ type: 'input.compositionFallback' });
+        if (usedFallback && window.ZylKeyboard) window.ZylKeyboard.adoptFallback();
       }
     }
 

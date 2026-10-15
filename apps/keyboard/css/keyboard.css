@@ -34,6 +34,10 @@
   visibility: hidden;
 }
 
+/* Hosted inside an app page (js/inpage.js): the page's own viewport already
+   ends above the navigation bar */
+#zyl-keyboard.zyl-keyboard { position: fixed; bottom: 0; }
+
 /* Nav-mode offsets: keyboard sits above the navigation bar */
 .zyl-keyboard[data-nav="softkeys"] { bottom: 48px; }
 .zyl-keyboard[data-nav="gesture"]  { bottom: 34px; }

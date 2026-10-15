@@ -165,6 +165,7 @@ static const char *audio_introspection_xml =
     "      <arg type='i' name='freq_hz' direction='in'/>"
     "      <arg type='i' name='duration_ms' direction='in'/>"
     "    </method>"
+    "    <method name='PlayKeyClick'/>"
     "  </interface>"
     "</node>";
 
@@ -197,6 +198,11 @@ static void handle_audio_method(GDBusConnection *conn, const gchar *sender,
         gint32 freq, dur;
         g_variant_get(params, "(ii)", &freq, &dur);
         zyl_audio_play_tone(svc, freq, dur);
+        g_dbus_method_invocation_return_value(inv, NULL);
+    } else if (g_strcmp0(method, "PlayKeyClick") == 0) {
+        /* Keyboard feedback stays quiet in silent mode, unlike PlayTone
+           (emergency alerts must sound regardless) */
+        if (!zyl_audio_get_mute(svc)) zyl_audio_play_tone(svc, 800, 30);
         g_dbus_method_invocation_return_value(inv, NULL);
     }
 }

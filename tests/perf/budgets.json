@@ -169,7 +169,7 @@
       "fcpMs": 800,
       "blockingMs": 200,
       "heapMB": 2,
-      "domNodes": 210,
+      "domNodes": 320,
       "layouts": 26
     },
     "weather": {

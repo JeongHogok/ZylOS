@@ -429,18 +429,6 @@
     if (mode === 'gesture')   navGesture.classList.remove('hidden');
     if (mode === 'hardware')  { navHardware.classList.remove('hidden'); frameEl.classList.add('nav-hw'); }
 
-    /* Set keyboard position based on nav mode */
-    var kb = document.getElementById('keyboard-container');
-    if (kb) kb.setAttribute('data-nav', mode || 'gesture');
-
-    /* The keyboard is OS UI mounted in this document, so it needs the form
-       factor too — a phone-sized keyboard is unreadable across a room. Scoped
-       to the container: applying it to <html> would scale the device frame.
-       The OS classifies; we only report which input hardware exists. */
-    if (kb && typeof ZylFormFactor !== 'undefined') {
-      if (device && device.inputModel) ZylFormFactor.setHardwareInput(device.inputModel);
-      ZylFormFactor.reload(kb);
-    }
   }
 
   /* ── 소프트키 ── */
@@ -1023,27 +1011,6 @@
       syslog('Sound: ' + key + ' \u2192 ' + value, 'sys');
     }
 
-    /* ── Keyboard settings → forward to ZylKeyboard ── */
-    if (category === 'keyboard' && typeof ZylKeyboard !== 'undefined') {
-      if (key === 'languages') {
-        var langs = String(value).split(',').filter(Boolean);
-        ZylKeyboard.setEnabledLanguages(langs);
-        if (langs.length > 0 && langs.indexOf(ZylKeyboard.getLanguage()) === -1) {
-          ZylKeyboard.setLanguage(langs[0]);
-        }
-        syslog('Keyboard languages: ' + value, 'sys');
-      }
-      if (key === 'keyHeight') {
-        ZylKeyboard.setKeyHeight(parseInt(value, 10) || 36);
-        syslog('Key height: ' + value + 'px', 'sys');
-      }
-      if (key === 'soundEnabled') {
-        ZylKeyboard.setSoundEnabled(!!value);
-      }
-      if (key === 'vibrationEnabled') {
-        ZylKeyboard.setVibrationEnabled(!!value);
-      }
-    }
 
     /* ── Locale change → update compositor i18n ── */
     if (category === 'language' && key === 'locale') {
@@ -1086,14 +1053,6 @@
       var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
       if (!msg || !msg.type) return;
       switch (msg.type) {
-        /* Input-method state lives in the keyboard; the app reports when the
-           text context moved so composition does not run on a stale syllable */
-        case 'input.commitComposition':
-          if (typeof ZylKeyboard !== 'undefined') ZylKeyboard.commitComposition();
-          break;
-        case 'input.compositionFallback':
-          if (typeof ZylKeyboard !== 'undefined') ZylKeyboard.adoptFallback();
-          break;
         case 'lifecycle.state':
           _appStates.onState(msg.state);
           break;
@@ -1191,71 +1150,6 @@
     else if (e.key === 'ArrowDown') { e.preventDefault(); adjustVolume(-5); }
   });
 
-  /* ═══ Virtual Keyboard (OS keyboard app, compositor-managed) ═══ */
-  var kbContainer = document.getElementById('keyboard-container');
-  if (typeof ZylKeyboard !== 'undefined' && kbContainer) {
-    ZylKeyboard.init(kbContainer, function (key, edit) {
-      /* Forward to current app iframe. An edit is an atomic replace-and-insert
-         from input-method composition or candidate selection. */
-      if (edit) {
-        broadcastToCurrentApp('input.text', edit);
-      } else {
-        broadcastToCurrentApp('input.key', { key: key });
-      }
-      /* Keypress feedback — ALL through audio service (clean architecture).
-         The service handles silentMode check internally. */
-      var kbSoundOn = ZylKeyboard.getSoundEnabled ? ZylKeyboard.getSoundEnabled() : true;
-      var kbVibOn = ZylKeyboard.getVibrationEnabled ? ZylKeyboard.getVibrationEnabled() : true;
-      if (kbSoundOn) {
-        ZylServices.handleRequest('audio', 'playKeyClick', {});
-      }
-      if (kbVibOn) {
-        ZylServices.handleRequest('audio', 'vibrate', { pattern: [8] });
-      }
-    });
-
-    /* Prevent keyboard area touches from stealing focus from iframe input */
-    var _kbTouching = false;
-    kbContainer.addEventListener('mousedown', function (e) {
-      _kbTouching = true;
-      e.preventDefault(); /* Prevent iframe blur */
-      setTimeout(function () { _kbTouching = false; }, 500);
-    });
-    kbContainer.addEventListener('touchstart', function (e) {
-      _kbTouching = true;
-      /* Don't preventDefault on touchstart — it blocks the key button click.
-         Instead, just set flag to suppress hide during polling. */
-      setTimeout(function () { _kbTouching = false; }, 500);
-    }, { passive: true });
-
-    /* Detect input focus inside app iframe */
-    setInterval(function () {
-      if (!appFrame || !appFrame.contentWindow) return;
-      /* If user is touching keyboard area, don't hide */
-      if (_kbTouching) return;
-      try {
-        var doc = appFrame.contentDocument || appFrame.contentWindow.document;
-        var active = doc.activeElement;
-        var isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
-        var inputType = active ? (active.type || '').toLowerCase() : '';
-        var excludeTypes = ['checkbox', 'radio', 'range', 'file', 'color', 'hidden'];
-        if (isInput && excludeTypes.indexOf(inputType) === -1) {
-          if (!ZylKeyboard.isVisible()) {
-            ZylKeyboard.show();
-            var kbH = kbContainer.offsetHeight || 0;
-            broadcastToCurrentApp('keyboard.show', { height: kbH });
-          }
-        } else {
-          if (ZylKeyboard.isVisible()) {
-            ZylKeyboard.hide();
-            broadcastToCurrentApp('keyboard.hide', {});
-          }
-        }
-      } catch (e) {
-        if (ZylKeyboard.isVisible()) ZylKeyboard.hide();
-      }
-    }, 300);
-  }
 
   /* ═══════════════════════════════════════════════════════
      Device Selection
@@ -1344,23 +1238,6 @@
         });
       }
 
-      /* Load persisted keyboard settings */
-      if (typeof ZylKeyboard !== 'undefined') {
-        var kbLoad = ZylServices.handleRequest('settings', 'get', { category: 'keyboard' });
-        if (kbLoad && typeof kbLoad.then === 'function') {
-          kbLoad.then(function (kb) {
-            if (!kb) return;
-            if (kb.languages) {
-              var langs = String(kb.languages).split(',').filter(Boolean);
-              ZylKeyboard.setEnabledLanguages(langs);
-              if (langs.length > 0) ZylKeyboard.setLanguage(langs[0]);
-            }
-            if (kb.keyHeight) ZylKeyboard.setKeyHeight(parseInt(kb.keyHeight, 10) || 36);
-            if (kb.soundEnabled !== undefined) ZylKeyboard.setSoundEnabled(kb.soundEnabled !== false);
-            if (kb.vibrationEnabled !== undefined) ZylKeyboard.setVibrationEnabled(kb.vibrationEnabled !== false);
-          });
-        }
-      }
 
       /* Check if OOBE was completed; if not, show OOBE first */
       var oobeCheck = ZylServices.handleRequest('settings', 'get', { category: 'system' });
