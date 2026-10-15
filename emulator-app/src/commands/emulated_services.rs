@@ -2,7 +2,7 @@
 // [Clean Architecture] Infrastructure Layer - Emulated Services
 //
 // 역할: 실기기 D-Bus 시스템 서비스를 HAL 수준으로 에뮬레이션
-// 수행범위: notification, power/battery, location, user, credential,
+// 수행범위: power/battery, location, user, credential,
 //           wifi, bluetooth
 // 의존방향: state (AppState, mount_point), tauri AppHandle
 // SOLID: SRP — 에뮬레이션 서비스만 담당
@@ -16,57 +16,6 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::sync::Mutex;
 use tauri::{Emitter, State};
-
-// ════════════════════════════════════════════
-// 1. Notification Service
-// ════════════════════════════════════════════
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Notification {
-    pub id: u64,
-    pub app_id: String,
-    pub title: String,
-    pub body: String,
-    pub icon: String,
-    pub priority: u32,
-    pub timestamp: u64,
-}
-
-use std::sync::atomic::{AtomicU64, Ordering};
-
-static NOTIF_COUNTER: AtomicU64 = AtomicU64::new(0);
-static NOTIF_STORE: std::sync::LazyLock<Mutex<Vec<Notification>>> =
-    std::sync::LazyLock::new(|| Mutex::new(Vec::new()));
-
-#[tauri::command]
-pub fn notif_post(app_id: String, title: String, body: String, icon: String, priority: u32) -> u64 {
-    let ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    let id = NOTIF_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
-    let notif = Notification {
-        id, app_id, title, body, icon, priority, timestamp: ts,
-    };
-    if let Ok(mut store) = NOTIF_STORE.lock() {
-        store.push(notif);
-    }
-    id
-}
-
-#[tauri::command]
-pub fn notif_cancel(id: u64) {
-    if let Ok(mut store) = NOTIF_STORE.lock() {
-        store.retain(|n| n.id != id);
-    }
-}
-
-#[tauri::command]
-pub fn notif_clear_all() {
-    if let Ok(mut store) = NOTIF_STORE.lock() {
-        store.clear();
-    }
-}
 
 // ════════════════════════════════════════════
 // 2. Power / Brightness Service (legacy)

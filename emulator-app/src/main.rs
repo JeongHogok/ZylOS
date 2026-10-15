@@ -73,9 +73,6 @@ fn main() {
             // App registry
             commands::config::list_installed_apps,
             // Emulated system services
-            commands::emulated_services::notif_post,
-            commands::emulated_services::notif_cancel,
-            commands::emulated_services::notif_clear_all,
             commands::emulated_services::power_get_state,
             commands::emulated_services::location_get_last_known,
             commands::emulated_services::user_get_current,

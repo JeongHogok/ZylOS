@@ -10,22 +10,17 @@
   if (typeof zylI18n === 'undefined') return;
 
   zylI18n.addTranslations('ko', {
-    'keyboard.title': 'Zyl 키보드'
   });
 
   zylI18n.addTranslations('en', {
-    'keyboard.title': 'Zyl Keyboard'
   });
 
   zylI18n.addTranslations('ja', {
-    'keyboard.title': 'Zyl キーボード'
   });
 
   zylI18n.addTranslations('zh', {
-    'keyboard.title': 'Zyl 键盘'
   });
 
   zylI18n.addTranslations('es', {
-    'keyboard.title': 'Teclado Zyl'
   });
 })();

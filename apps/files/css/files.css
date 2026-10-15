@@ -138,32 +138,6 @@ body {
   transition: width 0.5s ease;
 }
 
-#storage-breakdown {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-}
-
-.storage-cat {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  color: var(--text-secondary);
-}
-
-.cat-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.cat-size {
-  color: var(--text-tertiary);
-  margin-left: 2px;
-}
-
 /* ─── Breadcrumb ─── */
 #breadcrumb {
   display: flex;
@@ -258,11 +232,6 @@ body {
 }
 
 .file-item:active { background: var(--surface); }
-
-.file-item.selected {
-  background: var(--accent-dim);
-  border: 1px solid rgba(74,158,255,0.2);
-}
 
 /* ─── File Type Icons ─── */
 .file-icon {

@@ -402,14 +402,6 @@ body {
   text-align: center;
 }
 
-@keyframes timerPulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
-}
-#incall-timer.calling-pulse {
-  animation: timerPulse 2s ease-in-out infinite;
-}
-
 /* ── In-Call Action Buttons ── */
 #incall-actions {
   display: flex;

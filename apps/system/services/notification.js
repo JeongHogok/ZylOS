@@ -4,7 +4,7 @@
 // Role: Notification service — post, cancel, list, clear, DND,
 //       history, grouping, timeout, badge counts
 // Scope: OS notification management (actions, DND, history, groups)
-// Dependency Direction: Domain -> invoker abstraction
+// Dependency Direction: Domain -> none (state kept here)
 // SOLID: SRP — notification management only
 // ----------------------------------------------------------
 
@@ -12,7 +12,6 @@
   'use strict';
 
   ns.notification = function (deps) {
-    var invoke = deps.invoke;
 
     /* ─── Notification history (in-memory ring buffer) ─── */
     var MAX_HISTORY = 100;
@@ -111,29 +110,6 @@
       _addToGroup(notif);
       _scheduleAutoDismiss(notif);
 
-      /* Delegate to native layer if available */
-      var invokeParams = {
-        app_id: notif.appId,
-        channel_id: notif.channelId,
-        title: notif.title,
-        body: notif.body,
-        icon: notif.icon,
-        priority: notif.priority
-      };
-      if (actions && actions.length) {
-        var nativeActions = [];
-        for (var i = 0; i < actions.length; i++) {
-          nativeActions.push({
-            label: actions[i].label || '',
-            action_id: actions[i].actionId || ''
-          });
-        }
-        invokeParams.actions = nativeActions;
-        invoke('notif_post_with_actions', invokeParams);
-      } else {
-        invoke('notif_post', invokeParams);
-      }
-
       return { id: notif.id };
     }
 
@@ -161,7 +137,6 @@
           var n = _activeMap[k];
           if (n.appId !== appId) return;
           _dismiss(n.id);
-          invoke('notif_cancel', { id: n.id });
         });
         _history = _history.filter(function (n) { return n.appId !== appId; });
         delete _badgeCounts[appId];
@@ -172,7 +147,6 @@
        */
       cancel: function (p) {
         _dismiss(p.id);
-        invoke('notif_cancel', { id: p.id });
         return { success: true };
       },
 
@@ -197,7 +171,6 @@
           var n = _activeMap[keys[i]];
           if (!n.persistent) _dismiss(n.id);
         }
-        invoke('notif_clear_all');
         return { success: true };
       },
 
@@ -208,7 +181,6 @@
       setDndMode: function (p) {
         var enabled = !!(p && p.enabled);
         _dndEnabled = enabled;
-        invoke('notif_set_dnd_mode', { enabled: enabled });
         return { success: true, enabled: enabled };
       },
 

@@ -103,7 +103,6 @@ window.ZylEmuI18n = (function () {
 
   var currentLocale = 'en';
   var fallbackLocale = 'en';
-  var listeners = [];
 
   function t(key, params) {
     var dict = translations[currentLocale] || translations[fallbackLocale];
@@ -139,18 +138,10 @@ window.ZylEmuI18n = (function () {
     if (!translations[locale]) locale = fallbackLocale;
     currentLocale = locale;
     applyTranslations();
-    listeners.forEach(function (fn) { fn(locale); });
   }
 
   function getLocale() {
     return currentLocale;
-  }
-
-  function onLocaleChange(fn) {
-    listeners.push(fn);
-    return function () {
-      listeners = listeners.filter(function (f) { return f !== fn; });
-    };
   }
 
   return {
@@ -159,6 +150,5 @@ window.ZylEmuI18n = (function () {
     applyTranslations: applyTranslations,
     setLocale: setLocale,
     getLocale: getLocale,
-    onLocaleChange: onLocaleChange,
   };
 })();

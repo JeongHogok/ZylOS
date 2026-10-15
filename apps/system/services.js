@@ -3,8 +3,8 @@
 //
 // Role: Zyl OS service framework — router, watchdog, init orchestrator
 // Scope: Assembles service modules from services/*.js, routes handleRequest(),
-//        manages per-app watchdog, native invoker fallback, boot init.
-//        Individual service logic lives in services/*.js (28 modules).
+//        limits each app's concurrent requests (watchdog), boot init with the
+//        container's invoker. Individual service logic lives in services/*.js.
 // Dependency Direction: Presentation -> Domain (service modules via ZylServiceModules)
 // SOLID: SRP — routing + orchestration only, OCP — new services added without modifying router
 //        DIP — depends on module factory interface, not concrete implementations
@@ -18,85 +18,6 @@ window.ZylSystemServices = (function () {
 
   var _invoke = function () { return Promise.resolve(null); };
   var ns = window.ZylServiceModules || {};
-
-  /* ===============================================================
-     Native Invoker — fallback for real device (no Tauri backend).
-     =============================================================== */
-  function _createNativeInvoker() {
-    return function nativeInvoke(cmd, args) {
-      args = args || {};
-      if (cmd === 'http_fetch') {
-        if (typeof fetch === 'function') {
-          return fetch(args.url)
-            .then(function (r) { return r.text(); })
-            .catch(function (e) { return Promise.reject('Fetch failed: ' + e.message); });
-        }
-        return Promise.reject('fetch API not available');
-      }
-      if (cmd === 'load_settings') {
-        try {
-          var stored = localStorage.getItem('zylos_settings');
-          return Promise.resolve(stored ? JSON.parse(stored) : null);
-        } catch (e) { return Promise.resolve(null); }
-      }
-      if (cmd === 'save_settings') {
-        try {
-          var current = JSON.parse(localStorage.getItem('zylos_settings') || '{}');
-          if (args.category) {
-            if (!current[args.category]) current[args.category] = {};
-            if (args.key !== undefined) current[args.category][args.key] = args.value;
-          }
-          localStorage.setItem('zylos_settings', JSON.stringify(current));
-          return Promise.resolve(true);
-        } catch (e) { return Promise.resolve(false); }
-      }
-      if (cmd === 'fs_read_dir') return Promise.resolve([]);
-      if (cmd === 'fs_read_file' || cmd === 'fs_read_binary') return Promise.resolve(null);
-      if (cmd === 'fs_write_file') return Promise.resolve(false);
-      if (cmd === 'get_wifi_networks') return Promise.resolve([]);
-      if (cmd === 'get_bluetooth_devices') return Promise.resolve([]);
-      if (cmd === 'location_request_updates' || cmd === 'location_stop_updates') {
-        return Promise.resolve(true);
-      }
-      if (cmd === 'location_get_last_known') {
-        if (navigator.geolocation) {
-          return new Promise(function (resolve) {
-            navigator.geolocation.getCurrentPosition(function (pos) {
-              resolve({
-                latitude: pos.coords.latitude,
-                longitude: pos.coords.longitude,
-                altitude: pos.coords.altitude || 0,
-                accuracy: pos.coords.accuracy,
-                speed: pos.coords.speed || 0,
-                timestamp: Date.now(),
-                provider: 'geolocation-api'
-              });
-            }, function () {
-              resolve({ latitude: 0, longitude: 0, provider: 'unavailable' });
-            }, { timeout: 5000 });
-          });
-        }
-        return Promise.resolve({ latitude: 0, longitude: 0, provider: 'unavailable' });
-      }
-      if (cmd === 'get_battery_state' || cmd === 'power_get_state') {
-        if (navigator.getBattery) {
-          return navigator.getBattery().then(function (b) {
-            return { level: Math.round(b.level * 100), charging: b.charging };
-          });
-        }
-        return Promise.resolve({ level: -1, charging: false });
-      }
-      if (cmd === 'notif_post') {
-        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-          new Notification(args.title || '', { body: args.body || '' });
-        }
-        return Promise.resolve({ id: Date.now() });
-      }
-      if (cmd === 'list_installed_apps') return Promise.resolve([]);
-      if (cmd === 'user_get_current') return Promise.resolve({ name: 'User', username: 'user' });
-      return Promise.resolve(null);
-    };
-  }
 
   /* ===============================================================
      Service Timeout
@@ -128,13 +49,11 @@ window.ZylSystemServices = (function () {
      =============================================================== */
   var MAX_CONCURRENT_PER_APP = 8;
   var _appPending = {};
-  var _appBlocked = {};
   var WATCHDOG_AUTO_RELEASE_MS = 30000;
   var _watchdogTimers = {};
 
   function watchdogAcquire(appId) {
     if (!appId) return true;
-    if (_appBlocked[appId]) return false;
     if (!_appPending[appId]) _appPending[appId] = 0;
     if (_appPending[appId] >= MAX_CONCURRENT_PER_APP) return false;
     _appPending[appId]++;
@@ -164,15 +83,6 @@ window.ZylSystemServices = (function () {
     }
   }
 
-  function watchdogBlock(appId) { if (appId) _appBlocked[appId] = true; }
-  function watchdogUnblock(appId) {
-    if (!appId) return;
-    delete _appBlocked[appId];
-    delete _appPending[appId];
-  }
-  function watchdogStatus() {
-    return { pending: JSON.parse(JSON.stringify(_appPending)), blocked: Object.keys(_appBlocked) };
-  }
 
   /* ===============================================================
      Module Assembly + Service Map
@@ -291,16 +201,12 @@ window.ZylSystemServices = (function () {
   var _publicRef = null; /* Reference to the returned public API object */
 
   function init(invoker) {
-    _invoke = invoker || _createNativeInvoker();
+    _invoke = invoker;
     assembleModules();
 
     /* A5: Bind module references to public API after assembly */
     if (_publicRef) {
-      _publicRef.device  = _modules.device  || serviceMap.device  || null;
       _publicRef.storage = _modules.storage || serviceMap.storage || null;
-      _publicRef.fs      = serviceMap.fs      || null;
-      _publicRef.apps    = _modules.apps    || serviceMap.apps    || null;
-      _publicRef.settings = _modules.settings || serviceMap.settings || null;
     }
 
     /* Load persisted settings and audio state on boot */
@@ -337,7 +243,7 @@ window.ZylSystemServices = (function () {
   function handleRequest(service, method, params, appId) {
     if (appId && !watchdogAcquire(appId)) {
       return Promise.resolve({
-        error: _appBlocked[appId] ? 'App blocked by watchdog' : 'Too many concurrent requests',
+        error: 'Too many concurrent requests',
         service: service, method: method
       });
     }
@@ -402,18 +308,8 @@ window.ZylSystemServices = (function () {
   _publicRef = {
     init: init,
     handleRequest: handleRequest,
-    device: null, /* populated by init() after assembleModules() */
-    storage: null,
-    fs: null,
-    apps: null,
-    settings: null,
-    applyDisplayProfile: applyDisplayProfile,
-    watchdog: {
-      block: watchdogBlock,
-      unblock: watchdogUnblock,
-      status: watchdogStatus
-    },
-    _getModule: function (name) { return _modules[name] || serviceMap[name]; }
+    storage: null, /* populated by init() after assembleModules() */
+    applyDisplayProfile: applyDisplayProfile
   };
   return _publicRef;
 })();
