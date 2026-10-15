@@ -9,6 +9,7 @@
  * ---------------------------------------------------------- */
 
 #include "lifecycle.h"
+#include "../scheme/app_scheme.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -102,11 +103,10 @@ ZylAppInstance *zyl_lifecycle_launch(ZylAppInterface *iface,
     gtk_window_set_child(GTK_WINDOW(instance->window),
                          instance->webview_widget);
 
-    /* Build entry URI and load */
-    char entry_uri[1024];
-    snprintf(entry_uri, sizeof(entry_uri), "file://%s/%s",
-             manifest->base_path, manifest->entry);
+    /* The app's own origin: zyl-app://<id>/<entry> (wam.c serves it) */
+    char *entry_uri = zyl_app_scheme_uri(manifest->id, manifest->entry);
     engine->load_uri(engine, instance->webview_widget, entry_uri);
+    g_free(entry_uri);
 
     gtk_window_present(GTK_WINDOW(instance->window));
 

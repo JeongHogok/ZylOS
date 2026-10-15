@@ -271,6 +271,16 @@ test('intent',
   )
 )
 
+# Test: app origins zyl-app:// — an app reads its own files and the OS shared
+# code, nothing else (.., links out, directories)
+test('app-scheme',
+  executable('test-app-scheme',
+    'test_app_scheme.c',
+    '../runtime/wam/src/scheme/app_scheme.c',
+    dependencies: [gio_dep],
+  )
+)
+
 # Test: device app scan — a user app must not replace a system app by reusing its id
 test('manifest-scan',
   executable('test-manifest-scan',

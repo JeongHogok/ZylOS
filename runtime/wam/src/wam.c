@@ -3,13 +3,17 @@
  *
  * 역할: WAM(Web App Manager) 메인 서비스 — 모듈 조립 및 WebKitGTK 구현
  * 수행범위: manifest, lifecycle, bridge, D-Bus 모듈 연결, ZylWebEngine/ZylAppInterface vtable 구현
- * 의존방향: wam.h, manifest.h, lifecycle.h, bridge.h, dbus_service.h, oom.h, intent.h
+ * 의존방향: wam.h, manifest.h, lifecycle.h, bridge.h, dbus_service.h, oom.h, intent.h,
+ *           app_scheme.h
  * SOLID: SRP — 모듈 조립과 WebKitGTK 바인딩만 담당
  * ────────────────────────────────────────────────────────── */
 
 #include "wam.h"
 #include "oom/oom.h"
 #include "intent/intent.h"
+#include "scheme/app_scheme.h"
+
+#include <sys/stat.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -247,6 +251,54 @@ static void on_webkit_bridge_message(WebKitUserContentManager *manager,
 }
 
 /* ════════════════════════════════════════════════════════════════
+ *  App origins and containers: each app is zyl-app://<id>/ — its own
+ *  origin — and keeps its WebKit storage (local storage, IndexedDB,
+ *  cookies, cache) in its container, so nothing of it outlives the app
+ * ════════════════════════════════════════════════════════════════ */
+
+static void on_app_request(WebKitURISchemeRequest *req, gpointer user_data) {
+    ZylWam *wam = user_data;
+    GUri *uri = g_uri_parse(webkit_uri_scheme_request_get_uri(req), G_URI_FLAGS_NONE, NULL);
+    ZylAppManifest *m = uri && g_uri_get_host(uri)
+                        ? g_hash_table_lookup(wam->manifests, g_uri_get_host(uri)) : NULL;
+    char *file = m ? zyl_app_scheme_file(m->base_path, WAM_SHARED_DIR, g_uri_get_path(uri)) : NULL;
+    GFile *f = file ? g_file_new_for_path(file) : NULL;
+    GFileInputStream *in = f ? g_file_read(f, NULL, NULL) : NULL;
+    struct stat st;
+    if (in && stat(file, &st) == 0) {
+        webkit_uri_scheme_request_finish(req, G_INPUT_STREAM(in), st.st_size, zyl_app_scheme_mime(file));
+    } else {
+        GError *e = g_error_new_literal(G_IO_ERROR, G_IO_ERROR_NOT_FOUND, "not found");
+        webkit_uri_scheme_request_finish_error(req, e);
+        g_error_free(e);
+    }
+    if (in) g_object_unref(in);
+    if (f) g_object_unref(f);
+    g_free(file);
+    if (uri) g_uri_unref(uri);
+}
+
+/* Secure, so apps get secure-context APIs (crypto.subtle …) as on https */
+static void register_app_scheme(WebKitWebContext *ctx) {
+    webkit_web_context_register_uri_scheme(ctx, ZYL_APP_SCHEME, on_app_request, g_wam, NULL);
+    webkit_security_manager_register_uri_scheme_as_secure(
+        webkit_web_context_get_security_manager(ctx), ZYL_APP_SCHEME);
+}
+
+/* <container>/webkit/{data,cache}; NULL when they cannot be made */
+static gboolean app_webkit_dirs(const ZylAppManifest *m, char **data, char **cache) {
+    char *base = g_build_filename(WAM_CONTAINERS, m->id, "webkit", NULL);
+    *data = g_build_filename(base, "data", NULL);
+    *cache = g_build_filename(base, "cache", NULL);
+    g_free(base);
+    if (g_mkdir_with_parents(*data, 0700) == 0 && g_mkdir_with_parents(*cache, 0700) == 0) return TRUE;
+    g_warning("WAM: no container for %s — its web storage will not persist", m->id);
+    g_clear_pointer(data, g_free);
+    g_clear_pointer(cache, g_free);
+    return FALSE;
+}
+
+/* ════════════════════════════════════════════════════════════════
  *  ZylWebEngine implementation (WebKitGTK back-end)
  * ════════════════════════════════════════════════════════════════ */
 
@@ -269,26 +321,37 @@ static GtkWidget *webkit_create_webview(ZylWebEngine   *self,
     WebKitUserContentManager *ucm = webkit_user_content_manager_new();
     g_signal_connect(ucm, "script-message-received::bridge",
                      G_CALLBACK(on_webkit_bridge_message), instance_ctx);
+
+    /* The app's own storage. H11: TLS certificate verification — reject
+       invalid certificates (6.0 moved the policy to the network session). */
+    char *data_dir = NULL, *cache_dir = NULL;
+    gboolean persistent = app_webkit_dirs(manifest, &data_dir, &cache_dir);
 #ifdef ZYL_USE_WEBKIT2GTK
+    WebKitWebsiteDataManager *store = persistent
+        ? webkit_website_data_manager_new("base-data-directory", data_dir,
+                                          "base-cache-directory", cache_dir, NULL)
+        : webkit_website_data_manager_new_ephemeral();
+    WebKitWebContext *ctx = webkit_web_context_new_with_website_data_manager(store);
+    register_app_scheme(ctx);
+    webkit_web_context_set_tls_errors_policy(ctx, WEBKIT_TLS_ERRORS_POLICY_FAIL);
     webkit_user_content_manager_register_script_message_handler(ucm, "bridge");
     WebKitWebView *webview = WEBKIT_WEB_VIEW(
-        webkit_web_view_new_with_user_content_manager(ucm));
+        g_object_new(WEBKIT_TYPE_WEB_VIEW, "web-context", ctx, "user-content-manager", ucm, NULL));
+    g_object_unref(ctx);
+    g_object_unref(store);
 #else
+    WebKitNetworkSession *session = persistent
+        ? webkit_network_session_new(data_dir, cache_dir)
+        : webkit_network_session_new_ephemeral();
+    webkit_network_session_set_tls_errors_policy(session, WEBKIT_TLS_ERRORS_POLICY_FAIL);
     webkit_user_content_manager_register_script_message_handler(ucm, "bridge", NULL);
     WebKitWebView *webview = WEBKIT_WEB_VIEW(
-        g_object_new(WEBKIT_TYPE_WEB_VIEW, "user-content-manager", ucm, NULL));
+        g_object_new(WEBKIT_TYPE_WEB_VIEW, "network-session", session, "user-content-manager", ucm, NULL));
+    g_object_unref(session);
 #endif
+    g_free(data_dir);
+    g_free(cache_dir);
     webkit_web_view_set_settings(webview, settings);
-
-    /* H11: TLS certificate verification — reject invalid certificates.
-       6.0 moved the policy from the web context to the network session. */
-#ifdef ZYL_USE_WEBKIT2GTK
-    webkit_web_context_set_tls_errors_policy(webkit_web_context_get_default(),
-        WEBKIT_TLS_ERRORS_POLICY_FAIL);
-#else
-    webkit_network_session_set_tls_errors_policy(webkit_network_session_get_default(),
-        WEBKIT_TLS_ERRORS_POLICY_FAIL);
-#endif
 
     /* Inject JS bridge from external file */
     zyl_bridge_inject(WAM_BRIDGE_JS, webview, manifest);
@@ -508,6 +571,11 @@ static void subscribe_service_events(ZylWam *wam) {
 static void on_activate(GApplication *app, gpointer user_data) {
     ZylWam *wam = user_data;
 
+    /* The WAM is a service: it runs until stopped, with or without app
+       windows. App windows are not the application's, so without this hold
+       g_application_run returned right after activation and the WAM exited. */
+    g_application_hold(app);
+
     /* OOM Killer 초기화 — cgroup v2 + 주기적 모니터링 시작 */
     g_oom = zyl_oom_init(&wam->iface);
 
@@ -546,6 +614,11 @@ int main(int argc, char *argv[]) {
     wam.iface.remove_instance  = iface_remove_instance;
     wam.iface.count_instances  = iface_count_instances;
     wam.iface.impl_data        = &wam;
+
+#ifndef ZYL_USE_WEBKIT2GTK
+    /* 6.0: schemes belong to the one web context; storage is per session */
+    register_app_scheme(webkit_web_context_get_default());
+#endif
 
     /* Wire up the WebKitGTK engine */
     wam.engine.create_webview = webkit_create_webview;

@@ -40,6 +40,8 @@ profile zyl-wam /usr/bin/zyl-wam {
 
   # Web app data directories (owner-only)
   owner /data/apps/**               rw,
+  # Each app's container: the WAM keeps the app's WebKit storage there
+  owner /data/appdata/**            rw,
   owner /var/lib/zyl-os/wam/**      rw,
 
   # Cache

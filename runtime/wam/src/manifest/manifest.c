@@ -184,6 +184,11 @@ void zyl_manifest_scan_dir(GHashTable *manifests,
 
         char app_dir[512];
         snprintf(app_dir, sizeof(app_dir), "%s/%s", base_dir, entry->d_name);
+        /* shared/ and system/ hold the OS's code, not apps */
+        char *json = g_build_filename(app_dir, "app.json", NULL);
+        gboolean is_app = g_file_test(json, G_FILE_TEST_EXISTS);
+        g_free(json);
+        if (!is_app) continue;
 
         ZylAppManifest *manifest = zyl_manifest_parse(app_dir);
         if (manifest) {

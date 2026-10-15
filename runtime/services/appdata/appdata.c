@@ -12,6 +12,8 @@
 
 #include <stdbool.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <gio/gio.h>
 #include <glib-unix.h>
 
@@ -62,6 +64,18 @@ static gsize used_bytes(GHashTable *t) {
     return n;
 }
 
+/* The app's container, owned like the root above it (the WAM's), so the WAM
+   can still keep the app's web storage there if this service made it first */
+static bool make_container(const char *app) {
+    char *dir = g_build_filename(ZYL_APPDATA_ROOT, app, NULL);
+    struct stat root;
+    bool ok = g_mkdir_with_parents(dir, 0700) == 0;
+    if (ok && geteuid() == 0 && stat(ZYL_APPDATA_ROOT, &root) == 0)
+        ok = chown(dir, root.st_uid, root.st_gid) == 0;
+    g_free(dir);
+    return ok;
+}
+
 static bool save(const char *app, GHashTable *t) {
     GVariantBuilder b;
     g_variant_builder_init(&b, G_VARIANT_TYPE("a{ss}"));
@@ -71,11 +85,9 @@ static bool save(const char *app, GHashTable *t) {
     while (g_hash_table_iter_next(&it, &k, &v)) g_variant_builder_add(&b, "{ss}", k, v);
     GVariant *all = g_variant_ref_sink(g_variant_builder_end(&b));
     char *path = store_path(app);
-    char *dir = g_path_get_dirname(path);
-    bool ok = g_mkdir_with_parents(dir, 0700) == 0 &&
+    bool ok = make_container(app) &&
               g_file_set_contents_full(path, g_variant_get_data(all), (gssize)g_variant_get_size(all),
                   G_FILE_SET_CONTENTS_CONSISTENT | G_FILE_SET_CONTENTS_DURABLE, 0600, NULL);
-    g_free(dir);
     g_free(path);
     g_variant_unref(all);
     return ok;

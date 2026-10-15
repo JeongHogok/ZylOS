@@ -19,7 +19,12 @@
 #include "dbus/dbus_service.h"
 
 #define WAM_APP_DIR     "/usr/share/zyl-os/apps"
-#define WAM_USER_DIR    "/home/user/.zyl-os/apps"
+#define WAM_SHARED_DIR  WAM_APP_DIR "/shared"   /* the OS code every app includes */
+/* Apps the user installed (the store's install directory, zyl-wam.service) */
+#define WAM_USER_DIR    "/data/apps"
+/* One container per app: its private data, files and WebKit storage —
+   deleting the app deletes the container */
+#define WAM_CONTAINERS  "/data/appdata"
 #define WAM_BRIDGE_JS   "/usr/share/zyl-os/wam/bridge.js"
 
 /* ─── WAM server ─── */
