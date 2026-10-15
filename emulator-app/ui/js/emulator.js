@@ -122,7 +122,8 @@
     maxBytes: 64 * 1024                 /* UI state — drafts, scroll, tab — not data */
   });
 
-  function launchApp(appId) {
+  /* intent: what the OS resolved for this app to handle (apps/system/intent.js) */
+  function launchApp(appId, intent) {
     var app = ZylAppRegistry.getApp(appId);
     if (!app) {
       syslog('App not found: ' + appId, 'warn');
@@ -194,6 +195,8 @@
             broadcastToCurrentApp('system.setLocale', { locale: savedLocale });
           }
           broadcastToCurrentApp('system.setTimeZone', { timeZone: _currentTimeZone });
+
+          if (intent) broadcastToCurrentApp('intent', intent);
 
           /* Hand back the state saved when the user left this app (one-shot:
              leaving again saves it again) */
@@ -764,6 +767,14 @@
     ? window.location.origin
     : '*';
 
+  /* The OS decided who handles an intent; the container launches and delivers */
+  function runIntent(d) {
+    if (!d) return;
+    if (d.launch) launchApp(d.launch, d.intent);
+    else if (d.choose) broadcastToCurrentApp('intent.choose', d.choose);
+    else broadcastToCurrentApp('intent.none', {});
+  }
+
   function broadcastToCurrentApp(type, data) {
     try {
       appFrame.contentWindow.postMessage(
@@ -918,9 +929,22 @@
       } catch (err) { /* iframe not ready */ }
     }
 
+    /* The virtual device's own status bar shows its radios as switched */
+    function showRadio(data) {
+      if (msg.method !== 'setEnabled' || data !== true) return;
+      var on = !!(msg.params && msg.params.enabled);
+      if (msg.service === 'wifi') {
+        var wifiIcon = document.getElementById('sb-wifi');
+        if (wifiIcon) wifiIcon.style.opacity = on ? '0.85' : '0.15';
+      } else if (msg.service === 'bluetooth') {
+        var btIcon = document.getElementById('sb-bt');
+        if (btIcon) btIcon.classList.toggle('hidden', !on);
+      }
+    }
+
     /* Promise 또는 동기 데이터 모두 처리 */
     if (result && typeof result.then === 'function') {
-      result.then(function (data) { sendResponse(data); })
+      result.then(function (data) { showRadio(data); sendResponse(data); })
             .catch(function () { sendResponse(null); });
     } else {
       sendResponse(result);
@@ -958,20 +982,6 @@
   };
 
   function applySettingSideEffect(category, key, value) {
-    /* ── WiFi: statusbar icon ── */
-    if (category === 'wifi' && key === 'enabled') {
-      var wifiIcon = document.getElementById('sb-wifi');
-      if (wifiIcon) wifiIcon.style.opacity = value ? '0.85' : '0.15';
-      syslog('WiFi ' + (value ? 'ON' : 'OFF'), 'sys');
-    }
-
-    /* ── Bluetooth: statusbar icon visibility ── */
-    if (category === 'bluetooth' && key === 'enabled') {
-      var btIcon = document.getElementById('sb-bt');
-      if (btIcon) btIcon.classList.toggle('hidden', !value);
-      syslog('Bluetooth ' + (value ? 'ON' : 'OFF'), 'sys');
-    }
-
     /* ── 밝기: CSS filter로 화면 밝기 시뮬레이션 ── */
     if (category === 'display' && key === 'brightness') {
       var pct = parseInt(value, 10);
@@ -1061,6 +1071,12 @@
           break;
         case 'app.close':
           if (state.currentApp && !isLocked()) closeApp(state.currentApp);
+          break;
+        case 'intent.start':
+          if (!isLocked()) runIntent(ZylIntent.start(state.currentApp, msg.intent));
+          break;
+        case 'intent.chosen':
+          if (!isLocked()) runIntent(ZylIntent.choose(state.currentApp, msg.token, msg.appId));
           break;
         case 'app.minimize':
           goHome();

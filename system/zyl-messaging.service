@@ -1,0 +1,27 @@
+[Unit]
+Description=Zyl OS Messaging Service (text message threads)
+After=local-fs.target zyl-telephony.service
+Wants=zyl-telephony.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/zyl-messaging
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=5
+
+# Only the message store; sending goes through the telephony service
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/data/messages
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+PrivateNetwork=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+
+[Install]
+WantedBy=zyl-os.target

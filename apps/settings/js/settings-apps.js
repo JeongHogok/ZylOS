@@ -168,8 +168,10 @@
   core.handlers.apps = {
     onServiceResponse: function (method, data) {
       if (method === 'getInstalled' && data) {
-        installedApps = data;
-        renderAppList(data);
+        /* System UI (lock screen, status bar, setup, home, keyboard) is part
+           of the OS, not an app to manage here */
+        installedApps = data.filter(function (app) { return app.launcher !== false; });
+        renderAppList(installedApps);
       }
     }
   };

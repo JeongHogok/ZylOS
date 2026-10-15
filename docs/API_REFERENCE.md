@@ -145,7 +145,6 @@ Stream 종류: `media`, `notif`, `alarm`, `ringtone`, `system`
 | `telephony` | telephony |
 | `bluetooth` | bluetooth |
 | `audio` | audio |
-| `shell` | terminal |
 | `credential` | credential |
 | `system` | settings |
 

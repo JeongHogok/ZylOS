@@ -107,19 +107,83 @@
     var btn = qsBtns[key];
     if (!btn) return;
     btn.addEventListener('click', function () {
+      if (btn.disabled) return;
       qsState[key] = !qsState[key];
       btn.classList.toggle('active', qsState[key]);
-      sendQsSetting(key, qsState[key]);
+      if (RADIOS[key]) setRadio(key, qsState[key]);
+      else if (SERVICE_TILES[key]) applyTile(key, qsState[key]);
+      else sendQsSetting(key, qsState[key]);
     });
+  });
+
+  /* ─── Radios belong to their services (wifi, bluetooth), not to settings:
+     the switch is asked for, the state is read back from the service ─── */
+  var RADIOS = { wifi: 'wifi', bt: 'bluetooth' };
+
+  function showRadio(key, on) {
+    qsState[key] = on;
+    if (qsBtns[key]) qsBtns[key].classList.toggle('active', on);
+    var icon = document.getElementById(key === 'wifi' ? 'sb-wifi' : 'sb-bt');
+    if (icon) icon.style.opacity = on ? '0.85' : '0.15';
+  }
+
+  function refreshRadio(key) {
+    ZylBridge.requestService(RADIOS[key], 'getState').then(function (st) {
+      if (st) showRadio(key, !!st.enabled);
+    }, function () {});
+  }
+
+  function setRadio(key, on) {
+    ZylBridge.requestService(RADIOS[key], 'setEnabled', { enabled: on }).then(function () {
+      refreshRadio(key);
+    }, function () { refreshRadio(key); });
+  }
+
+  /* Tiles a service carries out; the setting keeps the choice where one is kept */
+  var SERVICE_TILES = {
+    flashlight: { service: 'camera', method: 'setTorch' },
+    rotate:     { service: 'display', method: 'setAutoRotate', category: 'display', key: 'autoRotate' },
+    silent:     { service: 'audio', method: 'setSilentMode', category: 'sound', key: 'silentMode' }
+  };
+
+  function applyTile(key, on) {
+    var t = SERVICE_TILES[key];
+    sendServiceRequest(t.service, t.method, { enabled: on });
+    if (t.category) sendServiceRequest('settings', 'update', { category: t.category, key: t.key, value: on });
+  }
+
+  function disableTile(btn) {
+    if (!btn) return;
+    btn.disabled = true;
+    btn.setAttribute('aria-disabled', 'true');
+    btn.classList.remove('active');
+  }
+
+  /* What this device has: no flash LED, no backlight → the control stays, disabled */
+  ZylBridge.requestService('camera', 'getCapabilities').then(function (caps) {
+    if (!caps || !caps.torch) disableTile(qsBtns.flashlight);
+  }, function () { disableTile(qsBtns.flashlight); });
+  ZylBridge.requestService('power', 'getCapabilities').then(function (caps) {
+    if (caps && caps.backlight === false && brightnessEl) {
+      brightnessEl.disabled = true;
+      brightnessEl.setAttribute('aria-disabled', 'true');
+    }
+  }, function () {});
+
+  /* No radio on this device: the button stays, disabled */
+  Object.keys(RADIOS).forEach(function (key) {
+    ZylBridge.requestService(RADIOS[key], 'getCapabilities').then(function (caps) {
+      if (caps && caps.present) { refreshRadio(key); return; }
+      if (qsBtns[key]) {
+        qsBtns[key].disabled = true;
+        qsBtns[key].setAttribute('aria-disabled', 'true');
+      }
+      showRadio(key, false);
+    }, function () {});
   });
 
   function sendQsSetting(key, value) {
     var categoryMap = {
-      wifi:       { category: 'wifi',         key: 'enabled' },
-      bt:         { category: 'bluetooth',    key: 'enabled' },
-      silent:     { category: 'sound',        key: 'silent' },
-      rotate:     { category: 'display',      key: 'autoRotate' },
-      flashlight: { category: 'display',      key: 'flashlight' },
       airplane:   { category: 'connectivity', key: 'airplaneMode' },
       dnd:        { category: 'notification', key: 'dndEnabled' },
       location:   { category: 'location',     key: 'enabled' }
@@ -127,16 +191,11 @@
     var mapping = categoryMap[key];
     if (!mapping) return;
 
-    /* Airplane mode: also disable wifi and bluetooth */
-    if (key === 'airplane') {
-      if (value) {
-        qsState.wifi = false;
-        qsState.bt = false;
-        if (qsBtns.wifi) qsBtns.wifi.classList.remove('active');
-        if (qsBtns.bt) qsBtns.bt.classList.remove('active');
-        sendServiceRequest('settings', 'update', { category: 'wifi', key: 'enabled', value: false });
-        sendServiceRequest('settings', 'update', { category: 'bluetooth', key: 'enabled', value: false });
-      }
+    /* Airplane mode: the radios go off */
+    if (key === 'airplane' && value) {
+      Object.keys(RADIOS).forEach(function (r) {
+        if (qsBtns[r] && !qsBtns[r].disabled) setRadio(r, false);
+      });
     }
 
     /* DND mode: also call notification service */
@@ -157,6 +216,8 @@
   if (brightnessEl) {
     brightnessEl.addEventListener('input', function () {
       var pct = parseInt(brightnessEl.value, 10);
+      /* The power service drives the backlight; the setting keeps the level */
+      sendServiceRequest('power', 'setBrightness', { percent: pct });
       sendServiceRequest('settings', 'update', {
         category: 'display',
         key: 'brightness',
@@ -177,6 +238,8 @@
   function toggleDrawer() {
     isDrawerOpen = !isDrawerOpen;
     if (isDrawerOpen) {
+      /* Radios may have been switched elsewhere (Settings): show them as they are */
+      Object.keys(RADIOS).forEach(function (r) { if (qsBtns[r] && !qsBtns[r].disabled) refreshRadio(r); });
       drawer.classList.remove('hidden');
       drawer.offsetHeight; /* force reflow for animation */
       drawer.classList.add('visible');
@@ -353,20 +416,6 @@
     /* FIX: Normalize category — may arrive as data.category or data.params.category
      *       depending on which path triggered settings.changed. Coerce to string. */
     var category = data.category || (data.params && data.params.category) || '';
-    /* WiFi state */
-    if (category === 'wifi' && data.key === 'enabled') {
-      qsState.wifi = !!data.value;
-      if (qsBtns.wifi) qsBtns.wifi.classList.toggle('active', qsState.wifi);
-      var wifiIcon = document.getElementById('sb-wifi');
-      if (wifiIcon) wifiIcon.style.opacity = qsState.wifi ? '0.85' : '0.15';
-    }
-    /* Bluetooth state */
-    if (category === 'bluetooth' && data.key === 'enabled') {
-      qsState.bt = !!data.value;
-      if (qsBtns.bt) qsBtns.bt.classList.toggle('active', qsState.bt);
-      var btIcon = document.getElementById('sb-bt');
-      if (btIcon) btIcon.style.opacity = qsState.bt ? '0.85' : '0.15';
-    }
     /* Brightness */
     if (category === 'display' && data.key === 'brightness') {
       if (brightnessEl) brightnessEl.value = parseInt(data.value, 10) || 80;
@@ -376,6 +425,9 @@
   function handleServiceResponse(msg) {
     /* Battery level from power service */
     if (msg.service === 'power' && msg.method === 'getState' && msg.data) {
+      /* No battery fitted (a development board): no battery to show */
+      var batteryBox = document.getElementById('sb-battery');
+      if (batteryBox) batteryBox.classList.toggle('hidden', msg.data.batteryPresent === false);
       if (batteryPct && msg.data.batteryLevel !== undefined) {
         batteryPct.textContent = msg.data.batteryLevel + '%';
       }
@@ -384,21 +436,6 @@
     /* Sync initial QS toggle states from settings response */
     if (msg.service === 'settings' && msg.data) {
       var d = msg.data;
-      if (d.enabled !== undefined) {
-        /* Determine which category based on request context */
-        if (d.category === 'wifi' || msg.params && msg.params.category === 'wifi') {
-          qsState.wifi = !!d.enabled;
-          if (qsBtns.wifi) qsBtns.wifi.classList.toggle('active', qsState.wifi);
-          var wi = document.getElementById('sb-wifi');
-          if (wi) wi.style.opacity = qsState.wifi ? '0.85' : '0.15';
-        }
-        if (d.category === 'bluetooth' || msg.params && msg.params.category === 'bluetooth') {
-          qsState.bt = !!d.enabled;
-          if (qsBtns.bt) qsBtns.bt.classList.toggle('active', qsState.bt);
-          var bi = document.getElementById('sb-bt');
-          if (bi) bi.style.opacity = qsState.bt ? '0.85' : '0.15';
-        }
-      }
       if (d.brightness !== undefined) {
         if (brightnessEl) brightnessEl.value = parseInt(d.brightness, 10) || 80;
       }
@@ -408,8 +445,6 @@
   /* ─── Request initial state ─── */
   /* FIX: Request all QS-relevant categories on init so UI reflects actual state
    *       before any user interaction rather than relying on hardcoded qsState defaults. */
-  sendServiceRequest('settings', 'get', { category: 'wifi' });
-  sendServiceRequest('settings', 'get', { category: 'bluetooth' });
   sendServiceRequest('settings', 'get', { category: 'display' });
   sendServiceRequest('settings', 'get', { category: 'sound' });
   sendServiceRequest('settings', 'get', { category: 'location' });

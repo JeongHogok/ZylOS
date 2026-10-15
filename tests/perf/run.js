@@ -74,7 +74,10 @@ async function launchChrome() {
     /* Ubuntu 24.04 restricts unprivileged user namespaces, which Chrome's
        sandbox needs. Only our own repository is loaded, so CI drops it. */
     ...(process.env.CI ? ['--no-sandbox'] : []),
-  ], { stdio: ['ignore', 'ignore', 'pipe'] });
+    /* No crash reporter: it is a separate process that outlives the browser
+       and keeps writing into the profile */
+    '--disable-crash-reporter', '--disable-breakpad',
+  ], { stdio: ['ignore', 'ignore', 'pipe'], detached: true });
   /* Keep Chrome's last words: a launch failure on CI was otherwise just ENOENT */
   let stderr = '';
   let exited = null;
@@ -256,12 +259,19 @@ async function main() {
     }
   } finally {
     browser.close();
-    /* Chrome keeps writing to its profile while shutting down — wait for it */
+    /* Chrome keeps writing to its profile while shutting down, and so do its
+       helper processes after the browser itself has gone: end the whole
+       process group (detached above), then wait for the browser */
     const exited = new Promise((r) => chrome.proc.once('exit', r));
-    chrome.proc.kill();
+    try { process.kill(-chrome.proc.pid, 'SIGTERM'); } catch (e) { chrome.proc.kill(); }
     await Promise.race([exited, sleep(5000)]);
     srv.close();
-    fs.rmSync(chrome.profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    /* A temp directory left behind is not a measurement failure */
+    try {
+      fs.rmSync(chrome.profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    } catch (e) {
+      console.warn(`warning: could not remove ${chrome.profile}: ${e.code}`);
+    }
   }
 
   if (UPDATE) {

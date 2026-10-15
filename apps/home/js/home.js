@@ -30,7 +30,8 @@
 
   /* ─── SVG Icon Helper ─── */
   /* Icons are loaded from app.iconSvg (sourced from each app's app.json).
-     OS policy (default dock, hidden-from-grid, undeletable) comes from ZylAppRegistry. */
+     What shows here and what can be deleted come with the app list (its
+     launcher and system fields); the default dock is the home.dock setting. */
   var _FALLBACK_ICON = '<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/></svg>';
 
   function getIconSvg(app) {
@@ -40,35 +41,16 @@
     return _FALLBACK_ICON;
   }
 
-  /* ─── Registry Access ─── */
-  /* Home runs inside an iframe; ZylAppRegistry lives in the parent (emulator) window.
-     Access via window.parent for same-origin iframe context. */
-  function _registry() {
-    try {
-      if (typeof window.parent !== 'undefined' && window.parent.ZylAppRegistry) return window.parent.ZylAppRegistry;
-    } catch (e) { /* cross-origin guard */ }
-    return null;
-  }
-
   /* ─── Data Model ─── */
-  var reg = _registry();
-  var dockApps = (reg && reg.getDefaultDock)
-    ? reg.getDefaultDock()
-    : ['com.zylos.phone', 'com.zylos.contacts', 'com.zylos.messages', 'com.zylos.settings'];
+  var dockApps = [];                 /* home.dock — the OS default until the user changes it */
   var defaultApps = [];
   var gridOrder = []; // saved order of grid app IDs
   var appListReceived = false;
   var dockSettingsLoaded = false;
 
-  /* OS policy queries — delegated to ZylAppRegistry (apps/system/app-registry.js).
-     Home screen does not define these policies; it only consumes them. */
-  function isHiddenFromGrid(appId) {
-    var r = _registry();
-    return r ? r.isHiddenFromGrid(appId) : false;
-  }
   function isUndeletable(appId) {
-    var r = _registry();
-    return r ? r.isUndeletable(appId) : true;
+    var app = findApp(appId);
+    return !app || app.system;       /* unknown: keep it, the safe side */
   }
 
   /* Wallpaper gradients */
@@ -201,12 +183,9 @@
       if (msg.type === 'service.response' && msg.service === 'apps' && msg.method === 'getInstalled' && msg.data) {
         appListReceived = true;
         defaultApps = msg.data.filter(function (app) {
-          if (isHiddenFromGrid(app.id)) return false;
-          /* Form-factor policy is consumed here, not via the registry: the
-             registry lives in the parent context (window.parent), which does
-             not know this device's class, and on a real device each app runs in
-             its own WebView with no shared parent at all. The app list already
-             carries formFactors from app.json. */
+          /* System UI is not launched from here */
+          if (app.launcher === false) return false;
+          /* Form-factor policy: the app list carries formFactors from app.json */
           if (typeof ZylFormFactor !== 'undefined' &&
               !ZylFormFactor.supportsApp(app.formFactors)) return false;
           return true;

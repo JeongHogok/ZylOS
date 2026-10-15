@@ -1,294 +1,186 @@
 /* ──────────────────────────────────────────────────────────
- * [Clean Architecture] Data Layer - Implementation
+ * [Clean Architecture] Infrastructure Layer - HAL (Linux)
  *
- * 역할: Bluetooth HAL Linux 구현체 — BlueZ D-Bus API
- * 수행범위: BT 켜기/끄기, 스캔, 페어링, 연결/해제, paired 목록
- * 의존방향: hal.h (Domain), gio/gio.h (Platform)
- * SOLID: DIP — hal.h 인터페이스 구현, SRP — BT HAL만 담당
+ * 역할: Bluetooth HAL Linux 구현 — BlueZ
+ * 수행범위: 어댑터 유무(ObjectManager 로 첫 Adapter1 — hci0 고정 아님), 전원,
+ *           검색 시작·중지, 기기 목록(이름 없으면 주소), 페어링·연결·해제·삭제
+ * 의존방향: hal.h (Domain), gio (system bus)
+ * SOLID: SRP — 블루투스 장치 접근만. 목록 표시 규칙은 서비스·앱 몫
  * ────────────────────────────────────────────────────────── */
 
 #include "hal.h"
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <gio/gio.h>
 
-#define BLUEZ_BUS           "org.bluez"
-#define BLUEZ_ADAPTER_IFACE "org.bluez.Adapter1"
-#define BLUEZ_DEVICE_IFACE  "org.bluez.Device1"
-#define DBUS_OM_IFACE       "org.freedesktop.DBus.ObjectManager"
-#define DBUS_PROP_IFACE     "org.freedesktop.DBus.Properties"
+#define BLUEZ          "org.bluez"
+#define ADAPTER_IFACE  "org.bluez.Adapter1"
+#define DEVICE_IFACE   "org.bluez.Device1"
+#define PROPS_IFACE    "org.freedesktop.DBus.Properties"
 
-static GDBusConnection *g_conn = NULL;
-static char g_adapter_path[128] = {0};
-
-/* ─── Helper ─── */
-static GVariant *dbus_get_prop(const char *path, const char *iface, const char *prop) {
-    if (!g_conn) return NULL;
-    GVariant *result = g_dbus_connection_call_sync(g_conn, BLUEZ_BUS, path,
-        DBUS_PROP_IFACE, "Get", g_variant_new("(ss)", iface, prop),
-        G_VARIANT_TYPE("(v)"), G_DBUS_CALL_FLAGS_NONE, 3000, NULL, NULL);
-    if (!result) return NULL;
-    GVariant *val = NULL;
-    g_variant_get(result, "(v)", &val);
-    g_variant_unref(result);
-    return val;
+static GDBusConnection *bus(void) {
+    static GDBusConnection *conn;
+    if (!conn) conn = g_bus_get_sync(G_BUS_TYPE_SYSTEM, NULL, NULL);
+    return conn;
 }
 
-static GVariant *dbus_call(const char *path, const char *iface,
-                            const char *method, GVariant *params) {
-    if (!g_conn) return NULL;
-    return g_dbus_connection_call_sync(g_conn, BLUEZ_BUS, path, iface, method,
-        params, NULL, G_DBUS_CALL_FLAGS_NONE, 15000, NULL, NULL);
+static GVariant *managed_objects(void) {
+    if (!bus()) return NULL;
+    return g_dbus_connection_call_sync(bus(), BLUEZ, "/", "org.freedesktop.DBus.ObjectManager",
+        "GetManagedObjects", NULL, G_VARIANT_TYPE("(a{oa{sa{sv}}})"),
+        G_DBUS_CALL_FLAGS_NONE, 5000, NULL, NULL);
 }
 
-/* ─── Find default adapter (hci0) ─── */
-static int find_adapter(void) {
-    GVariant *result = g_dbus_connection_call_sync(g_conn, BLUEZ_BUS, "/",
-        DBUS_OM_IFACE, "GetManagedObjects", NULL,
-        G_VARIANT_TYPE("(a{oa{sa{sv}}})"), G_DBUS_CALL_FLAGS_NONE,
-        5000, NULL, NULL);
-    if (!result) return -1;
-
-    GVariantIter *obj_iter = NULL;
-    g_variant_get(result, "(a{oa{sa{sv}}})", &obj_iter);
-
-    const gchar *obj_path = NULL;
-    GVariant *ifaces = NULL;
-    while (g_variant_iter_next(obj_iter, "{&o@a{sa{sv}}}", &obj_path, &ifaces)) {
-        if (g_variant_lookup(ifaces, BLUEZ_ADAPTER_IFACE, "a{sv}", NULL)) {
-            snprintf(g_adapter_path, sizeof(g_adapter_path), "%s", obj_path);
-            g_variant_unref(ifaces);
-            break;
+/* The first adapter BlueZ knows; false when there is none */
+static bool adapter_path(char *out, size_t len) {
+    GVariant *r = managed_objects();
+    if (!r) return false;
+    bool found = false;
+    GVariantIter *objs;
+    const gchar *path;
+    GVariant *ifaces;
+    g_variant_get(r, "(a{oa{sa{sv}}})", &objs);
+    while (!found && g_variant_iter_next(objs, "{&o@a{sa{sv}}}", &path, &ifaces)) {
+        GVariant *adapter = g_variant_lookup_value(ifaces, ADAPTER_IFACE, NULL);
+        if (adapter) {
+            g_strlcpy(out, path, len);
+            found = true;
+            g_variant_unref(adapter);
         }
         g_variant_unref(ifaces);
     }
-    g_variant_iter_free(obj_iter);
-    g_variant_unref(result);
-    return (g_adapter_path[0] != '\0') ? 0 : -1;
+    g_variant_iter_free(objs);
+    g_variant_unref(r);
+    return found;
 }
 
-/* ─── Parse devices from ObjectManager ─── */
-static int parse_devices(ZylBtDevice **out_list, int *out_count, bool paired_only) {
-    GVariant *result = g_dbus_connection_call_sync(g_conn, BLUEZ_BUS, "/",
-        DBUS_OM_IFACE, "GetManagedObjects", NULL,
-        G_VARIANT_TYPE("(a{oa{sa{sv}}})"), G_DBUS_CALL_FLAGS_NONE,
-        5000, NULL, NULL);
-    if (!result) { *out_list = NULL; *out_count = 0; return -1; }
-
-    /* Count devices first */
-    GVariantIter *obj_iter = NULL;
-    g_variant_get(result, "(a{oa{sa{sv}}})", &obj_iter);
-
-    int capacity = 32;
-    ZylBtDevice *devs = calloc(capacity, sizeof(ZylBtDevice));
-    if (!devs) { g_variant_iter_free(obj_iter); g_variant_unref(result); return -1; }
-
-    int count = 0;
-    const gchar *obj_path = NULL;
-    GVariant *ifaces = NULL;
-    while (g_variant_iter_next(obj_iter, "{&o@a{sa{sv}}}", &obj_path, &ifaces)) {
-        GVariant *dev_props = g_variant_lookup_value(ifaces, BLUEZ_DEVICE_IFACE,
-                                                      G_VARIANT_TYPE("a{sv}"));
-        if (dev_props) {
-            ZylBtDevice *d = &devs[count];
-
-            GVariant *v;
-            v = g_variant_lookup_value(dev_props, "Name", G_VARIANT_TYPE_STRING);
-            if (v) { snprintf(d->name, sizeof(d->name), "%s", g_variant_get_string(v, NULL)); g_variant_unref(v); }
-
-            v = g_variant_lookup_value(dev_props, "Address", G_VARIANT_TYPE_STRING);
-            if (v) { snprintf(d->address, sizeof(d->address), "%s", g_variant_get_string(v, NULL)); g_variant_unref(v); }
-
-            v = g_variant_lookup_value(dev_props, "Paired", G_VARIANT_TYPE_BOOLEAN);
-            if (v) { d->paired = g_variant_get_boolean(v); g_variant_unref(v); }
-
-            v = g_variant_lookup_value(dev_props, "Connected", G_VARIANT_TYPE_BOOLEAN);
-            if (v) { d->connected = g_variant_get_boolean(v); g_variant_unref(v); }
-
-            v = g_variant_lookup_value(dev_props, "Icon", G_VARIANT_TYPE_STRING);
-            if (v) { snprintf(d->type, sizeof(d->type), "%s", g_variant_get_string(v, NULL)); g_variant_unref(v); }
-
-            d->battery_percent = -1;
-            v = g_variant_lookup_value(dev_props, "Percentage", G_VARIANT_TYPE_BYTE);
-            if (v) { d->battery_percent = (int)g_variant_get_byte(v); g_variant_unref(v); }
-
-            if (!paired_only || d->paired) {
-                count++;
-                if (count >= capacity) {
-                    capacity *= 2;
-                    ZylBtDevice *tmp = realloc(devs, capacity * sizeof(ZylBtDevice));
-                    if (tmp) devs = tmp; else break;
-                }
-            }
-            g_variant_unref(dev_props);
-        }
-        g_variant_unref(ifaces);
-    }
-    g_variant_iter_free(obj_iter);
-    g_variant_unref(result);
-
-    *out_list = devs;
-    *out_count = count;
-    return 0;
-}
-
-/* ─── HAL implementation ─── */
-static int bt_init(void) {
+static bool call(const char *path, const char *iface, const char *method, GVariant *args, int timeout_ms) {
     GError *err = NULL;
-    g_conn = g_bus_get_sync(G_BUS_TYPE_SYSTEM, NULL, &err);
-    if (!g_conn) { if (err) g_error_free(err); return -1; }
-    return find_adapter();
+    GVariant *r = bus() ? g_dbus_connection_call_sync(bus(), BLUEZ, path, iface, method, args, NULL,
+                                                       G_DBUS_CALL_FLAGS_NONE, timeout_ms, NULL, &err)
+                        : NULL;
+    if (err) {
+        g_message("[BT HAL] %s.%s: %s", iface, method, err->message);
+        g_error_free(err);
+    }
+    if (!r) return false;
+    g_variant_unref(r);
+    return true;
 }
 
-static void bt_shutdown(void) {
-    if (g_conn) { g_object_unref(g_conn); g_conn = NULL; }
-    g_adapter_path[0] = '\0';
+static bool bt_present(void) {
+    char a[128];
+    return adapter_path(a, sizeof(a));
 }
 
-static int bt_set_enabled(bool enabled) {
-    if (!g_adapter_path[0]) return -1;
-    GVariant *result = g_dbus_connection_call_sync(g_conn, BLUEZ_BUS, g_adapter_path,
-        DBUS_PROP_IFACE, "Set",
-        g_variant_new("(ssv)", BLUEZ_ADAPTER_IFACE, "Powered", g_variant_new_boolean(enabled)),
-        NULL, G_DBUS_CALL_FLAGS_NONE, 3000, NULL, NULL);
-    if (result) { g_variant_unref(result); return 0; }
-    return -1;
+static bool bt_get_enabled(void) {
+    char a[128];
+    if (!adapter_path(a, sizeof(a))) return false;
+    GVariant *r = g_dbus_connection_call_sync(bus(), BLUEZ, a, PROPS_IFACE, "Get",
+        g_variant_new("(ss)", ADAPTER_IFACE, "Powered"), G_VARIANT_TYPE("(v)"),
+        G_DBUS_CALL_FLAGS_NONE, 3000, NULL, NULL);
+    if (!r) return false;
+    GVariant *v = NULL;
+    g_variant_get(r, "(v)", &v);
+    bool on = g_variant_is_of_type(v, G_VARIANT_TYPE_BOOLEAN) && g_variant_get_boolean(v);
+    g_variant_unref(v);
+    g_variant_unref(r);
+    return on;
 }
 
-static int bt_get_state(ZylBtState *out) {
-    if (!out || !g_adapter_path[0]) return -1;
-    memset(out, 0, sizeof(*out));
-
-    GVariant *v = dbus_get_prop(g_adapter_path, BLUEZ_ADAPTER_IFACE, "Powered");
-    if (v) { out->enabled = g_variant_get_boolean(v); g_variant_unref(v); }
-
-    v = dbus_get_prop(g_adapter_path, BLUEZ_ADAPTER_IFACE, "Alias");
-    if (v) { snprintf(out->device_name, sizeof(out->device_name), "%s",
-                       g_variant_get_string(v, NULL)); g_variant_unref(v); }
-
-    v = dbus_get_prop(g_adapter_path, BLUEZ_ADAPTER_IFACE, "Discoverable");
-    if (v) { out->discoverable = g_variant_get_boolean(v); g_variant_unref(v); }
-
-    return 0;
+static bool bt_set_enabled(bool on) {
+    char a[128];
+    return adapter_path(a, sizeof(a)) &&
+           call(a, PROPS_IFACE, "Set", g_variant_new("(ssv)", ADAPTER_IFACE, "Powered",
+                                                     g_variant_new_boolean(on)), 5000);
 }
 
-static int bt_scan(ZylBtDevice **out_list, int *out_count) {
-    if (!g_adapter_path[0] || !out_list || !out_count) return -1;
+static bool bt_start_scan(void) {
+    char a[128];
+    return adapter_path(a, sizeof(a)) && call(a, ADAPTER_IFACE, "StartDiscovery", NULL, 5000);
+}
 
-    /*
-     * Async-friendly scan window:
-     * - Start discovery
-     * - Pump GLib main context in short intervals instead of a monolithic sleep
-     *   so BlueZ signals and D-Bus dispatch are not starved.
-     * - Stop discovery after ~5s and then enumerate managed objects.
-     */
-    GVariant *r;
+static bool bt_stop_scan(void) {
+    char a[128];
+    return adapter_path(a, sizeof(a)) && call(a, ADAPTER_IFACE, "StopDiscovery", NULL, 5000);
+}
 
-    /* Best-effort discovery filter to reduce duplicates / speed convergence */
-    GVariantBuilder filter;
-    g_variant_builder_init(&filter, G_VARIANT_TYPE("a{sv}"));
-    g_variant_builder_add(&filter, "{sv}", "Transport", g_variant_new_string("auto"));
-    r = dbus_call(g_adapter_path, BLUEZ_ADAPTER_IFACE, "SetDiscoveryFilter",
-                  g_variant_new("(a{sv})", &filter));
-    if (r) g_variant_unref(r);
-
-    r = dbus_call(g_adapter_path, BLUEZ_ADAPTER_IFACE, "StartDiscovery", NULL);
-    if (r) g_variant_unref(r);
-
-    gint64 deadline = g_get_monotonic_time() + 5 * G_USEC_PER_SEC;
-    while (g_get_monotonic_time() < deadline) {
-        /* Dispatch pending D-Bus / GLib work instead of hard-blocking. */
-        while (g_main_context_iteration(NULL, FALSE)) {
-            /* drain */
+static int bt_list_devices(ZylBtDevice *out, int max) {
+    GVariant *r = managed_objects();
+    if (!r) return -1;
+    int n = 0;
+    GVariantIter *objs;
+    const gchar *path;
+    GVariant *ifaces;
+    g_variant_get(r, "(a{oa{sa{sv}}})", &objs);
+    while (n < max && g_variant_iter_next(objs, "{&o@a{sa{sv}}}", &path, &ifaces)) {
+        GVariant *props = g_variant_lookup_value(ifaces, DEVICE_IFACE, G_VARIANT_TYPE("a{sv}"));
+        if (props) {
+            ZylBtDevice *d = &out[n];
+            memset(d, 0, sizeof(*d));
+            const gchar *s = NULL;
+            gboolean b = FALSE;
+            gint16 rssi = 0;
+            if (g_variant_lookup(props, "Address", "&s", &s)) g_strlcpy(d->address, s, sizeof(d->address));
+            if (g_variant_lookup(props, "Name", "&s", &s)) g_strlcpy(d->name, s, sizeof(d->name));
+            else g_strlcpy(d->name, d->address, sizeof(d->name));
+            if (g_variant_lookup(props, "Icon", "&s", &s)) g_strlcpy(d->type, s, sizeof(d->type));
+            if (g_variant_lookup(props, "Paired", "b", &b)) d->paired = b;
+            if (g_variant_lookup(props, "Connected", "b", &b)) d->connected = b;
+            if (g_variant_lookup(props, "RSSI", "n", &rssi)) d->rssi = rssi;
+            if (d->address[0]) n++;
+            g_variant_unref(props);
         }
-        g_usleep(100000); /* 100 ms slices */
+        g_variant_unref(ifaces);
     }
-
-    r = dbus_call(g_adapter_path, BLUEZ_ADAPTER_IFACE, "StopDiscovery", NULL);
-    if (r) g_variant_unref(r);
-
-    return parse_devices(out_list, out_count, false);
+    g_variant_iter_free(objs);
+    g_variant_unref(r);
+    return n;
 }
 
-static int bt_pair(const char *address) {
-    if (!address) return -1;
-    /* BlueZ device path: /org/bluez/hci0/dev_XX_XX_XX_XX_XX_XX */
-    char dev_path[256];
-    char addr_under[18];
-    snprintf(addr_under, sizeof(addr_under), "%s", address);
-    for (int i = 0; addr_under[i]; i++) {
-        if (addr_under[i] == ':') addr_under[i] = '_';
-    }
-    snprintf(dev_path, sizeof(dev_path), "%s/dev_%s", g_adapter_path, addr_under);
-
-    GVariant *r = dbus_call(dev_path, BLUEZ_DEVICE_IFACE, "Pair", NULL);
-    if (r) { g_variant_unref(r); return 0; }
-    return -1;
+/* "AA:BB:CC:DD:EE:FF" → "<adapter>/dev_AA_BB_CC_DD_EE_FF" */
+static bool device_path(const char *address, char *out, size_t len) {
+    char a[128];
+    if (!address || strlen(address) != 17 || !adapter_path(a, sizeof(a))) return false;
+    snprintf(out, len, "%s/dev_%s", a, address);
+    for (char *p = out + strlen(a) + 5; *p; p++) if (*p == ':') *p = '_';
+    return true;
 }
 
-static int bt_unpair(const char *address) {
-    if (!address || !g_adapter_path[0]) return -1;
-    char addr_under[18];
-    snprintf(addr_under, sizeof(addr_under), "%s", address);
-    for (int i = 0; addr_under[i]; i++) {
-        if (addr_under[i] == ':') addr_under[i] = '_';
-    }
-    char dev_path[256];
-    snprintf(dev_path, sizeof(dev_path), "%s/dev_%s", g_adapter_path, addr_under);
-
-    GVariant *r = dbus_call(g_adapter_path, BLUEZ_ADAPTER_IFACE, "RemoveDevice",
-                             g_variant_new("(o)", dev_path));
-    if (r) { g_variant_unref(r); return 0; }
-    return -1;
+static bool bt_pair(const char *address) {
+    char p[192];
+    /* The other device may ask its user to confirm */
+    return device_path(address, p, sizeof(p)) && call(p, DEVICE_IFACE, "Pair", NULL, 30000);
 }
 
-static int bt_connect_device(const char *address) {
-    if (!address) return -1;
-    char addr_under[18];
-    snprintf(addr_under, sizeof(addr_under), "%s", address);
-    for (int i = 0; addr_under[i]; i++) { if (addr_under[i] == ':') addr_under[i] = '_'; }
-    char dev_path[256];
-    snprintf(dev_path, sizeof(dev_path), "%s/dev_%s", g_adapter_path, addr_under);
-
-    GVariant *r = dbus_call(dev_path, BLUEZ_DEVICE_IFACE, "Connect", NULL);
-    if (r) { g_variant_unref(r); return 0; }
-    return -1;
+static bool bt_connect(const char *address) {
+    char p[192];
+    return device_path(address, p, sizeof(p)) && call(p, DEVICE_IFACE, "Connect", NULL, 10000);
 }
 
-static int bt_disconnect_device(const char *address) {
-    if (!address) return -1;
-    char addr_under[18];
-    snprintf(addr_under, sizeof(addr_under), "%s", address);
-    for (int i = 0; addr_under[i]; i++) { if (addr_under[i] == ':') addr_under[i] = '_'; }
-    char dev_path[256];
-    snprintf(dev_path, sizeof(dev_path), "%s/dev_%s", g_adapter_path, addr_under);
-
-    GVariant *r = dbus_call(dev_path, BLUEZ_DEVICE_IFACE, "Disconnect", NULL);
-    if (r) { g_variant_unref(r); return 0; }
-    return -1;
+static bool bt_disconnect(const char *address) {
+    char p[192];
+    return device_path(address, p, sizeof(p)) && call(p, DEVICE_IFACE, "Disconnect", NULL, 5000);
 }
 
-static int bt_get_paired_devices(ZylBtDevice **out_list, int *out_count) {
-    if (!out_list || !out_count) return -1;
-    return parse_devices(out_list, out_count, true);
+static bool bt_remove(const char *address) {
+    char a[128], p[192];
+    return device_path(address, p, sizeof(p)) && adapter_path(a, sizeof(a)) &&
+           call(a, ADAPTER_IFACE, "RemoveDevice", g_variant_new("(o)", p), 5000);
 }
 
-/* ─── HAL 인스턴스 ─── */
-static ZylBtHal bt_hal_instance = {
-    .init              = bt_init,
-    .shutdown          = bt_shutdown,
-    .set_enabled       = bt_set_enabled,
-    .get_state         = bt_get_state,
-    .scan              = bt_scan,
-    .pair              = bt_pair,
-    .unpair            = bt_unpair,
-    .connect_device    = bt_connect_device,
-    .disconnect_device = bt_disconnect_device,
-    .get_paired_devices = bt_get_paired_devices,
+static const ZylBtHal bt_hal = {
+    .present      = bt_present,
+    .get_enabled  = bt_get_enabled,
+    .set_enabled  = bt_set_enabled,
+    .start_scan   = bt_start_scan,
+    .stop_scan    = bt_stop_scan,
+    .list_devices = bt_list_devices,
+    .pair         = bt_pair,
+    .connect      = bt_connect,
+    .disconnect   = bt_disconnect,
+    .remove       = bt_remove,
 };
 
-ZylBtHal *zyl_hal_bt_linux(void) {
-    return &bt_hal_instance;
-}
+const ZylBtHal *zyl_hal_bt(void) { return &bt_hal; }

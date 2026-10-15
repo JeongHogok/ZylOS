@@ -2,7 +2,7 @@
 // [Clean Architecture] Domain Layer - Service Module
 //
 // Role: Storage service — disk usage (mount point)
-// Scope: getUsage, prefetch, getFormatted
+// Scope: getUsage, prefetch (bytes — apps format them for their locale)
 // Dependency Direction: Domain -> invoker abstraction
 // SOLID: SRP — storage info only
 // ----------------------------------------------------------
@@ -12,7 +12,6 @@
 
   ns.storage = function (deps) {
     var invoke = deps.invoke;
-    var formatBytes = deps.formatBytes;
 
     var _cache = null;
     var _cacheTime = 0;
@@ -36,16 +35,6 @@
 
     return {
       getUsage:     function () { return getUsage(); },
-      getFormatted: function () {
-        return getUsage().then(function (s) {
-          return {
-            total: formatBytes(s.total),
-            used: formatBytes(s.used),
-            available: formatBytes(s.available),
-            percent: Math.round(s.percent || 0)
-          };
-        }).catch(function () { return null; });
-      },
       prefetch: function () { return _fetchFromBackend(); }
     };
   };

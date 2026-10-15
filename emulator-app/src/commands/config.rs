@@ -252,32 +252,19 @@ pub fn list_installed_apps() -> Result<Vec<serde_json::Value>, String> {
                 if manifest_path.exists() {
                     if let Ok(content) = fs::read_to_string(&manifest_path) {
                         if let Ok(mut manifest) = serde_json::from_str::<serde_json::Value>(&content) {
-                            let app_id = manifest.get("id").and_then(|v| v.as_str()).unwrap_or("");
                             /* Rust does NOT determine system status.
                                It passes raw app.json data; the OS permission layer
                                (ZylPermissions.SYSTEM_APPS) is the sole authority.
                                The 'system' field here is advisory only — overridden by OS. */
                             let is_system = false; /* always false from Rust — OS decides */
 
-                            /* A1: Hidden system apps are excluded from list_installed_apps
-                             * because they are UI components, not user-visible apps.
-                             * Their permissions are registered separately by
-                             * ZylPermissions.registerFromAppList() which auto-registers
-                             * ALL SYSTEM_APPS with full permissions regardless of this list.
-                             * This is intentional — see permissions.js:registerFromAppList(). */
-                            let is_hidden = app_id == "com.zylos.lockscreen"
-                                || app_id == "com.zylos.statusbar"
-                                || app_id == "com.zylos.oobe"
-                                || app_id == "com.zylos.home"
-                                || app_id == "com.zylos.keyboard";
-
                             if let Some(obj) = manifest.as_object_mut() {
                                 obj.insert("installed".into(), serde_json::json!(true));
                                 obj.insert("system".into(), serde_json::json!(is_system));
                             }
-                            if !is_hidden {
-                                apps.push(manifest);
-                            }
+                            /* Whether an app shows in the launcher is its manifest's
+                               "launcher" field — the OS reads it, not this list */
+                            apps.push(manifest);
                         }
                     }
                 }

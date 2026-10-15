@@ -103,6 +103,7 @@ test('telephony-dbus',
   executable('test-telephony-dbus',
     'test_telephony_dbus.c',
     '../runtime/services/telephony/cbs.c',
+    '../runtime/services/telephony/calllog.c',
     include_directories: include_directories('../runtime/services/telephony'),
     dependencies: [gio_dep],
   )
@@ -113,6 +114,8 @@ test('telephony-dbus',
 test('bootctl',
   executable('test-bootctl',
     'test_bootctl.c',
+    '../runtime/hal/hal_boot.c',
+    include_directories: include_directories('../runtime/hal'),
     dependencies: [gio_dep],
     c_args: ['-DZYL_TEST'],
   ),
@@ -145,18 +148,126 @@ test('lock',
 test('updater',
   executable('test-updater',
     'test_updater.c',
+    include_directories: include_directories('../runtime/hal', '../runtime/services/updater'),
     dependencies: [gio_dep, json_glib_dep, dependency('openssl', version: '>=1.1.1')],
   ),
   workdir: meson.project_source_root(),
 )
 
-# Test: Wi-Fi network list from nmcli (escapes, hidden networks, one row per network)
+# Test: Wi-Fi HAL over nmcli (list parsing, Wi-Fi/AP presence, IPv6-shared
+# hotspot) and the service's hotspot name/passphrase rules
 test('wifi',
   executable('test-wifi',
     'test_wifi.c',
     '../runtime/services/wifi/captive_portal.c',
-    include_directories: include_directories('../runtime/services/wifi'),
+    include_directories: include_directories('../runtime/services/wifi', '../runtime/hal'),
     dependencies: [gio_dep],
+    c_args: ['-DZYL_TEST'],
+  )
+)
+
+# Test: call log policy — outgoing/incoming/missed, duration, unique ids, the
+# 500-entry cap, persistence, delete
+test('calllog',
+  executable('test-calllog',
+    'test_calllog.c',
+    '../runtime/services/telephony/calllog.c',
+    include_directories: include_directories('../runtime/services/telephony'),
+    dependencies: [gio_dep],
+  )
+)
+
+# Test: Audio HAL — speakerphone only with both earpiece and loudspeaker,
+# output volume, microphone mute (fake wpctl/pactl)
+test('hal-audio',
+  executable('test-hal-audio',
+    'test_hal_audio.c',
+    include_directories: include_directories('../runtime/hal'),
+    dependencies: [gio_dep, json_glib_dep, meson.get_compiler('c').find_library('m')],
+  )
+)
+
+# Test: Vibrator HAL — the motor is the input device with FF_RUMBLE (fake sysfs)
+test('hal-vibrator',
+  executable('test-hal-vibrator',
+    'test_hal_vibrator.c',
+    include_directories: include_directories('../runtime/hal'),
+    dependencies: [gio_dep, dependency('threads')],
+  )
+)
+
+# Test: Bluetooth HAL against a fake BlueZ on a private bus (adapter discovery,
+# device list, power, pairing path, no adapter)
+test('hal-bt',
+  executable('test-hal-bt',
+    'test_hal_bt.c',
+    include_directories: include_directories('../runtime/hal'),
+    dependencies: [gio_dep],
+  )
+)
+
+# Test: Display/Battery/Torch/CPU HAL against a fake sysfs (DRM outputs,
+# backlight range, no backlight, battery and a battery-less board, flash LED, cpufreq)
+test('hal-power',
+  executable('test-hal-power',
+    'test_hal_power.c',
+    '../runtime/hal/hal_display.c',
+    '../runtime/hal/hal_battery.c',
+    '../runtime/hal/hal_torch.c',
+    '../runtime/hal/hal_cpu.c',
+    include_directories: include_directories('../runtime/hal'),
+    dependencies: [gio_dep],
+    c_args: ['-DZYL_SYSFS_ROOT="/tmp/zyl-hal-power-test"'],
+  )
+)
+
+# Test: file service path policy (root, .., links, protected paths), listing,
+# text vs explicit base64, rename/remove
+test('fs-service',
+  executable('test-fs-service',
+    'test_fs_service.c',
+    dependencies: [gio_dep],
+    c_args: ['-DZYL_TEST'],
+  )
+)
+
+# Test: contacts (only the fields given change, search, 0600) and messages
+# (thread ids are safe file names, unread from received only, send status)
+test('contacts-messaging',
+  executable('test-contacts-messaging',
+    'test_contacts_messaging.c',
+    dependencies: [gio_dep],
+    c_args: ['-DZYL_TEST'],
+  )
+)
+
+# Test: clipboard (source app, size cap, sensitive values clear themselves) and
+# network fetch policy (https, allowed hosts only, no user info / port / IP)
+test('clipboard-network',
+  executable('test-clipboard-network',
+    'test_clipboard_network.c',
+    dependencies: [gio_dep],
+    c_args: ['-DZYL_TEST'],
+  )
+)
+
+# Test: app data — each app only its own, ids cannot leave the root, quota
+test('appdata',
+  executable('test-appdata',
+    'test_appdata.c',
+    dependencies: [gio_dep],
+    c_args: ['-DZYL_TEST'],
+  )
+)
+
+# Test: intents — who handles one (manifest "intents", mime rules, not the
+# starting app, explicit target) and what the handler gets
+test('intent',
+  executable('test-intent',
+    'test_intent.c',
+    '../runtime/wam/src/intent/intent.c',
+    '../runtime/wam/src/manifest/manifest.c',
+    dependencies: [gio_dep, json_glib_dep],
   )
 )
 

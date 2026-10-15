@@ -14,16 +14,18 @@
     /* Version and patch level come from the OS image (apps/system/release.js),
        not from a copy here — there used to be four copies of the version */
     var release = (typeof window !== 'undefined' && window.ZylRelease) || {};
+    /* What the virtual device is comes from its profile (_applyProfile);
+       it has no kernel of its own — same fields as the device's GetInfo */
     var info = {
-      deviceName: 'Zyl OS Device',
+      deviceName: '',
       osVersion: release.version || 'unknown',
       securityPatch: release.securityPatch || 'unknown',
-      soc: 'SpacemiT K1 (RISC-V)',
-      ram: '2GB LPDDR4X',
-      kernel: 'Linux 6.6.0-spacemit',
-      build: 'ZYL.20260329',
-      resolution: '1080x2400',
-      hostname: 'zylos',
+      soc: '',
+      ram: '',
+      kernel: '',
+      build: release.version || 'unknown',
+      resolution: '',
+      hostname: '',
       username: 'user',
       bootTime: Date.now()
     };

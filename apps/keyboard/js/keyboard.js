@@ -103,9 +103,9 @@ window.ZylKeyboard = (function () {
 
   /* ─── Audio Context (lazy) ─── */
 
-  /* Audio/vibration feedback is handled by the compositor via audio service.
-     Keyboard does NOT directly access AudioContext or navigator.vibrate.
-     See emulator.js keyboard init callback → audio.playKeyClick service. */
+  /* Key feedback goes to the audio service (playKeyClick, vibrate) — the
+     keyboard never touches AudioContext or navigator.vibrate itself, and this
+     is the only place that asks for it */
 
   /* ─── Language Labels ─── */
 
@@ -640,14 +640,9 @@ window.ZylKeyboard = (function () {
         }
       }
       handleKey(label);
-      /* Forward feedback request to compositor via audio service */
-      if (_soundEnabled || _vibrationEnabled) {
-        if (typeof ZylBridge !== 'undefined') {
-          ZylBridge.sendToSystem({
-            type: 'service.request', service: 'audio', method: 'playKeyClick',
-            params: { sound: _soundEnabled, vibration: _vibrationEnabled }
-          });
-        }
+      if (typeof ZylBridge !== 'undefined') {
+        if (_soundEnabled) ZylBridge.requestServiceFire('audio', 'playKeyClick', {});
+        if (_vibrationEnabled) ZylBridge.requestServiceFire('audio', 'vibrate', { pattern: [15] });
       }
     }, { passive: false });
 

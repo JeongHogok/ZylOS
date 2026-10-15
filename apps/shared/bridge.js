@@ -2,7 +2,8 @@
 // [Clean Architecture] Shared Layer - Adapter
 //
 // 역할: 클라이언트 측 브릿지 API — navigator.system 래퍼
-// 수행범위: Promise 기반 네이티브 API 호출, 브릿지 미사용 시 폴백 제공
+// 수행범위: Promise 기반 네이티브 API 호출, 브릿지 미사용 시 폴백 제공,
+//          인텐트(ZylIntent: 시작·받기, OS 가 고르라 할 때의 선택 시트)
 // 의존방향: 없음 (네이티브 셸 API를 추상화)
 // SOLID: DIP — 네이티브 API 구현이 아닌 추상 인터페이스에 의존
 //
@@ -418,6 +419,91 @@ var ZylBridge = (function () {
     }
   }
 
+  /* ═══════════════════════════════════════════════════════════
+     Intents (rule 9): an app starts one, the OS decides which app handles it
+     (apps/system/intent.js · runtime/wam/src/intent). When several can, the
+     OS asks this app to show the choice; when none can, to say so.
+     ═══════════════════════════════════════════════════════════ */
+  var _intentListener = null;
+  var _pendingIntent = null;   /* arrived before the app listened */
+
+  function tr(key) {
+    return (typeof zylI18n !== 'undefined') ? zylI18n.t(key) : key;
+  }
+
+  /* A bottom sheet in the app's page, drawn by the OS's shared code */
+  function intentSheet(title, items, onPick) {
+    var back = document.createElement('div');
+    back.setAttribute('role', 'dialog');
+    back.setAttribute('aria-modal', 'true');
+    back.setAttribute('aria-label', title);
+    back.style.cssText = 'position:fixed;top:0;right:0;bottom:0;left:0;z-index:2147483647;' +
+      'display:flex;align-items:flex-end;justify-content:center;background:rgba(0,0,0,0.55)';
+    var box = document.createElement('div');
+    box.style.cssText = 'width:100%;max-width:480px;box-sizing:border-box;padding:16px;' +
+      'background:#1f2937;color:#fff;border-radius:16px 16px 0 0;font:inherit';
+    var head = document.createElement('div');
+    head.textContent = title;
+    head.style.cssText = 'font-weight:600;margin:0 4px 12px';
+    box.appendChild(head);
+    function close(value) {
+      if (back.parentNode) back.parentNode.removeChild(back);
+      onPick(value);
+    }
+    items.forEach(function (it) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = it.label;
+      b.style.cssText = 'display:block;width:100%;margin:6px 0;padding:12px;border:0;border-radius:10px;' +
+        'background:' + (it.value === null ? 'transparent' : '#374151') + ';color:#fff;font:inherit;text-align:start';
+      b.addEventListener('click', function () { close(it.value); });
+      box.appendChild(b);
+    });
+    back.addEventListener('click', function (e) { if (e.target === back) close(null); });
+    back.appendChild(box);
+    document.body.appendChild(back);
+    var first = box.querySelector('button');
+    if (first) first.focus();
+  }
+
+  function showIntentChoice(choice) {
+    var items = (choice.choices || []).map(function (c) {
+      var key = 'app.' + String(c.appId).split('.').pop();
+      var label = tr(key);
+      return { label: label !== key ? label : (c.name || c.appId), value: c.appId };
+    });
+    items.push({ label: tr('intent.cancel'), value: null });
+    intentSheet(tr('intent.open_with'), items, function (appId) {
+      if (appId) sendToSystem({ type: 'intent.chosen', token: choice.token, appId: appId });
+    });
+  }
+
+  var ZylIntentApi = {
+    ACTION: {
+      VIEW:    'zyl.intent.action.VIEW',
+      SEND:    'zyl.intent.action.SEND',
+      EDIT:    'zyl.intent.action.EDIT',
+      DIAL:    'zyl.intent.action.DIAL',
+      CAPTURE: 'zyl.intent.action.CAPTURE',
+      SEARCH:  'zyl.intent.action.SEARCH'
+    },
+    /* { action, data, mimeType, extras } (implicit) or { targetApp, ... } (explicit) */
+    startActivity: function (intent) {
+      sendToSystem({ type: 'intent.start', intent: intent });
+    },
+    /* fn({ action, data, mimeType, extras, sourceApp }) — the intent this app was opened for */
+    onIntent: function (fn) {
+      _intentListener = fn;
+      if (_pendingIntent) {
+        var it = _pendingIntent;
+        _pendingIntent = null;
+        fn(it);
+      }
+    }
+  };
+  ZylIntentApi.startIntent = ZylIntentApi.startActivity;
+  window.ZylIntent = ZylIntentApi;
+
   window.addEventListener('message', function (event) {
     var msg;
     if (typeof event.data === 'string') {
@@ -435,6 +521,15 @@ var ZylBridge = (function () {
       for (var i = 0; i < fns.length; i++) {
         try { fns[i](msg.data); } catch (e) { log('service event listener error:', e); }
       }
+    }
+
+    /* ─── Intents from the OS ─── */
+    if (msg.type === 'intent' && msg.data) {
+      if (_intentListener) _intentListener(msg.data); else _pendingIntent = msg.data;
+    } else if (msg.type === 'intent.choose' && msg.data) {
+      showIntentChoice(msg.data);
+    } else if (msg.type === 'intent.none') {
+      intentSheet(tr('intent.no_app'), [{ label: tr('intent.ok'), value: null }], function () {});
     }
 
     /* ─── Service response matching (requestId → pending Promise) ─── */

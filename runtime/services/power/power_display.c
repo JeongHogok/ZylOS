@@ -47,10 +47,9 @@ static gboolean on_dim_timeout(gpointer data) {
     if (svc->state != ZYL_POWER_STATE_ACTIVE) return G_SOURCE_REMOVE;
     if (svc->wakelock_count > 0) return G_SOURCE_REMOVE;
 
-    /* 밝기를 현재의 30%로 낮춤 */
+    /* 밝기를 사용자 밝기의 30%로 낮춤 — 사용자 밝기는 그대로 */
     int dim_brightness = svc->brightness * 30 / 100;
-    if (dim_brightness < 5) dim_brightness = 5;
-    zyl_power_set_brightness(svc, dim_brightness);
+    apply_brightness(svc, dim_brightness < 5 ? 5 : dim_brightness);
     transition_state(svc, ZYL_POWER_STATE_DIM);
 
     /* screen_off 타이머 시작 */
@@ -84,11 +83,7 @@ void reset_idle_timers(ZylPowerService *svc) {
 int zyl_power_request_screen_off(ZylPowerService *svc) {
     if (!svc) return -1;
 
-    /* Save current brightness before turning off, so screen_on can restore it */
-    if (svc->brightness > 0) {
-        svc->saved_brightness = svc->brightness;
-    }
-    zyl_power_set_brightness(svc, 0);
+    apply_brightness(svc, 0);
     transition_state(svc, ZYL_POWER_STATE_SCREEN_OFF);
 
     /* Cancel any existing suspend timer before starting a new one */
@@ -118,10 +113,26 @@ int zyl_power_request_screen_on(ZylPowerService *svc) {
     if (!svc) return -1;
     /* Exit doze if in doze state */
     if (svc->state == ZYL_POWER_STATE_DOZE) exit_doze(svc);
-    /* Restore saved brightness (brightness is 0 after screen_off) */
-    int restore = (svc->saved_brightness > 0) ? svc->saved_brightness : 80;
-    zyl_power_set_brightness(svc, restore);
+    apply_brightness(svc, svc->brightness);
     transition_state(svc, ZYL_POWER_STATE_ACTIVE);
     reset_idle_timers(svc);
     return 0;
+}
+
+/* ─── 밝기 — 사용자 밝기(svc->brightness)와 지금 백라이트가 보이는 값은 다르다 ─── */
+void apply_brightness(ZylPowerService *svc, int level) {
+    (void)svc;
+    zyl_hal_display()->set_brightness(level);
+}
+
+int zyl_power_set_brightness(ZylPowerService *svc, int percent) {
+    if (!svc) return -1;
+    svc->brightness = percent < 0 ? 0 : percent > 100 ? 100 : percent;
+    /* Dimmed or off, the new level shows when the screen is next woken */
+    if (svc->state == ZYL_POWER_STATE_ACTIVE) apply_brightness(svc, svc->brightness);
+    return 0;
+}
+
+int zyl_power_get_brightness(const ZylPowerService *svc) {
+    return svc ? svc->brightness : -1;
 }

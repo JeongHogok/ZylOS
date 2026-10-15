@@ -7,17 +7,25 @@
  *           새 슬롯으로 돌리지 않음, 시험 부팅 중엔 되돌아갈 슬롯을 덮지 않음,
  *           전체 이미지만 허용, 지원 여부(키·U-Boot 환경), 시험 부팅 판정,
  *           U-Boot 변수 이름이 u-boot-env.txt 와 일치
- * 의존방향: runtime/services/updater/updater.c, 가짜 fw_printenv/fw_setenv,
+ * 의존방향: runtime/services/updater/{updater,ota_verify,ota_install}.c,
+ *           runtime/hal/hal_boot.c, 가짜 fw_printenv/fw_setenv,
  *           파일로 만든 가짜 파티션, tar, OpenSSL (테스트 키로 서명)
  * SOLID: SRP — 설치 경로 검증만 담당
  * ────────────────────────────────────────────────────────── */
 
+#define _GNU_SOURCE
 #define DIR_ "/tmp/zyl-updater-test"
 #define ZYL_STATE_DIR DIR_ "/state"
 #define ZYL_BLOCK_DEV DIR_ "/dev/p"
 #define ZYL_BOOT_DIR  DIR_ "/boot"
 #define ZYL_OTA_KEY   DIR_ "/ota.pem"
+/* One unit: the board's Boot HAL pointed at scratch partitions, and the updater */
+#include "../runtime/hal/hal_boot.c"
+#include "../runtime/services/updater/ota_verify.c"
+#include "../runtime/services/updater/ota_install.c"
 #include "../runtime/services/updater/updater.c"
+#include <openssl/pem.h>
+#include <openssl/sha.h>
 #include <assert.h>
 
 #define PKG DIR_ "/cache/update.pkg"

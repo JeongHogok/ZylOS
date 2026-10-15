@@ -92,9 +92,16 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 ### 9. Intent 시스템 경계 규칙
 
 - 앱 간 직접 함수 호출 금지 → 반드시 `ZylIntent.startActivity()` 경유
-- 인텐트 필터는 앱 초기화 시 `ZylIntent.registerFilter()`로 등록
+  (명시적: `{ targetApp }`, 암시적: `{ action, mimeType, data, extras }`)
+- 인텐트 필터는 `app.json` 의 `intents` 로 선언 (`[{ action, mimeType }]`) —
+  실행 중이 아닌 앱도 고를 수 있어야 하므로 런타임 등록이 아님.
+  `tests/test_manifests.sh` 가 검증
+- 받는 쪽은 `ZylIntent.onIntent(fn)`. 처리하지 않는 action 은 선언하지 않는다
+- 해석은 OS 만: 에뮬레이터 `apps/system/intent.js`, 기기 `runtime/wam/src/intent`
+  (같은 규칙). `sourceApp` 은 OS 가 채운다
 - 인텐트 데이터 전달은 `extras` 객체로만 (DOM 공유 금지)
 - 암시적 인텐트 resolve가 0개면 "앱 없음" 다이얼로그, 복수면 앱 선택 다이얼로그
+  (시작한 앱 화면에 OS 공용 코드 `shared/bridge.js` 가 그림, 고른 앱은 제시된 것만)
 
 ### 10. ContentProvider 경계 규칙
 

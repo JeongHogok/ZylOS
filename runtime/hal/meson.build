@@ -1,18 +1,23 @@
 gio = dependency('gio-2.0')
 
 hal_sources = files(
+  'hal_boot.c',
+  'hal_board.c',
+  'hal_audio.c',
+  'hal_vibrator.c',
   'hal_wifi.c',
   'hal_bt.c',
   'hal_display.c',
-  'hal_audio.c',
   'hal_battery.c',
   'hal_storage.c',
+  'hal_torch.c',
   'hal_cpu.c',
-  'hal_linux.c',
 )
 
+json_glib = dependency('json-glib-1.0')
+cc = meson.get_compiler('c')
 zyl_hal = static_library('zyl-hal', hal_sources,
-  dependencies: [gio],
+  dependencies: [gio, json_glib, cc.find_library('m'), dependency('threads')],
   install: false,
 )
 
@@ -24,4 +29,12 @@ zyl_hal_emu = static_library('zyl-hal-emu',
   include_directories: include_directories('.'),
   dependencies: [threads_dep],
   install: false,
+)
+
+# The backend the board contract names (board/<id>/meson.build: board_hal_backend).
+# Services take hardware only through this — never nmcli/wpctl/sysfs themselves.
+zyl_hal_dep = declare_dependency(
+  link_with: board_hal_backend == 'emulator' ? zyl_hal_emu : zyl_hal,
+  dependencies: board_hal_backend == 'emulator' ? [threads_dep] : [gio, json_glib, cc.find_library('m'), threads_dep],
+  include_directories: include_directories('.'),
 )

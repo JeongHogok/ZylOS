@@ -175,17 +175,6 @@ window.ZylSystemServices = (function () {
   }
 
   /* ===============================================================
-     Utilities
-     =============================================================== */
-  function formatBytes(bytes) {
-    if (!bytes) return '0 B';
-    var units = ['B', 'KB', 'MB', 'GB'];
-    var i = Math.floor(Math.log(bytes) / Math.log(1024));
-    if (i >= units.length) i = units.length - 1;
-    return (bytes / Math.pow(1024, i)).toFixed(1) + ' ' + units[i];
-  }
-
-  /* ===============================================================
      Module Assembly + Service Map
      =============================================================== */
   var SYSTEM_APPS = (typeof ZylPermissions !== 'undefined') ? ZylPermissions.SYSTEM_APPS : [];
@@ -193,7 +182,7 @@ window.ZylSystemServices = (function () {
   var _modules = {}; /* references to instantiated modules for cross-deps */
 
   function assembleModules() {
-    var deps = { invoke: _invoke, formatBytes: formatBytes, SYSTEM_APPS: SYSTEM_APPS };
+    var deps = { invoke: _invoke, SYSTEM_APPS: SYSTEM_APPS };
 
     /* Independent modules */
     if (ns.fs)            serviceMap.fs           = ns.fs(deps);
@@ -204,11 +193,10 @@ window.ZylSystemServices = (function () {
       _modules.device = devMod;
     }
     if (ns.storage)       serviceMap.storage      = ns.storage(deps);
-    if (ns.terminal)      serviceMap.terminal     = ns.terminal(deps);
     if (ns.wifi)          serviceMap.wifi         = ns.wifi(deps);
     if (ns.bluetooth)     serviceMap.bluetooth    = ns.bluetooth(deps);
     if (ns.network)       serviceMap.network      = ns.network(deps);
-    if (ns.browser)       serviceMap.browser      = ns.browser(deps);
+    if (ns.appdata)       serviceMap.appdata      = ns.appdata(deps);
     if (ns.notification)  serviceMap.notification = ns.notification(deps);
     if (ns.power)         serviceMap.power        = ns.power(deps);
     if (ns.display) {
@@ -249,7 +237,7 @@ window.ZylSystemServices = (function () {
 
     /* Modules with cross-dependencies */
     var crossDeps = {
-      invoke: _invoke, formatBytes: formatBytes, SYSTEM_APPS: SYSTEM_APPS,
+      invoke: _invoke, SYSTEM_APPS: SYSTEM_APPS,
       settingsSvc: settingsMod,
       appsSvc: appsMod,
       deviceRef: (_modules.device && _modules.device._getRef) ? _modules.device._getRef() : {},
@@ -351,7 +339,8 @@ window.ZylSystemServices = (function () {
     var fn = svc[method];
     if (!fn) { watchdogRelease(appId); return null; }
 
-    var result = fn(params || {});
+    /* The caller is the OS's to say, never the request's: whose data it is */
+    var result = fn(params || {}, appId || '');
 
     if (result && typeof result.then === 'function') {
       var timeoutMs = NETWORK_SERVICES[service] ? NETWORK_TIMEOUT_MS : SERVICE_TIMEOUT_MS;

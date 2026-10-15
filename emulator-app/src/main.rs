@@ -62,14 +62,15 @@ fn main() {
             commands::filesystem::fs_remove,
             commands::filesystem::fs_rename,
             commands::filesystem::fs_get_usage,
-            // Terminal command
-            commands::terminal::exec_command,
             // OS image commands
             commands::os_image::list_os_images,
             commands::os_image::scan_os_images_dir,
             commands::os_image::create_os_image,
             commands::os_image::delete_os_image,
             commands::os_image::get_os_images_dir,
+            // Each app's private data
+            commands::appdata::appdata_load,
+            commands::appdata::appdata_save,
             // Settings commands
             commands::settings::load_settings,
             commands::settings::save_settings,
@@ -95,6 +96,7 @@ fn main() {
             commands::emulated_services::wifi_connect,
             commands::emulated_services::wifi_disconnect,
             commands::emulated_services::wifi_get_state,
+            commands::emulated_services::wifi_set_enabled,
             // Bluetooth HAL
             commands::emulated_services::get_bluetooth_devices,
             commands::emulated_services::bt_set_enabled,

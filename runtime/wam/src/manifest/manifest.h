@@ -23,6 +23,9 @@ typedef struct {
     char **permissions; /* Requested permissions (NULL-terminated) */
     int n_permissions;
     gboolean is_system; /* TRUE for system apps */
+    /* What the app opens ("intents"): pairs, NULL-terminated, same length */
+    char **intent_actions;
+    char **intent_mimes;
 } ZylAppManifest;
 
 /*
@@ -30,6 +33,15 @@ typedef struct {
  * Returns a newly allocated ZylAppManifest or NULL on failure.
  */
 ZylAppManifest *zyl_manifest_parse(const char *app_dir);
+
+/*
+ * What apps see of an installed app (apps.getInstalled) — the same fields as
+ * the emulator's apps service: id, name, nameKey, icon, color, version,
+ * description, system, permissions, formFactors, iconSvg, launcher.
+ * "system" is the OS's own decision (m->is_system), never the app's word.
+ * Returns a floating a{sv}.
+ */
+GVariant *zyl_manifest_app_info(const ZylAppManifest *m);
 
 /*
  * Free all memory owned by a manifest.  Safe to call with NULL.

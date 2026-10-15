@@ -275,10 +275,22 @@
   });
 
   btnSpeaker.addEventListener('click', function () {
+    if (btnSpeaker.disabled) return;
     isSpeaker = !isSpeaker;
     btnSpeaker.classList.toggle('active', isSpeaker);
-    requestService('telephony', 'setSpeaker', { enabled: isSpeaker });
+    requestService('audio', 'setSpeakerphone', { enabled: isSpeaker });
   });
+
+  /* Without both an earpiece and a loudspeaker there is nothing to switch:
+     the button stays, disabled, and says why */
+  function applyAudioCapabilities(caps) {
+    var can = !!(caps && caps.speakerphone);
+    btnSpeaker.disabled = !can;
+    btnSpeaker.setAttribute('aria-disabled', can ? 'false' : 'true');
+    btnSpeaker.title = can ? '' : zylI18n.t('phone.speakerphone_unavailable');
+  }
+  applyAudioCapabilities(null);
+  ZylBridge.requestService('audio', 'getCapabilities').then(applyAudioCapabilities, function () {});
 
   /* ═══════════════════════════════════════════════════════════
      DTMF In-Call Keypad
@@ -662,5 +674,14 @@
 
   window.addEventListener('languagechange', applyI18n);
   applyI18n();
+
+  /* Another app asked to dial a number (app.json "intents"): ready on the
+     keypad, the user presses call */
+  ZylIntent.onIntent(function (intent) {
+    if (intent.action !== ZylIntent.ACTION.DIAL) return;
+    dialedNumber = String(intent.data || '').replace(/^tel:/, '');
+    updateDisplay();
+    switchTab('keypad');
+  });
 
 })();

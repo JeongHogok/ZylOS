@@ -79,20 +79,30 @@
   var quickLinksData = [];
   var pageFrame = document.getElementById('page-frame');
 
-  /* Request browser data from central service */
-  function requestBrowserData() {
-    ZylBridge.sendToSystem({
-      type: 'service.request', service: 'browser', method: 'getBookmarks'
-    });
-    ZylBridge.sendToSystem({
-      type: 'service.request', service: 'browser', method: 'getQuickLinks'
-    });
-    ZylBridge.sendToSystem({
-      type: 'service.request', service: 'browser', method: 'getHistory'
-    });
+  /* Bookmarks, quick links and history are this app's own: its private
+     container (appdata), gone with the app, readable by no other app */
+  var HISTORY_MAX = 500;
+
+  function loadList(key) {
+    return ZylBridge.requestService('appdata', 'getItem', { key: key }).then(function (text) {
+      var list;
+      try { list = text ? JSON.parse(text) : []; } catch (e) { list = []; }
+      return Array.isArray(list) ? list : [];
+    }, function () { return []; });
   }
 
-  /* Listen for service responses */
+  function saveList(key, list) {
+    ZylBridge.requestService('appdata', 'setItem', { key: key, value: JSON.stringify(list) })
+      .catch(function () { /* stays in memory for this session */ });
+  }
+
+  function requestBrowserData() {
+    loadList('bookmarks').then(function (l) { bookmarksData = l; renderBookmarks(); });
+    loadList('quickLinks').then(function (l) { quickLinksData = l; renderQuickLinks(); });
+    loadList('history').then(function (l) { globalHistory = l; renderHistory(); });
+  }
+
+  /* Navigation messages from the OS */
   window.addEventListener('message', function (e) {
     if (e.source !== window.parent && e.source !== window) return;
     try {
@@ -109,20 +119,6 @@
           ZylBridge.sendToSystem({ type: 'navigation.exit' });
         }
         return;
-      }
-
-      if (msg.type !== 'service.response') return;
-      if (msg.service === 'browser') {
-        if (msg.method === 'getBookmarks' && msg.data) {
-          bookmarksData = msg.data;
-          renderBookmarks();
-        } else if (msg.method === 'getQuickLinks' && msg.data) {
-          quickLinksData = msg.data;
-          renderQuickLinks();
-        } else if (msg.method === 'getHistory' && msg.data) {
-          globalHistory = msg.data;
-          renderHistory();
-        }
       }
     } catch (err) { /* ignore malformed messages */ }
   });
@@ -143,17 +139,13 @@
       timestamp: Date.now()
     };
     globalHistory.unshift(entry);
-    ZylBridge.sendToSystem({
-      type: 'service.request', service: 'browser', method: 'addHistory',
-      data: entry
-    });
+    globalHistory = globalHistory.slice(0, HISTORY_MAX);
+    saveList('history', globalHistory);
   }
 
   function clearHistory() {
     globalHistory = [];
-    ZylBridge.sendToSystem({
-      type: 'service.request', service: 'browser', method: 'clearHistory'
-    });
+    saveList('history', globalHistory);
     renderHistory();
     showToast(zylI18n.t('browser.history_cleared'));
   }
@@ -334,15 +326,6 @@
 
   /* ─── Show Web Page (real iframe rendering) ─── */
   function showWebPage(url, skipHistory) {
-    /* Intent 연동: 외부 URL 열기 */
-    if (typeof ZylIntent !== 'undefined') {
-      ZylIntent.startIntent({
-        action: ZylIntent.ACTION.VIEW,
-        data: url,
-        mimeType: 'text/uri'
-      });
-    }
-
     newTabPage.classList.remove('active');
     webPage.classList.remove('hidden');
     pageLoading.classList.add('active');
@@ -626,10 +609,9 @@
   function addBookmarkForCurrentPage() {
     var tab = getActiveTab();
     if (!tab || !tab.url) return;
-    ZylBridge.sendToSystem({
-      type: 'service.request', service: 'browser', method: 'addBookmark',
-      data: { name: tab.title, url: tab.url }
-    });
+    bookmarksData.push({ name: tab.title || tab.url, url: tab.url });
+    saveList('bookmarks', bookmarksData);
+    renderBookmarks();
     showToast(zylI18n.t('browser.bookmark_added'));
   }
 
@@ -672,13 +654,8 @@
 
   document.getElementById('menu-settings').addEventListener('click', function () {
     closeMenu();
-    /* Settings navigates to system settings via intent */
-    if (typeof ZylIntent !== 'undefined') {
-      ZylIntent.startActivity({
-        action: 'android.intent.action.VIEW',
-        component: 'settings'
-      });
-    }
+    /* An explicit intent: Settings itself */
+    ZylIntent.startActivity({ targetApp: 'com.zylos.settings' });
   });
 
   /* ─── History Sidebar ─── */
@@ -693,5 +670,12 @@
   /* ─── Init ─── */
   renderTabs();
   updateNavButtons();
+
+  /* Another app asked to open a web address (app.json "intents") */
+  ZylIntent.onIntent(function (intent) {
+    if (intent.action !== ZylIntent.ACTION.VIEW || !/^https?:\/\//i.test(String(intent.data || ''))) return;
+    urlInput.value = String(intent.data);
+    showWebPage(urlInput.value);
+  });
 
 })();

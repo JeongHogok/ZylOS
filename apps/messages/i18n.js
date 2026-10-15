@@ -22,7 +22,8 @@
     'messages.confirm_delete': '\uB300\uD654\uB97C \uC0AD\uC81C\uD558\uC2DC\uACA0\uC2B5\uB2C8\uAE4C?',
     'messages.cancel': '\uCDE8\uC18C',
     'messages.read': '\uC77D\uC74C',
-    'messages.delivered': '\uC804\uC1A1\uB428'
+    'messages.sent': '\uC804\uC1A1\uB428',
+    'messages.not_sent': '\uC804\uC1A1 \uC2E4\uD328'
   });
 
   zylI18n.addTranslations('en', {
@@ -38,7 +39,8 @@
     'messages.confirm_delete': 'Delete this conversation?',
     'messages.cancel': 'Cancel',
     'messages.read': 'Read',
-    'messages.delivered': 'Delivered'
+    'messages.sent': 'Sent',
+    'messages.not_sent': 'Not sent'
   });
 
   zylI18n.addTranslations('ja', {
@@ -54,7 +56,8 @@
     'messages.confirm_delete': '\u3053\u306E\u4F1A\u8A71\u3092\u524A\u9664\u3057\u307E\u3059\u304B\uFF1F',
     'messages.cancel': '\u30AD\u30E3\u30F3\u30BB\u30EB',
     'messages.read': '\u65E2\u8AAD',
-    'messages.delivered': '\u9001\u4FE1\u6E08\u307F'
+    'messages.sent': '\u9001\u4FE1\u6E08\u307F',
+    'messages.not_sent': '\u9001\u4FE1\u5931\u6557'
   });
 
   zylI18n.addTranslations('zh', {
@@ -70,7 +73,8 @@
     'messages.confirm_delete': '\u5220\u9664\u8FD9\u4E2A\u5BF9\u8BDD\uFF1F',
     'messages.cancel': '\u53D6\u6D88',
     'messages.read': '\u5DF2\u8BFB',
-    'messages.delivered': '\u5DF2\u53D1\u9001'
+    'messages.sent': '\u5DF2\u53D1\u9001',
+    'messages.not_sent': '\u53D1\u9001\u5931\u8D25'
   });
 
   zylI18n.addTranslations('es', {
@@ -86,6 +90,7 @@
     'messages.confirm_delete': '\u00BFEliminar esta conversaci\u00F3n?',
     'messages.cancel': 'Cancelar',
     'messages.read': 'Le\u00EDdo',
-    'messages.delivered': 'Entregado'
+    'messages.sent': 'Enviado',
+    'messages.not_sent': 'No enviado'
   });
 })();

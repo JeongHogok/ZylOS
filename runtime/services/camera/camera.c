@@ -2,13 +2,16 @@
 /* ──────────────────────────────────────────────────────────
  * [Clean Architecture] Application Layer - Service
  *
- * 역할: V4L2 카메라 서비스 — 캡처, 프리뷰, JPEG 저장
- * 수행범위: /dev/videoN 열기, MMAP 버퍼, 스트리밍, D-Bus 인터페이스
- * 의존방향: camera.h, gio/gio.h, linux/videodev2.h
+ * 역할: V4L2 카메라 서비스 — 캡처, 프리뷰, JPEG 저장, 손전등
+ * 수행범위: /dev/videoN 열기, MMAP 버퍼, 스트리밍, 플래시 LED 손전등(Torch HAL —
+ *           없으면 GetCapabilities 가 torch=false 로 알려 손전등이 비활성),
+ *           D-Bus 인터페이스
+ * 의존방향: camera.h, hal.h (Torch HAL), gio/gio.h, linux/videodev2.h
  * SOLID: SRP — 카메라 캡처만 담당
  * ────────────────────────────────────────────────────────── */
 
 #include "camera.h"
+#include "hal.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -68,6 +71,13 @@ static const char *cam_introspection_xml =
     "    <method name='IsOpen'>"
     "      <arg type='b' name='open' direction='out'/>"
     "    </method>"
+    "    <method name='GetCapabilities'>"
+    "      <arg type='a{sv}' name='capabilities' direction='out'/>"
+    "    </method>"
+    "    <method name='SetTorch'>"
+    "      <arg type='b' name='enabled' direction='in'/>"
+    "      <arg type='b' name='applied' direction='out'/>"
+    "    </method>"
     "  </interface>"
     "</node>";
 
@@ -96,6 +106,15 @@ static void handle_cam_method(GDBusConnection *conn, const gchar *sender,
     } else if (g_strcmp0(method, "IsOpen") == 0) {
         g_dbus_method_invocation_return_value(inv,
             g_variant_new("(b)", zyl_camera_is_open(cam)));
+    } else if (g_strcmp0(method, "GetCapabilities") == 0) {
+        GVariantBuilder d;
+        g_variant_builder_init(&d, G_VARIANT_TYPE("a{sv}"));
+        g_variant_builder_add(&d, "{sv}", "torch", g_variant_new_boolean(zyl_hal_torch()->present()));
+        g_dbus_method_invocation_return_value(inv, g_variant_new("(a{sv})", &d));
+    } else if (g_strcmp0(method, "SetTorch") == 0) {
+        gboolean on = FALSE;
+        g_variant_get(params, "(b)", &on);
+        g_dbus_method_invocation_return_value(inv, g_variant_new("(b)", zyl_hal_torch()->set(on)));
     }
 }
 

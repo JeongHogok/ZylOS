@@ -432,6 +432,12 @@
 
     dataCache[name] = dataUrl;
 
+    /* A file another app opened here: nothing was cached for it */
+    if (currentViewingPath && params.path === currentViewingPath && viewerImg && isImage(name)) {
+      viewerImg.src = dataUrl;
+      viewerImg.style.display = 'block';
+    }
+
     /* 그리드 썸네일 업데이트 (이미지만) */
     if (isImage(name)) {
       /* Update in main grid */
@@ -452,10 +458,12 @@
   /* ─── Viewer ─── */
   var currentViewingFile = null;
   var currentViewingPrefix = '';
+  var currentViewingPath = null;   /* a file another app opened here, outside Pictures */
   /* FIX: Track active video poll so it can be cancelled when viewer closes */
   var _activeVideoPoll = null;
 
-  function openViewer(name, prefix) {
+  /* fsPath: the file's own path when it is not under Pictures (an intent) */
+  function openViewer(name, prefix, fsPath) {
     if (!viewer) return;
     prefix = prefix || '';
 
@@ -478,7 +486,8 @@
     if (viewerImg) viewerImg.style.display = 'none';
 
     var fullPath = prefix ? prefix + name : name;
-    var fsPath = 'Pictures/' + fullPath;
+    currentViewingPath = fsPath || null;
+    fsPath = fsPath || 'Pictures/' + fullPath;
 
     if (isVideo(name)) {
       /* Show slideshow button as disabled for video */
@@ -609,21 +618,8 @@
         'font-size:20px;cursor:pointer;z-index:10;';
       shareBtn.addEventListener('click', function () {
         if (!currentViewingFile) return;
-        var imagePath = 'Pictures/' + (currentViewingPrefix ? currentViewingPrefix : '') + currentViewingFile;
-        if (typeof ZylIntent !== 'undefined') {
-          ZylIntent.startIntent({
-            action: ZylIntent.ACTION.SEND,
-            data: imagePath,
-            mimeType: 'image/*'
-          });
-        } else {
-          ZylBridge.sendToSystem({
-            type: 'service.request',
-            service: 'share',
-            method: 'share',
-            params: { path: imagePath, mimeType: 'image/*' }
-          });
-        }
+        var imagePath = currentViewingPath || ('Pictures/' + (currentViewingPrefix ? currentViewingPrefix : '') + currentViewingFile);
+        ZylIntent.startActivity({ action: ZylIntent.ACTION.SEND, data: imagePath, mimeType: 'image/*' });
       });
       viewerEl.appendChild(shareBtn);
     }
@@ -803,6 +799,7 @@
     if (vcSpeed) vcSpeed.onchange = null;
     currentViewingFile = null;
     currentViewingPrefix = '';
+    currentViewingPath = null;
   }
 
   /* ─── Viewer Delete ─── */
@@ -831,4 +828,13 @@
   /* ─── Init ─── */
   updateTabLabels();
   requestMedia();
+
+  /* Another app asked to open an image or video here (app.json "intents") */
+  ZylIntent.onIntent(function (intent) {
+    if (intent.action !== ZylIntent.ACTION.VIEW || !intent.data) return;
+    var path = String(intent.data).replace(/^\/+/, '');
+    if (path.indexOf('Pictures/') === 0) openViewer(path.slice('Pictures/'.length));
+    else openViewer(path, '', path);
+  });
+
 })();

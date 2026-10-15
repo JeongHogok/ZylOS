@@ -4,7 +4,8 @@
 // 역할: OS 키보드를 앱 문서 안에 띄우는 호스트 — 기기와 에뮬레이터 공통
 // 수행범위: 키보드 스크립트·스타일 지연 로드, 컨테이너 생성, 키 입력을 브릿지의
 //          input.key / input.text 적용 경로로 전달, 키보드 설정(언어·키 높이·
-//          키음) 적용, 표시/숨김과 앱 레이아웃 여백(keyboard.show/hide)
+//          키음·진동) 적용, 표시/숨김과 앱 레이아웃 여백(keyboard.show/hide).
+//          키음·진동 요청은 keyboard.js 한 곳에서만
 // 의존방향: ZylKeyboard (keyboard.js), ZylBridge (shared/bridge.js), zylI18n
 // SOLID: SRP — 키보드 호스팅만. 입력기는 keyboard.js/hangul.js/ime.js 몫
 //
@@ -40,9 +41,6 @@
   function deliver(key, edit) {
     var msg = edit ? { type: 'input.text', data: edit } : { type: 'input.key', data: { key: key } };
     window.postMessage(JSON.stringify(msg), '*');
-    if (window.ZylKeyboard.getSoundEnabled()) {
-      ZylBridge.requestServiceFire('audio', 'playKeyClick', {});
-    }
   }
 
   /* Read on every show: a change in Settings applies at the next text field */
@@ -57,6 +55,7 @@
       }
       if (kb.keyHeight) K.setKeyHeight(parseInt(kb.keyHeight, 10) || 36);
       if (kb.soundEnabled !== undefined) K.setSoundEnabled(kb.soundEnabled !== false);
+      if (kb.vibrationEnabled !== undefined) K.setVibrationEnabled(kb.vibrationEnabled !== false);
     }, function () { /* defaults stay */ });
   }
 

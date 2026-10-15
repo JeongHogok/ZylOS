@@ -301,6 +301,11 @@ main, .sub-page {
 .scan-btn:active { background:#1a1a28; }
 .scan-btn.scanning { opacity:0.6; pointer-events:none; }
 
+/* Why a control is off: the hardware is not on this device */
+.setting-note { font-size: 12px; opacity: 0.6; }
+.toggle input:disabled + .toggle-slider { opacity: 0.35; cursor: default; }
+.scan-btn:disabled, .wifi-join-input:disabled { opacity: 0.35; cursor: default; }
+
 /* Wi-Fi: joining a secured network */
 .wifi-join-input {
   width:100%; padding:10px 12px; border:1px solid rgba(255,255,255,0.2); border-radius:8px;

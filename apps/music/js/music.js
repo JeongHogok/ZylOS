@@ -735,4 +735,17 @@
   requestTrackList();
   requestService('audio', 'getVolume', { stream: 'media' });
   loadPlaylists();
+  /* Another app asked to play an audio file here (app.json "intents") */
+  ZylIntent.onIntent(function (intent) {
+    if (intent.action !== ZylIntent.ACTION.VIEW || !intent.data) return;
+    var path = String(intent.data).replace(/^\/+/, '');
+    var index = -1;
+    for (var i = 0; i < tracks.length; i++) if (tracks[i].path === path) index = i;
+    if (index === -1) {
+      tracks.push({ name: path.split('/').pop(), path: path });
+      index = tracks.length - 1;
+    }
+    loadAndPlayTrack(index);
+  });
+
 })();

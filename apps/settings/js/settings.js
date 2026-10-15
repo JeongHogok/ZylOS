@@ -162,6 +162,28 @@
     return ZylBridge.requestService(service, method, params || {});
   }
 
+  /* What a service's hardware can do on this device ({} when unknown) —
+     asked once per service; modules disable controls for what is missing */
+  var capabilityCache = {};
+  function getCapabilities(service) {
+    if (!capabilityCache[service]) {
+      capabilityCache[service] = requestService(service, 'getCapabilities').then(function (c) {
+        return c || {};
+      }, function () { return {}; });
+    }
+    return capabilityCache[service];
+  }
+
+  /* A control whose hardware is not here: kept, disabled, with the note shown */
+  function disableFor(input, noteId) {
+    if (input) {
+      input.disabled = true;
+      input.setAttribute('aria-disabled', 'true');
+    }
+    var note = noteId && document.getElementById(noteId);
+    if (note) note.classList.remove('hidden');
+  }
+
   /* ─── Send a setting update (Promise-based) ─── */
   function updateSetting(category, key, value) {
     return requestService('settings', 'update', { category: category, key: key, value: value });
@@ -268,7 +290,13 @@
   }
 
   /* ─── Storage Renderer ─── */
-  function renderStorageInfo(data) {
+  /* Bytes from the storage service; units are this locale's (zylI18n) */
+  function renderStorageInfo(usage) {
+    var data = {
+      total: zylI18n.formatBytes(usage.total || 0),
+      used: zylI18n.formatBytes(usage.used || 0),
+      available: zylI18n.formatBytes(usage.available || 0)
+    };
     /* Update main menu summary */
     var summary = document.getElementById('storage-summary');
     if (summary) summary.textContent = data.used + ' / ' + data.total;
@@ -296,7 +324,7 @@
 
   handlers.storage = {
     onServiceResponse: function (method, data) {
-      if (method === 'getFormatted' && data) renderStorageInfo(data);
+      if (method === 'getUsage' && data) renderStorageInfo(data);
     }
   };
 
@@ -307,6 +335,16 @@
         var levelEl = document.getElementById('battery-level-value');
         var chargingEl = document.getElementById('battery-charging-value');
         var statusEl = document.getElementById('battery-status');
+        /* No battery fitted: say so instead of a level */
+        var noBattery = data.batteryPresent === false;
+        var noteEl = document.getElementById('no-battery');
+        var listEl = document.getElementById('battery-info-list');
+        if (noteEl) noteEl.classList.toggle('hidden', !noBattery);
+        if (listEl) listEl.classList.toggle('hidden', noBattery);
+        if (noBattery) {
+          if (statusEl) statusEl.textContent = t('settings.power_external');
+          return;
+        }
         if (levelEl && data.batteryLevel !== undefined) {
           levelEl.textContent = data.batteryLevel + '%';
         }
@@ -321,9 +359,14 @@
   };
 
   /* ─── Expose ZylSettingsCore namespace for domain modules ─── */
+  /* Domain modules reach the system only through this object */
   window.ZylSettingsCore = {
     t: t,
     requestService: requestService,
+    getCapabilities: getCapabilities,
+    disableFor: disableFor,
+    onServiceEvent: function (service, event, fn) { ZylBridge.onServiceEvent(service, event, fn); },
+    sendToSystem: function (msg) { ZylBridge.sendToSystem(msg); },
     updateSetting: updateSetting,
     settingsCache: settingsCache,
     handlers: handlers,
@@ -338,11 +381,9 @@
   requestServiceFire('wifi', 'getNetworks');
   requestServiceFire('bluetooth', 'getDevices');
   requestServiceFire('device', 'getInfo');
-  requestServiceFire('storage', 'getFormatted');
+  requestServiceFire('storage', 'getUsage');
 
   /* Request settings state for all categories */
-  requestServiceFire('settings', 'get', { category: 'wifi' });
-  requestServiceFire('settings', 'get', { category: 'bluetooth' });
   requestServiceFire('settings', 'get', { category: 'display' });
   requestServiceFire('settings', 'get', { category: 'sound' });
   requestServiceFire('settings', 'get', { category: 'security' });

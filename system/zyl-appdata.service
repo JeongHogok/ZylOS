@@ -1,0 +1,26 @@
+[Unit]
+Description=Zyl OS App Data Service (each app's private storage)
+After=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/zyl-appdata
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=5
+
+# Only the app containers
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/data/appdata
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+PrivateNetwork=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+
+[Install]
+WantedBy=zyl-os.target

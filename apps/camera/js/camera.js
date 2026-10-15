@@ -133,7 +133,7 @@
           type: 'service.request',
           service: 'fs',
           method: 'writeFile',
-          params: { path: 'Pictures/' + filename, content: base64 }
+          params: { path: 'Pictures/' + filename, content: base64, encoding: 'base64' }
         });
       };
       reader.readAsDataURL(blob);
@@ -282,7 +282,7 @@
         type: 'service.request',
         service: 'fs',
         method: 'writeFile',
-        params: { path: path, content: base64 }
+        params: { path: path, content: base64, encoding: 'base64' }
       });
       /* FIX: use i18n for save notice instead of hardcoded English */
       var saveMsg = (typeof zylI18n !== 'undefined') ? zylI18n.t('camera.saved', { filename: filename }) : ('Saved: ' + filename);

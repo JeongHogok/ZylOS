@@ -33,7 +33,9 @@
               system: (SYSTEM_APPS.indexOf(m.id) !== -1),
               permissions: m.permissions || [],
               formFactors: m.formFactors || [],
-              iconSvg: m.iconSvg || ''
+              iconSvg: m.iconSvg || '',
+              /* false for system UI (lock screen, status bar, setup, home, keyboard) */
+              launcher: m.launcher !== false
             };
           });
           if (typeof ZylPermissions !== 'undefined' && ZylPermissions.registerFromAppList) {

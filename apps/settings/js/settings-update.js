@@ -4,7 +4,7 @@
 // 역할: 설정 앱 소프트웨어 업데이트 — 현재 버전, 진행 상태, 확인·설치·재시작
 // 수행범위: updater 서비스 상태 렌더링, 상태에 맞는 단일 동작 버튼,
 //          StateChanged 이벤트로 진행률 갱신
-// 의존방향: ZylSettingsCore (settings.js), ZylBridge (bridge.js)
+// 의존방향: ZylSettingsCore (settings.js)
 // SOLID: SRP — 업데이트 UI만 담당. 확인·검증·설치는 updater 서비스 몫
 //
 // 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
@@ -39,7 +39,7 @@
   }
 
   function call(method) {
-    ZylBridge.requestService('updater', method).then(render, function () {
+    core.requestService('updater', method).then(render, function () {
       render({ state: 'failed', version: versionEl.textContent });
     });
   }
@@ -47,6 +47,6 @@
   actionEl.addEventListener('click', function () {
     call(actionEl.getAttribute('data-action'));
   });
-  ZylBridge.onServiceEvent('updater', 'StateChanged', render);
+  core.onServiceEvent('updater', 'StateChanged', render);
   call('getState');
 })();

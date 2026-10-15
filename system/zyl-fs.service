@@ -1,0 +1,25 @@
+[Unit]
+Description=Zyl OS File Service (the user's files)
+After=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/zyl-fs
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=5
+
+# Only the user's file tree under /data/users
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/data/users
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+
+[Install]
+WantedBy=zyl-os.target

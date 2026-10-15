@@ -298,3 +298,6 @@ body {
   opacity: 0.4;
   flex-shrink: 0;
 }
+
+/* A radio this device does not have: the tile stays, disabled */
+.qs-btn:disabled { opacity: 0.35; cursor: default; }

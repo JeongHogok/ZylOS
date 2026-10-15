@@ -75,13 +75,52 @@ static void test_ordinary_user_apps_still_register(void) {
     g_hash_table_destroy(t);
 }
 
+/* apps.getInstalled on a device: the app's own presentation fields, and
+   "system" as the OS decided it — an app's app.json cannot claim it */
+static void test_app_info_is_what_apps_see(void) {
+    reset();
+    write_app(ROOT "/system", "lockscreen", "com.zylos.lockscreen", "\"system\"");
+    char path[256];
+    snprintf(path, sizeof(path), ROOT "/user/notes");
+    mkdir(path, 0755);
+    FILE *f = fopen(ROOT "/user/notes/app.json", "w");
+    fprintf(f, "{\"id\":\"com.example.notes\",\"name\":\"Notes\",\"version\":\"2.1.0\","
+               "\"entry\":\"index.html\",\"type\":\"system\",\"color\":\"icon-teal\","
+               "\"formFactors\":[\"phone\",\"tablet\"],\"permissions\":[\"storage\"]}");
+    fclose(f);
+    GHashTable *t = scan();
+    GVariant *notes = g_variant_ref_sink(zyl_manifest_app_info(g_hash_table_lookup(t, "com.example.notes")));
+    gboolean sys = TRUE, launcher = FALSE;
+    const gchar *color = NULL, *key = NULL;
+    assert(g_variant_lookup(notes, "system", "b", &sys) && !sys);          /* "type": "system" ignored */
+    assert(g_variant_lookup(notes, "launcher", "b", &launcher) && launcher);
+    assert(g_variant_lookup(notes, "color", "&s", &color) && strcmp(color, "icon-teal") == 0);
+    assert(g_variant_lookup(notes, "nameKey", "&s", &key) && strcmp(key, "app.notes") == 0);
+    GVariant *ff = g_variant_lookup_value(notes, "formFactors", G_VARIANT_TYPE("as"));
+    assert(ff && g_variant_n_children(ff) == 2);
+    g_variant_unref(ff);
+    g_variant_unref(notes);
+    /* System UI says so in its manifest and stays out of the launcher */
+    f = fopen(ROOT "/system/lockscreen/app.json", "w");
+    fprintf(f, "{\"id\":\"com.zylos.lockscreen\",\"name\":\"Lock\",\"version\":\"1.0.0\","
+               "\"entry\":\"index.html\",\"launcher\":false}");
+    fclose(f);
+    GVariant *lock = g_variant_ref_sink(zyl_manifest_app_info(g_hash_table_lookup(t, "com.zylos.lockscreen")));
+    assert(g_variant_lookup(lock, "launcher", "b", &launcher) && !launcher);
+    assert(g_variant_lookup(lock, "system", "b", &sys) && sys);
+    g_variant_unref(lock);
+    g_hash_table_destroy(t);
+}
+
 int main(void) {
     printf("=== Zyl OS Manifest Scan Tests ===\n");
     test_user_app_cannot_shadow_a_system_app();
     printf("  test_user_app_cannot_shadow_a_system_app     PASS\n");
     test_ordinary_user_apps_still_register();
     printf("  test_ordinary_user_apps_still_register       PASS\n");
+    test_app_info_is_what_apps_see();
+    printf("  test_app_info_is_what_apps_see               PASS\n");
     (void)system("rm -rf " ROOT);
-    printf("\nResults: 2/2 passed\n");
+    printf("\nResults: 3/3 passed\n");
     return 0;
 }

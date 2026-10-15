@@ -1,0 +1,26 @@
+[Unit]
+Description=Zyl OS Contacts Service (the address book)
+After=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/zyl-contacts
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=5
+
+# Only the address book
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/data/contacts
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+PrivateNetwork=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+
+[Install]
+WantedBy=zyl-os.target

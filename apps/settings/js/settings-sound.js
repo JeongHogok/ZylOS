@@ -58,6 +58,9 @@
     vibrationToggle.addEventListener('change', function () {
       core.updateSetting('sound', 'vibration', vibrationToggle.checked);
     });
+    core.getCapabilities('audio').then(function (caps) {
+      if (!caps.vibrator) core.disableFor(vibrationToggle, 'no-vibrator');
+    });
   }
 
   /* ─── Register with core ─── */

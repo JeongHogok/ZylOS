@@ -1,10 +1,4 @@
 {
-  "wifi": {
-    "enabled": true
-  },
-  "bluetooth": {
-    "enabled": true
-  },
   "display": {
     "brightness": 80,
     "darkMode": true,
@@ -32,5 +26,8 @@
       "dark",
       "sunset"
     ]
+  },
+  "home": {
+    "dock": "com.zylos.phone,com.zylos.contacts,com.zylos.messages,com.zylos.settings"
   }
 }

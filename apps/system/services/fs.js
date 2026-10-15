@@ -52,8 +52,9 @@
       });
     }
 
+    /* encoding 'base64': binary content (a photo); otherwise text as given */
     function writeFile(params) {
-      return invoke('fs_write_file', { path: params.path, content: params.content });
+      return invoke('fs_write_file', { path: params.path, content: params.content, encoding: params.encoding || null });
     }
 
     function mkdirFn(params) {

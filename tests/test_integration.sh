@@ -117,7 +117,7 @@ fi
 
 # ── Test 6: All required app directories exist ────────────────
 
-REQUIRED_APPS=(home lockscreen statusbar settings browser files terminal camera)
+REQUIRED_APPS=(home lockscreen statusbar settings browser files camera)
 echo -n "[6] App directories... "
 APP_MISSING=0
 for app in "${REQUIRED_APPS[@]}"; do

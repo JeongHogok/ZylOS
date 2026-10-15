@@ -71,7 +71,7 @@ var fs = require('fs');
 
 var moduleFiles = [
   'fs.js', 'device.js', 'storage.js', 'apps.js', 'settings.js',
-  'terminal.js', 'wifi.js', 'bluetooth.js', 'network.js', 'browser.js',
+  'wifi.js', 'bluetooth.js', 'network.js', 'appdata.js', 'clipboard.js',
   'notification.js', 'power.js', 'display.js', 'input.js', 'sensors.js',
   'location.js', 'telephony.js', 'contacts.js', 'messaging.js', 'usb.js',
   'user.js', 'credential.js', 'appstore.js', 'updater.js', 'sandbox.js',
@@ -120,8 +120,11 @@ console.log('\n■ Device Service');
   test('getInfo returns osVersion', function () {
     assert.strictEqual(info.osVersion, '0.1.0');
   });
-  test('getInfo returns SoC', function () {
-    assert.ok(info.soc.indexOf('RISC-V') !== -1);
+  test('the SoC is the virtual device profile\'s — nothing invented without one', function () {
+    assert.strictEqual(info.soc, '');
+    assert.strictEqual(info.kernel, '');
+    dev._applyProfile({ soc: 'SpacemiT K1', ram: '4GB' });
+    assert.strictEqual(dev.getInfo().soc, 'SpacemiT K1 (RISC-V)');
   });
   test('getUptime returns non-negative', function () {
     return dev.getUptime().then(function (v) {
@@ -270,14 +273,29 @@ var powerTests = (function () {
   var invoke = createMockInvoker({ 'power_get_state': { state: 'ACTIVE', battery: { level: 85, charging: false } } });
   var pwr = ns.power({ invoke: invoke });
 
-  return asyncTest('setBrightness clamps to 0-100', function () {
+  return asyncTest('setBrightness clamps to 0-100 and shows in getState', function () {
     return pwr.setBrightness({ percent: 150 }).then(function (r) {
-      assert.strictEqual(r.brightness, 100);
+      assert.strictEqual(r, true);
+      return pwr.getState();
+    }).then(function (s) {
+      assert.strictEqual(s.brightness, 100);
     });
   }).then(function () {
     return asyncTest('getState includes batteryLevel', function () {
       return pwr.getState().then(function (s) {
         assert.strictEqual(s.batteryLevel, 85);
+        assert.strictEqual(s.batteryPresent, true);
+      });
+    });
+  }).then(function () {
+    /* A host without a battery: the device has none — no invented level */
+    var none = ns.power({ invoke: createMockInvoker({ 'power_get_state': { state: 'ACTIVE', battery: { present: false } } }) });
+    return asyncTest('no battery is reported as none, not as a level', function () {
+      return Promise.all([none.getState(), none.getCapabilities()]).then(function (r) {
+        assert.strictEqual(r[0].batteryPresent, false);
+        assert.strictEqual(r[0].batteryLevel, undefined);
+        assert.strictEqual(r[0].plugged, true);
+        assert.deepStrictEqual(r[1], { backlight: true, battery: false });
       });
     });
   });
@@ -599,7 +617,7 @@ console.log('\n■ ZylFormFactor / ZylFocusNav');
     FF.reload();
     var appList = [
       { id: 'com.zylos.home',     formFactors: ['*'] },
-      { id: 'com.zylos.terminal', formFactors: ['phone', 'tablet', 'desktop', 'pda'] },
+      { id: 'com.example.desk',   formFactors: ['phone', 'tablet', 'desktop', 'pda'] },
       { id: 'com.zylos.phone',    formFactors: ['phone', 'tablet', 'auto', 'watch', 'pda'] },
       { id: 'com.zylos.browser',  formFactors: ['phone', 'tablet', 'tv', 'desktop', 'pda'] },
       { id: 'com.zylos.legacy' }   /* no declaration → stays visible */
@@ -1088,6 +1106,55 @@ console.log('\n■ ZylHangul');
 })();
 
 /* ═══════════════════════════════════════════════════════
+   Intents (real app-registry.js + intent.js, isolated) — same rules as
+   runtime/wam/src/intent (tests/test_intent.c)
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ ZylIntent');
+
+(function () {
+  var vm = require('vm');
+  var ctx = { window: {}, console: console };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'apps', 'system', 'app-registry.js'), 'utf8'), ctx);
+  ctx.ZylAppRegistry = ctx.window.ZylAppRegistry;
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'apps', 'system', 'intent.js'), 'utf8'), ctx);
+  var I = ctx.window.ZylIntent;
+  function plain(v) { return JSON.parse(JSON.stringify(v)); }   /* objects from the other context */
+  var VIEW = 'zyl.intent.action.VIEW';
+  ctx.ZylAppRegistry.register([
+    { id: 'com.zylos.gallery', name: 'Gallery', intents: [{ action: VIEW, mimeType: 'image/*' }] },
+    { id: 'com.example.photos', name: 'Photos', intents: [{ action: VIEW, mimeType: 'image/png' }] },
+    { id: 'com.zylos.files', name: 'Files' }
+  ]);
+
+  test('one handler launches; the starting app is not offered itself', function () {
+    var d = I.start('com.zylos.files', { action: VIEW, data: 'Pictures/a.gif', mimeType: 'image/*',
+                                         sourceApp: 'com.zylos.settings' });
+    assert.strictEqual(d.launch, 'com.zylos.gallery');
+    assert.strictEqual(d.intent.sourceApp, 'com.zylos.files');           /* the OS's, not the request's */
+    assert.deepStrictEqual(plain(I.start('com.zylos.gallery', { action: VIEW, mimeType: 'image/*' })), { none: true });
+    assert.deepStrictEqual(plain(I.start('com.zylos.files', { action: VIEW, mimeType: 'text/plain' })), { none: true });
+  });
+
+  test('several handlers: a choice, and only an offered pick from the same app counts', function () {
+    var d = I.start('com.zylos.files', { action: VIEW, data: 'x.png', mimeType: 'image/png' });
+    assert.deepStrictEqual(plain(d.choose.choices.map(function (c) { return c.appId; })),
+                           ['com.example.photos', 'com.zylos.gallery']);
+    var t = d.choose.token;
+    assert.strictEqual(I.choose('com.zylos.files', t, 'com.zylos.files'), null);        /* not offered */
+    assert.strictEqual(I.choose('com.example.photos', t, 'com.zylos.gallery'), null);   /* not its choice */
+    var picked = I.choose('com.zylos.files', t, 'com.zylos.gallery');
+    assert.strictEqual(picked.launch, 'com.zylos.gallery');
+    assert.strictEqual(picked.intent.data, 'x.png');
+    assert.strictEqual(I.choose('com.zylos.files', t, 'com.zylos.gallery'), null);     /* used up */
+  });
+
+  test('explicit intents name an installed app', function () {
+    assert.strictEqual(I.start('com.zylos.files', { targetApp: 'com.zylos.gallery' }).launch, 'com.zylos.gallery');
+    assert.deepStrictEqual(plain(I.start('com.zylos.files', { targetApp: 'com.nope' })), { none: true });
+  });
+})();
+
+/* ═══════════════════════════════════════════════════════
    Permission policy — reserved permissions (real permissions.js, isolated)
    ═══════════════════════════════════════════════════════ */
 console.log('\n■ ZylPermissions');
@@ -1103,7 +1170,7 @@ console.log('\n■ ZylPermissions');
 
   P.registerFromAppList([
     { id: 'com.zylos.settings', permissions: [] },
-    { id: 'com.evil.app', permissions: ['system', 'shell', 'credential',
+    { id: 'com.evil.app', permissions: ['system', 'credential',
                                         'app.manage', 'notification.read',
                                         'camera', 'network'] },
     { id: 'com.zylos.settings', permissions: ['camera'] }   /* ID spoof */
@@ -1111,7 +1178,7 @@ console.log('\n■ ZylPermissions');
 
   test('a third-party app cannot declare itself system permissions', function () {
     var got = P.getEffectivePermissions('com.evil.app');
-    ['system', 'shell', 'credential', 'app.manage', 'notification.read'].forEach(function (r) {
+    ['system', 'credential', 'app.manage', 'notification.read'].forEach(function (r) {
       assert.strictEqual(got.indexOf(r), -1, r + ' must not be grantable by declaration');
     });
   });
@@ -1125,7 +1192,6 @@ console.log('\n■ ZylPermissions');
   test('settings and telemetry stay closed to third-party apps', function () {
     assert.strictEqual(P.checkPermission('com.evil.app', 'settings', 'set'), false);
     assert.strictEqual(P.checkPermission('com.evil.app', 'telemetry', 'setEnabled'), false);
-    assert.strictEqual(P.checkPermission('com.evil.app', 'terminal', 'exec'), false);
   });
 
   test('system apps keep reserved permissions', function () {
@@ -1306,12 +1372,22 @@ var callTests = (function () {
     _updateSetting: function (cat, k, v) { store[cat] = store[cat] || {}; store[cat][k] = v; }
   };
   var tel = ns.telephony({ settingsSvc: settingsSvc });
-  var files = {};
-  var contacts = ns.contacts({ invoke: function (cmd, a) {
+  /* What older builds left in the user's Documents folder */
+  var files = {
+    'Documents/Contacts/c_1.json': JSON.stringify({ id: 'c_1', name: 'Ana', phone: '010', email: '' }),
+    'Documents/Messages/thread_010.json': JSON.stringify({ id: 'thread_010', number: '010', name: 'Ana', lastTime: 5,
+      messages: [{ id: 'm_4', text: 'hi', sent: false, time: 4 }, { id: 'm_5', text: 'yo', sent: true, time: 5 }] })
+  };
+  var fsInvoke = function (cmd, a) {
+    if (cmd === 'fs_read_dir') {
+      return Promise.resolve(Object.keys(files).filter(function (f) { return f.indexOf(a.path + '/') === 0; })
+        .map(function (f) { return { name: f.slice(a.path.length + 1) }; }));
+    }
     if (cmd === 'fs_read_file') return files[a.path] ? Promise.resolve(files[a.path]) : Promise.reject(new Error('missing'));
-    if (cmd === 'fs_write_file') { files[a.path] = a.content; return Promise.resolve(true); }
-    return Promise.resolve(true);
-  } });
+    return Promise.reject(new Error('no file writes expected: ' + cmd));
+  };
+  var contacts = ns.contacts({ invoke: fsInvoke, settingsSvc: settingsSvc });
+  var messaging = ns.messaging({ invoke: fsInvoke, settingsSvc: settingsSvc });
   return Promise.all([
     asyncTest('a call is logged by the service, newest first, and can be deleted', function () {
       return tel.dial({ number: '0212345678' }).then(function () { return tel.hangup(); })
@@ -1342,6 +1418,14 @@ var callTests = (function () {
         assert.strictEqual(typeof tel.addCallLog, 'undefined');   /* apps cannot write the log */
       });
     }),
+    asyncTest('audio says what this device has: no call audio here, vibration if the page can', function () {
+      var audio = ns.audio({ settingsSvc: { _getSetting: function () { return Promise.resolve({}); },
+                                            _updateSetting: function () {} } });
+      return Promise.all([audio.getCapabilities(), audio.setSpeakerphone({ enabled: true })]).then(function (r) {
+        assert.deepStrictEqual(r[0], { speakerphone: false, vibrator: true });   /* stub has navigator.vibrate */
+        assert.strictEqual(r[1], false);
+      });
+    }),
     asyncTest('vibration follows the sound setting at the moment it is asked', function () {
       var sound = { vibration: false };
       var buzzed = 0;
@@ -1359,6 +1443,26 @@ var callTests = (function () {
         assert.strictEqual(buzzed, 1);
       });
     }),
+    asyncTest('radios are switched through their services; the emulator has no hotspot', function () {
+      var calls = [];
+      var invoke = function (cmd, a) {
+        calls.push(cmd + (a ? ' ' + JSON.stringify(a) : ''));
+        if (cmd === 'wifi_set_enabled' || cmd === 'bt_set_enabled') return Promise.resolve({ enabled: a.enabled });
+        if (cmd === 'wifi_get_state') return Promise.resolve({ enabled: true, connected: true, currentSsid: 'Home' });
+        return Promise.resolve(null);
+      };
+      var wifi = ns.wifi({ invoke: invoke });
+      var bt = ns.bluetooth({ invoke: invoke });
+      return Promise.all([wifi.setEnabled({ enabled: false }), bt.setEnabled({ enabled: true }), wifi.getState(),
+                          wifi.getCapabilities(), wifi.setHotspot({ enabled: true, ssid: 'x', passphrase: 'yyyyyyyy' })])
+        .then(function (r) {
+          assert.deepStrictEqual(r.slice(0, 3), [true, true, { enabled: true, connected: true, ssid: 'Home' }]);
+          assert.deepStrictEqual(r[3], { present: true, hotspot: false });
+          assert.strictEqual(r[4].ok, false);
+          assert.strictEqual(r[4].reason, 'unsupported');
+          assert.ok(calls.indexOf('wifi_set_enabled {"enabled":false}') !== -1);
+        });
+    }),
     asyncTest('wifi.connect answers true or false, like the device', function () {
       var wifi = ns.wifi({ invoke: function (cmd, a) {
         return Promise.resolve(cmd === 'wifi_connect' ? { success: a.password === 'secret88' } : null);
@@ -1369,14 +1473,75 @@ var callTests = (function () {
       });
     }),
     asyncTest('starring a contact keeps its details; editing keeps the star', function () {
-      files['Documents/Contacts/c_1.json'] = JSON.stringify({ id: 'c_1', name: 'Ana', phone: '010', email: '' });
       return contacts.update({ id: 'c_1', starred: true }).then(function (c) {
-        assert.strictEqual(c.name, 'Ana');
+        assert.strictEqual(c.name, 'Ana');                       /* taken in from Documents */
         assert.strictEqual(c.starred, true);
         return contacts.update({ id: 'c_1', name: 'Ana Kim', phone: '011', email: 'a@k' });
       }).then(function (c) {
         assert.strictEqual(c.name, 'Ana Kim');
         assert.strictEqual(c.starred, true);
+        assert.strictEqual(JSON.parse(store.contacts.entries)[0].name, 'Ana Kim');   /* private store */
+        return Promise.all([contacts.create({ name: 'bo', phone: '012' }), contacts.create({ name: 'Cy' })]);
+      }).then(function () {
+        return Promise.all([contacts.getAll(), contacts.search({ query: 'B' }), contacts.update({ id: 'nobody' }).catch(function () { return 'refused'; })]);
+      }).then(function (r) {
+        assert.deepStrictEqual(r[0].map(function (c) { return c.name; }), ['Ana Kim', 'bo', 'Cy']);
+        assert.deepStrictEqual(r[1].map(function (c) { return c.name; }), ['bo']);
+        assert.strictEqual(r[2], 'refused');
+      });
+    }),
+    asyncTest('appdata: each app only its own, quota keeps the old value, no caller no data', function () {
+      var disk = {};
+      var appdata = ns.appdata({ invoke: function (cmd, a) {
+        if (cmd === 'appdata_load') return Promise.resolve(disk[a.appId] || '');
+        if (cmd === 'appdata_save') { disk[a.appId] = a.data; return Promise.resolve(true); }
+        return Promise.reject(new Error(cmd));
+      } });
+      return Promise.all([appdata.setItem({ key: 'k', value: 'a' }, 'com.a'), appdata.setItem({ key: 'k', value: 'b' }, 'com.b')])
+        .then(function (r) {
+          assert.deepStrictEqual(r, [true, true]);
+          return Promise.all([appdata.getItem({ key: 'k' }, 'com.a'), appdata.getItem({ key: 'k' }, 'com.c'),
+                              appdata.setItem({ key: 'big', value: new Array(5 * 1024 * 1024).join('x') }, 'com.a'),
+                              appdata.getItem({ key: 'k' }).catch(function () { return 'refused'; })]);
+        }).then(function (r) {
+          assert.deepStrictEqual(r, ['a', '', false, 'refused']);
+          assert.deepStrictEqual(JSON.parse(disk['com.a']), { k: 'a' });
+          return Promise.all([appdata.keys({}, 'com.b'), appdata.removeItem({ key: 'k' }, 'com.b'), appdata.removeItem({ key: 'k' }, 'com.b')]);
+        }).then(function (r) {
+          assert.deepStrictEqual(r, [['k'], true, false]);
+        });
+    }),
+    asyncTest('clipboard: the OS names the source app, not the request; size is capped', function () {
+      var clip = ns.clipboard({});
+      assert.deepStrictEqual(clip.paste(), {});
+      assert.strictEqual(clip.copy({ text: 'hi', sourceApp: 'com.zylos.settings' }, 'com.example.app'), true);
+      assert.strictEqual(clip.paste().sourceApp, 'com.example.app');
+      assert.strictEqual(clip.copy({ text: new Array(1024 * 1024 + 2).join('a') }, 'x'), false);
+      assert.strictEqual(clip.paste().text, 'hi');
+      return Promise.resolve();
+    }),
+    asyncTest('messages: threads newest first, a send without a modem is not sent, read and delete', function () {
+      return messaging.getThreads().then(function (t) {
+        assert.strictEqual(t.length, 1);                           /* taken in from Documents */
+        assert.deepStrictEqual([t[0].id, t[0].lastMessage, t[0].unread], ['thread_010', 'yo', 0]);
+        return Promise.all([messaging.send({ number: '+82 10-9', text: 'a' }), messaging.send({ number: '+82 10-9', text: 'b' })]);
+      }).then(function (sent) {
+        assert.strictEqual(sent[0].threadId, 'thread_82109');
+        assert.strictEqual(sent[1].status, 'failed');
+        return Promise.all([messaging.getThreads(), messaging.getMessages({ threadId: 'thread_82109' }),
+                            messaging.send({ number: '', text: 'x' }).catch(function () { return 'refused'; })]);
+      }).then(function (r) {
+        assert.deepStrictEqual(r[0].map(function (t) { return t.id; }), ['thread_82109', 'thread_010']);
+        assert.deepStrictEqual(r[1].map(function (m) { return m.text; }), ['a', 'b']);   /* neither lost */
+        assert.strictEqual(r[2], 'refused');
+        return Promise.all([messaging.markRead({ threadId: 'thread_010' }), messaging.deleteThread({ threadId: 'thread_82109' }),
+                            messaging.deleteThread({ threadId: 'thread_82109' })]);
+      }).then(function (r) {
+        assert.deepStrictEqual(r, [true, true, false]);
+        return messaging.getThreads();
+      }).then(function (t) {
+        assert.deepStrictEqual(t.map(function (x) { return x.id; }), ['thread_010']);
+        assert.strictEqual(Object.keys(JSON.parse(store.messaging.threads)).length, 1);
       });
     })
   ]);

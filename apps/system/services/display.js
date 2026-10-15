@@ -32,6 +32,10 @@
         return Promise.resolve(displayState.rotation);
       },
       getScale: function () { return Promise.resolve(displayState.scale); },
+      setAutoRotate: function (p) {
+        displayState.autoRotate = !!(p && p.enabled);
+        return Promise.resolve(displayState.autoRotate);
+      },
       setScale: function (p) {
         var raw = parseFloat(p.scale);
         var scale = isNaN(raw) ? 1.0 : Math.min(3.0, Math.max(0.5, raw));

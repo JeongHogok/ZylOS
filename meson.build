@@ -34,7 +34,7 @@ subdir('board')   # defines board_id / board_soc / board_arch / board_hal_backen
 zyl_core_services = [
   'dbus', 'logger', 'display', 'input', 'power', 'sandbox', 'crash',
   'credential', 'user', 'accessibility', 'notification', 'updater', 'telemetry',
-  'netstats', 'bootctl', 'settings', 'lock',
+  'netstats', 'bootctl', 'settings', 'lock', 'device', 'storage', 'fs', 'clipboard', 'network', 'appdata',
 ]
 
 # Hardware-dependent services, added per form factor.
@@ -42,20 +42,23 @@ zyl_core_services = [
 #           split into tablet-lte / watch-lte variants when a board needs it.
 zyl_profile_extras = {
   'phone':     ['account', 'alarm', 'appstore', 'audio', 'auth', 'bluetooth',
-                'camera', 'location', 'nfc', 'sensors', 'telephony', 'usb', 'wifi'],
+                'camera', 'contacts', 'location', 'messaging', 'nfc', 'sensors',
+                'telephony', 'usb', 'wifi'],
   'tablet':    ['account', 'alarm', 'appstore', 'audio', 'auth', 'bluetooth',
-                'camera', 'location', 'sensors', 'usb', 'wifi'],
+                'camera', 'contacts', 'location', 'messaging', 'sensors', 'usb',
+                'wifi'],
   'tv':        ['account', 'alarm', 'appstore', 'audio', 'auth', 'bluetooth',
                 'usb', 'wifi'],
   'auto':      ['account', 'alarm', 'audio', 'auth', 'bluetooth', 'camera',
-                'location', 'sensors', 'telephony', 'usb', 'wifi'],
-  'watch':     ['account', 'alarm', 'audio', 'auth', 'bluetooth', 'location',
-                'nfc', 'sensors', 'wifi'],
+                'contacts', 'location', 'messaging', 'sensors', 'telephony', 'usb',
+                'wifi'],
+  'watch':     ['account', 'alarm', 'audio', 'auth', 'bluetooth', 'contacts',
+                'location', 'messaging', 'nfc', 'sensors', 'wifi'],
   'desktop':   ['account', 'alarm', 'appstore', 'audio', 'auth', 'bluetooth',
                 'camera', 'nfc', 'usb', 'wifi'],
   'appliance': ['alarm', 'audio', 'wifi'],
   'pda':       ['account', 'alarm', 'appstore', 'audio', 'auth', 'bluetooth',
-                'camera', 'location', 'nfc', 'usb', 'wifi'],
+                'camera', 'contacts', 'location', 'messaging', 'nfc', 'usb', 'wifi'],
 }
 
 zyl_services = zyl_core_services + zyl_profile_extras[zyl_profile]
@@ -93,7 +96,6 @@ install_subdir('apps/statusbar',  install_dir: get_option('datadir') / 'zyl-os' 
 install_subdir('apps/settings',   install_dir: get_option('datadir') / 'zyl-os' / 'apps')
 install_subdir('apps/browser',    install_dir: get_option('datadir') / 'zyl-os' / 'apps')
 install_subdir('apps/files',      install_dir: get_option('datadir') / 'zyl-os' / 'apps')
-install_subdir('apps/terminal',   install_dir: get_option('datadir') / 'zyl-os' / 'apps')
 install_subdir('apps/camera',     install_dir: get_option('datadir') / 'zyl-os' / 'apps')
 install_subdir('apps/keyboard',   install_dir: get_option('datadir') / 'zyl-os' / 'apps')
 install_subdir('apps/calc',        install_dir: get_option('datadir') / 'zyl-os' / 'apps')

@@ -1,0 +1,25 @@
+[Unit]
+Description=Zyl OS Clipboard Service (copy and paste between apps)
+After=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/zyl-clipboard
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=5
+
+# Memory only: no files, no network
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+PrivateNetwork=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+
+[Install]
+WantedBy=zyl-os.target

@@ -122,7 +122,6 @@ Linux 커널 위에 Wayland 컴포지터 + WebKitGTK 앱 런타임으로 구성�
 | settings | 영속 설정 JSON |
 | storage | 디스크 사용량 조회 |
 | telephony | 통화 발신/수신/종료, SIM 정보 |
-| terminal | 셸 명령 실행 (22패턴 위험 명령 필터링) |
 | updater | A/B 파티션 OTA 업데이트, 버전 비교 |
 | usb | configfs 가젯 (MTP/ADB) |
 | user | 사용자 프로필 |
@@ -256,7 +255,7 @@ CSS에 `zoom: var(...)` 를 쓰면 조용히 1이 된다. `zoom` 은 vw/vh 를 �
 
 ### Apps (apps/ — 22개 시스템 앱)
 - 모든 앱은 HTML/CSS/JS (ES5, WebKitGTK에서 실행)
-- 시스템 앱: home, lockscreen, statusbar, oobe, settings, browser, files, terminal, camera, gallery, music, clock, calc, notes, weather, store, phone, messages, contacts, keyboard, shared
+- 시스템 앱: home, lockscreen, statusbar, oobe, settings, browser, files, camera, gallery, music, clock, calc, notes, weather, store, phone, messages, contacts, keyboard, shared
 
 ### i18n 아키텍처
 - **공유 엔진**: `apps/shared/i18n.js` — 번역, DOM 자동 번역, 로케일 감지

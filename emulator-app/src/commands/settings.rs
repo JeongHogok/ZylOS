@@ -17,7 +17,7 @@ use std::sync::Mutex;
 use tauri::State;
 
 /// 임시 파일 → fsync → rename 방식의 atomic write 유틸리티
-fn atomic_write(path: &std::path::Path, content: &str) -> Result<(), String> {
+pub(crate) fn atomic_write(path: &std::path::Path, content: &str) -> Result<(), String> {
     let dir = path.parent().ok_or("Invalid path: no parent directory")?;
     let tmp_path = dir.join(format!(
         ".{}.tmp",

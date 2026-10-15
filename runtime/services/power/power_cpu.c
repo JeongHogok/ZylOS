@@ -4,7 +4,7 @@
  *
  * 역할: CPU 거버너 제어 및 Doze 모드 관리
  * 수행범위: CPU 코어 온/오프라인, 거버너 전환, Doze 진입/해제
- * 의존방향: power_internal.h, HAL CPU
+ * 의존방향: power_internal.h, hal.h (CPU HAL)
  * SOLID: SRP — CPU 절전 제어만 담당
  * ────────────────────────────────────────────────────────── */
 
@@ -26,15 +26,16 @@ gboolean zyl_power_enter_doze(gpointer data) {
     g_message("[Power] Entered DOZE mode — network restricted, alarms only");
 
     /* CPU 절전 거버너 전환 */
-    zyl_cpu_set_governor("powersave");
+    const ZylCpuHal *cpu = zyl_hal_cpu();
+    cpu->set_governor("powersave");
 
     /* 비활성 코어 오프라인 (상위 절반) */
-    int ncores = zyl_cpu_get_core_count();
+    int ncores = cpu->core_count();
     if (ncores > 1) {  /* guard: need at least 2 cores; core 0 stays online */
         int half = ncores / 2;
         if (half < 1) half = 1;
         for (int i = half; i < ncores; i++) {
-            zyl_cpu_set_core_online(i, 0);
+            cpu->set_core_online(i, false);
         }
     }
 
@@ -58,14 +59,12 @@ void exit_doze(ZylPowerService *svc) {
     if (!svc || svc->state != ZYL_POWER_STATE_DOZE) return;
 
     /* 코어 다시 온라인 */
-    int ncores = zyl_cpu_get_core_count();
-    for (int i = 1; i < ncores; i++) {
-        zyl_cpu_set_core_online(i, 1);
-    }
+    const ZylCpuHal *cpu = zyl_hal_cpu();
+    int ncores = cpu->core_count();
+    for (int i = 1; i < ncores; i++) cpu->set_core_online(i, true);
 
-    /* 거버너 복원 */
-    int profile = zyl_cpu_get_power_profile();
-    zyl_cpu_set_power_profile(profile);
+    /* Awake again: the scheduler-driven governor */
+    cpu->set_governor(ACTIVE_GOVERNOR);
 
     g_message("[Power] Exited DOZE mode — all cores online");
 }

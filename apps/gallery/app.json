@@ -9,6 +9,10 @@
     "files.read",
     "files.delete"
   ],
+  "intents": [
+    { "action": "zyl.intent.action.VIEW", "mimeType": "image/*" },
+    { "action": "zyl.intent.action.VIEW", "mimeType": "video/*" }
+  ],
   "formFactors": [
     "phone",
     "tablet",

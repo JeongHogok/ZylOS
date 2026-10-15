@@ -148,7 +148,7 @@ openssl dgst -sha256 -sign developer.key -out SIGNATURE manifest.hash
 
 ### 시스템 앱 보호 (SYSTEM_APPS)
 - 22개 시스템 앱은 App Store에서 삭제 불가
-- 보호 대상: home, lockscreen, statusbar, oobe, settings, browser, files, terminal, camera, gallery, music, clock, calc, notes, weather, store, phone, messages, contacts, keyboard, shared
+- 보호 대상: home, lockscreen, statusbar, oobe, settings, browser, files, camera, gallery, music, clock, calc, notes, weather, store, phone, messages, contacts, keyboard, shared
 - OS 서비스(`apps/system/services.js`)에서 SYSTEM_APPS 리스트 확인 후 uninstall 차단
 
 ### 파일시스템 보호 (Rust 백엔드)

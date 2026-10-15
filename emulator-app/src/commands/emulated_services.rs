@@ -82,9 +82,15 @@ static BRIGHTNESS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::
 
 #[tauri::command]
 pub fn power_get_state() -> serde_json::Value {
-    let battery = crate::platform::get_battery_info().unwrap_or_else(|_| {
-        serde_json::json!({"level": 100, "charging": true})
-    });
+    // The host's battery is the virtual device's; a host without one (a
+    // desktop) means a device without one — never an invented level
+    let battery = match crate::platform::get_battery_info() {
+        Ok(mut b) => {
+            b["present"] = serde_json::json!(true);
+            b
+        }
+        Err(_) => serde_json::json!({ "present": false }),
+    };
     let brightness = BRIGHTNESS.load(std::sync::atomic::Ordering::Relaxed);
 
     serde_json::json!({
@@ -491,6 +497,10 @@ fn virtual_aps() -> Vec<WifiNetwork> {
 #[tauri::command]
 pub fn get_wifi_networks() -> Vec<serde_json::Value> {
     let state = WIFI_STATE.lock().unwrap_or_else(|e| e.into_inner());
+    // A radio that is off hears no access points
+    if !state.enabled {
+        return vec![];
+    }
     let current_ssid = state.current_ssid.clone();
     let connected = state.connected && state.enabled;
 
@@ -542,6 +552,18 @@ pub fn wifi_disconnect() -> serde_json::Value {
     let prev = state.current_ssid.take();
     state.connected = false;
     serde_json::json!({ "success": true, "disconnectedFrom": prev })
+}
+
+/// The virtual radio's switch (like bt_set_enabled)
+#[tauri::command]
+pub fn wifi_set_enabled(enabled: bool) -> serde_json::Value {
+    let mut state = WIFI_STATE.lock().unwrap_or_else(|e| e.into_inner());
+    state.enabled = enabled;
+    if !enabled {
+        state.connected = false;
+        state.current_ssid = None;
+    }
+    serde_json::json!({ "enabled": state.enabled })
 }
 
 #[tauri::command]

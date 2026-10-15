@@ -719,6 +719,16 @@ static const ServiceRoute SERVICE_ROUTES[] = {
     {"bootctl",      "org.zylos.BootControl",        "/org/zylos/BootControl",        "org.zylos.BootControl"},
     {"lock",         "org.zylos.Lock",               "/org/zylos/Lock",               "org.zylos.Lock"},
     {"updater",      "org.zylos.Updater",            "/org/zylos/Updater",            "org.zylos.Updater"},
+    /* The installed apps are the WAM's own: it answers on its bus name */
+    {"apps",         "org.zylos.WebAppManager",      "/org/zylos/WebAppManager",      "org.zylos.WebAppManager"},
+    {"device",       "org.zylos.Device",             "/org/zylos/Device",             "org.zylos.Device"},
+    {"storage",      "org.zylos.Storage",            "/org/zylos/Storage",            "org.zylos.Storage"},
+    {"fs",           "org.zylos.FileSystem",         "/org/zylos/FileSystem",         "org.zylos.FileSystem"},
+    {"contacts",     "org.zylos.Contacts",           "/org/zylos/Contacts",           "org.zylos.Contacts"},
+    {"messaging",    "org.zylos.Messaging",          "/org/zylos/Messaging",          "org.zylos.Messaging"},
+    {"clipboard",    "org.zylos.Clipboard",          "/org/zylos/Clipboard",          "org.zylos.Clipboard"},
+    {"network",      "org.zylos.Network",            "/org/zylos/Network",            "org.zylos.Network"},
+    {"appdata",      "org.zylos.AppData",            "/org/zylos/AppData",            "org.zylos.AppData"},
     {NULL, NULL, NULL, NULL}
 };
 
@@ -745,7 +755,6 @@ typedef struct {
 
 static const ServicePermission SERVICE_PERMISSIONS[] = {
     {"fs",            {"storage", "files.read", "files.write", "files.delete", NULL}},
-    {"terminal",      {"shell", NULL}},
     {"credential",    {"credential", NULL}},
     {"settings",      {"system", NULL}},
     {"wifi",          {"wifi", NULL}},
@@ -768,7 +777,6 @@ static const ServicePermission SERVICE_PERMISSIONS[] = {
     {"device",        {NULL}},
     {"storage",       {NULL}},
     {"apps",          {NULL}},
-    {"browser",       {NULL}},
     {"display",       {NULL}},
     {"input",         {NULL}},
     {"sensors",       {NULL}},
@@ -777,13 +785,16 @@ static const ServicePermission SERVICE_PERMISSIONS[] = {
     {"sandbox",       {NULL}},
     {"logger",        {NULL}},
     {"accessibility", {NULL}},
+    {"clipboard",     {NULL}},
+    /* Every app has its own, named by the bridge's caller — never another's */
+    {"appdata",       {NULL}},
     {"power",         {NULL}},
     {NULL, {NULL}}
 };
 
 /* Never granted by declaring them in app.json — only system apps hold these */
 static const char *const RESERVED_PERMISSIONS[] = {
-    "system", "shell", "credential", "app.manage", "notification.read", NULL
+    "system", "credential", "app.manage", "notification.read", NULL
 };
 
 static gboolean is_reserved_permission(const char *perm) {
@@ -899,7 +910,9 @@ static char *capitalize_method(const char *method) {
  * filled from the JSON member of the same name. Case and '_' are ignored,
  * so a JS appId fills a C app_id.
  * An app_id argument from a third-party app is always the caller's own id:
- * otherwise any app could post notifications as com.zylos.messages. */
+ * otherwise any app could post notifications as com.zylos.messages.
+ * A caller argument is the calling app for every app, system ones included,
+ * and never comes from the request: whose data it is (clipboard source). */
 
 static gboolean arg_name_matches(const char *dbus_name, const char *json_key) {
     const char *a = dbus_name, *b = json_key;
@@ -924,19 +937,31 @@ static JsonNode *find_param(JsonObject *params, const char *arg_name) {
 }
 
 /* Returns the argument tuple (floating), or NULL with *error naming the bad argument.
- * caller_id: the calling app when it is not a system app, else NULL. */
+ * app_id: the calling app; is_system: whether it may name another app in app_id. */
 static GVariant *params_to_dbus_args(const GDBusMethodInfo *method,
-                                     JsonObject *params, const char *caller_id,
-                                     GError **error) {
+                                     JsonObject *params, const char *app_id,
+                                     gboolean is_system, GError **error) {
     GVariantBuilder b;
     g_variant_builder_init(&b, G_VARIANT_TYPE_TUPLE);
     for (int i = 0; method->in_args && method->in_args[i]; i++) {
         const GDBusArgInfo *arg = method->in_args[i];
         JsonNode *node = find_param(params, arg->name);
         GVariant *v = NULL;
-        if (caller_id && strcmp(arg->signature, "s") == 0 &&
-            arg_name_matches(arg->name, "appid")) {
-            v = g_variant_new_string(caller_id);
+        if (strcmp(arg->signature, "s") == 0 && strcmp(arg->name, "caller") == 0) {
+            v = g_variant_new_string(app_id);
+        } else if (!is_system && strcmp(arg->signature, "s") == 0 &&
+                   arg_name_matches(arg->name, "appid")) {
+            v = g_variant_new_string(app_id);
+        } else if (strcmp(arg->name, "params") == 0 && strcmp(arg->signature, "a{sv}") == 0) {
+            /* The whole request: for a method whose fields are each optional
+               (an update that changes only what it was given) */
+            JsonObject *all = params ? json_object_ref(params) : json_object_new();
+            JsonNode *whole = json_node_init_object(json_node_alloc(), all);
+            v = json_gvariant_deserialize(whole, "a{sv}", NULL);
+            json_node_unref(whole);
+            json_object_unref(all);
+            if (!v) g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                                "argument 'params' is not an object");
         } else if (!node) {
             g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
                         "missing argument '%s'", arg->name);
@@ -965,7 +990,8 @@ static GVariant *params_to_dbus_args(const GDBusMethodInfo *method,
 typedef struct {
     const ServiceRoute *route;
     char               *method;   /* D-Bus method name */
-    char               *caller_id; /* NULL for system apps */
+    char               *app_id;   /* the calling app */
+    gboolean            is_system;
     JsonObject         *params;   /* owned ref, may be NULL */
     ZylBridgeReplyCtx   reply;
     GDBusConnection    *conn;     /* owned ref */
@@ -973,7 +999,7 @@ typedef struct {
 
 static void service_call_free(ServiceCall *c) {
     g_free(c->method);
-    g_free(c->caller_id);
+    g_free(c->app_id);
     if (c->params) json_object_unref(c->params);
     g_object_unref(c->conn);
     g_free(c);
@@ -991,7 +1017,7 @@ static void service_call_invoke(ServiceCall *c, GDBusNodeInfo *node) {
     }
 
     GError *err = NULL;
-    GVariant *args = params_to_dbus_args(m, c->params, c->caller_id, &err);
+    GVariant *args = params_to_dbus_args(m, c->params, c->app_id, c->is_system, &err);
     if (!args) {
         g_warning("Bridge: %s.%s: %s", c->route->service, c->method, err->message);
         zyl_bridge_reply_error(&c->reply, err->message);
@@ -1101,7 +1127,8 @@ static void handle_service_request(const char *type, gpointer msg_obj,
     ServiceCall *call = g_new0(ServiceCall, 1);
     call->route  = route;
     call->method = dbus_method;
-    call->caller_id = manifest->is_system ? NULL : g_strdup(app_id);
+    call->app_id = g_strdup(app_id);
+    call->is_system = manifest->is_system;
     call->reply  = *reply_ctx;
     call->conn   = session;   /* g_bus_get_sync returned a ref; the call owns it */
     JsonNode *params_node = json_object_get_member(msg, "params");

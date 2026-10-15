@@ -3,7 +3,7 @@
 //
 // 역할: 설정 앱 배경화면 도메인 — 배경화면 그리드 렌더링 및 선택
 // 수행범위: 배경화면 옵션 표시, 선택 시 시스템 알림
-// 의존방향: ZylSettingsCore (settings.js), ZylBridge (bridge.js)
+// 의존방향: ZylSettingsCore (settings.js)
 // SOLID: SRP — 배경화면 설정 UI만 담당
 //
 // 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
@@ -68,7 +68,7 @@
         swatch.classList.add('selected');
 
         /* Broadcast wallpaper change to home screen via parent */
-        ZylBridge.sendToSystem({
+        core.sendToSystem({
           type: 'settings.wallpaperChanged',
           wallpaper: opt
         });

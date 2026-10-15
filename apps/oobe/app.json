@@ -3,6 +3,7 @@
   "name": "Welcome",
   "version": "1.0.0",
   "entry": "index.html",
+  "launcher": false,
   "icon": "assets/oobe-icon.png",
   "permissions": [
     "wifi",

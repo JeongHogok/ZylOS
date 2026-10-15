@@ -244,13 +244,12 @@ static void test_policy_declared_permission_grants_its_service(void)
 
 static void test_policy_reserved_permissions_cannot_be_self_declared(void)
 {
-    const char *perms[] = { "system", "shell", "credential", "app.manage",
+    const char *perms[] = { "system", "credential", "app.manage",
                             "notification.read", NULL };
     ZylAppManifest m = perm_manifest("com.evil.app", FALSE, perms);
     assert(app_may_call(&m, "settings") == FALSE);
     assert(app_may_call(&m, "telemetry") == FALSE);
     assert(app_may_call(&m, "credential") == FALSE);
-    assert(app_may_call(&m, "terminal") == FALSE);
 }
 
 static void test_policy_services_without_requirement_are_open(void)
@@ -280,15 +279,19 @@ static const char *MARSHAL_XML =
     "<arg type='s' name='title' direction='in'/><arg type='i' name='priority' direction='in'/></method>"
     "<method name='SetEnabled'><arg type='b' name='enabled' direction='in'/></method>"
     "<method name='SetLevel'><arg type='d' name='level' direction='in'/></method>"
+    "<method name='Update'><arg type='a{sv}' name='params' direction='in'/></method>"
+    "<method name='Copy'><arg type='s' name='caller' direction='in'/>"
+    "<arg type='a{sv}' name='params' direction='in'/></method>"
     "</interface></node>";
 
+/* third_party: the caller is not a system app */
 static char *marshal_as(const char *method, const char *params_json,
-                        const char *caller_id, GError **err) {
+                        const char *app_id, gboolean third_party, GError **err) {
     GDBusNodeInfo *node = g_dbus_node_info_new_for_xml(MARSHAL_XML, NULL);
     GDBusMethodInfo *m = g_dbus_interface_info_lookup_method(
         g_dbus_node_info_lookup_interface(node, "org.zylos.T"), method);
     JsonNode *root = json_from_string(params_json, NULL);
-    GVariant *v = params_to_dbus_args(m, json_node_get_object(root), caller_id, err);
+    GVariant *v = params_to_dbus_args(m, json_node_get_object(root), app_id, !third_party, err);
     char *out = v ? g_variant_print(g_variant_ref_sink(v), FALSE) : NULL;
     if (v) g_variant_unref(v);
     json_node_unref(root);
@@ -297,7 +300,7 @@ static char *marshal_as(const char *method, const char *params_json,
 }
 
 static char *marshal(const char *method, const char *params_json, GError **err) {
-    return marshal_as(method, params_json, NULL, err);
+    return marshal_as(method, params_json, "com.zylos.settings", FALSE, err);
 }
 
 static void expect_args(const char *method, const char *params, const char *want) {
@@ -412,19 +415,35 @@ static void test_service_request_reaches_typed_dbus_method(void) {
     g_object_unref(bus);
 }
 
+/* An update changing only some fields gets the request as it came */
+static void test_args_params_object_is_the_whole_request(void) {
+    expect_args("Update", "{\"id\":\"c_1\",\"starred\":true}",
+                "({'id': <'c_1'>, 'starred': <true>},)");
+    expect_args("Update", "{}", "({},)");
+}
+
 static void test_args_third_party_app_id_is_the_caller(void) {
     /* A third-party app cannot post as another app — app_id is its own */
     char *got = marshal_as("Post",
         "{\"appId\":\"com.zylos.messages\",\"title\":\"t\",\"priority\":1}",
-        "com.evil.app", NULL);
+        "com.evil.app", TRUE, NULL);
     assert(got && strcmp(got, "('com.evil.app', 't', 1)") == 0);
     g_free(got);
     /* ...and needs not send one at all */
-    got = marshal_as("Post", "{\"title\":\"t\",\"priority\":1}", "com.evil.app", NULL);
+    got = marshal_as("Post", "{\"title\":\"t\",\"priority\":1}", "com.evil.app", TRUE, NULL);
     assert(got && strcmp(got, "('com.evil.app', 't', 1)") == 0);
     g_free(got);
     /* System apps (settings acting on another app) keep the param */
     expect_args("Post", "{\"appId\":\"com.x\",\"title\":\"t\",\"priority\":1}", "('com.x', 't', 1)");
+}
+
+static void test_args_caller_is_always_the_calling_app(void) {
+    /* System apps too, and a caller in the request is ignored */
+    expect_args("Copy", "{\"caller\":\"com.x\",\"text\":\"hi\"}",
+                "('com.zylos.settings', {'caller': <'com.x'>, 'text': <'hi'>})");
+    char *got = marshal_as("Copy", "{\"text\":\"hi\"}", "com.evil.app", TRUE, NULL);
+    assert(got && strcmp(got, "('com.evil.app', {'text': <'hi'>})") == 0);
+    g_free(got);
 }
 
 /* ── Service events: D-Bus signals → apps ── */
@@ -525,8 +544,10 @@ int main(void)
     RUN_TEST(test_args_integer_fills_double);
     RUN_TEST(test_args_missing_or_wrong_type_names_the_argument);
     RUN_TEST(test_args_third_party_app_id_is_the_caller);
+    RUN_TEST(test_args_caller_is_always_the_calling_app);
     RUN_TEST(test_event_reaches_only_apps_allowed_to_call_the_service);
     RUN_TEST(test_events_only_from_the_services_own_name);
+    RUN_TEST(test_args_params_object_is_the_whole_request);
     RUN_TEST(test_service_request_reaches_typed_dbus_method);
     printf("\nResults: %d/%d passed\n", tests_pass, tests_run);
     return tests_pass == tests_run ? 0 : 1;
