@@ -16,9 +16,9 @@ Linux 커널 위에 Wayland 컴포지터 + WebKitGTK 앱 런타임으로 구성�
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│          Web Apps (HTML/CSS/JS, ES5)                 │  ← 홈, 설정, 브라우저, 터미널 등 22개
+│          Web Apps (HTML/CSS/JS, ES5)                 │  ← 홈, 설정, 브라우저, 전화 등 22개
 ├─────────────────────────────────────────────────────┤
-│  OS 프레임워크 (apps/system/)                         │  ← Intent, ContentProvider, PermissionDialog
+│  OS 프레임워크 (apps/system/)                         │  ← 인텐트 해석, 권한 판정, 앱 레지스트리
 │  Intent / ContentProvider / ZylPermissions          │
 ├─────────────────────────────────────────────────────┤
 │     WebKitGTK Web Runtime (WAM)                     │  ← 앱별 WebView 프로세스
@@ -406,7 +406,6 @@ U-Boot
     → PIN 입력 → 홈 화면
 ```
 
-systemd 서비스 유닛: 25개 (system/*.service)
 
 ## OTA 업데이트
 
