@@ -68,6 +68,18 @@ static uint64_t now_ms(void) {
     return (uint64_t)ts.tv_sec * 1000ULL + (uint64_t)ts.tv_nsec / 1000000ULL;
 }
 
+/* Same names as apps/system/services/telephony.js uses — one vocabulary for
+   the emulator and the device, in replies and in CallStateChanged */
+static const char *call_state_name(ZylCallState s) {
+    switch (s) {
+    case ZYL_CALL_STATE_RINGING: return "RINGING";
+    case ZYL_CALL_STATE_ACTIVE:  return "ACTIVE";
+    case ZYL_CALL_STATE_HELD:    return "HELD";
+    case ZYL_CALL_STATE_DIALING: return "DIALING";
+    default:                     return "IDLE";
+    }
+}
+
 /* ─── 통화 상태 전환 ─── */
 static void transition_call_state(ZylTelephonyService *svc,
                                    ZylCallState new_state,
@@ -95,7 +107,7 @@ static void transition_call_state(ZylTelephonyService *svc,
             ZYL_TELEPHONY_DBUS_PATH,
             ZYL_TELEPHONY_DBUS_NAME,
             "CallStateChanged",
-            g_variant_new("(iis)", (gint32)old, (gint32)new_state,
+            g_variant_new("(sss)", call_state_name(old), call_state_name(new_state),
                            svc->active_call_number),
             NULL);
     }
@@ -576,8 +588,7 @@ static const char *telephony_introspection_xml =
     "      <arg type='s' name='phone_number' direction='out'/>"
     "    </method>"
     "    <method name='GetCallState'>"
-    "      <arg type='i' name='call_state' direction='out'/>"
-    "      <arg type='s' name='number' direction='out'/>"
+    "      <arg type='a{sv}' name='call' direction='out'/>"
     "    </method>"
     "    <method name='Dial'>"
     "      <arg type='s' name='number' direction='in'/>"
@@ -618,8 +629,8 @@ static const char *telephony_introspection_xml =
     "      <arg type='s' name='text'/>"
     "    </signal>"
     "    <signal name='CallStateChanged'>"
-    "      <arg type='i' name='old_state'/>"
-    "      <arg type='i' name='new_state'/>"
+    "      <arg type='s' name='old_state'/>"
+    "      <arg type='s' name='new_state'/>"
     "      <arg type='s' name='number'/>"
     "    </signal>"
     "    <signal name='SmsReceived'>"
@@ -652,9 +663,12 @@ static void handle_telephony_method(GDBusConnection *conn, const gchar *sender,
                            svc->state.imei,
                            svc->state.phone_number));
     } else if (g_strcmp0(method, "GetCallState") == 0) {
-        g_dbus_method_invocation_return_value(inv,
-            g_variant_new("(is)", (gint32)svc->call_state,
-                           svc->active_call_number));
+        GVariantBuilder d;
+        g_variant_builder_init(&d, G_VARIANT_TYPE("a{sv}"));
+        g_variant_builder_add(&d, "{sv}", "state",
+                              g_variant_new_string(call_state_name(svc->call_state)));
+        g_variant_builder_add(&d, "{sv}", "number", g_variant_new_string(svc->active_call_number));
+        g_dbus_method_invocation_return_value(inv, g_variant_new("(a{sv})", &d));
     } else if (g_strcmp0(method, "Dial") == 0) {
         const gchar *number;
         g_variant_get(params, "(&s)", &number);

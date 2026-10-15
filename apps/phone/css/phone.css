@@ -516,6 +516,9 @@ body {
   margin-top: auto;
   margin-bottom: 20px;
 }
+.incall-call-row { display: flex; justify-content: center; gap: 48px; }
+.btn-answer { width: 64px; height: 64px; border-radius: 50%; border: none; background: #16a34a; color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 20px rgba(22, 163, 74, 0.35); }
+.btn-answer:active { transform: scale(0.92); }
 .btn-hangup:active {
   transform: scale(0.92);
   box-shadow: 0 2px 12px rgba(239, 68, 68, 0.5);

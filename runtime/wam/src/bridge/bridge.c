@@ -826,6 +826,61 @@ static const ServiceRoute *find_route(const char *service) {
     return NULL;
 }
 
+/* == Service events (signals → apps) ======================== */
+
+typedef struct {
+    const ServiceRoute *route;
+    ZylBridgeEventFn    fn;
+    gpointer            data;
+} EventSub;
+
+static void on_service_signal(GDBusConnection *conn, const gchar *sender,
+                              const gchar *path, const gchar *iface,
+                              const gchar *signal, GVariant *params, gpointer user) {
+    (void)conn; (void)sender; (void)path; (void)iface;
+    EventSub *sub = user;
+    sub->fn(sub->route->service, signal, params, sub->data);
+}
+
+void zyl_bridge_subscribe_service_events(GDBusConnection *bus,
+                                         ZylBridgeEventFn fn, gpointer user_data) {
+    for (int i = 0; SERVICE_ROUTES[i].service; i++) {
+        EventSub *sub = g_new(EventSub, 1);   /* lives as long as the subscription */
+        sub->route = &SERVICE_ROUTES[i];
+        sub->fn = fn;
+        sub->data = user_data;
+        g_dbus_connection_signal_subscribe(bus, SERVICE_ROUTES[i].dbus_name,
+            SERVICE_ROUTES[i].dbus_iface, NULL, SERVICE_ROUTES[i].dbus_path, NULL,
+            G_DBUS_SIGNAL_FLAGS_NONE, on_service_signal, sub, g_free);
+    }
+}
+
+/* An event reaches only apps allowed to call its service: a call or an SMS
+   must not be visible to an app without the telephony permission. */
+char *zyl_bridge_service_event_script(const ZylAppManifest *manifest,
+                                      const char *service, const char *signal,
+                                      GVariant *params) {
+    if (!find_route(service) || !app_may_call(manifest, service)) return NULL;
+    JsonObject *msg = json_object_new();
+    json_object_set_string_member(msg, "type", "service.event");
+    json_object_set_string_member(msg, "service", service);
+    json_object_set_string_member(msg, "event", signal);
+    /* Arguments as an array, in the signal's order (one argument: that value) */
+    json_object_set_member(msg, "data", json_from_variant(params));
+    JsonNode *root = json_node_init_object(json_node_alloc(), msg);
+    gchar *json = json_to_string(root, FALSE);
+    /* The JSON text itself, quoted as a JS string literal */
+    JsonNode *lit = json_node_init_string(json_node_alloc(), json);
+    gchar *quoted = json_to_string(lit, FALSE);
+    char *script = g_strdup_printf("window.postMessage(%s,'*')", quoted);
+    g_free(quoted);
+    json_node_unref(lit);
+    g_free(json);
+    json_node_unref(root);
+    json_object_unref(msg);
+    return script;
+}
+
 static char *capitalize_method(const char *method) {
     if (!method || !method[0]) return g_strdup("");
     char *cap = g_strdup(method);

@@ -875,6 +875,16 @@ var deviceBridgeTests = (function () {
       return pr.then(function () { throw new Error('resolved'); },
                      function (e) { assert.strictEqual(e.message, 'Permission denied'); });
     }),
+    asyncTest('service events reach their listeners with the signal arguments', function () {
+      var p = devicePage();
+      var got = new Promise(function (resolve) {
+        p.B.onServiceEvent('telephony', 'CallStateChanged', resolve);
+      });
+      p.B.onServiceEvent('telephony', 'SmsReceived', function () { throw new Error('wrong listener'); });
+      p.win.postMessage(JSON.stringify({ type: 'service.event', service: 'telephony',
+        event: 'CallStateChanged', data: ['IDLE', 'RINGING', '0101234'] }), '*');
+      return got.then(function (d) { assert.deepStrictEqual(d, ['IDLE', 'RINGING', '0101234']); });
+    }),
     asyncTest('fire-and-forget callers get the service.response the emulator sends', function () {
       var p = devicePage();
       var got = new Promise(function (resolve) {

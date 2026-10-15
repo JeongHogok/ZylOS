@@ -427,6 +427,84 @@ static void test_args_third_party_app_id_is_the_caller(void) {
     expect_args("Post", "{\"appId\":\"com.x\",\"title\":\"t\",\"priority\":1}", "('com.x', 't', 1)");
 }
 
+/* ── Service events: D-Bus signals → apps ── */
+static char *event_payload(const char *script) {
+    /* window.postMessage("<json>",'*') → <json> */
+    const char *a = strchr(script, '(') + 1, *b = strrchr(script, ',');
+    char *lit = g_strndup(a, (gsize)(b - a));
+    JsonNode *n = json_from_string(lit, NULL);
+    char *json = g_strdup(json_node_get_string(n));
+    json_node_unref(n);
+    g_free(lit);
+    return json;
+}
+
+static void test_event_reaches_only_apps_allowed_to_call_the_service(void) {
+    GVariant *params = g_variant_ref_sink(g_variant_new("(sss)", "IDLE", "RINGING", "0101234"));
+    const char *none[] = { NULL };
+    const char *tel[] = { "telephony", NULL };
+    ZylAppManifest plain = perm_manifest("com.example.game", FALSE, none);
+    ZylAppManifest dialer = perm_manifest("com.example.dialer", FALSE, tel);
+    ZylAppManifest sys = perm_manifest("com.zylos.phone", TRUE, none);
+    assert(zyl_bridge_service_event_script(&plain, "telephony", "CallStateChanged", params) == NULL);
+    char *script = zyl_bridge_service_event_script(&dialer, "telephony", "CallStateChanged", params);
+    assert(script);
+    g_free(script);
+    script = zyl_bridge_service_event_script(&sys, "telephony", "CallStateChanged", params);
+    char *json = event_payload(script);
+    JsonObject *o = json_node_get_object(json_from_string(json, NULL));
+    assert(strcmp(json_object_get_string_member(o, "type"), "service.event") == 0);
+    assert(strcmp(json_object_get_string_member(o, "event"), "CallStateChanged") == 0);
+    JsonArray *data = json_object_get_array_member(o, "data");
+    assert(json_array_get_length(data) == 3 && strcmp(json_array_get_string_element(data, 1), "RINGING") == 0);
+    assert(zyl_bridge_service_event_script(&sys, "nosuch", "X", params) == NULL);
+    g_free(json);
+    g_free(script);
+    g_variant_unref(params);
+}
+
+static int g_events;
+static void count_event(const char *service, const char *signal, GVariant *params, gpointer d) {
+    (void)params; (void)d;
+    if (strcmp(service, "telephony") == 0 && strcmp(signal, "CallStateChanged") == 0) g_events++;
+}
+
+static void test_events_only_from_the_services_own_name(void) {
+    if (!g_find_program_in_path("dbus-daemon")) { printf("SKIP (no dbus-daemon) "); return; }
+    GTestDBus *bus = g_test_dbus_new(G_TEST_DBUS_NONE);
+    g_test_dbus_up(bus);
+    const char *addr = g_test_dbus_get_bus_address(bus);
+    GDBusConnectionFlags f = G_DBUS_CONNECTION_FLAGS_AUTHENTICATION_CLIENT |
+                             G_DBUS_CONNECTION_FLAGS_MESSAGE_BUS_CONNECTION;
+    GDBusConnection *wam = g_dbus_connection_new_for_address_sync(addr, f, NULL, NULL, NULL);
+    GDBusConnection *svc = g_dbus_connection_new_for_address_sync(addr, f, NULL, NULL, NULL);
+    GDBusConnection *rogue = g_dbus_connection_new_for_address_sync(addr, f, NULL, NULL, NULL);
+    GVariant *r = g_dbus_connection_call_sync(svc, "org.freedesktop.DBus", "/org/freedesktop/DBus",
+        "org.freedesktop.DBus", "RequestName", g_variant_new("(su)", "org.zylos.Telephony", 0),
+        NULL, G_DBUS_CALL_FLAGS_NONE, -1, NULL, NULL);
+    g_variant_unref(r);
+    zyl_bridge_subscribe_service_events(wam, count_event, NULL);
+    gint64 end = g_get_monotonic_time() + G_USEC_PER_SEC / 2;
+    while (g_get_monotonic_time() < end) g_main_context_iteration(NULL, FALSE);   /* match rules in */
+
+    /* A process that does not own org.zylos.Telephony fakes an incoming call */
+    g_dbus_connection_emit_signal(rogue, NULL, "/org/zylos/Telephony", "org.zylos.Telephony",
+        "CallStateChanged", g_variant_new("(sss)", "IDLE", "RINGING", "0"), NULL);
+    g_dbus_connection_emit_signal(svc, NULL, "/org/zylos/Telephony", "org.zylos.Telephony",
+        "CallStateChanged", g_variant_new("(sss)", "IDLE", "RINGING", "1"), NULL);
+    g_dbus_connection_flush_sync(rogue, NULL, NULL);
+    g_dbus_connection_flush_sync(svc, NULL, NULL);
+    end = g_get_monotonic_time() + G_USEC_PER_SEC;
+    while (g_get_monotonic_time() < end) g_main_context_iteration(NULL, FALSE);
+    assert(g_events == 1);
+
+    g_object_unref(rogue);
+    g_object_unref(svc);
+    g_object_unref(wam);
+    g_test_dbus_down(bus);
+    g_object_unref(bus);
+}
+
 int main(void)
 {
     printf("=== Zyl OS Bridge Dispatch Tests ===\n");
@@ -447,6 +525,8 @@ int main(void)
     RUN_TEST(test_args_integer_fills_double);
     RUN_TEST(test_args_missing_or_wrong_type_names_the_argument);
     RUN_TEST(test_args_third_party_app_id_is_the_caller);
+    RUN_TEST(test_event_reaches_only_apps_allowed_to_call_the_service);
+    RUN_TEST(test_events_only_from_the_services_own_name);
     RUN_TEST(test_service_request_reaches_typed_dbus_method);
     printf("\nResults: %d/%d passed\n", tests_pass, tests_run);
     return tests_pass == tests_run ? 0 : 1;

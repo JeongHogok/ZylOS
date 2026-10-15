@@ -326,6 +326,16 @@
    * ════════════════════════════════════════════ */
   var notifList = document.getElementById('lock-notifications');
 
+  /* Device: the notification service's own events (the emulator pushes
+     notification.push instead) */
+  ZylBridge.onServiceEvent('notification', 'NotificationPosted', function (d) {
+    if (d && d.length >= 4) addLockNotification({ id: d[0], appId: d[1], title: d[2], body: d[3] });
+  });
+  ZylBridge.onServiceEvent('notification', 'NotificationDismissed', function (id) {
+    var el = notifList && notifList.querySelector('.lock-notif[data-id="' + String(id).replace(/\D/g, '') + '"]');
+    if (el) el.remove();
+  });
+
   /* 에뮬레이터/시스템에서 메시지 수신 (postMessage) */
   window.addEventListener('message', function (e) {
     if (e.source !== window.parent && e.source !== window) return;
@@ -343,14 +353,15 @@
     var el = document.createElement('div');
     el.className = 'lock-notif';
     el.dataset.appId = n.appId || '';
+    if (n.id !== undefined) el.dataset.id = String(n.id);
     el.innerHTML =
       '<div class="lock-notif-icon">' + escapeHtml(n.icon || '🔔') + '</div>' +
       '<div class="lock-notif-text">' +
-        '<div class="lock-notif-app">' + escapeHtml(n.appName || 'System') + '</div>' +
+        '<div class="lock-notif-app">' + escapeHtml(n.appName || n.appId || '') + '</div>' +
         '<div class="lock-notif-title">' + escapeHtml(n.title || '') + '</div>' +
         '<div class="lock-notif-body">' + escapeHtml(n.body || '') + '</div>' +
       '</div>' +
-      '<div class="lock-notif-time">now</div>';
+      '<div class="lock-notif-time">' + escapeHtml(zylI18n.t('time.just_now')) + '</div>';
 
     el.addEventListener('click', function () {
       if (el.classList.contains('swiping')) return;

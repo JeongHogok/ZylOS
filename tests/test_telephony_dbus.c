@@ -264,6 +264,13 @@ int main(void) {
     g_variant_unref(first);
     g_variant_unref(arr);
     g_variant_unref(list);
+    /* Call state uses the emulator's names, not enum numbers */
+    GVariant *call = call_os(os, "GetCallState", NULL, "(a{sv})");
+    GVariant *cd = g_variant_get_child_value(call, 0);
+    const gchar *state = NULL;
+    assert(g_variant_lookup(cd, "state", "&s", &state) && strcmp(state, "IDLE") == 0);
+    g_variant_unref(cd);
+    g_variant_unref(call);
     printf("PASS\n");
 
     printf("  %-56s ", "a multi-page message is handled once complete");

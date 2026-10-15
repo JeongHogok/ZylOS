@@ -210,6 +210,7 @@
 
     var item = document.createElement('div');
     item.className = 'notif-item';
+    if (data.id !== undefined) item.dataset.id = String(data.id);
     item.setAttribute('role', 'button');
     item.innerHTML =
       '<div class="notif-icon">' + escapeHtml(data.icon || '\uD83D\uDD14') + '</div>' +
@@ -240,19 +241,22 @@
       if (Math.abs(dx) > 100) {
         item.style.transform = 'translateX(' + (dx > 0 ? '100%' : '-100%') + ')';
         item.style.opacity = '0';
-        notifCount = Math.max(0, notifCount - 1);
-        setTimeout(function () {
-          item.remove();
-          if (notifCount === 0 && notifDot) {
-            notifDot.classList.add('hidden');
-            var emptyText = (typeof zylI18n !== 'undefined') ? zylI18n.t('notif.empty') : 'No notifications';
-            notifList.innerHTML = '<div class="notif-empty" data-i18n="notif.empty">' + escapeHtml(emptyText) + '</div>';
-          }
-        }, 300);
+        setTimeout(function () { dropNotification(item); }, 300);
       }
     });
 
     notifList.prepend(item);
+  }
+
+  function dropNotification(item) {
+    if (!item.parentNode) return;
+    item.remove();
+    notifCount = Math.max(0, notifCount - 1);
+    if (notifCount === 0 && notifDot) {
+      notifDot.classList.add('hidden');
+      var emptyText = (typeof zylI18n !== 'undefined') ? zylI18n.t('notif.empty') : 'No notifications';
+      notifList.innerHTML = '<div class="notif-empty" data-i18n="notif.empty">' + escapeHtml(emptyText) + '</div>';
+    }
   }
 
   /* ─── Clear All Notifications ─── */
@@ -301,6 +305,16 @@
       params: params || {}
     });
   }
+
+  /* Device: the notification service's own events (the emulator pushes
+     notification.push instead) */
+  ZylBridge.onServiceEvent('notification', 'NotificationPosted', function (d) {
+    if (d && d.length >= 4) addNotification({ id: d[0], appId: d[1], title: d[2], body: d[3] });
+  });
+  ZylBridge.onServiceEvent('notification', 'NotificationDismissed', function (id) {
+    var el = notifList && notifList.querySelector('.notif-item[data-id="' + String(id).replace(/\D/g, '') + '"]');
+    if (el) dropNotification(el);
+  });
 
   window.addEventListener('message', function (e) {
     if (e.source !== window.parent && e.source !== window) return;

@@ -100,6 +100,17 @@ var ZylBridge = (function () {
 
   /* ─── Request-Response Matching ─── */
   var _nextRequestId = 1;
+  var _eventListeners = {}; /* 'service.Event' → [fn(data)] */
+
+  /**
+   * Listen for an OS service event, e.g. onServiceEvent('telephony',
+   * 'CallStateChanged', fn). data is the signal's arguments in order.
+   */
+  function onServiceEvent(service, event, fn) {
+    var key = service + '.' + event;
+    (_eventListeners[key] = _eventListeners[key] || []).push(fn);
+  }
+
   /* Above the WAM-injected navigator.system's own _zylCb_ counter, which starts at 1 */
   var _nextCallbackId = 1000000;
   var _pendingRequests = {}; /* requestId → { resolve, reject, timer } */
@@ -375,6 +386,15 @@ var ZylBridge = (function () {
       return;
     }
 
+    /* ─── Service events: an OS service's signal, delivered by the WAM only
+       to apps allowed to call that service ─── */
+    if (msg.type === 'service.event') {
+      var fns = _eventListeners[msg.service + '.' + msg.event] || [];
+      for (var i = 0; i < fns.length; i++) {
+        try { fns[i](msg.data); } catch (e) { log('service event listener error:', e); }
+      }
+    }
+
     /* ─── Service response matching (requestId → pending Promise) ─── */
     if (msg.type === 'service.response' && msg.requestId) {
       var pending = _pendingRequests[msg.requestId];
@@ -503,6 +523,7 @@ var ZylBridge = (function () {
     onSaveState: onSaveState,
     onRestoreState: onRestoreState,
     requestServiceFire: requestServiceFire,
+    onServiceEvent: onServiceEvent,
     launch: launch,
     closeApp: closeApp,
     setLocale: setLocale,

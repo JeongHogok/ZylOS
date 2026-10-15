@@ -347,6 +347,34 @@
     callTimerInterval = setInterval(updateCallTimer, 1000);
   }
 
+  /* ─── Calls from the network: telephony events (device) and, when the app
+     opens because a call is ringing, the state it was opened for ─── */
+  var btnAnswer = document.getElementById('btn-answer');
+  function showCallState(state, number) {
+    if (state === 'RINGING') {
+      handleIncomingCall({ number: number });
+      btnAnswer.classList.remove('hidden');
+    } else if (state === 'ACTIVE') {
+      btnAnswer.classList.add('hidden');
+      handleCallStateChange({ state: 'connected' });
+    } else if (state === 'IDLE') {
+      btnAnswer.classList.add('hidden');
+      handleCallStateChange({ state: 'ended' });
+    }
+  }
+  ZylBridge.onServiceEvent('telephony', 'CallStateChanged', function (d) {
+    if (d && d.length === 3) showCallState(d[1], d[2]);
+  });
+  ZylBridge.requestService('telephony', 'getCallState').then(function (c) {
+    if (!c) return;
+    if (c.state === 'ACTIVE') handleIncomingCall({ number: c.number });
+    if (c.state === 'RINGING' || c.state === 'ACTIVE') showCallState(c.state, c.number);
+  }, function () { /* no telephony: nothing to show */ });
+  btnAnswer.addEventListener('click', function () {
+    btnAnswer.classList.add('hidden');
+    ZylBridge.requestService('telephony', 'answer');
+  });
+
   function handleCallStateChange(data) {
     if (data.state === 'connected') {
       if (typeof zylI18n !== 'undefined') {
