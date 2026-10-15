@@ -57,7 +57,6 @@ window.ZylPermissions = (function () {
     'device':        [],
     'storage':       [],
     'apps':          [],
-    'browser':       [],
     'display':       [],
     'input':         [],
     'sensors':       [],
@@ -67,6 +66,8 @@ window.ZylPermissions = (function () {
     'logger':        [],
     'accessibility': [],
     'clipboard':     [],
+    /* Every app has its own, named by the OS's caller — never another's */
+    'appdata':       [],
     'power':         []
   };
 

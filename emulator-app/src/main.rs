@@ -68,6 +68,9 @@ fn main() {
             commands::os_image::create_os_image,
             commands::os_image::delete_os_image,
             commands::os_image::get_os_images_dir,
+            // Each app's private data
+            commands::appdata::appdata_load,
+            commands::appdata::appdata_save,
             // Settings commands
             commands::settings::load_settings,
             commands::settings::save_settings,

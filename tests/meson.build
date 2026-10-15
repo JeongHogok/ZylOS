@@ -251,6 +251,15 @@ test('clipboard-network',
   )
 )
 
+# Test: app data — each app only its own, ids cannot leave the root, quota
+test('appdata',
+  executable('test-appdata',
+    'test_appdata.c',
+    dependencies: [gio_dep],
+    c_args: ['-DZYL_TEST'],
+  )
+)
+
 # Test: device app scan — a user app must not replace a system app by reusing its id
 test('manifest-scan',
   executable('test-manifest-scan',

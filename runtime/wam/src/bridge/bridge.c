@@ -728,6 +728,7 @@ static const ServiceRoute SERVICE_ROUTES[] = {
     {"messaging",    "org.zylos.Messaging",          "/org/zylos/Messaging",          "org.zylos.Messaging"},
     {"clipboard",    "org.zylos.Clipboard",          "/org/zylos/Clipboard",          "org.zylos.Clipboard"},
     {"network",      "org.zylos.Network",            "/org/zylos/Network",            "org.zylos.Network"},
+    {"appdata",      "org.zylos.AppData",            "/org/zylos/AppData",            "org.zylos.AppData"},
     {NULL, NULL, NULL, NULL}
 };
 
@@ -776,7 +777,6 @@ static const ServicePermission SERVICE_PERMISSIONS[] = {
     {"device",        {NULL}},
     {"storage",       {NULL}},
     {"apps",          {NULL}},
-    {"browser",       {NULL}},
     {"display",       {NULL}},
     {"input",         {NULL}},
     {"sensors",       {NULL}},
@@ -786,6 +786,8 @@ static const ServicePermission SERVICE_PERMISSIONS[] = {
     {"logger",        {NULL}},
     {"accessibility", {NULL}},
     {"clipboard",     {NULL}},
+    /* Every app has its own, named by the bridge's caller — never another's */
+    {"appdata",       {NULL}},
     {"power",         {NULL}},
     {NULL, {NULL}}
 };

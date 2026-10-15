@@ -71,7 +71,7 @@ var fs = require('fs');
 
 var moduleFiles = [
   'fs.js', 'device.js', 'storage.js', 'apps.js', 'settings.js',
-  'wifi.js', 'bluetooth.js', 'network.js', 'browser.js', 'clipboard.js',
+  'wifi.js', 'bluetooth.js', 'network.js', 'appdata.js', 'clipboard.js',
   'notification.js', 'power.js', 'display.js', 'input.js', 'sensors.js',
   'location.js', 'telephony.js', 'contacts.js', 'messaging.js', 'usb.js',
   'user.js', 'credential.js', 'appstore.js', 'updater.js', 'sandbox.js',
@@ -1440,6 +1440,27 @@ var callTests = (function () {
         assert.deepStrictEqual(r[1].map(function (c) { return c.name; }), ['bo']);
         assert.strictEqual(r[2], 'refused');
       });
+    }),
+    asyncTest('appdata: each app only its own, quota keeps the old value, no caller no data', function () {
+      var disk = {};
+      var appdata = ns.appdata({ invoke: function (cmd, a) {
+        if (cmd === 'appdata_load') return Promise.resolve(disk[a.appId] || '');
+        if (cmd === 'appdata_save') { disk[a.appId] = a.data; return Promise.resolve(true); }
+        return Promise.reject(new Error(cmd));
+      } });
+      return Promise.all([appdata.setItem({ key: 'k', value: 'a' }, 'com.a'), appdata.setItem({ key: 'k', value: 'b' }, 'com.b')])
+        .then(function (r) {
+          assert.deepStrictEqual(r, [true, true]);
+          return Promise.all([appdata.getItem({ key: 'k' }, 'com.a'), appdata.getItem({ key: 'k' }, 'com.c'),
+                              appdata.setItem({ key: 'big', value: new Array(5 * 1024 * 1024).join('x') }, 'com.a'),
+                              appdata.getItem({ key: 'k' }).catch(function () { return 'refused'; })]);
+        }).then(function (r) {
+          assert.deepStrictEqual(r, ['a', '', false, 'refused']);
+          assert.deepStrictEqual(JSON.parse(disk['com.a']), { k: 'a' });
+          return Promise.all([appdata.keys({}, 'com.b'), appdata.removeItem({ key: 'k' }, 'com.b'), appdata.removeItem({ key: 'k' }, 'com.b')]);
+        }).then(function (r) {
+          assert.deepStrictEqual(r, [['k'], true, false]);
+        });
     }),
     asyncTest('clipboard: the OS names the source app, not the request; size is capped', function () {
       var clip = ns.clipboard({});

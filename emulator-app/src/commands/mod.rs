@@ -10,6 +10,7 @@
 // 에뮬레이터는 실제 디바이스 구동 환경 제공이 목적이며, OS 이미지 영역의 콘텐츠를 포함하지 않는다
 // ──────────────────────────────────────────────────────────
 
+pub mod appdata;
 pub mod boot;
 pub mod config;
 pub mod emulated_services;

@@ -196,7 +196,7 @@ window.ZylSystemServices = (function () {
     if (ns.wifi)          serviceMap.wifi         = ns.wifi(deps);
     if (ns.bluetooth)     serviceMap.bluetooth    = ns.bluetooth(deps);
     if (ns.network)       serviceMap.network      = ns.network(deps);
-    if (ns.browser)       serviceMap.browser      = ns.browser(deps);
+    if (ns.appdata)       serviceMap.appdata      = ns.appdata(deps);
     if (ns.notification)  serviceMap.notification = ns.notification(deps);
     if (ns.power)         serviceMap.power        = ns.power(deps);
     if (ns.display) {
