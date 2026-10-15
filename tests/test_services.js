@@ -823,12 +823,14 @@ var lockTests = (function () {
       return t.svc.verifyPin({ pin: '' }).then(function (r) {
         assert.strictEqual(r.ok, true);
         assert.strictEqual(r.hasPin, false);
-        return t.svc.setPin({ current: '', pin: '4821' });
+        /* A long PIN on purpose: the stored hash is random hex, and a 4-digit
+           PIN turns up inside it by chance about once in 725 runs */
+        return t.svc.setPin({ current: '', pin: '4821096372' });
       }).then(function (r) {
         assert.strictEqual(r.ok, true);
-        assert.ok(JSON.stringify(t.store).indexOf('4821') === -1);
+        assert.ok(JSON.stringify(t.store).indexOf('4821096372') === -1);
         assert.ok(/^pbkdf2-sha256\$/.test(t.store.lock.hash));
-        return t.svc.verifyPin({ pin: '4821' });
+        return t.svc.verifyPin({ pin: '4821096372' });
       }).then(function (r) { assert.strictEqual(r.ok, true); });
     }),
     asyncTest('five failures make the user wait, even for the right PIN', function () {

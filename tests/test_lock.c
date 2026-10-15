@@ -24,14 +24,19 @@ static void reset(void) {
     lock_load(&s);
 }
 
+/* A long PIN on purpose: the stored line ends in 96 random hex characters, and
+   a 4-digit PIN turns up inside them by chance about once in 725 runs — this
+   test went red on CI for exactly that, with nothing wrong in the code. */
+#define LONG_PIN "4821096372"
+
 static void test_pin_is_stored_only_as_a_salted_hash(void) {
-    assert(*lock_set_pin(&s, "", "4821", T) == '\0');
+    assert(*lock_set_pin(&s, "", LONG_PIN, T) == '\0');
     char *file = NULL;
     g_assert_true(g_file_get_contents(ZYL_LOCK_FILE, &file, NULL, NULL));
-    assert(!strstr(file, "4821") && strstr(file, "pbkdf2-sha256$"));
+    assert(!strstr(file, LONG_PIN) && strstr(file, "pbkdf2-sha256$"));
     g_free(file);
     LockState other = {0};
-    assert(hash_pin("4821", other.hash, sizeof(other.hash)));
+    assert(hash_pin(LONG_PIN, other.hash, sizeof(other.hash)));
     assert(strcmp(other.hash, s.hash) != 0);              /* fresh salt each time */
 }
 
