@@ -729,6 +729,7 @@ static const ServiceRoute SERVICE_ROUTES[] = {
     {"clipboard",    "org.zylos.Clipboard",          "/org/zylos/Clipboard",          "org.zylos.Clipboard"},
     {"network",      "org.zylos.Network",            "/org/zylos/Network",            "org.zylos.Network"},
     {"appdata",      "org.zylos.AppData",            "/org/zylos/AppData",            "org.zylos.AppData"},
+    {"appstore",     "org.zylos.AppStore",           "/org/zylos/AppStore",           "org.zylos.AppStore"},
     {NULL, NULL, NULL, NULL}
 };
 

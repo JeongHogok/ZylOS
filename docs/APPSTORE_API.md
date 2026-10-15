@@ -1,111 +1,99 @@
-# Zyl OS App Store — Server API Specification
+# Zyl OS App Store — Store Server Protocol
 
-**Base URL**: `https://store.zylos.dev/v1`
-**인증**: Bearer token (개발자 계정)
-**포맷**: JSON
+A store is **a directory of static files on any HTTPS host**. There is no server
+program: `tools/build-store.py` makes the files, the device and the emulator
+verify them. Trust comes from the store's signing key, not from the host — a
+CDN or mirror can serve the files without being able to change them.
 
----
+## Files
 
-## Public Endpoints (인증 불필요)
+```
+<store>/catalog.json          the apps on offer
+<store>/catalog.json.sig      base64 RSA-SHA256 over SHA-256(catalog.json)
+<store>/<id>-<version>.zpkg   one zip per app version
+```
 
-### GET /apps
-앱 목록 조회 (페이지네이션).
+### catalog.json
 
-| 파라미터 | 타입 | 설명 |
-|----------|------|------|
-| page | int | 페이지 번호 (기본 1) |
-| per_page | int | 페이지당 항목 (기본 20, 최대 100) |
-| category | string | 카테고리 필터 (optional) |
-| q | string | 검색어 (optional) |
-| sort | string | `popular`, `recent`, `rating` (기본 popular) |
-
-**응답**: `200 OK`
 ```json
 {
+  "version": 1,
   "apps": [
     {
-      "id": "com.example.myapp",
-      "name": "My App",
-      "version": "1.2.3",
-      "description": "App description",
-      "author": "Developer Name",
-      "icon_url": "https://store.zylos.dev/icons/com.example.myapp.svg",
+      "id": "com.example.hello",
+      "name": "Hello",
+      "version": "1.2.0",
+      "description": "…",
+      "developer": "Example Inc.",
       "category": "productivity",
-      "rating": 4.5,
-      "downloads": 1234,
-      "size_bytes": 102400,
-      "updated_at": "2026-03-30T12:00:00Z",
-      "min_os_version": "0.1.0"
+      "permissions": ["network"],
+      "package": "com.example.hello-1.2.0.zpkg",
+      "size": 10240,
+      "sha256": "<64 hex>",
+      "signature": "<base64 RSA-SHA256 over the package's SHA-256>"
     }
-  ],
-  "total": 150,
-  "page": 1,
-  "per_page": 20
+  ]
 }
 ```
 
-### GET /apps/{id}
-앱 상세 정보.
+- `package` is relative to `catalog.json` or an absolute `https://` URL
+  (redirects are followed, to https only).
+- `id`: reverse-domain, letters/digits/`.`/`_`/`-` — it names the app's
+  directory and its container. `version`: digits and dots.
+- Entries that break a rule are skipped; the first entry with an id wins.
+  System app ids are never offered.
 
-### GET /apps/{id}/download
-.ospkg 파일 다운로드.
+### Package (`.zpkg`)
 
-**응답**: `200 OK` + `Content-Type: application/octet-stream`
-또는 `302 Found` (CDN 리다이렉트)
+A zip of the app directory with `app.json` at the root. Plain files and
+folders only — absolute paths, `..`, links and devices make the whole package
+invalid. At most 4096 files, 50 MiB packed, 200 MiB unpacked. Its `app.json`
+must name the catalog's `id` and `version`, and its `entry` page must exist.
 
-### GET /apps/{id}/reviews
-리뷰 목록.
+## Signatures
 
----
+The same scheme as OTA updates (`tools/build-ota.sh`): RSA-SHA256 over the
+file's SHA-256 digest. The device checks the catalog against the key before
+reading it (`untrusted` otherwise), and each package against both the
+catalog's `sha256` and `signature` before unpacking it (`bad_package`).
 
-## Developer Endpoints (Bearer 토큰 필요)
+## Device configuration
 
-### POST /apps
-새 앱 등록.
+`/etc/zyl-os/store.json` (from `system/store.json` in the image):
 
-**요청**: `multipart/form-data`
-- `package`: .ospkg 파일
-- `category`: 카테고리
-
-**서버 처리**:
-1. .ospkg ZIP 검증
-2. app.json 파싱 + 필수 필드 확인
-3. SIGNATURE + CERT 검증 (RSA-2048+SHA-256)
-4. 인증서 → 신뢰 저장소 대조
-5. 중복 ID 확인
-6. 스토리지 업로드
-7. 카탈로그 등록
-
-### PUT /apps/{id}
-앱 업데이트 (새 버전 업로드).
-
-### DELETE /apps/{id}
-앱 삭제 (소유자만).
-
-### POST /developers/register
-개발자 등록 + 인증서 제출.
-
-### POST /developers/crl
-인증서 폐기 요청.
-
----
-
-## 클라이언트 연동 (apps/store/js/store.js)
-
-```javascript
-// ES5 — 앱스토어 서버 API 호출
-function fetchApps(page, query) {
-  var url = 'https://store.zylos.dev/v1/apps?page=' + page;
-  if (query) url += '&q=' + encodeURIComponent(query);
-  ZylBridge.requestService('network', 'fetch', { url: url });
-}
+```json
+{ "url": "https://store.example/v1/catalog.json", "publicKey": "-----BEGIN PUBLIC KEY-----\n…" }
 ```
 
-## 자동 업데이트 흐름
+Empty `url` or `publicKey` → the store is `unconfigured` (the Store app says so).
 
+## Making a store
+
+```bash
+openssl genrsa -out store.key 3072
+openssl rsa -in store.key -pubout -out store.pub        # → publicKey
+python3 -I tools/build-store.py package path/to/app out/
+python3 -I tools/build-store.py catalog --key store.key out/
+# upload out/ to any https host; its catalog.json URL → url
 ```
-1. 부팅 시 + 24시간 주기
-2. GET /v1/apps/updates?installed=com.a:1.0,com.b:2.0
-3. 응답: 업데이트 가능한 앱 목록
-4. 사용자 확인 → 다운로드 → 서명 검증 → 설치
-```
+
+## On the device (`org.zylos.AppStore`, `runtime/services/appstore`)
+
+| Method | Result |
+|---|---|
+| `GetCatalog()` | `{ state: ok·unconfigured·unreachable·untrusted·invalid, apps: [{ id, name, version, description, developer, category, size, permissions, installed, installedVersion, update }] }` |
+| `Install(app_id)` | `{ ok, reason }` — installs or updates (never a downgrade). Reasons: `unconfigured`, `unreachable`, `untrusted`, `not_in_store`, `system_app`, `up_to_date`, `download_failed`, `bad_package`, `invalid_package`, `io`, `busy` |
+| `Uninstall(app_id)` | `{ ok, reason }` — removes the app **and its whole container** |
+| signal `AppInstalled(app_id)`, `AppRemoved(app_id)` | the WAM registers/drops the app; services drop what they kept for it |
+
+Only apps with `app.manage` (system apps: Store, Home) may call it.
+
+## What an app leaves behind: nothing
+
+Everything an app makes lives in its container `/data/appdata/<id>/`:
+private data (`appdata`), its files (`files/` — a third-party app never sees
+the user's shared folders), its web storage (`webkit/` — local storage,
+IndexedDB, cookies, cache; each app is its own origin `zyl-app://<id>/`).
+Uninstall closes the app, deletes the package and the container, and
+`AppRemoved` makes the notification and alarm services drop the app's
+entries. `tests/store_e2e.sh` checks that nothing with the app's id remains.

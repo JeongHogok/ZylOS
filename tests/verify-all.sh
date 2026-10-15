@@ -422,7 +422,7 @@ fi
 # Services apps call that no device route serves at all: on a device every such
 # request is refused ("unknown service"). The gap check above sees only routed
 # services, so these are counted on their own.
-UNROUTED_MAX=1
+UNROUTED_MAX=0
 UNROUTED=$(python3 - "$ROOT" <<'PYCHK'
 import re, glob, sys
 root = sys.argv[1]

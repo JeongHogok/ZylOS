@@ -1,0 +1,27 @@
+[Unit]
+Description=Zyl OS App Store Service (install and remove store apps)
+After=network-online.target local-fs.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/zyl-appstore
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=10
+
+# Installs into /data/apps; removing an app removes its container in /data/appdata
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/data/apps /data/appdata
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+
+[Install]
+WantedBy=zyl-os.target

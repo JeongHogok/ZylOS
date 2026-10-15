@@ -12,6 +12,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <glib.h>
+#include <glib/gstdio.h>
 
 bool zyl_container_valid_id(const char *id) {
     if (!id || !*id || strlen(id) > 128 || strcmp(id, ".") == 0 || strstr(id, "..")) return false;
@@ -37,4 +38,21 @@ char *zyl_container_dir(const char *root, const char *id, const char *sub, bool 
     g_free(top);
     if (!ok) g_clear_pointer(&dir, g_free);
     return dir;
+}
+
+bool zyl_remove_tree(const char *path) {
+    struct stat st;
+    if (lstat(path, &st) != 0) return true;
+    if (S_ISDIR(st.st_mode)) {
+        GDir *d = g_dir_open(path, 0, NULL);
+        const char *name;
+        while (d && (name = g_dir_read_name(d))) {
+            char *child = g_build_filename(path, name, NULL);
+            zyl_remove_tree(child);
+            g_free(child);
+        }
+        if (d) g_dir_close(d);
+        return g_rmdir(path) == 0;
+    }
+    return g_unlink(path) == 0;
 }

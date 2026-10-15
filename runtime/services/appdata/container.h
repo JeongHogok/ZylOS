@@ -24,4 +24,8 @@ bool zyl_container_valid_id(const char *id);
    cannot be made. */
 char *zyl_container_dir(const char *root, const char *id, const char *sub, bool make);
 
+/* Remove a file or a whole tree (links themselves, never what they point to).
+   True when nothing is left. */
+bool zyl_remove_tree(const char *path);
+
 #endif /* ZYL_CONTAINER_H */

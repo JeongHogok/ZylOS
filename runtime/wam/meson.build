@@ -37,6 +37,7 @@ wam_sources = files(
   'src/oom/oom.c',
   'src/intent/intent.c',
   'src/scheme/app_scheme.c',
+  '../services/appdata/container.c',
 )
 
 executable('zyl-wam',

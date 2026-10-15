@@ -19,8 +19,10 @@
 #include <sys/stat.h>
 #include <json-glib/json-glib.h>
 
+#ifndef NOTIF_PERSIST_DIR
 #define NOTIF_PERSIST_DIR  "/data/notifications"
-#define NOTIF_PERSIST_FILE "/data/notifications/active.json"
+#endif
+#define NOTIF_PERSIST_FILE NOTIF_PERSIST_DIR "/active.json"
 
 /* ── D-Bus Introspection XML ──────────────────────────────── */
 
@@ -111,6 +113,8 @@ static void handle_method_call(GDBusConnection       *connection,
 static void on_bus_acquired(GDBusConnection *connection,
                             const gchar     *name,
                             gpointer         user_data);
+static void on_app_removed(GDBusConnection *conn, const gchar *sender, const gchar *path,
+                           const gchar *iface, const gchar *signal, GVariant *params, gpointer data);
 
 static void on_name_acquired(GDBusConnection *connection,
                              const gchar     *name,
@@ -513,6 +517,9 @@ static void on_bus_acquired(GDBusConnection *connection,
         g_warning("zyl-notification: failed to register object: %s", err->message);
         g_error_free(err);
     }
+    g_dbus_connection_signal_subscribe(connection, "org.zylos.AppStore", "org.zylos.AppStore",
+        "AppRemoved", "/org/zylos/AppStore", NULL, G_DBUS_SIGNAL_FLAGS_NONE,
+        on_app_removed, service, NULL);
 }
 
 static void on_name_acquired(GDBusConnection *connection,
@@ -895,6 +902,31 @@ void zyl_notification_clear_all(ZylNotificationService *service)
 
     g_info("zyl-notification: cleared all non-persistent notifications");
     persist_save(service);
+}
+
+void zyl_notification_forget_app(ZylNotificationService *service, const char *app_id)
+{
+    if (!service || !app_id) return;
+    gboolean changed = FALSE;
+    for (gint i = (gint)service->notifications->len - 1; i >= 0; i--) {
+        ZylNotification *n = &g_array_index(service->notifications, ZylNotification, (guint)i);
+        if (g_strcmp0(n->app_id, app_id) != 0) continue;
+        uint64_t id = n->id;
+        notification_clear(n);
+        g_array_remove_index(service->notifications, (guint)i);
+        emit_signal(service, "NotificationDismissed", g_variant_new("(t)", id));
+        changed = TRUE;
+    }
+    if (changed) persist_save(service);
+}
+
+static void on_app_removed(GDBusConnection *conn, const gchar *sender, const gchar *path,
+                           const gchar *iface, const gchar *signal, GVariant *params, gpointer data)
+{
+    (void)conn; (void)sender; (void)path; (void)iface; (void)signal;
+    const gchar *app_id = NULL;
+    g_variant_get(params, "(&s)", &app_id);
+    zyl_notification_forget_app(data, app_id);
 }
 
 /* ══════════════════════════════════════════════════════════════

@@ -12,6 +12,7 @@
 #include "oom/oom.h"
 #include "intent/intent.h"
 #include "scheme/app_scheme.h"
+#include "../../services/appdata/container.h"
 
 #include <sys/stat.h>
 
@@ -523,9 +524,43 @@ static const char *app_to_show(const char *service, const char *signal, GVariant
     return NULL;
 }
 
+/* The app store installed or removed an app: the WAM's own part — its
+   manifest, its running instance, its web storage in the container */
+static void on_store_event(ZylWam *wam, const char *signal, GVariant *params) {
+    const gchar *id = NULL;
+    if (!g_variant_is_of_type(params, G_VARIANT_TYPE("(s)"))) return;
+    g_variant_get(params, "(&s)", &id);
+    ZylAppManifest *known = g_hash_table_lookup(wam->manifests, id);
+    if (known && known->is_system) return;             /* never a system app */
+    if (wam->iface.get_instance(&wam->iface, id)) {
+        zyl_lifecycle_close(&wam->iface, id);
+        zyl_oom_on_app_closed(g_oom, id);
+    }
+    g_hash_table_remove(wam->manifests, id);
+    if (strcmp(signal, "AppInstalled") == 0) {
+        char *dir = zyl_container_dir(WAM_USER_DIR, id, NULL, false);
+        ZylAppManifest *m = dir ? zyl_manifest_parse(dir) : NULL;
+        if (m && strcmp(m->id, id) == 0) {
+            m->is_system = FALSE;
+            g_hash_table_insert(wam->manifests, g_strdup(m->id), m);
+            g_message("WAM: installed %s", id);
+        } else if (m) {
+            zyl_manifest_free(m);
+        }
+        g_free(dir);
+    } else if (strcmp(signal, "AppRemoved") == 0) {
+        /* The store removed the container; anything WebKit wrote while closing goes too */
+        char *web = zyl_container_dir(WAM_CONTAINERS, id, "webkit", false);
+        if (web) zyl_remove_tree(web);
+        g_free(web);
+        g_message("WAM: removed %s", id);
+    }
+}
+
 static void on_service_event(const char *service, const char *signal,
                              GVariant *params, gpointer user_data) {
     ZylWam *wam = user_data;
+    if (strcmp(service, "appstore") == 0) on_store_event(wam, signal, params);
     const char *show = app_to_show(service, signal, params);
     if (show) {
         gboolean running = wam->iface.get_instance(&wam->iface, show) != NULL;

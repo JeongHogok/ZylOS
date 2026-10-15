@@ -290,3 +290,53 @@ test('manifest-scan',
     dependencies: [gio_dep, json_glib_dep],
   )
 )
+
+# ─── App store ───
+_openssl_dep = dependency('openssl', version: '>=1.1.1')
+_libzip_dep = dependency('libzip')
+_store_src = ['../runtime/services/appstore/store_catalog.c', '../runtime/services/appstore/store_package.c',
+              '../runtime/services/appdata/container.c', '../runtime/services/updater/ota_verify.c']
+
+# Test: catalog validation, versions, safe unpacking (.., absolute, links),
+# app.json must be the catalog's app, update swap, removal leaves nothing
+test('store',
+  executable('test-store', 'test_store.c', _store_src,
+    dependencies: [gio_dep, json_glib_dep, _libzip_dep, _openssl_dep],
+    c_args: ['-DZYL_TEST'],
+  )
+)
+
+# Test: a removed app's alarms go, from memory and from disk
+test('alarm',
+  executable('test-alarm', 'test_alarm.c',
+    include_directories: include_directories('../runtime/services/alarm'),
+    dependencies: [gio_dep, json_glib_dep],
+    c_args: ['-DZYL_TEST'],
+  )
+)
+
+# Test (end to end): a signed store over local HTTPS, the real daemons on a
+# private bus — install, the app makes data, files, a notification, web
+# storage; uninstall leaves nothing of it; tampered package and catalog refused.
+# The daemons are built with paths under /tmp so the test touches nothing else.
+_e2e = '/tmp/zyl-store-e2e'
+_e2e_appstore = executable('e2e-appstore',
+  '../runtime/services/appstore/appstore.c', _store_src,
+  dependencies: [gio_dep, json_glib_dep, _libzip_dep, _openssl_dep],
+  c_args: ['-DZYL_STORE_CONFIG="@0@/store.json"'.format(_e2e), '-DZYL_APPS_DIR="@0@/apps"'.format(_e2e),
+           '-DZYL_SYSTEM_APPS_DIR="@0@/system"'.format(_e2e), '-DZYL_CONTAINERS_ROOT="@0@/appdata"'.format(_e2e)])
+_e2e_appdata = executable('e2e-appdata',
+  '../runtime/services/appdata/appdata.c', '../runtime/services/appdata/container.c',
+  dependencies: [gio_dep], c_args: ['-DZYL_APPDATA_ROOT="@0@/appdata"'.format(_e2e)])
+_e2e_fs = executable('e2e-fs',
+  '../runtime/services/fs/fs.c', '../runtime/services/appdata/container.c',
+  dependencies: [gio_dep], c_args: ['-DZYL_FILES_ROOT="@0@/files"'.format(_e2e),
+                                    '-DZYL_CONTAINERS_ROOT="@0@/appdata"'.format(_e2e)])
+_e2e_notification = executable('e2e-notification',
+  '../runtime/services/notification/notification.c',
+  include_directories: include_directories('../runtime/services/notification'),
+  dependencies: [gio_dep, json_glib_dep], c_args: ['-DNOTIF_PERSIST_DIR="@0@/notifications"'.format(_e2e)])
+test('store-e2e', find_program('store_e2e.sh'),
+  args: [_e2e_appstore, _e2e_appdata, _e2e_fs, _e2e_notification,
+         meson.project_source_root() / 'tools' / 'build-store.py'],
+  timeout: 120, is_parallel: false)
