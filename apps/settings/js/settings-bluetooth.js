@@ -20,19 +20,30 @@
     var list = document.getElementById('bt-devices-list');
     if (!list) return;
     list.innerHTML = '';
-    if (!devices || devices.length === 0) {
-      list.innerHTML = '<div class="setting-item no-tap"><span class="setting-label" style="opacity:0.5">No devices</span></div>';
-      return;
-    }
-    devices.forEach(function (dev) {
-      if (!dev.paired) return;
+    var paired = (devices || []).filter(function (dev) { return dev.paired; });
+    /* Device names are whatever a nearby device broadcasts: text only, never markup */
+    function row(name, status, dim) {
       var el = document.createElement('div');
       el.className = 'setting-item no-tap';
-      var status = dev.connected ? core.t('settings.connected') : (core.t('settings.paired') || 'Paired');
-      el.innerHTML =
-        '<span class="setting-label">' + dev.name + '</span>' +
-        '<span class="setting-value">' + status + '</span>';
+      var label = document.createElement('span');
+      label.className = 'setting-label';
+      if (dim) label.style.opacity = '0.5';
+      label.textContent = name;
+      el.appendChild(label);
+      if (status) {
+        var value = document.createElement('span');
+        value.className = 'setting-value';
+        value.textContent = status;
+        el.appendChild(value);
+      }
       list.appendChild(el);
+    }
+    if (paired.length === 0) {
+      row(core.t('settings.bt_none'), '', true);
+      return;
+    }
+    paired.forEach(function (dev) {
+      row(dev.name || dev.address, dev.connected ? core.t('settings.connected') : core.t('settings.paired'));
     });
   }
 

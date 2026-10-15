@@ -44,6 +44,12 @@
       <div id="wifi-list" class="oobe-list" role="listbox" aria-label="Wi-Fi networks">
         <div class="oobe-option" data-i18n="oobe.wifi_searching" role="option" tabindex="0">Searching for networks...</div>
       </div>
+      <div id="wifi-join" hidden>
+        <input type="password" id="wifi-pass" autocomplete="off"
+               data-i18n-placeholder="oobe.wifi_password" data-i18n-aria-label="oobe.wifi_password">
+        <button class="oobe-btn" id="wifi-join-btn" data-i18n="oobe.wifi_connect">Connect</button>
+      </div>
+      <div id="wifi-msg" role="status" aria-live="polite"></div>
       <div class="oobe-step-actions">
         <button class="oobe-btn-back" onclick="prevStep()" aria-label="Back">&larr;</button>
         <button class="oobe-btn" onclick="nextStep()" data-i18n="oobe.skip">Skip</button>

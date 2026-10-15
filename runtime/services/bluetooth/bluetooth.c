@@ -74,6 +74,9 @@ static const char *bt_introspection_xml =
     "      <arg type='i' name='timeout_sec' direction='in'/>"
     "    </method>"
     "    <method name='StopScan'/>"
+    "    <method name='GetDevices'>"
+    "      <arg type='aa{sv}' name='devices' direction='out'/>"
+    "    </method>"
     "    <method name='Pair'>"
     "      <arg type='s' name='address' direction='in'/>"
     "      <arg type='b' name='success' direction='out'/>"
@@ -109,6 +112,30 @@ static void handle_bt_method(GDBusConnection *conn, const gchar *sender,
     } else if (g_strcmp0(method, "StopScan") == 0) {
         zyl_bt_stop_scan(svc);
         g_dbus_method_invocation_return_value(inv, NULL);
+    } else if (g_strcmp0(method, "GetDevices") == 0) {
+        /* Same fields as the emulator: { name, address, deviceType, paired, connected, rssi } */
+        ZylBtDevice *devs = NULL;
+        int n = 0;
+        GVariantBuilder list;
+        g_variant_builder_init(&list, G_VARIANT_TYPE("aa{sv}"));
+        if (zyl_bt_get_devices(svc, &devs, &n) == 0) {
+            for (int i = 0; i < n; i++) {
+                if (!devs[i].address) continue;
+                GVariantBuilder d;
+                g_variant_builder_init(&d, G_VARIANT_TYPE("a{sv}"));
+                g_variant_builder_add(&d, "{sv}", "name",
+                    g_variant_new_string(devs[i].name ? devs[i].name : devs[i].address));
+                g_variant_builder_add(&d, "{sv}", "address", g_variant_new_string(devs[i].address));
+                g_variant_builder_add(&d, "{sv}", "deviceType",
+                    g_variant_new_string(devs[i].device_type ? devs[i].device_type : ""));
+                g_variant_builder_add(&d, "{sv}", "paired", g_variant_new_boolean(devs[i].paired));
+                g_variant_builder_add(&d, "{sv}", "connected", g_variant_new_boolean(devs[i].connected));
+                g_variant_builder_add(&d, "{sv}", "rssi", g_variant_new_int32(devs[i].rssi));
+                g_variant_builder_add_value(&list, g_variant_builder_end(&d));
+            }
+            zyl_bt_device_free(devs, n);
+        }
+        g_dbus_method_invocation_return_value(inv, g_variant_new("(aa{sv})", &list));
     } else if (g_strcmp0(method, "Pair") == 0) {
         const gchar *addr;
         g_variant_get(params, "(&s)", &addr);

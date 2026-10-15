@@ -1342,6 +1342,15 @@ var callTests = (function () {
         assert.strictEqual(typeof tel.addCallLog, 'undefined');   /* apps cannot write the log */
       });
     }),
+    asyncTest('wifi.connect answers true or false, like the device', function () {
+      var wifi = ns.wifi({ invoke: function (cmd, a) {
+        return Promise.resolve(cmd === 'wifi_connect' ? { success: a.password === 'secret88' } : null);
+      } });
+      return Promise.all([wifi.connect({ ssid: 'Home', passphrase: 'secret88' }),
+                          wifi.connect({ ssid: 'Home', passphrase: 'wrong' })]).then(function (r) {
+        assert.deepStrictEqual(r, [true, false]);
+      });
+    }),
     asyncTest('starring a contact keeps its details; editing keeps the star', function () {
       files['Documents/Contacts/c_1.json'] = JSON.stringify({ id: 'c_1', name: 'Ana', phone: '010', email: '' });
       return contacts.update({ id: 'c_1', starred: true }).then(function (c) {

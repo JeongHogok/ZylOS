@@ -94,36 +94,69 @@
   });
 
   /* ─── WiFi List ─── */
-  ZylBridge.sendToSystem({
-    type: 'service.request',
-    service: 'wifi',
-    method: 'getNetworks'
+  var wifiJoin = document.getElementById('wifi-join');
+  var wifiPass = document.getElementById('wifi-pass');
+  var wifiMsg = document.getElementById('wifi-msg');
+  var wifiChosen = null;
+
+  function t(key) { return (typeof zylI18n !== 'undefined') ? zylI18n.t(key) : key; }
+
+  function isOpen(net) { return !net.security || net.security === 'Open'; }
+
+  function requestNetworks() {
+    ZylBridge.sendToSystem({ type: 'service.request', service: 'wifi', method: 'getNetworks' });
+  }
+
+  function joinNetwork(net, passphrase) {
+    wifiMsg.textContent = t('oobe.wifi_connecting');
+    ZylBridge.requestService('wifi', 'connect', { ssid: net.ssid, passphrase: passphrase }).then(function (ok) {
+      if (!ok) throw new Error('not connected');
+      wifiJoin.hidden = true;
+      wifiPass.value = '';
+      wifiMsg.textContent = '';
+      requestNetworks();
+    }).catch(function () {
+      wifiMsg.textContent = t(isOpen(net) ? 'oobe.wifi_connect_failed_open' : 'oobe.wifi_connect_failed');
+    });
+  }
+
+  document.getElementById('wifi-join-btn').addEventListener('click', function () {
+    if (wifiChosen) joinNetwork(wifiChosen, wifiPass.value);
   });
+
+  requestNetworks();
 
   window.addEventListener('message', function (e) {
     if (e.source !== window.parent && e.source !== window) return;
     try {
       var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-      if (msg && msg.type === 'service.response' && msg.service === 'wifi' && msg.data) {
+      if (msg && msg.type === 'service.response' && msg.service === 'wifi' &&
+          msg.method === 'getNetworks' && Array.isArray(msg.data)) {
         var list = document.getElementById('wifi-list');
         if (!list) return;
         list.innerHTML = '';
         if (msg.data.length === 0) {
           var emptyEl = document.createElement('div');
           emptyEl.className = 'oobe-option';
-          emptyEl.textContent = (typeof zylI18n !== 'undefined') ? zylI18n.t('oobe.no_networks') : 'No networks found';
+          emptyEl.textContent = t('oobe.no_networks');
           list.appendChild(emptyEl);
           return;
         }
         msg.data.forEach(function (net) {
           var el = document.createElement('div');
           el.className = 'oobe-option' + (net.connected ? ' selected' : '');
-          var connectedLabel = (typeof zylI18n !== 'undefined') ? zylI18n.t('oobe.connected') : '(Connected)';
-          el.textContent = net.ssid + (net.connected ? ' ' + connectedLabel : '');
+          el.textContent = net.ssid + (net.connected ? ' ' + t('oobe.connected') : '');
           addButtonKeyHandler(el);
           el.addEventListener('click', function () {
+            if (net.connected) return;
             list.querySelectorAll('.oobe-option').forEach(function (o) { o.classList.remove('selected'); });
             el.classList.add('selected');
+            wifiChosen = net;
+            wifiMsg.textContent = '';
+            wifiPass.value = '';
+            wifiJoin.hidden = isOpen(net);
+            if (isOpen(net)) joinNetwork(net, '');
+            else wifiPass.focus();
           });
           list.appendChild(el);
         });

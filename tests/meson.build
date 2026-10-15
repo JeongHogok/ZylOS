@@ -150,6 +150,16 @@ test('updater',
   workdir: meson.project_source_root(),
 )
 
+# Test: Wi-Fi network list from nmcli (escapes, hidden networks, one row per network)
+test('wifi',
+  executable('test-wifi',
+    'test_wifi.c',
+    '../runtime/services/wifi/captive_portal.c',
+    include_directories: include_directories('../runtime/services/wifi'),
+    dependencies: [gio_dep],
+  )
+)
+
 # Test: device app scan — a user app must not replace a system app by reusing its id
 test('manifest-scan',
   executable('test-manifest-scan',

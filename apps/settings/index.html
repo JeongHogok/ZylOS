@@ -400,6 +400,20 @@
         <span class="setting-label" style="opacity:0.5">Loading...</span>
       </div>
     </div>
+    <!-- 보안 네트워크 연결: 고른 네트워크의 암호 -->
+    <div id="wifi-join" class="settings-group hidden">
+      <div class="setting-item no-tap">
+        <span class="setting-label" id="wifi-join-ssid"></span>
+      </div>
+      <div class="setting-item no-tap">
+        <input type="password" id="wifi-join-pass" class="wifi-join-input" autocomplete="off"
+               data-i18n-placeholder="settings.wifi_password" data-i18n-aria-label="settings.wifi_password">
+      </div>
+      <div class="wifi-join-actions">
+        <button id="wifi-join-btn" class="scan-btn" data-i18n="settings.wifi_connect">Connect</button>
+        <div id="wifi-join-msg" class="wifi-join-msg" role="status" aria-live="polite"></div>
+      </div>
+    </div>
   </div>
 
   <!-- 블루투스 서브 페이지 -->

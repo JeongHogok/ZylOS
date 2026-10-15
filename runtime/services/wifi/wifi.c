@@ -85,6 +85,9 @@ static const char *wifi_introspection_xml =
     "<node>"
     "  <interface name='" ZYL_WIFI_DBUS_NAME "'>"
     "    <method name='Scan'/>"
+    "    <method name='GetNetworks'>"
+    "      <arg type='aa{sv}' name='networks' direction='out'/>"
+    "    </method>"
     "    <method name='Connect'>"
     "      <arg type='s' name='ssid' direction='in'/>"
     "      <arg type='s' name='passphrase' direction='in'/>"
@@ -113,6 +116,26 @@ static void handle_wifi_method(GDBusConnection *conn, const gchar *sender,
     if (g_strcmp0(method, "Scan") == 0) {
         zyl_wifi_scan(svc);
         g_dbus_method_invocation_return_value(inv, NULL);
+    } else if (g_strcmp0(method, "GetNetworks") == 0) {
+        /* Same fields as the emulator: { ssid, signal (dBm), security, connected, bssid } */
+        ZylWifiNetwork *nets = NULL;
+        int n = 0;
+        GVariantBuilder list;
+        g_variant_builder_init(&list, G_VARIANT_TYPE("aa{sv}"));
+        if (zyl_wifi_get_networks(svc, &nets, &n) == 0) {
+            for (int i = 0; i < n; i++) {
+                GVariantBuilder d;
+                g_variant_builder_init(&d, G_VARIANT_TYPE("a{sv}"));
+                g_variant_builder_add(&d, "{sv}", "ssid", g_variant_new_string(nets[i].ssid));
+                g_variant_builder_add(&d, "{sv}", "signal", g_variant_new_int32(nets[i].signal));
+                g_variant_builder_add(&d, "{sv}", "security", g_variant_new_string(nets[i].security));
+                g_variant_builder_add(&d, "{sv}", "connected", g_variant_new_boolean(nets[i].connected));
+                g_variant_builder_add(&d, "{sv}", "bssid", g_variant_new_string(nets[i].bssid));
+                g_variant_builder_add_value(&list, g_variant_builder_end(&d));
+            }
+            zyl_wifi_network_free(nets, n);
+        }
+        g_dbus_method_invocation_return_value(inv, g_variant_new("(aa{sv})", &list));
     } else if (g_strcmp0(method, "Connect") == 0) {
         const gchar *ssid, *pass;
         g_variant_get(params, "(&s&s)", &ssid, &pass);
@@ -256,11 +279,24 @@ int zyl_wifi_get_networks(ZylWifiService *svc, ZylWifiNetwork **out,
         if (ssid_len > 0 && ssid_len < sizeof(ssid_buf)) {
             memcpy(ssid_buf, line, ssid_len);
         }
-        /* Unescape nmcli backslash-colon sequences in SSID */
-        for (char *sp = ssid_buf; *sp; sp++) {
-            if (*sp == '\\' && *(sp+1) == ':') {
-                memmove(sp, sp+1, strlen(sp+1)+1);
+        char bssid_buf[64] = {0};
+        g_strlcpy(bssid_buf, bssid_start, sizeof(bssid_buf));
+        /* nmcli -t escapes ':' and '\\' inside values (the BSSID is all colons) */
+        for (char *buf = ssid_buf; buf; buf = buf == ssid_buf ? bssid_buf : NULL) {
+            for (char *sp = buf; *sp; sp++) {
+                if (*sp == '\\' && (sp[1] == ':' || sp[1] == '\\'))
+                    memmove(sp, sp + 1, strlen(sp + 1) + 1);
             }
+        }
+        /* Hidden networks have no name to show. Each access point of a network
+           is its own line; to the user they are one network */
+        if (!ssid_buf[0]) continue;
+        int same = -1;
+        for (int k = 0; k < n && same < 0; k++) if (strcmp(nets[k].ssid, ssid_buf) == 0) same = k;
+        if (same >= 0) {
+            if (connected) nets[same].connected = true;
+            if (signal_dbm > nets[same].signal) nets[same].signal = signal_dbm;
+            continue;
         }
 
         char sec_buf[128] = {0};
@@ -273,7 +309,7 @@ int zyl_wifi_get_networks(ZylWifiService *svc, ZylWifiNetwork **out,
         nets[n].signal = signal_dbm;
         nets[n].security = strdup(sec_buf[0] ? sec_buf : "Open");
         nets[n].connected = connected;
-        nets[n].bssid = strdup(bssid_start);
+        nets[n].bssid = strdup(bssid_buf);
         n++;
     }
     pclose(fp);

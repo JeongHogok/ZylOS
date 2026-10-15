@@ -1,9 +1,10 @@
 // ----------------------------------------------------------
 // [Clean Architecture] Presentation Layer - WiFi Domain Module
 //
-// 역할: 설정 앱 WiFi 도메인 — WiFi 토글, 네트워크 목록, 스캔
-// 수행범위: WiFi 상태 렌더링, 네트워크 목록 표시, 스캔 버튼
-// 의존방향: ZylSettingsCore (settings.js)
+// 역할: 설정 앱 WiFi 도메인 — WiFi 토글, 네트워크 목록, 스캔, 연결
+// 수행범위: WiFi 상태 렌더링, 네트워크 목록 표시(이름은 텍스트로만), 스캔 버튼,
+//          네트워크를 눌러 연결(보안 네트워크는 암호 입력)
+// 의존방향: ZylSettingsCore (settings.js), ZylBridge (bridge.js)
 // SOLID: SRP — WiFi 설정 UI만 담당
 //
 // 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
@@ -15,22 +16,90 @@
 
   var core = window.ZylSettingsCore;
 
+  var joinBox = document.getElementById('wifi-join');
+  var joinSsid = document.getElementById('wifi-join-ssid');
+  var joinPass = document.getElementById('wifi-join-pass');
+  var joinMsg = document.getElementById('wifi-join-msg');
+  var joining = null;                /* the network the password is for */
+
+  function isOpen(net) { return !net.security || net.security === 'Open'; }
+
+  function refreshNetworks() {
+    return core.requestService('wifi', 'getNetworks').then(function (data) {
+      if (data) renderWifiNetworks(data);
+    });
+  }
+
+  function connect(net, passphrase) {
+    joinMsg.textContent = core.t('settings.wifi_connecting');
+    ZylBridge.requestService('wifi', 'connect', { ssid: net.ssid, passphrase: passphrase })
+      .then(function (ok) {
+        if (!ok) throw new Error('not connected');
+        joining = null;
+        joinPass.value = '';
+        joinMsg.textContent = '';
+        joinBox.classList.add('hidden');
+        refreshNetworks();
+      })
+      .catch(function () {
+        joinSsid.textContent = net.ssid;
+        joinBox.classList.remove('hidden');
+        joinMsg.textContent = core.t(isOpen(net) ? 'settings.wifi_connect_failed_open' : 'settings.wifi_connect_failed');
+      });
+  }
+
+  function choose(net) {
+    if (net.connected) return;
+    joining = net;
+    joinSsid.textContent = net.ssid;
+    joinPass.value = '';
+    joinMsg.textContent = '';
+    if (isOpen(net)) {
+      joinBox.classList.add('hidden');
+      connect(net, '');
+      return;
+    }
+    joinBox.classList.remove('hidden');
+    joinPass.focus();
+  }
+
+  document.getElementById('wifi-join-btn').addEventListener('click', function () {
+    if (joining) connect(joining, joinPass.value);
+  });
+
   /* ─── WiFi Networks Renderer ─── */
+  /* Names come from whoever runs a nearby access point: text only, never markup */
   function renderWifiNetworks(networks) {
     var list = document.getElementById('wifi-networks-list');
     if (!list) return;
     list.innerHTML = '';
     if (!networks || networks.length === 0) {
-      list.innerHTML = '<div class="setting-item no-tap"><span class="setting-label" style="opacity:0.5">No networks found</span></div>';
+      var empty = document.createElement('div');
+      empty.className = 'setting-item no-tap';
+      var emptyLabel = document.createElement('span');
+      emptyLabel.className = 'setting-label';
+      emptyLabel.style.opacity = '0.5';
+      emptyLabel.textContent = core.t('settings.wifi_none');
+      empty.appendChild(emptyLabel);
+      list.appendChild(empty);
       return;
     }
     networks.forEach(function (net) {
       var el = document.createElement('div');
-      el.className = 'setting-item no-tap';
-      var status = net.connected ? core.t('settings.connected') : net.security;
-      el.innerHTML =
-        '<span class="setting-label">' + net.ssid + '</span>' +
-        '<span class="setting-value">' + status + '</span>';
+      el.className = 'setting-item' + (net.connected ? ' no-tap' : '');
+      if (!net.connected) {
+        el.setAttribute('role', 'button');
+        el.setAttribute('tabindex', '0');
+        el.addEventListener('click', function () { choose(net); });
+      }
+      var label = document.createElement('span');
+      label.className = 'setting-label';
+      label.textContent = net.ssid;
+      var value = document.createElement('span');
+      value.className = 'setting-value';
+      value.textContent = net.connected ? core.t('settings.connected') : (isOpen(net) ? '' : net.security);
+      el.appendChild(label);
+      el.appendChild(value);
       list.appendChild(el);
     });
   }
@@ -48,6 +117,7 @@
     var offMsg = document.getElementById('wifi-off-msg');
     if (networksList) networksList.classList.toggle('hidden', !enabled);
     if (offMsg) offMsg.classList.toggle('hidden', enabled);
+    if (!enabled) joinBox.classList.add('hidden');
   }
 
   function updateMainMenuWifi(data) {
@@ -76,9 +146,7 @@
     wifiScanBtn.addEventListener('click', function () {
       wifiScanBtn.classList.add('scanning');
       wifiScanBtn.textContent = core.t('settings.scanning');
-      core.requestService('wifi', 'getNetworks').then(function (data) {
-        if (data) renderWifiNetworks(data);
-      }).catch(function () {
+      refreshNetworks().catch(function () {
         if (typeof ZylToast !== 'undefined') ZylToast.error(core.t('settings.wifi_scan_error'));
       }).then(function () {
         wifiScanBtn.classList.remove('scanning');
