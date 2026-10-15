@@ -339,7 +339,8 @@ window.ZylSystemServices = (function () {
     var fn = svc[method];
     if (!fn) { watchdogRelease(appId); return null; }
 
-    var result = fn(params || {});
+    /* The caller is the OS's to say, never the request's: whose data it is */
+    var result = fn(params || {}, appId || '');
 
     if (result && typeof result.then === 'function') {
       var timeoutMs = NETWORK_SERVICES[service] ? NETWORK_TIMEOUT_MS : SERVICE_TIMEOUT_MS;

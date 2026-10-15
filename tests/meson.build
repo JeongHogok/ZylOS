@@ -241,6 +241,16 @@ test('contacts-messaging',
   )
 )
 
+# Test: clipboard (source app, size cap, sensitive values clear themselves) and
+# network fetch policy (https, allowed hosts only, no user info / port / IP)
+test('clipboard-network',
+  executable('test-clipboard-network',
+    'test_clipboard_network.c',
+    dependencies: [gio_dep],
+    c_args: ['-DZYL_TEST'],
+  )
+)
+
 # Test: device app scan — a user app must not replace a system app by reusing its id
 test('manifest-scan',
   executable('test-manifest-scan',

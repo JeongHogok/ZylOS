@@ -71,7 +71,7 @@ var fs = require('fs');
 
 var moduleFiles = [
   'fs.js', 'device.js', 'storage.js', 'apps.js', 'settings.js',
-  'wifi.js', 'bluetooth.js', 'network.js', 'browser.js',
+  'wifi.js', 'bluetooth.js', 'network.js', 'browser.js', 'clipboard.js',
   'notification.js', 'power.js', 'display.js', 'input.js', 'sensors.js',
   'location.js', 'telephony.js', 'contacts.js', 'messaging.js', 'usb.js',
   'user.js', 'credential.js', 'appstore.js', 'updater.js', 'sandbox.js',
@@ -1440,6 +1440,15 @@ var callTests = (function () {
         assert.deepStrictEqual(r[1].map(function (c) { return c.name; }), ['bo']);
         assert.strictEqual(r[2], 'refused');
       });
+    }),
+    asyncTest('clipboard: the OS names the source app, not the request; size is capped', function () {
+      var clip = ns.clipboard({});
+      assert.deepStrictEqual(clip.paste(), {});
+      assert.strictEqual(clip.copy({ text: 'hi', sourceApp: 'com.zylos.settings' }, 'com.example.app'), true);
+      assert.strictEqual(clip.paste().sourceApp, 'com.example.app');
+      assert.strictEqual(clip.copy({ text: new Array(1024 * 1024 + 2).join('a') }, 'x'), false);
+      assert.strictEqual(clip.paste().text, 'hi');
+      return Promise.resolve();
     }),
     asyncTest('messages: threads newest first, a send without a modem is not sent, read and delete', function () {
       return messaging.getThreads().then(function (t) {

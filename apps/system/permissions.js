@@ -66,6 +66,7 @@ window.ZylPermissions = (function () {
     'sandbox':       [],
     'logger':        [],
     'accessibility': [],
+    'clipboard':     [],
     'power':         []
   };
 

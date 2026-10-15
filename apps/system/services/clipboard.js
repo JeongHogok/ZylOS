@@ -2,10 +2,10 @@
 // [Clean Architecture] Domain Layer - Service Module
 //
 // Role: Clipboard service — copy/paste with history, sensitive data auto-clear,
-//       permission-gated access, change listeners
+//       change listeners (same copy/paste contract as runtime/services/clipboard)
 // Scope: App-to-app clipboard data management, history ring buffer,
-//        sensitive data timeout, sourceApp tracking
-// Dependency Direction: Domain -> ZylPermissions (access control)
+//        sensitive data timeout, sourceApp tracking (the caller the OS names)
+// Dependency Direction: Domain -> none
 // SOLID: SRP — clipboard data storage/retrieval only
 // ----------------------------------------------------------
 
@@ -26,6 +26,7 @@
 
     /* ─── History ring buffer ─── */
     var MAX_HISTORY = 20;
+    var MAX_TEXT = 1024 * 1024;   /* as clipboard.c */
     var _history = [];
 
     /* ─── Sensitive data auto-clear timer ─── */
@@ -73,24 +74,14 @@
       }, SENSITIVE_CLEAR_MS);
     }
 
-    function _checkReadPermission(appId) {
-      if (!appId) return true;
-      if (typeof ZylPermissions === 'undefined') return true;
-      /* clipboard read requires 'storage' or system app status */
-      if (ZylPermissions.SYSTEM_APPS && ZylPermissions.SYSTEM_APPS.indexOf(appId) !== -1) return true;
-      return true; /* non-system apps can read clipboard, but sensitive data is auto-cleared */
-    }
-
     return {
       /**
-       * Copy data to clipboard.
-       * p: { text, mimeType?, sourceApp?, sensitive? }
+       * Copy data to clipboard (same contract as runtime/services/clipboard).
+       * p: { text, mimeType?, sensitive? }; caller: the copying app, from the OS
        * sensitive: marks data for auto-clear after 60s (passwords, tokens)
        */
-      copy: function (p) {
-        if (!p || typeof p.text !== 'string') {
-          return { error: 'clipboard.copy: text is required' };
-        }
+      copy: function (p, caller) {
+        if (!p || typeof p.text !== 'string' || p.text.length > MAX_TEXT) return false;
 
         /* Clear any previous sensitive timer */
         if (_sensitiveTimer) {
@@ -101,7 +92,7 @@
         var entry = {
           text:      p.text,
           mimeType:  p.mimeType  || 'text/plain',
-          sourceApp: p.sourceApp || '',
+          sourceApp: caller || '',
           timestamp: Date.now(),
           sensitive: !!p.sensitive
         };
@@ -119,19 +110,15 @@
         }
 
         _notifyChange();
-        return { success: true, length: _data.text.length };
+        return true;
       },
 
       /**
-       * Paste (read) clipboard data.
-       * p: { appId? } — caller app ID for access logging
+       * Paste (read) clipboard data: { text, mimeType, sourceApp, timestamp }, {} when empty.
+       * Every app may read; sensitive data is auto-cleared.
        */
-      paste: function (p) {
-        var appId = (p && p.appId) ? p.appId : '';
-        if (!_checkReadPermission(appId)) {
-          return { error: 'Permission denied' };
-        }
-        if (!_data.timestamp) return null;
+      paste: function () {
+        if (!_data.timestamp) return {};
         return {
           text:      _data.text,
           mimeType:  _data.mimeType,

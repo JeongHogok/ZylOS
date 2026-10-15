@@ -1,0 +1,26 @@
+[Unit]
+Description=Zyl OS Network Service (HTTPS fetch from allowed domains)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/zyl-network
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=5
+
+# Reaches the internet, writes nothing
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+
+[Install]
+WantedBy=zyl-os.target

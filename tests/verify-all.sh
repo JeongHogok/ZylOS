@@ -318,6 +318,24 @@ else
   pass "실기기 권한 정책(bridge.c) = permissions.js"
 fi
 
+# C5b: 네트워크 서비스의 허용 도메인이 sandbox.js 와 같은지
+#      sandbox.js 가 권위. network.c 는 사본이며, 어긋나면 에뮬레이터와 실기기가
+#      서로 다른 곳에 앱 대신 요청을 보낸다.
+DOMAIN_DRIFT=$(python3 - "$ROOT" <<'PYCHK'
+import re, sys
+root = sys.argv[1]
+js = open(root + '/apps/system/sandbox.js').read().split('var ALLOWED_DOMAINS = [', 1)[1].split('];', 1)[0]
+c = open(root + '/runtime/services/network/network.c').read().split('ALLOWED_DOMAINS[] = {', 1)[1].split('};', 1)[0]
+J, C = set(re.findall(r"'([^']+)'", js)), set(re.findall(r'"([^"]+)"', c))
+print('' if J == C else 'js=%s c=%s' % (sorted(J), sorted(C)))
+PYCHK
+)
+if [ -n "$DOMAIN_DRIFT" ]; then
+  fail "네트워크 허용 도메인이 sandbox.js 와 다름: $DOMAIN_DRIFT"
+else
+  pass "네트워크 허용 도메인(network.c) = sandbox.js"
+fi
+
 # C4: 샌드박스 권한 어휘가 app.json 선언과 일치하는지
 #     비트가 없으면 앱이 능력을 통째로 잃는다 (네트워크 네임스페이스 격리,
 #     ModemManager D-Bus 차단). 새 권한을 추가하고 매핑을 잊으면 조용히 0이 된다.
@@ -371,10 +389,12 @@ for f in glob.glob(root + '/runtime/**/*.c', recursive=True):
         d = ifaces.setdefault(name, {})
         for m in re.finditer(r"<method name='(\w+)'\s*(/?)>(.*?)(?=<method|$)", body, re.S):
             args = [] if m.group(2) else re.findall(r'<arg\b([^>]*)>', m.group(3))
-            # An a{sv} named params takes the whole request (bridge.c) — no key to match
+            # An a{sv} named params takes the whole request, a caller is filled by the
+            # bridge (bridge.c) — no key to match
             d[m.group(1)] = [re.search(r"name='(\w+)'", a).group(1) for a in args
                              if "direction='in'" in a and "name='" in a
-                             and not ("name='params'" in a and "type='a{sv}'" in a)]
+                             and not ("name='params'" in a and "type='a{sv}'" in a)
+                             and not ("name='caller'" in a and "type='s'" in a)]
 norm = lambda s: s.replace('_', '').lower()
 gaps = []
 for f in glob.glob(root + '/apps/**/*.js', recursive=True):
@@ -401,7 +421,7 @@ fi
 # Services apps call that no device route serves at all: on a device every such
 # request is refused ("unknown service"). The gap check above sees only routed
 # services, so these are counted on their own.
-UNROUTED_MAX=5
+UNROUTED_MAX=3
 UNROUTED=$(python3 - "$ROOT" <<'PYCHK'
 import re, glob, sys
 root = sys.argv[1]
