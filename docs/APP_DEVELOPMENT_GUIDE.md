@@ -716,12 +716,13 @@ export WEBKIT_INSPECTOR_SERVER=0.0.0.0:8090
 | 20 | updater | getState, check, install, restart (시스템 앱 전용) |
 | 21 | sandbox | getPolicy |
 | 22 | logger | getLogs, clearLogs |
-| 23 | accessibility | getSettings, setFontScale, setHighContrast |
+| 23 | accessibility | getState, setFontScale, setHighContrast, setScreenReader, speak |
 | 24 | audio | getVolume, setVolume ({stream: media·notif·alarm·ringtone·system, value}), setMicMute, playNotificationSound, vibrate |
 | 25 | contacts | getAll, getById, create, update, delete, search |
 | 26 | messaging | getConversations, getMessages, sendMessage, deleteMessage |
 | 27 | clipboard | copy, paste, clear |
 | 28 | network | fetch |
+| 29 | alarm | set, cancel, list — 앱이 닫혀 있어도 울린다 (OS 가 알림을 띄움) |
 
 ### zylI18n (공유 모듈)
 

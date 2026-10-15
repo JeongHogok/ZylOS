@@ -33,6 +33,8 @@ window.ZylPermissions = (function () {
     'wifi':         ['wifi'],
     'bluetooth':    ['bluetooth'],
     'notification': ['notification'],
+    /* An alarm is a notification the user gets later: same permission */
+    'alarm':        ['notification'],
     'camera':       ['camera'],
     'audio':        ['audio'],
     'appstore':     ['app.manage'],

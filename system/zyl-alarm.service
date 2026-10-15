@@ -24,6 +24,8 @@ ProtectKernelModules=true
 ProtectControlGroups=true
 RestrictNamespaces=true
 RestrictRealtime=true
+# Registered alarms survive a reboot only if the daemon can write them
+ReadWritePaths=/data/alarms
 
 [Install]
 WantedBy=multi-user.target

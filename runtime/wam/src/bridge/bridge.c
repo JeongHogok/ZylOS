@@ -724,6 +724,7 @@ static const ServiceRoute SERVICE_ROUTES[] = {
     {"network",      "org.zylos.Network",            "/org/zylos/Network",            "org.zylos.Network"},
     {"appdata",      "org.zylos.AppData",            "/org/zylos/AppData",            "org.zylos.AppData"},
     {"appstore",     "org.zylos.AppStore",           "/org/zylos/AppStore",           "org.zylos.AppStore"},
+    {"alarm",        "org.zylos.AlarmService",       "/org/zylos/AlarmService",       "org.zylos.AlarmService"},
     {NULL, NULL, NULL, NULL}
 };
 
@@ -755,6 +756,8 @@ static const ServicePermission SERVICE_PERMISSIONS[] = {
     {"wifi",          {"wifi", NULL}},
     {"bluetooth",     {"bluetooth", NULL}},
     {"notification",  {"notification", NULL}},
+    /* An alarm is a notification the user gets later: same permission */
+    {"alarm",         {"notification", NULL}},
     {"camera",        {"camera", NULL}},
     {"audio",         {"audio", NULL}},
     {"appstore",      {"app.manage", NULL}},

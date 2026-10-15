@@ -7,9 +7,11 @@
  * SOLID: ISP — 알람 관련 인터페이스만 노출
  *
  * D-Bus: org.zylos.AlarmService / /org/zylos/AlarmService
- *   메서드: Set(s tag, t trigger_at, t interval_ms, s app_id, b repeating) → b ok
+ *   메서드: Set(s tag, t trigger_at, t interval_ms, s app_id, b repeating,
+ *               s title) → b ok
  *           Cancel(s tag) → b ok
- *           List() → a(sttsb) alarms
+ *           List() → aa{sv} alarms (키는 앱이 읽는 그대로: tag triggerAt
+ *                   intervalMs appId repeating title)
  *   시그널: AlarmTriggered(s tag, s app_id)
  * ────────────────────────────────────────────────────────── */
 
@@ -32,6 +34,9 @@ typedef struct {
     uint64_t interval_ms;   /* 반복 간격 ms (0 = 1회성) */
     char    *app_id;        /* 알람을 등록한 앱 ID */
     bool     repeating;     /* 반복 여부 */
+    /* 알림 제목 — 앱이 자기 언어로 번역해 준 문자열. OS 는 번역을 갖지 않으므로
+       앱이 주지 않으면(빈 문자열) 알림 없이 시그널만 보낸다 */
+    char    *title;
 } ZylAlarm;
 
 /* ─── 서비스 불투명 타입 ─── */

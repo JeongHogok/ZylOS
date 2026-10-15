@@ -75,7 +75,8 @@ var moduleFiles = [
   'notification.js', 'power.js', 'display.js', 'input.js', 'sensors.js',
   'location.js', 'telephony.js', 'contacts.js', 'messaging.js', 'usb.js',
   'user.js', 'credential.js', 'app-seal.js', 'appstore.js', 'updater.js', 'sandbox.js',
-  'logger.js', 'accessibility.js', 'audio.js', 'telemetry.js', 'netstats.js', 'bootctl.js', 'lock.js'
+  'logger.js', 'accessibility.js', 'audio.js', 'telemetry.js', 'netstats.js', 'bootctl.js', 'lock.js',
+  'alarm.js'
 ];
 
 /* Provide window.addEventListener stub before loading modules */
@@ -1983,11 +1984,116 @@ console.log('\n■ zylI18n time');
 })();
 
 /* ═══════════════════════════════════════════════════════
+   Alarm service (contract of runtime/services/alarm): a trigger that fires
+   with the app closed, so the notification is the OS's job, not the app's
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ alarm service');
+
+var alarmTests = (function () {
+  function make(store) {
+    store = store || {};
+    var posted = [];
+    var settingsSvc = {
+      _getSetting: function (cat) { return Promise.resolve(store[cat] || null); },
+      _updateSetting: function (cat, k, v) { store[cat] = store[cat] || {}; store[cat][k] = v; }
+    };
+    var notificationSvc = { post: function (p) { posted.push(p); return { id: posted.length }; } };
+    return {
+      svc: ns.alarm({ settingsSvc: settingsSvc, notificationSvc: notificationSvc }),
+      store: store, posted: posted
+    };
+  }
+  function soon(ms) { return Date.now() + (ms || 5); }
+  function after(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  /* A still-pending alarm timer would keep the test runner alive */
+  function clear(t) {
+    return t.svc.list().then(function (list) {
+      return Promise.all(list.map(function (a) { return t.svc.cancel({ tag: a.tag }); }));
+    });
+  }
+
+  return Promise.all([
+    asyncTest('a one-shot alarm notifies at its time and then is gone', function () {
+      var t = make();
+      return t.svc.set({ tag: 'wake', triggerAt: soon(5), appId: 'com.zylos.clock', title: '07:00' })
+        .then(function (ok) {
+          assert.strictEqual(ok, true);
+          return after(40);
+        }).then(function () {
+          assert.strictEqual(t.posted.length, 1);
+          assert.strictEqual(t.posted[0].title, '07:00');
+          assert.strictEqual(t.posted[0].appId, 'com.zylos.clock');
+          /* Do Not Disturb must not swallow an alarm */
+          assert.strictEqual(t.posted[0].priority, 3);
+          return t.svc.list();
+        }).then(function (r) { assert.strictEqual(r.length, 0); });
+    }),
+    asyncTest('a repeating alarm stays registered and keeps its next time', function () {
+      var t = make();
+      return t.svc.set({ tag: 'mon', triggerAt: soon(5), intervalMs: 604800000,
+                         appId: 'com.zylos.clock', repeating: true, title: 'Mon 07:00' })
+        .then(function () { return after(40); })
+        .then(function () { return t.svc.list(); })
+        .then(function (r) {
+          assert.strictEqual(r.length, 1);
+          assert.ok(r[0].triggerAt > Date.now() + 604000000);
+          return clear(t);
+        });
+    }),
+    asyncTest('a cancelled alarm never fires; the same tag replaces, not adds', function () {
+      var t = make();
+      return t.svc.set({ tag: 'x', triggerAt: soon(5), appId: 'a', title: 'first' })
+        .then(function () { return t.svc.set({ tag: 'x', triggerAt: soon(5), appId: 'a', title: 'second' }); })
+        .then(function () { return t.svc.list(); })
+        .then(function (r) {
+          assert.strictEqual(r.length, 1);
+          assert.strictEqual(r[0].title, 'second');
+          return t.svc.cancel({ tag: 'x' });
+        }).then(function (ok) {
+          assert.strictEqual(ok, true);
+          return after(40);
+        }).then(function () {
+          assert.strictEqual(t.posted.length, 0);
+          return t.svc.cancel({ tag: 'x' });
+        }).then(function (ok) { assert.strictEqual(ok, false); });
+    }),
+    asyncTest('a removed app leaves no alarm behind, in memory or stored', function () {
+      var t = make();
+      return t.svc.set({ tag: 'keep', triggerAt: soon(60000), appId: 'com.zylos.clock', title: 'k' })
+        .then(function () { return t.svc.set({ tag: 'gone', triggerAt: soon(60000), appId: 'com.example.gone', title: 'g' }); })
+        .then(function () {
+          t.svc._forgetApp('com.example.gone');
+          return t.svc.list();
+        }).then(function (r) {
+          assert.strictEqual(r.length, 1);
+          assert.strictEqual(r[0].tag, 'keep');
+          assert.ok(JSON.stringify(t.store).indexOf('com.example.gone') === -1);
+          return clear(t);
+        });
+    }),
+    asyncTest('alarms registered before a reload are armed again from storage', function () {
+      var first = make();
+      return first.svc.set({ tag: 'wake', triggerAt: soon(60000), appId: 'com.zylos.clock', title: '07:00' })
+        .then(function () {
+          /* Same store, fresh module: what the daemon does after a reboot */
+          var second = make(first.store);
+          return after(5).then(function () { return second.svc.list(); }).then(function (r) {
+            assert.strictEqual(r.length, 1);
+            assert.strictEqual(r[0].title, '07:00');
+            return Promise.all([clear(first), clear(second)]);
+          });
+        });
+    })
+  ]);
+})();
+
+/* ═══════════════════════════════════════════════════════
    Wait for all async tests and report
    ═══════════════════════════════════════════════════════ */
 Promise.all([settingsTests, displayTests, inputTests, sensorsTests,
              usbTests, powerTests, audioTests, fsTests, updaterTests, telemetryTests, callTests, storeTests,
-             netstatsTests, alertTests, lockTests, deviceBridgeTests, appStateTests])
+             netstatsTests, alertTests, lockTests, deviceBridgeTests, appStateTests,
+             alarmTests])
   .then(function () {
     console.log('\n════════════════════════');
     console.log('Total: ' + total + '  Passed: ' + passed + '  Failed: ' + failed);
