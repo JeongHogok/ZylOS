@@ -281,7 +281,9 @@ var ZylConfigUI = (function () {
   function startBoot() {
     var config = buildConfig();
     if (!config) return;
-    bootWithConfig(config);
+    /* Kept for the saved-devices list (get_saved_devices); a failed save does not stop the boot */
+    invoke('save_config', { config: config }).then(function () { bootWithConfig(config); },
+      function () { bootWithConfig(config); });
   }
 
   // ── 이벤트 바인딩 ──

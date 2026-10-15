@@ -1,7 +1,7 @@
 // ──────────────────────────────────────────────────────────
 // [Clean Architecture] Application Layer - UseCase
 //
-// 역할: 리소스 예약/해제 오케스트레이션 Tauri 커맨드
+// 역할: 리소스 예약 오케스트레이션 (boot_device 가 부름; 해제는 main.rs 의 창 닫힘)
 // 수행범위: 디스크 이미지 생성+마운트, 메모리 제한 적용/해제
 // 의존방향: resource/disk_image, resource/memory_limit, state
 // SOLID: SRP — 리소스 라이프사이클만 담당
@@ -16,7 +16,6 @@ use std::sync::Mutex;
 use tauri::State;
 
 /// 리소스 예약 (디스크 이미지 + 메모리 제한)
-#[tauri::command]
 pub async fn reserve_resources(
     state: State<'_, Mutex<AppState>>,
 ) -> Result<ResourceInfo, String> {
@@ -68,30 +67,4 @@ pub async fn reserve_resources(
         storage_available_bytes: available,
         storage_used_bytes: used,
     })
-}
-
-/// 리소스 해제 (언마운트 + 메모리 제한 해제)
-#[tauri::command]
-pub async fn release_resources(state: State<'_, Mutex<AppState>>) -> Result<(), String> {
-    let mount_point = {
-        let app_state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
-        app_state.mount_point.clone()
-    };
-
-    // 1. 디스크 이미지 언마운트
-    if let Some(mp) = &mount_point {
-        disk_image::unmount_image(mp)?;
-    }
-
-    // 2. 메모리 제한 해제
-    let _ = memory_limit::release_memory_limit();
-
-    // 3. 상태 업데이트
-    {
-        let mut app_state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
-        app_state.mount_point = None;
-        app_state.resource_reserved = false;
-    }
-
-    Ok(())
 }

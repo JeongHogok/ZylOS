@@ -16,14 +16,6 @@ pub mod linux;
 #[cfg(target_os = "macos")]
 pub mod macos;
 
-/// 현재 플랫폼 이름
-pub fn platform_name() -> &'static str {
-    #[cfg(target_os = "linux")]
-    { "linux" }
-    #[cfg(target_os = "macos")]
-    { "macos" }
-}
-
 /// 배터리 상태 조회 (플랫폼 독립)
 pub fn get_battery_info() -> Result<serde_json::Value, String> {
     #[cfg(target_os = "linux")]
