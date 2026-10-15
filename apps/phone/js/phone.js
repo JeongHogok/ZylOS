@@ -675,4 +675,13 @@
   window.addEventListener('languagechange', applyI18n);
   applyI18n();
 
+  /* Another app asked to dial a number (app.json "intents"): ready on the
+     keypad, the user presses call */
+  ZylIntent.onIntent(function (intent) {
+    if (intent.action !== ZylIntent.ACTION.DIAL) return;
+    dialedNumber = String(intent.data || '').replace(/^tel:/, '');
+    updateDisplay();
+    switchTab('keypad');
+  });
+
 })();

@@ -326,15 +326,6 @@
 
   /* ─── Show Web Page (real iframe rendering) ─── */
   function showWebPage(url, skipHistory) {
-    /* Intent 연동: 외부 URL 열기 */
-    if (typeof ZylIntent !== 'undefined') {
-      ZylIntent.startIntent({
-        action: ZylIntent.ACTION.VIEW,
-        data: url,
-        mimeType: 'text/uri'
-      });
-    }
-
     newTabPage.classList.remove('active');
     webPage.classList.remove('hidden');
     pageLoading.classList.add('active');
@@ -663,13 +654,8 @@
 
   document.getElementById('menu-settings').addEventListener('click', function () {
     closeMenu();
-    /* Settings navigates to system settings via intent */
-    if (typeof ZylIntent !== 'undefined') {
-      ZylIntent.startActivity({
-        action: 'android.intent.action.VIEW',
-        component: 'settings'
-      });
-    }
+    /* An explicit intent: Settings itself */
+    ZylIntent.startActivity({ targetApp: 'com.zylos.settings' });
   });
 
   /* ─── History Sidebar ─── */
@@ -684,5 +670,12 @@
   /* ─── Init ─── */
   renderTabs();
   updateNavButtons();
+
+  /* Another app asked to open a web address (app.json "intents") */
+  ZylIntent.onIntent(function (intent) {
+    if (intent.action !== ZylIntent.ACTION.VIEW || !/^https?:\/\//i.test(String(intent.data || ''))) return;
+    urlInput.value = String(intent.data);
+    showWebPage(urlInput.value);
+  });
 
 })();

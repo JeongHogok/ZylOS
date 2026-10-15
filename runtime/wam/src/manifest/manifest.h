@@ -23,6 +23,9 @@ typedef struct {
     char **permissions; /* Requested permissions (NULL-terminated) */
     int n_permissions;
     gboolean is_system; /* TRUE for system apps */
+    /* What the app opens ("intents"): pairs, NULL-terminated, same length */
+    char **intent_actions;
+    char **intent_mimes;
 } ZylAppManifest;
 
 /*

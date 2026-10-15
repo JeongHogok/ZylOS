@@ -18,7 +18,7 @@
 window.ZylAppRegistry = (function () {
   'use strict';
 
-  var _apps = {}; // appId -> {name, path, system, icon, color, permissions, formFactors, iconSvg}
+  var _apps = {}; // appId -> {name, path, system, icon, color, permissions, formFactors, iconSvg, launcher, intents}
 
   /* ═══ Registration ═══ */
   function register(appList) {
@@ -33,7 +33,8 @@ window.ZylAppRegistry = (function () {
         permissions: app.permissions || [],
         formFactors: app.formFactors || [],
         iconSvg: app.iconSvg || '',
-        launcher: app.launcher !== false
+        launcher: app.launcher !== false,
+        intents: Array.isArray(app.intents) ? app.intents : []
       };
     });
   }

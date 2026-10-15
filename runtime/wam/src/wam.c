@@ -3,12 +3,13 @@
  *
  * 역할: WAM(Web App Manager) 메인 서비스 — 모듈 조립 및 WebKitGTK 구현
  * 수행범위: manifest, lifecycle, bridge, D-Bus 모듈 연결, ZylWebEngine/ZylAppInterface vtable 구현
- * 의존방향: wam.h, manifest.h, lifecycle.h, bridge.h, dbus_service.h, oom.h
+ * 의존방향: wam.h, manifest.h, lifecycle.h, bridge.h, dbus_service.h, oom.h, intent.h
  * SOLID: SRP — 모듈 조립과 WebKitGTK 바인딩만 담당
  * ────────────────────────────────────────────────────────── */
 
 #include "wam.h"
 #include "oom/oom.h"
+#include "intent/intent.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -94,6 +95,125 @@ static void wam_handle_app_launch(const char        *type,
         if (reply_ctx && reply_ctx->callback_id >= 0) {
             zyl_bridge_reply_error(reply_ctx, "missing appId");
         }
+    }
+}
+
+/* ════════════════════════════════════════════════════════════════
+ *  Intents (rule 9): an app starts one, the WAM decides which app gets it
+ *  (intent/intent.c). Several → the starting app shows the choice and
+ *  reports the pick, which must be one offered; none → it says so.
+ * ════════════════════════════════════════════════════════════════ */
+
+typedef struct {
+    char       *token;
+    char       *source;
+    GPtrArray  *targets;   /* owned ids */
+    JsonObject *intent;    /* what the handler gets */
+} IntentChoice;
+
+static IntentChoice g_choice;   /* the one open choice */
+static guint g_next_token = 1;
+
+static void choice_clear(void) {
+    g_clear_pointer(&g_choice.token, g_free);
+    g_clear_pointer(&g_choice.source, g_free);
+    g_clear_pointer(&g_choice.targets, g_ptr_array_unref);
+    g_clear_pointer(&g_choice.intent, json_object_unref);
+}
+
+static void post_to(WebKitWebView *webview, const char *type, JsonNode *data) {
+    char *script = zyl_intent_post_script(type, data);
+    webkit_web_view_evaluate_javascript(webview, script, -1, NULL, NULL, NULL, NULL, NULL);
+    g_free(script);
+}
+
+static void deliver_when_loaded(WebKitWebView *webview, WebKitLoadEvent ev, gpointer script) {
+    if (ev != WEBKIT_LOAD_FINISHED) return;
+    g_signal_handlers_disconnect_by_func(webview, deliver_when_loaded, script);
+    webkit_web_view_evaluate_javascript(webview, script, -1, NULL, NULL, NULL, NULL, NULL);
+    g_free(script);
+}
+
+/* Launch the handler and hand it the intent once its page is there */
+static void launch_with_intent(ZylWam *wam, const char *app_id, JsonObject *intent) {
+    gboolean running = wam->iface.get_instance(&wam->iface, app_id) != NULL;
+    ZylAppInstance *inst = zyl_lifecycle_launch(&wam->iface, &wam->engine, app_id);
+    if (!inst || !inst->webview_widget) return;
+    char *script = zyl_intent_post_script("intent", zyl_intent_object_node(json_object_ref(intent)));
+    WebKitWebView *webview = WEBKIT_WEB_VIEW(inst->webview_widget);
+    if (running) {
+        webkit_web_view_evaluate_javascript(webview, script, -1, NULL, NULL, NULL, NULL, NULL);
+        g_free(script);
+    } else {
+        g_signal_connect(webview, "load-changed", G_CALLBACK(deliver_when_loaded), script);
+    }
+}
+
+static void wam_handle_intent_start(const char        *type,
+                                    gpointer           msg_obj,
+                                    ZylAppManifest    *manifest,
+                                    ZylBridgeReplyCtx *reply_ctx,
+                                    gpointer           user_data) {
+    (void)type;
+    ZylWam *wam = user_data;
+    JsonObject *msg = msg_obj;
+    JsonNode *in = json_object_has_member(msg, "intent") ? json_object_get_member(msg, "intent") : NULL;
+    if (!manifest || !reply_ctx || !in || !JSON_NODE_HOLDS_OBJECT(in)) return;
+    JsonObject *intent = json_node_get_object(in);
+
+    GPtrArray *targets = zyl_intent_resolve(wam->manifests, manifest->id, intent);
+    JsonObject *deliver = zyl_intent_deliverable(intent, manifest->id);
+    if (targets->len == 0) {
+        post_to(reply_ctx->webview, "intent.none", zyl_intent_object_node(json_object_new()));
+    } else if (targets->len == 1) {
+        launch_with_intent(wam, g_ptr_array_index(targets, 0), deliver);
+    } else {
+        choice_clear();
+        g_choice.token = g_strdup_printf("%u", g_next_token++);
+        g_choice.source = g_strdup(manifest->id);
+        g_choice.targets = g_ptr_array_new_with_free_func(g_free);
+        g_choice.intent = json_object_ref(deliver);
+        JsonArray *choices = json_array_new();
+        for (guint i = 0; i < targets->len; i++) {
+            const char *id = g_ptr_array_index(targets, i);
+            ZylAppManifest *m = g_hash_table_lookup(wam->manifests, id);
+            JsonObject *c = json_object_new();
+            json_object_set_string_member(c, "appId", id);
+            json_object_set_string_member(c, "name", m && m->name ? m->name : id);
+            json_array_add_object_element(choices, c);
+            g_ptr_array_add(g_choice.targets, g_strdup(id));
+        }
+        JsonObject *data = json_object_new();
+        json_object_set_string_member(data, "token", g_choice.token);
+        json_object_set_array_member(data, "choices", choices);
+        post_to(reply_ctx->webview, "intent.choose", zyl_intent_object_node(data));
+    }
+    json_object_unref(deliver);
+    g_ptr_array_unref(targets);
+}
+
+/* The pick: only the latest choice, from the app it was offered to, for an app offered */
+static void wam_handle_intent_chosen(const char        *type,
+                                     gpointer           msg_obj,
+                                     ZylAppManifest    *manifest,
+                                     ZylBridgeReplyCtx *reply_ctx,
+                                     gpointer           user_data) {
+    (void)type; (void)reply_ctx;
+    ZylWam *wam = user_data;
+    JsonObject *msg = msg_obj;
+    const char *token = json_object_get_string_member_with_default(msg, "token", NULL);
+    const char *app_id = json_object_get_string_member_with_default(msg, "appId", NULL);
+    if (!manifest || !token || !app_id || !g_choice.token ||
+        strcmp(token, g_choice.token) != 0 || strcmp(manifest->id, g_choice.source) != 0) return;
+    for (guint i = 0; i < g_choice.targets->len; i++) {
+        if (strcmp(g_ptr_array_index(g_choice.targets, i), app_id) != 0) continue;
+        char *target = g_strdup(app_id);
+        JsonObject *intent = json_object_ref(g_choice.intent);
+        choice_clear();
+        launch_with_intent(wam, target, intent);
+        json_object_unref(intent);
+        g_free(target);
+        return;
     }
 }
 
@@ -436,6 +556,8 @@ int main(int argc, char *argv[]) {
     zyl_bridge_init();
     zyl_bridge_register_handler("app.close",  wam_handle_app_close,  &wam);
     zyl_bridge_register_handler("app.launch", wam_handle_app_launch, &wam);
+    zyl_bridge_register_handler("intent.start",  wam_handle_intent_start,  &wam);
+    zyl_bridge_register_handler("intent.chosen", wam_handle_intent_chosen, &wam);
 
     /* Start D-Bus service */
     wam.dbus_owner_id = zyl_dbus_service_start(dbus_methods, &wam);

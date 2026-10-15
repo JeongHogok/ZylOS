@@ -122,7 +122,8 @@
     maxBytes: 64 * 1024                 /* UI state — drafts, scroll, tab — not data */
   });
 
-  function launchApp(appId) {
+  /* intent: what the OS resolved for this app to handle (apps/system/intent.js) */
+  function launchApp(appId, intent) {
     var app = ZylAppRegistry.getApp(appId);
     if (!app) {
       syslog('App not found: ' + appId, 'warn');
@@ -194,6 +195,8 @@
             broadcastToCurrentApp('system.setLocale', { locale: savedLocale });
           }
           broadcastToCurrentApp('system.setTimeZone', { timeZone: _currentTimeZone });
+
+          if (intent) broadcastToCurrentApp('intent', intent);
 
           /* Hand back the state saved when the user left this app (one-shot:
              leaving again saves it again) */
@@ -764,6 +767,14 @@
     ? window.location.origin
     : '*';
 
+  /* The OS decided who handles an intent; the container launches and delivers */
+  function runIntent(d) {
+    if (!d) return;
+    if (d.launch) launchApp(d.launch, d.intent);
+    else if (d.choose) broadcastToCurrentApp('intent.choose', d.choose);
+    else broadcastToCurrentApp('intent.none', {});
+  }
+
   function broadcastToCurrentApp(type, data) {
     try {
       appFrame.contentWindow.postMessage(
@@ -1060,6 +1071,12 @@
           break;
         case 'app.close':
           if (state.currentApp && !isLocked()) closeApp(state.currentApp);
+          break;
+        case 'intent.start':
+          if (!isLocked()) runIntent(ZylIntent.start(state.currentApp, msg.intent));
+          break;
+        case 'intent.chosen':
+          if (!isLocked()) runIntent(ZylIntent.choose(state.currentApp, msg.token, msg.appId));
           break;
         case 'app.minimize':
           goHome();

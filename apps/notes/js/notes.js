@@ -394,4 +394,24 @@
     type: 'service.request', service: 'fs', method: 'mkdir', params: { path: 'Documents/Notes' }
   });
   requestNotes();
+  /* Another app asked to open a text file here (app.json "intents"). A note
+     opens as itself; any other text file opens as a new note with its text,
+     saved into Notes only if the user saves it */
+  ZylIntent.onIntent(function (intent) {
+    if (intent.action !== ZylIntent.ACTION.VIEW || !intent.data) return;
+    var path = String(intent.data).replace(/^\/+/, '');
+    var name = path.split('/').pop();
+    if (path === 'Documents/Notes/' + name) {
+      openNote(name);
+      return;
+    }
+    currentNote = null;
+    if (titleEl) titleEl.value = name.replace(/\.[^.]+$/, '');
+    if (bodyEl) bodyEl.value = '';
+    showEditor();
+    ZylBridge.sendToSystem({
+      type: 'service.request', service: 'fs', method: 'getFileContent', params: { path: path }
+    });
+  });
+
 })();

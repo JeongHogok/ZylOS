@@ -395,31 +395,21 @@
   var btnCall = document.getElementById('btn-call');
   if (btnCall) btnCall.addEventListener('click', function () {
     if (!currentContact) return;
-    var phoneNumber = currentContact.phone || '';
-    /* Intent 연동: 전화번호 클릭 시 DIAL Intent 발사 */
-    if (typeof ZylIntent !== 'undefined') {
-      ZylIntent.startIntent({
-        action: ZylIntent.ACTION.DIAL,
-        data: phoneNumber,
-        mimeType: 'tel/*'
-      });
-      return;
-    }
-    /* ZylIntent 미로드 시 폴백 */
-    ZylBridge.sendToSystem({
-      type: 'app.launch',
-      appId: 'com.zylos.phone',
-      params: { action: 'call', number: phoneNumber }
+    /* Whichever app dials (rule 9): the OS decides */
+    ZylIntent.startActivity({
+      action: ZylIntent.ACTION.DIAL,
+      data: currentContact.phone || '',
+      mimeType: 'tel/*'
     });
   });
 
   var btnMessage = document.getElementById('btn-message');
   if (btnMessage) btnMessage.addEventListener('click', function () {
     if (!currentContact) return;
-    ZylBridge.sendToSystem({
-      type: 'app.launch',
-      appId: 'com.zylos.messages',
-      params: { action: 'compose', number: currentContact.phone || '' }
+    ZylIntent.startActivity({
+      action: ZylIntent.ACTION.SEND,
+      mimeType: 'text/plain',
+      extras: { number: currentContact.phone || '' }
     });
   });
 

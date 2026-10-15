@@ -10,6 +10,9 @@
     "notification",
     "storage"
   ],
+  "intents": [
+    { "action": "zyl.intent.action.SEND", "mimeType": "text/plain" }
+  ],
   "formFactors": [
     "phone",
     "tablet",

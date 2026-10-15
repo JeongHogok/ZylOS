@@ -47,6 +47,16 @@ if not isinstance(m.get('id'), str) or len(m['id']) == 0:
 if 'launcher' in m and not isinstance(m['launcher'], bool):
     print(f'launcher must be true or false in $f')
     sys.exit(1)
+# What the app opens (apps/system/intent.js, runtime/wam/src/intent): known
+# actions, a type/subtype mime (subtype may be *)
+import re
+ACTIONS = {'VIEW', 'SEND', 'EDIT', 'DIAL', 'CAPTURE', 'SEARCH'}
+for it in m.get('intents', []):
+    if not isinstance(it, dict) or it.get('action', '').replace('zyl.intent.action.', '', 1) not in ACTIONS \
+            or not it['action'].startswith('zyl.intent.action.') \
+            or not re.fullmatch(r'[a-z*]+/[a-z0-9.+*-]+', str(it.get('mimeType', ''))):
+        print(f'BAD intent {it} in $f (action zyl.intent.action.{sorted(ACTIONS)}, mimeType type/subtype)')
+        sys.exit(1)
 ff = m.get('formFactors')
 if ff is not None:
     valid = set('$VALID_FF'.split(',')) | {'*'}

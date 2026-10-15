@@ -1,11 +1,17 @@
 // ----------------------------------------------------------
-// [Clean Architecture] Domain Layer - Intent System
+// [Clean Architecture] Domain Layer - Intent Resolution
 //
-// Role: Android-style Intent for inter-app communication
-// Scope: Explicit/implicit intents, broadcast intents, receivers,
-//        data passing between apps, intent resolution
-// Dependency Direction: Domain -> ZylAppRegistry (app lookup)
-// SOLID: SRP — intent routing only, OCP — new actions via registration
+// Role: Which app handles an intent an app started — the OS's decision
+// Scope: Explicit (targetApp) or implicit (action + mimeType against the
+//        "intents" each app.json declares — declared, not registered at run
+//        time, so an app that is not running can still be chosen). The
+//        starting app is not offered itself. One handler → launch it, several
+//        → a choice the starting app shows (the pick must be one offered, by
+//        token), none → "no app". What the handler gets: action, data,
+//        mimeType, extras and sourceApp (the OS's, not the request's).
+//        Same rules as runtime/wam/src/intent/intent.c
+// Dependency Direction: Domain -> ZylAppRegistry
+// SOLID: SRP — intent resolution only
 //
 // ES5 only. No let/const/arrow.
 // ----------------------------------------------------------
@@ -13,266 +19,75 @@
 window.ZylIntent = (function () {
   'use strict';
 
-  /* ─── Standard Actions ─── */
-  var ACTION = {
-    VIEW:    'zyl.intent.action.VIEW',
-    SEND:    'zyl.intent.action.SEND',
-    PICK:    'zyl.intent.action.PICK',
-    EDIT:    'zyl.intent.action.EDIT',
-    DIAL:    'zyl.intent.action.DIAL',
-    CAPTURE: 'zyl.intent.action.CAPTURE',
-    SEARCH:  'zyl.intent.action.SEARCH'
-  };
+  var _choice = null;   /* the one open choice: { token, source, targets, intent } */
+  var _nextToken = 1;
 
-  /* ─── Standard Broadcast Actions ─── */
-  var BROADCAST = {
-    BOOT_COMPLETED:       'zyl.intent.action.BOOT_COMPLETED',
-    SCREEN_ON:            'zyl.intent.action.SCREEN_ON',
-    SCREEN_OFF:           'zyl.intent.action.SCREEN_OFF',
-    BATTERY_LOW:          'zyl.intent.action.BATTERY_LOW',
-    BATTERY_OKAY:         'zyl.intent.action.BATTERY_OKAY',
-    CONNECTIVITY_CHANGE:  'zyl.intent.action.CONNECTIVITY_CHANGE',
-    LOCALE_CHANGED:       'zyl.intent.action.LOCALE_CHANGED',
-    TIMEZONE_CHANGED:     'zyl.intent.action.TIMEZONE_CHANGED',
-    PACKAGE_INSTALLED:    'zyl.intent.action.PACKAGE_INSTALLED',
-    PACKAGE_REMOVED:      'zyl.intent.action.PACKAGE_REMOVED',
-    USER_PRESENT:         'zyl.intent.action.USER_PRESENT',
-    AIRPLANE_MODE_CHANGED:'zyl.intent.action.AIRPLANE_MODE_CHANGED',
-    DND_MODE_CHANGED:     'zyl.intent.action.DND_MODE_CHANGED'
-  };
-
-  /* ─── Intent Filter Registry ─── */
-  var _filters = []; /* { appId, action, mimeType } */
-
-  /* ─── Broadcast Receiver Registry ─── */
-  var _receivers = []; /* { appId, action, handler, priority } */
-
-  /**
-   * Register an intent filter — declares what intents an app can handle.
-   */
-  function registerFilter(appId, action, mimeType) {
-    _filters.push({ appId: appId, action: action, mimeType: mimeType || '*/*' });
+  /* "*\/*", exact, or "type/*" for any subtype */
+  function mimeMatches(filter, mime) {
+    if (filter === '*/*' || filter === mime) return true;
+    var slash = filter.indexOf('/');
+    return slash > 0 && filter.slice(slash) === '/*' && mime.split('/')[0] === filter.slice(0, slash);
   }
 
-  /**
-   * Resolve an intent — find apps that can handle it.
-   * @param {Object} intent - { action, data, mimeType, targetApp }
-   * @returns {Array} matching app IDs
-   */
-  function resolve(intent) {
-    if (!intent || !intent.action) return [];
-
-    /* Explicit intent: specific target app */
+  function resolve(source, intent) {
     if (intent.targetApp) {
-      return [intent.targetApp];
+      return ZylAppRegistry.getApp(intent.targetApp) ? [String(intent.targetApp)] : [];
     }
-
-    /* Implicit intent: match by action + mimeType */
-    var matches = [];
     var mime = intent.mimeType || '*/*';
-    for (var i = 0; i < _filters.length; i++) {
-      var f = _filters[i];
-      if (f.action !== intent.action) continue;
-      if (f.mimeType === '*/*' || f.mimeType === mime ||
-          (mime.indexOf('/') !== -1 && f.mimeType === mime.split('/')[0] + '/*')) {
-        matches.push(f.appId);
+    return ZylAppRegistry.getAllIds().filter(function (id) {
+      if (id === source) return false;
+      var filters = ZylAppRegistry.getApp(id).intents || [];
+      for (var i = 0; i < filters.length; i++) {
+        if (filters[i].action === intent.action && mimeMatches(filters[i].mimeType || '*/*', mime)) return true;
       }
-    }
-    return matches;
+      return false;
+    }).sort();
+  }
+
+  function deliverable(source, intent) {
+    return {
+      action: String(intent.action || ''),
+      data: intent.data == null ? '' : String(intent.data),
+      mimeType: intent.mimeType ? String(intent.mimeType) : '',
+      extras: (intent.extras && typeof intent.extras === 'object') ? intent.extras : {},
+      sourceApp: source || ''
+    };
   }
 
   /**
-   * Start an intent — resolve + launch target app with data.
-   * @param {Object} intent - { action, data, mimeType, targetApp, extras }
-   * @returns {boolean} true if handled
+   * An app started an intent.
+   * @returns {Object} { launch, intent } | { choose: { token, choices: [{ appId, name }] } } | { none: true }
    */
-  function startIntent(intent) {
-    if (!intent) return false;
-
-    var targets = resolve(intent);
-    if (targets.length === 0) return false;
-
-    /* Single match: launch directly */
-    var targetApp = targets[0];
-
-    /* Deliver intent data via postMessage after app loads */
-    var msg = {
-      type: 'intent.deliver',
-      data: {
-        action: intent.action,
-        data: intent.data || null,
-        mimeType: intent.mimeType || null,
-        extras: intent.extras || {},
-        sourceApp: intent.sourceApp || ''
+  function start(source, intent) {
+    if (!intent || (!intent.action && !intent.targetApp)) return { none: true };
+    var targets = resolve(source, intent);
+    if (targets.length === 0) return { none: true };
+    var d = deliverable(source, intent);
+    if (targets.length === 1) return { launch: targets[0], intent: d };
+    var token = String(_nextToken++);
+    _choice = { token: token, source: source, targets: targets, intent: d };
+    return {
+      choose: {
+        token: token,
+        choices: targets.map(function (id) { return { appId: id, name: ZylAppRegistry.getApp(id).name }; })
       }
     };
-
-    /* Launch app + queue intent delivery */
-    if (typeof ZylBridge !== 'undefined') {
-      ZylBridge.sendToSystem({
-        type: 'app.launch',
-        appId: targetApp,
-        intent: msg.data
-      });
-    }
-
-    return true;
   }
 
   /**
-   * Create a chooser for implicit intents with multiple handlers.
-   * Returns array of { appId, appName } for UI display.
+   * The starting app reports the user's pick. Only the latest choice, from the
+   * app it was offered to, for an app that was offered.
+   * @returns {Object|null} { launch, intent }
    */
-  function createChooser(intent) {
-    var targets = resolve(intent);
-    var choices = [];
-    for (var i = 0; i < targets.length; i++) {
-      var app = (typeof ZylAppRegistry !== 'undefined')
-        ? ZylAppRegistry.getApp(targets[i]) : null;
-      choices.push({
-        appId: targets[i],
-        appName: app ? app.name : targets[i]
-      });
-    }
-    return choices;
+  function choose(source, token, appId) {
+    var c = _choice;
+    if (!c || c.token !== token || c.source !== source || c.targets.indexOf(appId) === -1) return null;
+    _choice = null;
+    return { launch: appId, intent: c.intent };
   }
-
-  /* ═══════════════════════════════════════════════
-   *  NEW: Broadcast Intent System
-   * ═══════════════════════════════════════════════ */
-
-  /**
-   * Register a broadcast receiver for a specific action.
-   * @param {string} appId - Receiving app ID
-   * @param {string} action - Broadcast action to listen for
-   * @param {Function} handler - function(intent) called on broadcast
-   * @param {number} [priority] - Higher priority receivers called first (default 0)
-   * @returns {number} receiverId for unregistration
-   */
-  function registerReceiver(appId, action, handler, priority) {
-    var id = _receivers.length;
-    _receivers.push({
-      id: id,
-      appId: appId,
-      action: action,
-      handler: handler,
-      priority: priority || 0,
-      active: true
-    });
-    return id;
-  }
-
-  /**
-   * Unregister a broadcast receiver.
-   * @param {number} receiverId
-   */
-  function unregisterReceiver(receiverId) {
-    if (_receivers[receiverId]) {
-      _receivers[receiverId].active = false;
-    }
-  }
-
-  /**
-   * Send a broadcast intent to all registered receivers.
-   * Receivers are called in priority order (highest first).
-   * @param {Object} intent - { action, extras }
-   * @param {boolean} [ordered] - If true, receivers are called sequentially
-   *        and can abort further processing by returning false.
-   */
-  function sendBroadcast(intent) {
-    if (!intent || !intent.action) return;
-
-    /* Collect matching receivers, sorted by priority descending */
-    var matched = [];
-    for (var i = 0; i < _receivers.length; i++) {
-      var r = _receivers[i];
-      if (!r.active) continue;
-      if (r.action === intent.action) {
-        matched.push(r);
-      }
-    }
-
-    matched.sort(function (a, b) { return b.priority - a.priority; });
-
-    /* Dispatch to all receivers */
-    for (var j = 0; j < matched.length; j++) {
-      try {
-        matched[j].handler({
-          action: intent.action,
-          extras: intent.extras || {},
-          sourceApp: intent.sourceApp || 'system',
-          timestamp: Date.now()
-        });
-      } catch (e) {
-        /* Receiver error should not break broadcast chain */
-      }
-    }
-  }
-
-  /**
-   * Send an ordered broadcast — receivers called sequentially.
-   * A receiver can abort by returning { abort: true }.
-   * @param {Object} intent - { action, extras }
-   * @returns {Object} { aborted: boolean, handlerCount: number }
-   */
-  function sendOrderedBroadcast(intent) {
-    if (!intent || !intent.action) return { aborted: false, handlerCount: 0 };
-
-    var matched = [];
-    for (var i = 0; i < _receivers.length; i++) {
-      var r = _receivers[i];
-      if (!r.active) continue;
-      if (r.action === intent.action) {
-        matched.push(r);
-      }
-    }
-
-    matched.sort(function (a, b) { return b.priority - a.priority; });
-
-    var aborted = false;
-    for (var j = 0; j < matched.length; j++) {
-      try {
-        var result = matched[j].handler({
-          action: intent.action,
-          extras: intent.extras || {},
-          sourceApp: intent.sourceApp || 'system',
-          timestamp: Date.now()
-        });
-        if (result && result.abort) {
-          aborted = true;
-          break;
-        }
-      } catch (e) { /* ignore */ }
-    }
-
-    return { aborted: aborted, handlerCount: matched.length };
-  }
-
-  /* ─── Default filters for system apps ─── */
-  registerFilter('com.zylos.browser',  ACTION.VIEW,    'text/html');
-  registerFilter('com.zylos.browser',  ACTION.VIEW,    'text/uri');
-  registerFilter('com.zylos.browser',  ACTION.SEARCH,  '*/*');
-  registerFilter('com.zylos.gallery',  ACTION.VIEW,    'image/*');
-  registerFilter('com.zylos.music',    ACTION.VIEW,    'audio/*');
-  registerFilter('com.zylos.files',    ACTION.VIEW,    '*/*');
-  registerFilter('com.zylos.files',    ACTION.PICK,    '*/*');
-  registerFilter('com.zylos.phone',    ACTION.DIAL,    'tel/*');
-  registerFilter('com.zylos.messages', ACTION.SEND,    'text/plain');
-  registerFilter('com.zylos.camera',   ACTION.CAPTURE, 'image/*');
-  registerFilter('com.zylos.notes',    ACTION.EDIT,    'text/plain');
-  registerFilter('com.zylos.contacts', ACTION.VIEW,    'vcard/*');
 
   return {
-    ACTION: ACTION,
-    BROADCAST: BROADCAST,
-    registerFilter: registerFilter,
-    resolve: resolve,
-    startIntent: startIntent,
-    createChooser: createChooser,
-    /* Broadcast API */
-    registerReceiver: registerReceiver,
-    unregisterReceiver: unregisterReceiver,
-    sendBroadcast: sendBroadcast,
-    sendOrderedBroadcast: sendOrderedBroadcast
+    start: start,
+    choose: choose
   };
 })();

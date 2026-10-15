@@ -10,6 +10,9 @@
     "audio",
     "notification"
   ],
+  "intents": [
+    { "action": "zyl.intent.action.DIAL", "mimeType": "tel/*" }
+  ],
   "formFactors": [
     "phone",
     "tablet",

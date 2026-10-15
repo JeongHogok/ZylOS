@@ -9,6 +9,9 @@
     "files.read",
     "files.write"
   ],
+  "intents": [
+    { "action": "zyl.intent.action.VIEW", "mimeType": "text/plain" }
+  ],
   "formFactors": [
     "phone",
     "tablet",

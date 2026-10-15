@@ -532,4 +532,14 @@
   loadContacts();
   loadThreads();
 
+  /* Another app asked to send a text (app.json "intents"): extras.number is
+     the recipient, data the text to start with */
+  ZylIntent.onIntent(function (intent) {
+    if (intent.action !== ZylIntent.ACTION.SEND) return;
+    var number = String((intent.extras && intent.extras.number) || '');
+    if (number) startNewThread(number, contactName(number) || number);
+    else showView('new');
+    if (intent.data) chatInput.value = String(intent.data);
+  });
+
 })();

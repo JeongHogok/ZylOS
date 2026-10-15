@@ -76,6 +76,23 @@ ZylAppManifest *zyl_manifest_parse(const char *app_dir) {
         }
     }
 
+    /* What the app opens: [{ action, mimeType }] — malformed entries are skipped */
+    GPtrArray *actions = g_ptr_array_new(), *mimes = g_ptr_array_new();
+    JsonNode *in = json_object_has_member(obj, "intents") ? json_object_get_member(obj, "intents") : NULL;
+    JsonArray *intents = in && JSON_NODE_HOLDS_ARRAY(in) ? json_node_get_array(in) : NULL;
+    for (guint i = 0; intents && i < json_array_get_length(intents); i++) {
+        JsonNode *e = json_array_get_element(intents, i);
+        JsonObject *f = JSON_NODE_HOLDS_OBJECT(e) ? json_node_get_object(e) : NULL;
+        const char *action = f ? json_object_get_string_member_with_default(f, "action", NULL) : NULL;
+        if (!action) continue;
+        g_ptr_array_add(actions, g_strdup(action));
+        g_ptr_array_add(mimes, g_strdup(json_object_get_string_member_with_default(f, "mimeType", "*/*")));
+    }
+    g_ptr_array_add(actions, NULL);
+    g_ptr_array_add(mimes, NULL);
+    m->intent_actions = (char **)g_ptr_array_free(actions, FALSE);
+    m->intent_mimes = (char **)g_ptr_array_free(mimes, FALSE);
+
     g_object_unref(parser);
     return m;
 }
@@ -149,6 +166,8 @@ void zyl_manifest_free(gpointer data) {
     g_free(m->icon);
     g_free(m->base_path);
     if (m->permissions) g_strfreev(m->permissions);
+    g_strfreev(m->intent_actions);
+    g_strfreev(m->intent_mimes);
     g_free(m);
 }
 

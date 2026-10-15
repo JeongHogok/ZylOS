@@ -20,6 +20,10 @@ window.zylI18n = (function () {
   var translations = {
     ko: {
       'search': '\uAC80\uC0C9...',
+      'intent.open_with': '\uB2E4\uC74C\uC73C\uB85C \uC5F4\uAE30',
+      'intent.no_app': '\uC774\uAC83\uC744 \uC5F4 \uC218 \uC788\uB294 \uC571\uC774 \uC5C6\uC2B5\uB2C8\uB2E4',
+      'intent.cancel': '\uCDE8\uC18C',
+      'intent.ok': '\uD655\uC778',
       'app.browser': '\uBE0C\uB77C\uC6B0\uC800',
       'app.files': '\uD30C\uC77C',
       'app.settings': '\uC124\uC815',
@@ -64,6 +68,10 @@ window.zylI18n = (function () {
     },
     en: {
       'search': 'Search...',
+      'intent.open_with': 'Open with',
+      'intent.no_app': 'No app can open this',
+      'intent.cancel': 'Cancel',
+      'intent.ok': 'OK',
       'app.browser': 'Browser',
       'app.files': 'Files',
       'app.settings': 'Settings',
@@ -108,6 +116,10 @@ window.zylI18n = (function () {
     },
     ja: {
       'search': '\u691C\u7D22...',
+      'intent.open_with': '\u3053\u306E\u30A2\u30D7\u30EA\u3067\u958B\u304F',
+      'intent.no_app': '\u3053\u308C\u3092\u958B\u3051\u308B\u30A2\u30D7\u30EA\u304C\u3042\u308A\u307E\u305B\u3093',
+      'intent.cancel': '\u30AD\u30E3\u30F3\u30BB\u30EB',
+      'intent.ok': 'OK',
       'app.browser': '\u30D6\u30E9\u30A6\u30B6',
       'app.files': '\u30D5\u30A1\u30A4\u30EB',
       'app.settings': '\u8A2D\u5B9A',
@@ -152,6 +164,10 @@ window.zylI18n = (function () {
     },
     zh: {
       'search': '\u641C\u7D22...',
+      'intent.open_with': '\u6253\u5F00\u65B9\u5F0F',
+      'intent.no_app': '\u6CA1\u6709\u53EF\u4EE5\u6253\u5F00\u6B64\u5185\u5BB9\u7684\u5E94\u7528',
+      'intent.cancel': '\u53D6\u6D88',
+      'intent.ok': '\u786E\u5B9A',
       'app.browser': '\u6D4F\u89C8\u5668',
       'app.files': '\u6587\u4EF6',
       'app.settings': '\u8BBE\u7F6E',
@@ -196,6 +212,10 @@ window.zylI18n = (function () {
     },
     es: {
       'search': 'Buscar...',
+      'intent.open_with': 'Abrir con',
+      'intent.no_app': 'Ninguna app puede abrir esto',
+      'intent.cancel': 'Cancelar',
+      'intent.ok': 'Aceptar',
       'app.browser': 'Navegador',
       'app.files': 'Archivos',
       'app.settings': 'Ajustes',

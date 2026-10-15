@@ -260,6 +260,17 @@ test('appdata',
   )
 )
 
+# Test: intents — who handles one (manifest "intents", mime rules, not the
+# starting app, explicit target) and what the handler gets
+test('intent',
+  executable('test-intent',
+    'test_intent.c',
+    '../runtime/wam/src/intent/intent.c',
+    '../runtime/wam/src/manifest/manifest.c',
+    dependencies: [gio_dep, json_glib_dep],
+  )
+)
+
 # Test: device app scan — a user app must not replace a system app by reusing its id
 test('manifest-scan',
   executable('test-manifest-scan',

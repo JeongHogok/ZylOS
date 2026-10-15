@@ -1106,6 +1106,55 @@ console.log('\n■ ZylHangul');
 })();
 
 /* ═══════════════════════════════════════════════════════
+   Intents (real app-registry.js + intent.js, isolated) — same rules as
+   runtime/wam/src/intent (tests/test_intent.c)
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ ZylIntent');
+
+(function () {
+  var vm = require('vm');
+  var ctx = { window: {}, console: console };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'apps', 'system', 'app-registry.js'), 'utf8'), ctx);
+  ctx.ZylAppRegistry = ctx.window.ZylAppRegistry;
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'apps', 'system', 'intent.js'), 'utf8'), ctx);
+  var I = ctx.window.ZylIntent;
+  function plain(v) { return JSON.parse(JSON.stringify(v)); }   /* objects from the other context */
+  var VIEW = 'zyl.intent.action.VIEW';
+  ctx.ZylAppRegistry.register([
+    { id: 'com.zylos.gallery', name: 'Gallery', intents: [{ action: VIEW, mimeType: 'image/*' }] },
+    { id: 'com.example.photos', name: 'Photos', intents: [{ action: VIEW, mimeType: 'image/png' }] },
+    { id: 'com.zylos.files', name: 'Files' }
+  ]);
+
+  test('one handler launches; the starting app is not offered itself', function () {
+    var d = I.start('com.zylos.files', { action: VIEW, data: 'Pictures/a.gif', mimeType: 'image/*',
+                                         sourceApp: 'com.zylos.settings' });
+    assert.strictEqual(d.launch, 'com.zylos.gallery');
+    assert.strictEqual(d.intent.sourceApp, 'com.zylos.files');           /* the OS's, not the request's */
+    assert.deepStrictEqual(plain(I.start('com.zylos.gallery', { action: VIEW, mimeType: 'image/*' })), { none: true });
+    assert.deepStrictEqual(plain(I.start('com.zylos.files', { action: VIEW, mimeType: 'text/plain' })), { none: true });
+  });
+
+  test('several handlers: a choice, and only an offered pick from the same app counts', function () {
+    var d = I.start('com.zylos.files', { action: VIEW, data: 'x.png', mimeType: 'image/png' });
+    assert.deepStrictEqual(plain(d.choose.choices.map(function (c) { return c.appId; })),
+                           ['com.example.photos', 'com.zylos.gallery']);
+    var t = d.choose.token;
+    assert.strictEqual(I.choose('com.zylos.files', t, 'com.zylos.files'), null);        /* not offered */
+    assert.strictEqual(I.choose('com.example.photos', t, 'com.zylos.gallery'), null);   /* not its choice */
+    var picked = I.choose('com.zylos.files', t, 'com.zylos.gallery');
+    assert.strictEqual(picked.launch, 'com.zylos.gallery');
+    assert.strictEqual(picked.intent.data, 'x.png');
+    assert.strictEqual(I.choose('com.zylos.files', t, 'com.zylos.gallery'), null);     /* used up */
+  });
+
+  test('explicit intents name an installed app', function () {
+    assert.strictEqual(I.start('com.zylos.files', { targetApp: 'com.zylos.gallery' }).launch, 'com.zylos.gallery');
+    assert.deepStrictEqual(plain(I.start('com.zylos.files', { targetApp: 'com.nope' })), { none: true });
+  });
+})();
+
+/* ═══════════════════════════════════════════════════════
    Permission policy — reserved permissions (real permissions.js, isolated)
    ═══════════════════════════════════════════════════════ */
 console.log('\n■ ZylPermissions');

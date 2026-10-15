@@ -8,6 +8,9 @@
     "storage",
     "audio"
   ],
+  "intents": [
+    { "action": "zyl.intent.action.VIEW", "mimeType": "audio/*" }
+  ],
   "formFactors": [
     "phone",
     "tablet",
