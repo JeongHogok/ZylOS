@@ -918,9 +918,22 @@
       } catch (err) { /* iframe not ready */ }
     }
 
+    /* The virtual device's own status bar shows its radios as switched */
+    function showRadio(data) {
+      if (msg.method !== 'setEnabled' || data !== true) return;
+      var on = !!(msg.params && msg.params.enabled);
+      if (msg.service === 'wifi') {
+        var wifiIcon = document.getElementById('sb-wifi');
+        if (wifiIcon) wifiIcon.style.opacity = on ? '0.85' : '0.15';
+      } else if (msg.service === 'bluetooth') {
+        var btIcon = document.getElementById('sb-bt');
+        if (btIcon) btIcon.classList.toggle('hidden', !on);
+      }
+    }
+
     /* Promise 또는 동기 데이터 모두 처리 */
     if (result && typeof result.then === 'function') {
-      result.then(function (data) { sendResponse(data); })
+      result.then(function (data) { showRadio(data); sendResponse(data); })
             .catch(function () { sendResponse(null); });
     } else {
       sendResponse(result);
@@ -958,20 +971,6 @@
   };
 
   function applySettingSideEffect(category, key, value) {
-    /* ── WiFi: statusbar icon ── */
-    if (category === 'wifi' && key === 'enabled') {
-      var wifiIcon = document.getElementById('sb-wifi');
-      if (wifiIcon) wifiIcon.style.opacity = value ? '0.85' : '0.15';
-      syslog('WiFi ' + (value ? 'ON' : 'OFF'), 'sys');
-    }
-
-    /* ── Bluetooth: statusbar icon visibility ── */
-    if (category === 'bluetooth' && key === 'enabled') {
-      var btIcon = document.getElementById('sb-bt');
-      if (btIcon) btIcon.classList.toggle('hidden', !value);
-      syslog('Bluetooth ' + (value ? 'ON' : 'OFF'), 'sys');
-    }
-
     /* ── 밝기: CSS filter로 화면 밝기 시뮬레이션 ── */
     if (category === 'display' && key === 'brightness') {
       var pct = parseInt(value, 10);

@@ -1,10 +1,13 @@
 /* ──────────────────────────────────────────────────────────
- * [Clean Architecture] Data Layer - Implementation
+ * [Clean Architecture] Infrastructure Layer - HAL (Linux)
  *
- * 역할: Display HAL Linux 구현체 — sysfs backlight + DRM/KMS
- * 수행범위: 밝기 조절, 자동 밝기, 다크 모드, 폰트 크기, 화면 타임아웃
- * 의존방향: hal.h (Domain), stdio/stdlib (Platform)
- * SOLID: DIP — hal.h 인터페이스 구현, SRP — 디스플레이 제어만 담당
+ * 역할: Display HAL Linux 구현 — DRM 출력·모드(읽기)와 백라이트
+ * 수행범위: /sys/class/drm 의 cardN-<커넥터> 마다 연결 여부와 modes 목록(커널이
+ *           선호 모드를 먼저 적음, 주사율이 없으면 mode 파일 또는 60Hz),
+ *           /sys/class/backlight 의 첫 장치로 밝기 0–100% 읽기·쓰기
+ * 의존방향: hal.h (Domain), glib
+ * SOLID: SRP — 화면 장치 접근만. 해상도·배율·회전 정책은 display 서비스,
+ *        밝기 정책(어두워짐·꺼짐)은 power 서비스 몫
  * ────────────────────────────────────────────────────────── */
 
 #include "hal.h"
@@ -12,190 +15,123 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <dirent.h>
-#include <unistd.h>
+#include <glib.h>
 
-#define BACKLIGHT_BASE "/sys/class/backlight"
-#define SETTINGS_DIR   "/data/settings"
+#ifndef ZYL_SYSFS_ROOT
+#define ZYL_SYSFS_ROOT ""
+#endif
+#define DRM_DIR       ZYL_SYSFS_ROOT "/sys/class/drm"
+#define BACKLIGHT_DIR ZYL_SYSFS_ROOT "/sys/class/backlight"
 
-static char g_bl_path[256] = {0};       /* e.g. /sys/class/backlight/intel_backlight */
-static int  g_max_brightness = 0;
-static ZylDisplayState g_state = {
-    .brightness_percent = 80,
-    .auto_brightness = false,
-    .dark_mode = false,
-    .font_size = "medium",
-    .screen_timeout_sec = 60,
-};
-
-/* ─── sysfs helpers ─── */
-static int sysfs_read_int(const char *path) {
-    FILE *f = fopen(path, "r");
-    if (!f) return -1;
-    int val = 0;
-    if (fscanf(f, "%d", &val) != 1) val = -1;
-    fclose(f);
-    return val;
-}
-
-static int sysfs_write_int(const char *path, int val) {
+/* sysfs attributes are written in place: no temp file and rename */
+static bool write_attr(const char *path, const char *value) {
     FILE *f = fopen(path, "w");
-    if (!f) return -1;
-    fprintf(f, "%d", val);
-    fclose(f);
-    return 0;
+    if (!f) return false;
+    bool ok = fputs(value, f) >= 0;
+    return fclose(f) == 0 && ok;
 }
 
-static int settings_write(const char *key, const char *value) {
-    char path[512];
-    snprintf(path, sizeof(path), "%s/display_%s", SETTINGS_DIR, key);
-    FILE *f = fopen(path, "w");
-    if (!f) return -1;
-    fprintf(f, "%s", value);
-    fclose(f);
-    return 0;
+static char *read_text(const char *dir, const char *name, const char *file) {
+    char *path = g_strdup_printf("%s/%s/%s", dir, name, file);
+    char *text = NULL;
+    if (!g_file_get_contents(path, &text, NULL, NULL)) text = NULL;
+    else g_strstrip(text);
+    g_free(path);
+    return text;
 }
 
-static int settings_read(const char *key, char *out, size_t out_len) {
-    char path[512];
-    snprintf(path, sizeof(path), "%s/display_%s", SETTINGS_DIR, key);
-    FILE *f = fopen(path, "r");
-    if (!f) return -1;
-    if (!fgets(out, (int)out_len, f)) { fclose(f); return -1; }
-    /* Strip newline */
-    size_t len = strlen(out);
-    if (len > 0 && out[len - 1] == '\n') out[len - 1] = '\0';
-    fclose(f);
-    return 0;
+static int read_int(const char *dir, const char *name, const char *file) {
+    char *t = read_text(dir, name, file);
+    int v = t ? atoi(t) : -1;
+    g_free(t);
+    return v;
 }
 
-/* ─── Find backlight device ─── */
-static int find_backlight(void) {
-    DIR *d = opendir(BACKLIGHT_BASE);
-    if (!d) return -1;
-
-    struct dirent *ent;
-    while ((ent = readdir(d)) != NULL) {
-        if (ent->d_name[0] == '.') continue;
-        snprintf(g_bl_path, sizeof(g_bl_path), "%s/%s", BACKLIGHT_BASE, ent->d_name);
-        break;
+static int display_list_outputs(ZylDisplayOutput *out, int max) {
+    GDir *dir = g_dir_open(DRM_DIR, 0, NULL);
+    if (!dir) return 0;
+    int n = 0;
+    const char *name;
+    while (n < max && (name = g_dir_read_name(dir))) {
+        /* card0-HDMI-A-1, card0-DSI-1 — not card0 itself, not renderD128 */
+        const char *dash = g_str_has_prefix(name, "card") ? strchr(name + 4, '-') : NULL;
+        if (!dash) continue;
+        ZylDisplayOutput *o = &out[n++];
+        memset(o, 0, sizeof(*o));
+        g_strlcpy(o->name, dash + 1, sizeof(o->name));
+        char *status = read_text(DRM_DIR, name, "status");
+        o->connected = status && strcmp(status, "connected") == 0;
+        g_free(status);
+        char *modes = read_text(DRM_DIR, name, "modes");
+        char *current = read_text(DRM_DIR, name, "mode");
+        char **lines = modes ? g_strsplit(modes, "\n", -1) : NULL;
+        for (int i = 0; lines && lines[i] && o->mode_count < ZYL_HAL_MAX_MODES; i++) {
+            int w = 0, h = 0, hz = 0;
+            if (sscanf(lines[i], "%dx%d@%d", &w, &h, &hz) < 2 || w <= 0 || h <= 0) continue;
+            int cw = 0, ch = 0, chz = 0;
+            if (hz <= 0 && current && sscanf(current, "%dx%d@%d", &cw, &ch, &chz) == 3 && cw == w && ch == h)
+                hz = chz;
+            ZylDisplayModeInfo *m = &o->modes[o->mode_count++];
+            m->width = w;
+            m->height = h;
+            m->refresh_hz = hz > 0 ? hz : 60;     /* sysfs modes carry no rate */
+        }
+        g_strfreev(lines);
+        g_free(modes);
+        g_free(current);
     }
-    closedir(d);
-
-    if (!g_bl_path[0]) return -1;
-
-    char max_path[512];
-    snprintf(max_path, sizeof(max_path), "%s/max_brightness", g_bl_path);
-    g_max_brightness = sysfs_read_int(max_path);
-    return (g_max_brightness > 0) ? 0 : -1;
+    g_dir_close(dir);
+    return n;
 }
 
-/* ─── HAL implementation ─── */
-static int display_init(void) {
-    int ret = find_backlight();
-
-    /* Load persisted settings */
-    char buf[64];
-    if (settings_read("dark_mode", buf, sizeof(buf)) == 0)
-        g_state.dark_mode = (strcmp(buf, "1") == 0);
-    if (settings_read("font_size", buf, sizeof(buf)) == 0)
-        snprintf(g_state.font_size, sizeof(g_state.font_size), "%s", buf);
-    if (settings_read("screen_timeout", buf, sizeof(buf)) == 0)
-        g_state.screen_timeout_sec = atoi(buf);
-    if (settings_read("auto_brightness", buf, sizeof(buf)) == 0)
-        g_state.auto_brightness = (strcmp(buf, "1") == 0);
-
-    /* Read current brightness */
-    if (ret == 0 && g_max_brightness > 0) {
-        char cur_path[512];
-        snprintf(cur_path, sizeof(cur_path), "%s/brightness", g_bl_path);
-        int cur = sysfs_read_int(cur_path);
-        if (cur >= 0) {
-            g_state.brightness_percent = (cur * 100) / g_max_brightness;
+/* The first backlight with a usable range */
+static bool backlight(char *name, size_t len, int *max) {
+    GDir *dir = g_dir_open(BACKLIGHT_DIR, 0, NULL);
+    const char *entry;
+    bool found = false;
+    while (dir && !found && (entry = g_dir_read_name(dir))) {
+        int m = read_int(BACKLIGHT_DIR, entry, "max_brightness");
+        if (m > 0) {
+            g_strlcpy(name, entry, len);
+            *max = m;
+            found = true;
         }
     }
-
-    return ret;
+    if (dir) g_dir_close(dir);
+    return found;
 }
 
-static void display_shutdown(void) {
-    /* No resources to release */
+static bool display_backlight_present(void) {
+    char name[128];
+    int max;
+    return backlight(name, sizeof(name), &max);
 }
 
-static int display_set_brightness(int percent) {
-    if (percent < 0) percent = 0;
-    if (percent > 100) percent = 100;
-    g_state.brightness_percent = percent;
-
-    if (g_bl_path[0] && g_max_brightness > 0) {
-        int raw = (percent * g_max_brightness) / 100;
-        /* Minimum 1 to avoid fully off display */
-        if (raw < 1 && percent > 0) raw = 1;
-        char path[512];
-        snprintf(path, sizeof(path), "%s/brightness", g_bl_path);
-        return sysfs_write_int(path, raw);
-    }
-    return 0;
+static int display_get_brightness(void) {
+    char name[128];
+    int max;
+    if (!backlight(name, sizeof(name), &max)) return -1;
+    int raw = read_int(BACKLIGHT_DIR, name, "brightness");
+    return raw < 0 ? -1 : CLAMP((raw * 100 + max / 2) / max, 0, 100);
 }
 
-static int display_get_brightness(int *out_percent) {
-    if (!out_percent) return -1;
-    *out_percent = g_state.brightness_percent;
-    return 0;
+static bool display_set_brightness(int percent) {
+    char name[128];
+    int max;
+    if (!backlight(name, sizeof(name), &max)) return false;
+    char *path = g_strdup_printf(BACKLIGHT_DIR "/%s/brightness", name);
+    char value[16];
+    snprintf(value, sizeof(value), "%d", CLAMP(percent, 0, 100) * max / 100);
+    bool ok = write_attr(path, value);
+    g_free(path);
+    return ok;
 }
 
-static int display_set_auto_brightness(bool enabled) {
-    g_state.auto_brightness = enabled;
-    settings_write("auto_brightness", enabled ? "1" : "0");
-    return 0;
-}
-
-static int display_set_dark_mode(bool enabled) {
-    g_state.dark_mode = enabled;
-    settings_write("dark_mode", enabled ? "1" : "0");
-    return 0;
-}
-
-static int display_set_font_size(const char *size) {
-    if (!size) return -1;
-    /* Validate */
-    if (strcmp(size, "small") != 0 && strcmp(size, "medium") != 0 &&
-        strcmp(size, "large") != 0) {
-        return -1;
-    }
-    snprintf(g_state.font_size, sizeof(g_state.font_size), "%s", size);
-    settings_write("font_size", size);
-    return 0;
-}
-
-static int display_set_screen_timeout(int seconds) {
-    if (seconds < 0) seconds = 0;
-    g_state.screen_timeout_sec = seconds;
-    char buf[32];
-    snprintf(buf, sizeof(buf), "%d", seconds);
-    settings_write("screen_timeout", buf);
-    return 0;
-}
-
-static int display_get_state(ZylDisplayState *out) {
-    if (!out) return -1;
-    *out = g_state;
-    return 0;
-}
-
-/* ─── HAL 인스턴스 ─── */
-static ZylDisplayHal display_hal_instance = {
-    .init               = display_init,
-    .shutdown            = display_shutdown,
-    .set_brightness      = display_set_brightness,
-    .get_brightness      = display_get_brightness,
-    .set_auto_brightness = display_set_auto_brightness,
-    .set_dark_mode       = display_set_dark_mode,
-    .set_font_size       = display_set_font_size,
-    .set_screen_timeout  = display_set_screen_timeout,
-    .get_state           = display_get_state,
+static const ZylDisplayHal display_hal = {
+    .list_outputs      = display_list_outputs,
+    .backlight_present = display_backlight_present,
+    .get_brightness    = display_get_brightness,
+    .set_brightness    = display_set_brightness,
 };
 
-ZylDisplayHal *zyl_hal_display(void) {
-    return &display_hal_instance;
-}
+const ZylDisplayHal *zyl_hal_display(void) { return &display_hal; }

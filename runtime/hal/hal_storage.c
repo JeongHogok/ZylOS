@@ -1,53 +1,31 @@
 /* ──────────────────────────────────────────────────────────
- * [Clean Architecture] Data Layer - Implementation
+ * [Clean Architecture] Infrastructure Layer - HAL (Linux)
  *
- * 역할: Storage HAL Linux 구현체 — statvfs()
- * 수행범위: 디스크 사용량 조회 (total, used, available)
- * 의존방향: hal.h (Domain), sys/statvfs.h (Platform)
- * SOLID: DIP — hal.h 인터페이스 구현, SRP — 스토리지 정보만 담당
+ * 역할: Storage HAL Linux 구현 — 사용자 데이터 파티션 용량
+ * 수행범위: /data 의 statvfs (따로 마운트되지 않았으면 /)
+ * 의존방향: hal.h (Domain), statvfs
+ * SOLID: SRP — 용량 읽기만
  * ────────────────────────────────────────────────────────── */
 
 #include "hal.h"
 
-#include <stdio.h>
 #include <string.h>
 #include <sys/statvfs.h>
 
-#define DATA_MOUNT_POINT "/data"
+#ifndef ZYL_DATA_MOUNT
+#define ZYL_DATA_MOUNT "/data"
+#endif
 
-static int storage_init(void) {
-    /* statvfs requires no initialization */
-    return 0;
-}
-
-static void storage_shutdown(void) {
-    /* Nothing to release */
-}
-
-static int storage_get_state(ZylStorageState *out) {
-    if (!out) return -1;
+static bool storage_get(ZylStorageState *out) {
     memset(out, 0, sizeof(*out));
-
     struct statvfs sv;
-    if (statvfs(DATA_MOUNT_POINT, &sv) != 0) {
-        /* Fallback to root if /data not mounted separately */
-        if (statvfs("/", &sv) != 0) return -1;
-    }
-
+    if (statvfs(ZYL_DATA_MOUNT, &sv) != 0 && statvfs("/", &sv) != 0) return false;
     out->total_bytes     = (uint64_t)sv.f_blocks * sv.f_frsize;
     out->available_bytes = (uint64_t)sv.f_bavail * sv.f_frsize;
     out->used_bytes      = out->total_bytes - (uint64_t)sv.f_bfree * sv.f_frsize;
-
-    return 0;
+    return true;
 }
 
-/* ─── HAL 인스턴스 ─── */
-static ZylStorageHal storage_hal_instance = {
-    .init      = storage_init,
-    .shutdown  = storage_shutdown,
-    .get_state = storage_get_state,
-};
+static const ZylStorageHal storage_hal = { .get = storage_get };
 
-ZylStorageHal *zyl_hal_storage(void) {
-    return &storage_hal_instance;
-}
+const ZylStorageHal *zyl_hal_storage(void) { return &storage_hal; }

@@ -206,6 +206,21 @@ test('hal-bt',
   )
 )
 
+# Test: Display/Battery/Torch/CPU HAL against a fake sysfs (DRM outputs,
+# backlight range, no backlight, battery and a battery-less board, flash LED, cpufreq)
+test('hal-power',
+  executable('test-hal-power',
+    'test_hal_power.c',
+    '../runtime/hal/hal_display.c',
+    '../runtime/hal/hal_battery.c',
+    '../runtime/hal/hal_torch.c',
+    '../runtime/hal/hal_cpu.c',
+    include_directories: include_directories('../runtime/hal'),
+    dependencies: [gio_dep],
+    c_args: ['-DZYL_SYSFS_ROOT="/tmp/zyl-hal-power-test"'],
+  )
+)
+
 # Test: device app scan — a user app must not replace a system app by reusing its id
 test('manifest-scan',
   executable('test-manifest-scan',

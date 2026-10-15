@@ -3,8 +3,9 @@
  *
  * 역할: 오디오 서비스 (org.zylos.AudioService) — 소리 정책과 D-Bus
  * 수행범위: 스트림별 볼륨(이름: media·notif·alarm·ringtone·system, media 가
- *           기기 출력), 무음, 마이크 음소거(통화 중 음소거), 톤·키 클릭(무음일 때
- *           키 클릭은 조용), 스피커폰, 진동(설정 sound.vibration 을 따름), 이
+ *           기기 출력), 출력 음소거, 무음 모드(키 클릭 조용, 경보음은 울림 — 시작 때
+ *           설정 sound.silentMode 를 따름), 마이크 음소거(통화 중 음소거), 톤,
+ *           스피커폰, 진동(설정 sound.vibration 을 따름), 이
  *           기기에 있는 기능(스피커폰·진동 모터) 보고 — 없는 기능은 앱이 비활성
  * 의존방향: audio.h, hal.h (Audio·Vibrator HAL), gio/gio.h (D-Bus)
  * SOLID: SRP — 소리 정책만. DIP — 장치는 ZylAudioHal/ZylVibratorHal 로만
@@ -21,7 +22,8 @@
 
 struct ZylAudioService {
     int volumes[5]; /* per-stream volume 0-100 */
-    bool muted;
+    bool muted;     /* the output itself */
+    bool silent;    /* silent mode: no key clicks or system sounds; alerts still sound */
     GDBusConnection *dbus;
     guint dbus_owner_id;
 };
@@ -80,6 +82,10 @@ static const char *audio_introspection_xml =
     "    <method name='Vibrate'>"
     "      <arg type='ai' name='pattern' direction='in'/>"
     "      <arg type='b' name='vibrated' direction='out'/>"
+    "    </method>"
+    "    <method name='SetSilentMode'>"
+    "      <arg type='b' name='enabled' direction='in'/>"
+    "      <arg type='b' name='applied' direction='out'/>"
     "    </method>"
     "    <method name='GetMute'>"
     "      <arg type='b' name='muted' direction='out'/>"
@@ -155,6 +161,11 @@ static void handle_audio_method(GDBusConnection *conn, const gchar *sender,
                     zyl_hal_vibrator()->vibrate(pattern, (int)n);
         g_variant_unref(arr);
         g_dbus_method_invocation_return_value(inv, g_variant_new("(b)", done));
+    } else if (g_strcmp0(method, "SetSilentMode") == 0) {
+        gboolean on = FALSE;
+        g_variant_get(params, "(b)", &on);
+        svc->silent = on;
+        g_dbus_method_invocation_return_value(inv, g_variant_new("(b)", TRUE));
     } else if (g_strcmp0(method, "GetMute") == 0) {
         g_dbus_method_invocation_return_value(inv,
             g_variant_new("(b)", zyl_audio_get_mute(svc)));
@@ -171,9 +182,21 @@ static void handle_audio_method(GDBusConnection *conn, const gchar *sender,
     } else if (g_strcmp0(method, "PlayKeyClick") == 0) {
         /* Keyboard feedback stays quiet in silent mode, unlike PlayTone
            (emergency alerts must sound regardless) */
-        if (!zyl_audio_get_mute(svc)) zyl_audio_play_tone(svc, 800, 30);
+        if (!svc->silent && !svc->muted) zyl_audio_play_tone(svc, 800, 30);
         g_dbus_method_invocation_return_value(inv, NULL);
     }
+}
+
+/* Silent mode the user left on (Settings keeps sound.silentMode) */
+static void on_saved_sound(GObject *src, GAsyncResult *res, gpointer data) {
+    ZylAudioService *svc = data;
+    GVariant *r = g_dbus_connection_call_finish(G_DBUS_CONNECTION(src), res, NULL);
+    if (!r) return;
+    GVariant *d = g_variant_get_child_value(r, 0);
+    gboolean on = FALSE;
+    if (g_variant_lookup(d, "silentMode", "b", &on)) svc->silent = on;
+    g_variant_unref(d);
+    g_variant_unref(r);
 }
 
 static const GDBusInterfaceVTable audio_vtable = {
@@ -193,6 +216,9 @@ static void on_audio_bus(GDBusConnection *conn, const gchar *name,
     }
     if (info) g_dbus_node_info_unref(info);
     g_message("[Audio] D-Bus registered: %s", ZYL_AUDIO_DBUS_NAME);
+    g_dbus_connection_call(conn, "org.zylos.Settings", "/org/zylos/Settings", "org.zylos.Settings",
+        "Get", g_variant_new("(s)", "sound"), G_VARIANT_TYPE("(a{sv})"),
+        G_DBUS_CALL_FLAGS_NONE, 5000, NULL, on_saved_sound, svc);
 }
 
 /* ─── Public API ─── */
@@ -251,9 +277,10 @@ void zyl_audio_set_mute(ZylAudioService *svc, bool muted) {
     g_message("[Audio] Mute: %s", muted ? "ON" : "OFF");
 }
 
+/* Plays even in silent mode: alerts call this */
 int zyl_audio_play_tone(ZylAudioService *svc, int freq_hz,
                          int duration_ms) {
-    if (!svc || svc->muted) return -1;
+    if (!svc) return -1;
     return zyl_hal_audio()->play_tone(freq_hz, duration_ms,
                                       svc->volumes[ZYL_AUDIO_STREAM_SYSTEM]) ? 0 : -1;
 }

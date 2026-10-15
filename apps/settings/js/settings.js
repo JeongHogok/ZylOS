@@ -329,6 +329,16 @@
         var levelEl = document.getElementById('battery-level-value');
         var chargingEl = document.getElementById('battery-charging-value');
         var statusEl = document.getElementById('battery-status');
+        /* No battery fitted: say so instead of a level */
+        var noBattery = data.batteryPresent === false;
+        var noteEl = document.getElementById('no-battery');
+        var listEl = document.getElementById('battery-info-list');
+        if (noteEl) noteEl.classList.toggle('hidden', !noBattery);
+        if (listEl) listEl.classList.toggle('hidden', noBattery);
+        if (noBattery) {
+          if (statusEl) statusEl.textContent = t('settings.power_external');
+          return;
+        }
         if (levelEl && data.batteryLevel !== undefined) {
           levelEl.textContent = data.batteryLevel + '%';
         }

@@ -47,7 +47,12 @@
       var val = parseInt(brightnessSlider.value, 10);
       if (isNaN(val)) return;
       val = Math.max(10, Math.min(100, val));
+      /* The power service drives the backlight; the setting keeps the level */
+      core.requestService('power', 'setBrightness', { percent: val });
       core.updateSetting('display', 'brightness', val);
+    });
+    core.getCapabilities('power').then(function (caps) {
+      if (caps.backlight === false) core.disableFor(brightnessSlider, 'no-backlight');
     });
   }
 

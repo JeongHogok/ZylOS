@@ -1,9 +1,10 @@
 /* ──────────────────────────────────────────────────────────
  * [Clean Architecture] Platform Layer - Emulator
  *
- * 역할: ZylOS HAL 에뮬레이터 — 순수 인메모리 가상 하드웨어 구현
- * 수행범위: 가상 Wi-Fi/BT/디스플레이/배터리/저장공간, 오디오는 볼륨 상태만.
- *          없는 하드웨어(부트로더, 통화 경로, 진동 모터)는 없다고 답한다.
+ * 역할: ZylOS HAL 에뮬레이터 — VM·개발 호스트용 가상 하드웨어
+ * 수행범위: 가상 Wi-Fi/BT/출력, 오디오는 볼륨 상태만, 저장공간은 호스트 실제 용량.
+ *          VM 에 없는 하드웨어(부트로더, 통화 경로, 진동 모터, 백라이트, 배터리,
+ *          손전등, cpufreq)는 없다고 답한다 — 지어내지 않는다.
  *          실제 하드웨어, D-Bus, sysfs, gio 완전 불필요.
  *          Linux과 macOS 모두 빌드 가능.
  * 의존방향: hal.h (Domain Interface)만 의존. 외부 라이브러리 없음.
@@ -12,7 +13,6 @@
  *        ISP — 각 HAL 인터페이스를 독립 구현 블록으로 분리.
  * ────────────────────────────────────────────────────────── */
 
-/* nanosleep, pthread 등 POSIX 함수 노출 */
 #define _POSIX_C_SOURCE 200809L
 
 #include "hal.h"
@@ -22,7 +22,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <time.h>
-#include <pthread.h>
+#include <sys/statvfs.h>
 
 /* ──────────────────────────────────────────────────────────
    내부 유틸리티
@@ -212,74 +212,27 @@ static const ZylBtHal g_bt_hal = {
 
 
 /* ══════════════════════════════════════════════════════════
-   Display 에뮬레이터
+   Display 에뮬레이터 — 가상 출력 하나. VM 에는 백라이트가 없다
    ══════════════════════════════════════════════════════════ */
 
-static int  g_disp_brightness    = 80;
-static bool g_disp_auto_bright   = false;
-static bool g_disp_dark_mode     = false;
-static char g_disp_font_size[16] = "medium";
-static int  g_disp_timeout_sec   = 30;
-
-static int  display_init(void) { return 0; }
-static void display_shutdown(void) {}
-
-static int display_set_brightness(int percent) {
-    if (percent < 0 || percent > 100) return -1;
-    g_disp_brightness = percent;
-    return 0;
+static int emu_display_list_outputs(ZylDisplayOutput *out, int max) {
+    if (max < 1) return 0;
+    memset(out, 0, sizeof(*out));
+    snprintf(out->name, sizeof(out->name), "Virtual-1");
+    out->connected = true;
+    out->mode_count = 1;
+    out->modes[0] = (ZylDisplayModeInfo){ 1080, 2400, 60 };
+    return 1;
 }
+static bool emu_display_backlight_present(void) { return false; }
+static int  emu_display_get_brightness(void) { return -1; }
+static bool emu_display_set_brightness(int percent) { (void)percent; return false; }
 
-static int display_get_brightness(int *out_percent) {
-    if (!out_percent) return -1;
-    *out_percent = g_disp_brightness;
-    return 0;
-}
-
-static int display_set_auto_brightness(bool enabled) {
-    g_disp_auto_bright = enabled;
-    return 0;
-}
-
-static int display_set_dark_mode(bool enabled) {
-    g_disp_dark_mode = enabled;
-    return 0;
-}
-
-static int display_set_font_size(const char *size) {
-    if (!size) return -1;
-    strncpy(g_disp_font_size, size, sizeof(g_disp_font_size) - 1);
-    g_disp_font_size[sizeof(g_disp_font_size) - 1] = '\0';
-    return 0;
-}
-
-static int display_set_screen_timeout(int seconds) {
-    if (seconds < 0) return -1;
-    g_disp_timeout_sec = seconds;
-    return 0;
-}
-
-static int display_get_state(ZylDisplayState *out) {
-    if (!out) return -1;
-    out->brightness_percent = g_disp_brightness;
-    out->auto_brightness    = g_disp_auto_bright;
-    out->dark_mode          = g_disp_dark_mode;
-    out->screen_timeout_sec = g_disp_timeout_sec;
-    strncpy(out->font_size, g_disp_font_size, sizeof(out->font_size) - 1);
-    out->font_size[sizeof(out->font_size) - 1] = '\0';
-    return 0;
-}
-
-static ZylDisplayHal g_display_hal = {
-    .init                = display_init,
-    .shutdown            = display_shutdown,
-    .set_brightness      = display_set_brightness,
-    .get_brightness      = display_get_brightness,
-    .set_auto_brightness = display_set_auto_brightness,
-    .set_dark_mode       = display_set_dark_mode,
-    .set_font_size       = display_set_font_size,
-    .set_screen_timeout  = display_set_screen_timeout,
-    .get_state           = display_get_state,
+static const ZylDisplayHal g_display_hal = {
+    .list_outputs      = emu_display_list_outputs,
+    .backlight_present = emu_display_backlight_present,
+    .get_brightness    = emu_display_get_brightness,
+    .set_brightness    = emu_display_set_brightness,
 };
 
 
@@ -320,152 +273,55 @@ static const ZylVibratorHal g_vibrator_hal = { .present = emu_vib_present, .vibr
 
 
 /* ══════════════════════════════════════════════════════════
-   Battery 에뮬레이터
-   백그라운드 스레드로 충전/방전 시뮬레이션
+   전원 — VM 에는 배터리가 없고 외부 전원으로 돈다. 손전등도, 조절할 cpufreq 도
+   없다. 저장공간은 호스트 파일시스템의 실제 용량
    ══════════════════════════════════════════════════════════ */
 
-static int             g_bat_level    = 73;
-static bool            g_bat_charging = true;
-static bool            g_bat_usb      = true;
-static int             g_bat_temp     = 285;  /* ×10, 28.5°C */
-static int             g_bat_voltage  = 4150; /* mV */
-static char            g_bat_health[16] = "Good";
-
-static void          (*g_bat_cb)(const ZylBatteryState *, void *) = NULL;
-static void           *g_bat_cb_data   = NULL;
-
-static volatile bool   g_bat_running   = false;
-static pthread_t        g_bat_thread;
-static pthread_mutex_t  g_bat_mutex    = PTHREAD_MUTEX_INITIALIZER;
-
-static void bat_fire_callback_locked(void) {
-    /* 호출 전에 mutex 보유 중이어야 함 */
-    if (!g_bat_cb) return;
-    ZylBatteryState s;
-    s.level_percent   = g_bat_level;
-    s.charging        = g_bat_charging;
-    s.usb_connected   = g_bat_usb;
-    s.temperature_c10 = g_bat_temp;
-    s.voltage_mv      = g_bat_voltage;
-    strncpy(s.health, g_bat_health, sizeof(s.health) - 1);
-    s.health[sizeof(s.health) - 1] = '\0';
-    g_bat_cb(&s, g_bat_cb_data);
+static bool emu_battery_get(ZylBatteryState *out) {
+    memset(out, 0, sizeof(*out));
+    out->level_percent = -1;
+    out->plugged = true;
+    return true;
 }
+static const ZylBatteryHal g_battery_hal = { .get = emu_battery_get };
 
-static void *battery_sim_thread(void *arg) {
-    (void)arg;
-    time_t last_tick = time(NULL);
-    while (1) {
-        /* 1초 간격으로 폴링 */
-        struct timespec ts;
-        ts.tv_sec  = 1;
-        ts.tv_nsec = 0;
-        nanosleep(&ts, NULL);
-
-        pthread_mutex_lock(&g_bat_mutex);
-        if (!g_bat_running) {
-            pthread_mutex_unlock(&g_bat_mutex);
-            break;
-        }
-        time_t now     = time(NULL);
-        double elapsed = difftime(now, last_tick);
-        bool   changed = false;
-
-        if (g_bat_charging && elapsed >= 30.0) {
-            /* 충전: 30초마다 +1% (100% 상한) */
-            if (g_bat_level < 100) { g_bat_level++; changed = true; }
-            last_tick = now;
-        } else if (!g_bat_charging && elapsed >= 60.0) {
-            /* 방전: 60초마다 -1% (0% 하한) */
-            if (g_bat_level > 0)   { g_bat_level--; changed = true; }
-            last_tick = now;
-        }
-        if (changed) bat_fire_callback_locked();
-        pthread_mutex_unlock(&g_bat_mutex);
-    }
-    return NULL;
+static bool emu_storage_get(ZylStorageState *out) {
+    memset(out, 0, sizeof(*out));
+    struct statvfs sv;
+    if (statvfs("/", &sv) != 0) return false;
+    out->total_bytes     = (uint64_t)sv.f_blocks * sv.f_frsize;
+    out->available_bytes = (uint64_t)sv.f_bavail * sv.f_frsize;
+    out->used_bytes      = out->total_bytes - (uint64_t)sv.f_bfree * sv.f_frsize;
+    return true;
 }
+static const ZylStorageHal g_storage_hal = { .get = emu_storage_get };
 
-static int battery_init(void) {
-    g_bat_running = true;
-    int rc = pthread_create(&g_bat_thread, NULL, battery_sim_thread, NULL);
-    return (rc == 0) ? 0 : -1;
-}
+static bool emu_torch_present(void) { return false; }
+static bool emu_torch_get(void) { return false; }
+static bool emu_torch_set(bool on) { (void)on; return false; }
+static const ZylTorchHal g_torch_hal = { .present = emu_torch_present, .get = emu_torch_get, .set = emu_torch_set };
 
-static void battery_shutdown(void) {
-    pthread_mutex_lock(&g_bat_mutex);
-    g_bat_running = false;
-    pthread_mutex_unlock(&g_bat_mutex);
-    pthread_join(g_bat_thread, NULL);
-}
-
-static int battery_get_state(ZylBatteryState *out) {
-    if (!out) return -1;
-    pthread_mutex_lock(&g_bat_mutex);
-    out->level_percent   = g_bat_level;
-    out->charging        = g_bat_charging;
-    out->usb_connected   = g_bat_usb;
-    out->temperature_c10 = g_bat_temp;
-    out->voltage_mv      = g_bat_voltage;
-    strncpy(out->health, g_bat_health, sizeof(out->health) - 1);
-    out->health[sizeof(out->health) - 1] = '\0';
-    pthread_mutex_unlock(&g_bat_mutex);
-    return 0;
-}
-
-static int battery_set_change_callback(
-    void (*cb)(const ZylBatteryState *state, void *data), void *user_data)
-{
-    pthread_mutex_lock(&g_bat_mutex);
-    g_bat_cb      = cb;
-    g_bat_cb_data = user_data;
-    pthread_mutex_unlock(&g_bat_mutex);
-    return 0;
-}
-
-static ZylBatteryHal g_battery_hal = {
-    .init                = battery_init,
-    .shutdown            = battery_shutdown,
-    .get_state           = battery_get_state,
-    .set_change_callback = battery_set_change_callback,
+static int  emu_cpu_core_count(void) { return 1; }
+static bool emu_cpu_set_core_online(int core, bool online) { (void)core; (void)online; return false; }
+static bool emu_cpu_set_governor(const char *g) { (void)g; return false; }
+static const ZylCpuHal g_cpu_hal = {
+    .core_count = emu_cpu_core_count, .set_core_online = emu_cpu_set_core_online, .set_governor = emu_cpu_set_governor,
 };
 
 
 /* ══════════════════════════════════════════════════════════
-   Storage 에뮬레이터
+   모듈 접근자
    ══════════════════════════════════════════════════════════ */
 
-#define EMU_GB_BYTES ((uint64_t)1024 * 1024 * 1024)
-
-static int  storage_init(void) { return 0; }
-static void storage_shutdown(void) {}
-
-static int storage_get_state(ZylStorageState *out) {
-    if (!out) return -1;
-    out->total_bytes     = (uint64_t)64 * EMU_GB_BYTES;
-    out->used_bytes      = (uint64_t)23 * EMU_GB_BYTES;
-    out->available_bytes = out->total_bytes - out->used_bytes;
-    return 0;
-}
-
-static ZylStorageHal g_storage_hal = {
-    .init      = storage_init,
-    .shutdown  = storage_shutdown,
-    .get_state = storage_get_state,
-};
-
-
-/* ══════════════════════════════════════════════════════════
-   모듈 접근자 — 상태를 쓰는 모듈은 처음 쓸 때 init
-   ══════════════════════════════════════════════════════════ */
-
-const ZylAudioHal    *zyl_hal_audio(void) { return &g_audio_hal; }
+const ZylAudioHal    *zyl_hal_audio(void)    { return &g_audio_hal; }
 const ZylVibratorHal *zyl_hal_vibrator(void) { return &g_vibrator_hal; }
-const ZylWifiHal *zyl_hal_wifi(void) { return &g_wifi_hal; }
-const ZylBtHal *zyl_hal_bt(void) { return &g_bt_hal; }
-ZylDisplayHal *zyl_hal_display(void) { return &g_display_hal; }
-ZylBatteryHal *zyl_hal_battery(void) { return &g_battery_hal; }
-ZylStorageHal *zyl_hal_storage(void) { return &g_storage_hal; }
+const ZylWifiHal     *zyl_hal_wifi(void)     { return &g_wifi_hal; }
+const ZylBtHal       *zyl_hal_bt(void)       { return &g_bt_hal; }
+const ZylDisplayHal  *zyl_hal_display(void)  { return &g_display_hal; }
+const ZylBatteryHal  *zyl_hal_battery(void)  { return &g_battery_hal; }
+const ZylStorageHal  *zyl_hal_storage(void)  { return &g_storage_hal; }
+const ZylTorchHal    *zyl_hal_torch(void)    { return &g_torch_hal; }
+const ZylCpuHal      *zyl_hal_cpu(void)      { return &g_cpu_hal; }
 
 /* ──────────────────────────────────────────────────────────
    Boot — 가상 기기에는 A/B 부트로더가 없다: 업데이트·잠금 해제 비활성

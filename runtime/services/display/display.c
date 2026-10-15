@@ -2,42 +2,29 @@
  * [Clean Architecture] Application Layer - Service
  *
  * 역할: 디스플레이 관리 서비스 -- DRM/KMS 모드, 스케일링, 회전 제어
- * 수행범위: /sys/class/drm/ 스캔, 모드 열거/설정, DPI 스케일,
+ * 수행범위: 연결된 출력의 모드(Display HAL), 모드 선택, DPI 스케일, 회전,
  *           자동 회전(가속도계 D-Bus 시그널 구독), D-Bus 인터페이스
- * 의존방향: display.h, gio/gio.h, sysfs (DRM)
+ * 의존방향: display.h, hal.h (Display HAL — DRM 출력·모드), gio/gio.h (D-Bus,
+ *           회전은 컴포지터에 RotationChanged 로)
  * SOLID: SRP -- 디스플레이 제어만 담당
  * ---------------------------------------------------------- */
 
 #include "display.h"
+#include "hal.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <dirent.h>
 #include <math.h>
 #include <time.h>
 #include <gio/gio.h>
 
 /* --- Internal constants --- */
-#define DRM_BASE_PATH        "/sys/class/drm"
 #define MAX_MODES            32
-#define MAX_CONNECTORS       4
-#define SYSFS_BUF            256
 #define HYSTERESIS_NS        (500ULL * 1000000ULL) /* 500ms */
-
-/* --- Connector info --- */
-typedef struct {
-    char name[32];       /* e.g. HDMI-A-1, DSI-1 */
-    char path[256];      /* sysfs path */
-    bool connected;
-} DrmConnector;
 
 /* --- Internal service structure --- */
 struct ZylDisplayService {
-    /* Connectors */
-    DrmConnector connectors[MAX_CONNECTORS];
-    int connector_count;
-
     /* Cached modes for primary connector */
     ZylDisplayMode modes[MAX_MODES];
     int mode_count;
@@ -68,154 +55,27 @@ static uint64_t now_ns(void) {
     return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
 }
 
-/* --- Utility: read a line from sysfs --- */
-static int sysfs_read_line(const char *path, char *buf, size_t bufsz) {
-    FILE *f = fopen(path, "r");
-    if (!f) return -1;
-    if (!fgets(buf, (int)bufsz, f)) {
-        fclose(f);
-        return -1;
-    }
-    fclose(f);
-    /* Strip trailing newline */
-    size_t len = strlen(buf);
-    if (len > 0 && buf[len - 1] == '\n') buf[len - 1] = '\0';
-    return 0;
-}
-
-/* --- Utility: write a string to sysfs --- */
-static int sysfs_write(const char *path, const char *value) {
-    FILE *f = fopen(path, "w");
-    if (!f) return -1;
-    int ret = (fputs(value, f) >= 0) ? 0 : -1;
-    fclose(f);
-    return ret;
-}
-
-/* --- Scan DRM connectors from sysfs --- */
-static void scan_connectors(ZylDisplayService *svc) {
-    DIR *dir = opendir(DRM_BASE_PATH);
-    if (!dir) {
-        g_message("[Display] No DRM subsystem at %s", DRM_BASE_PATH);
-        return;
-    }
-
-    struct dirent *entry;
-    while ((entry = readdir(dir)) != NULL &&
-           svc->connector_count < MAX_CONNECTORS) {
-        /* DRM entries look like card0-HDMI-A-1, card0-DSI-1, etc. */
-        if (strncmp(entry->d_name, "card", 4) != 0)
-            continue;
-        /* Must contain a dash after cardN */
-        const char *dash = strchr(entry->d_name + 4, '-');
-        if (!dash) continue;
-
-        DrmConnector *conn = &svc->connectors[svc->connector_count];
-        snprintf(conn->name, sizeof(conn->name), "%s", dash + 1);
-        snprintf(conn->path, sizeof(conn->path), "%s/%s",
-                 DRM_BASE_PATH, entry->d_name);
-
-        /* Check if connected */
-        char status_path[SYSFS_BUF];
-        char status_buf[32];
-        snprintf(status_path, sizeof(status_path), "%s/status", conn->path);
-        if (sysfs_read_line(status_path, status_buf, sizeof(status_buf)) == 0) {
-            conn->connected = (strcmp(status_buf, "connected") == 0);
+/* --- Modes of the first connected output, as the Display HAL reads them --- */
+static void load_modes(ZylDisplayService *svc) {
+    ZylDisplayOutput outputs[4];
+    int n = zyl_hal_display()->list_outputs(outputs, 4);
+    for (int i = 0; i < n; i++) {
+        if (!outputs[i].connected) continue;
+        for (int k = 0; k < outputs[i].mode_count && svc->mode_count < MAX_MODES; k++) {
+            ZylDisplayMode *m = &svc->modes[svc->mode_count++];
+            m->width = outputs[i].modes[k].width;
+            m->height = outputs[i].modes[k].height;
+            m->refresh_hz = outputs[i].modes[k].refresh_hz;
+            snprintf(m->connector, sizeof(m->connector), "%s", outputs[i].name);
         }
-
-        svc->connector_count++;
-        g_message("[Display] Found connector: %s (%s)",
-                  conn->name, conn->connected ? "connected" : "disconnected");
+        break;
     }
-    closedir(dir);
-}
-
-/* --- Parse modes from sysfs /sys/class/drm/cardX-{connector}/modes --- */
-static void parse_modes(ZylDisplayService *svc) {
-    /* Find first connected connector */
-    const DrmConnector *primary = NULL;
-    for (int i = 0; i < svc->connector_count; i++) {
-        if (svc->connectors[i].connected) {
-            primary = &svc->connectors[i];
-            break;
-        }
-    }
-    if (!primary) {
-        g_message("[Display] No connected connector found");
-        return;
-    }
-
-    char modes_path[SYSFS_BUF];
-    snprintf(modes_path, sizeof(modes_path), "%s/modes", primary->path);
-
-    FILE *f = fopen(modes_path, "r");
-    if (!f) {
-        g_message("[Display] Cannot read modes from %s", modes_path);
-        return;
-    }
-
-    char line[64];
-    while (fgets(line, sizeof(line), f) && svc->mode_count < MAX_MODES) {
-        /* Mode format: "1920x1080" or "1920x1080i" -- sysfs doesn't
-         * provide refresh rate directly; we default to 60 Hz and
-         * refine from EDID if available */
-        size_t len = strlen(line);
-        if (len > 0 && line[len - 1] == '\n') line[len - 1] = '\0';
-
-        int w = 0, h = 0, hz = 0;
-        /*
-         * Try extended format "WxH@Hz" first (e.g. "1920x1080@60").
-         * Standard sysfs /modes file only has "WxH", so default to 60Hz
-         * and attempt to refine from the connector's preferred_mode or
-         * mode_properties sysfs files when available.
-         */
-        if (sscanf(line, "%dx%d@%d", &w, &h, &hz) == 3 && w > 0 && h > 0 && hz > 0) {
-            /* Extended format with explicit Hz */
-        } else if (sscanf(line, "%dx%d", &w, &h) == 2 && w > 0 && h > 0) {
-            hz = 0; /* Will try sysfs vrr_capable or default below */
-        } else {
-            continue;
-        }
-
-        if (hz <= 0) {
-            /*
-             * Attempt to read refresh rate from connector sysfs.
-             * Some kernels expose connector-specific mode/vrr sysfs files.
-             * As a practical fallback, try parsing the connector-local
-             * "mode" file which may contain
-             * "WxH@Hz" on newer kernels.
-             */
-            char mode_detail_path[SYSFS_BUF];
-            snprintf(mode_detail_path, sizeof(mode_detail_path),
-                     "%s/mode", primary->path);
-            char detail_buf[64] = {0};
-            if (sysfs_read_line(mode_detail_path, detail_buf, sizeof(detail_buf)) == 0) {
-                int dw = 0, dh = 0, dhz = 0;
-                if (sscanf(detail_buf, "%dx%d@%d", &dw, &dh, &dhz) == 3
-                    && dw == w && dh == h && dhz > 0) {
-                    hz = dhz;
-                }
-            }
-            if (hz <= 0) hz = 60; /* Safe default */
-        }
-
-        ZylDisplayMode *m = &svc->modes[svc->mode_count];
-        m->width  = w;
-        m->height = h;
-        m->refresh_hz = hz;
-        snprintf(m->connector, sizeof(m->connector), "%s",
-                 primary->name);
-        svc->mode_count++;
-    }
-    fclose(f);
-
-    /* Set current mode to first available */
     if (svc->mode_count > 0) {
-        svc->current_mode = svc->modes[0];
-        g_message("[Display] Primary mode: %dx%d@%dHz on %s",
-                  svc->current_mode.width, svc->current_mode.height,
-                  svc->current_mode.refresh_hz,
-                  svc->current_mode.connector);
+        svc->current_mode = svc->modes[0];         /* the kernel lists the preferred mode first */
+        g_message("[Display] Primary mode: %dx%d@%dHz on %s", svc->current_mode.width,
+                  svc->current_mode.height, svc->current_mode.refresh_hz, svc->current_mode.connector);
+    } else {
+        g_message("[Display] No connected output");
     }
 }
 
@@ -243,41 +103,8 @@ static ZylRotation rotation_from_accel(double x, double y) {
 
 /* --- Apply rotation to DRM connector --- */
 static int apply_rotation(ZylDisplayService *svc, ZylRotation rot) {
-    /*
-     * On wlroots-based compositors the rotation is set via
-     * the "rotation" DRM property on the connector's CRTC.
-     *
-     * sysfs path: /sys/class/drm/cardX-CONN/rotation
-     * Values: 1=normal, 2=180, 4=90, 8=270
-     *
-     * If the sysfs node doesn't exist (no kernel support), we
-     * fall back to emitting a D-Bus signal so the compositor
-     * can handle it.
-     */
-    const char *val;
-    switch (rot) {
-    case ZYL_ROTATION_0:   val = "1"; break;
-    case ZYL_ROTATION_90:  val = "4"; break;
-    case ZYL_ROTATION_180: val = "2"; break;
-    case ZYL_ROTATION_270: val = "8"; break;
-    default:               val = "1"; break;
-    }
-
-    /* Try sysfs path for primary connector */
-    for (int i = 0; i < svc->connector_count; i++) {
-        if (!svc->connectors[i].connected) continue;
-
-        char rot_path[SYSFS_BUF];
-        snprintf(rot_path, sizeof(rot_path), "%s/rotation",
-                 svc->connectors[i].path);
-
-        if (sysfs_write(rot_path, val) == 0) {
-            g_message("[Display] Rotation set via sysfs: %d", (int)rot);
-            return 0;
-        }
-    }
-
-    /* Fallback: emit D-Bus signal for compositor */
+    /* Rotation is a KMS plane property the compositor sets (there is no
+       sysfs file for it): tell the compositor */
     if (svc->dbus) {
         g_dbus_connection_emit_signal(svc->dbus, NULL,
             ZYL_DISPLAY_DBUS_PATH, ZYL_DISPLAY_DBUS_NAME,
@@ -514,9 +341,7 @@ ZylDisplayService *zyl_display_create(void) {
     svc->pending_rotation = ZYL_ROTATION_0;
     svc->pending_since_ns = 0;
 
-    /* Scan DRM connectors and modes from sysfs */
-    scan_connectors(svc);
-    parse_modes(svc);
+    load_modes(svc);
 
     /* Register D-Bus name */
     svc->dbus_owner_id = g_bus_own_name(G_BUS_TYPE_SESSION,

@@ -87,32 +87,29 @@ typedef struct {
 } ZylBtHal;
 
 /* ═══════════════════════════════════════════════════════
-   Display HAL
-   실기기: sysfs backlight + DRM/KMS
-   에뮬레이터: CSS filter brightness
+   Display HAL — 출력(DRM)과 백라이트
+   실기기: /sys/class/drm (커넥터·모드), /sys/class/backlight
+   에뮬레이터: 가상 출력 하나, 백라이트 없음 (VM)
    ═══════════════════════════════════════════════════════ */
 
-typedef struct {
-    int     brightness_percent; /* 0 ~ 100 */
-    bool    auto_brightness;
-    bool    dark_mode;
-    char    font_size[16];      /* "small", "medium", "large" */
-    int     screen_timeout_sec; /* 자동 잠금 시간 */
-} ZylDisplayState;
+#define ZYL_HAL_MAX_MODES 32
 
 typedef struct {
-    int   (*init)(void);
-    void  (*shutdown)(void);
+    int     width, height, refresh_hz;
+} ZylDisplayModeInfo;
 
-    int   (*set_brightness)(int percent);
-    int   (*get_brightness)(int *out_percent);
+typedef struct {
+    char    name[32];                 /* "HDMI-A-1", "DSI-1" */
+    bool    connected;
+    int     mode_count;
+    ZylDisplayModeInfo modes[ZYL_HAL_MAX_MODES];   /* preferred first */
+} ZylDisplayOutput;
 
-    int   (*set_auto_brightness)(bool enabled);
-    int   (*set_dark_mode)(bool enabled);
-    int   (*set_font_size)(const char *size);
-    int   (*set_screen_timeout)(int seconds);
-
-    int   (*get_state)(ZylDisplayState *out);
+typedef struct {
+    int   (*list_outputs)(ZylDisplayOutput *out, int max);
+    bool  (*backlight_present)(void);
+    int   (*get_brightness)(void);                 /* 0 ~ 100, -1 without a backlight */
+    bool  (*set_brightness)(int percent);
 } ZylDisplayHal;
 
 /* ═══════════════════════════════════════════════════════
@@ -147,35 +144,25 @@ typedef struct {
 } ZylVibratorHal;
 
 /* ═══════════════════════════════════════════════════════
-   Battery HAL
-   실기기: sysfs power_supply
-   에뮬레이터: navigator.getBattery()
+   Battery HAL — 배터리와 외부 전원
+   실기기: /sys/class/power_supply (Battery / Mains·USB)
+   에뮬레이터: 배터리 없음, 외부 전원 (VM)
    ═══════════════════════════════════════════════════════ */
 
 typedef struct {
-    int     level_percent;    /* 0 ~ 100 */
+    bool    present;          /* a battery is fitted; a dev board often has none */
+    int     level_percent;    /* 0 ~ 100, -1 unknown */
     bool    charging;
-    bool    usb_connected;
-    char    health[16];       /* "Good", "Overheat", "Dead" */
-    int     temperature_c10;  /* 온도 × 10 (예: 285 = 28.5°C) */
-    int     voltage_mv;
+    bool    plugged;          /* running on mains or USB power */
 } ZylBatteryState;
 
 typedef struct {
-    int   (*init)(void);
-    void  (*shutdown)(void);
-
-    int   (*get_state)(ZylBatteryState *out);
-
-    /* 콜백: 배터리 상태 변경 시 호출 */
-    int   (*set_change_callback)(void (*cb)(const ZylBatteryState *state, void *data),
-                                 void *user_data);
+    bool  (*get)(ZylBatteryState *out);
 } ZylBatteryHal;
 
 /* ═══════════════════════════════════════════════════════
-   Storage HAL
-   실기기: statvfs()
-   에뮬레이터: navigator.storage.estimate()
+   Storage HAL — 사용자 데이터 파티션 용량
+   실기기·에뮬레이터: statvfs
    ═══════════════════════════════════════════════════════ */
 
 typedef struct {
@@ -185,11 +172,32 @@ typedef struct {
 } ZylStorageState;
 
 typedef struct {
-    int   (*init)(void);
-    void  (*shutdown)(void);
-
-    int   (*get_state)(ZylStorageState *out);
+    bool  (*get)(ZylStorageState *out);
 } ZylStorageHal;
+
+/* ═══════════════════════════════════════════════════════
+   Torch HAL — 카메라 플래시 LED 를 손전등으로
+   실기기: /sys/class/leds 의 이름에 flash 또는 torch 가 든 LED
+   에뮬레이터: 없음
+   ═══════════════════════════════════════════════════════ */
+
+typedef struct {
+    bool  (*present)(void);
+    bool  (*get)(void);
+    bool  (*set)(bool on);
+} ZylTorchHal;
+
+/* ═══════════════════════════════════════════════════════
+   CPU HAL — cpufreq 거버너, 코어 온·오프라인
+   실기기: /sys/devices/system/cpu
+   에뮬레이터: 조절할 것 없음
+   ═══════════════════════════════════════════════════════ */
+
+typedef struct {
+    int   (*core_count)(void);
+    bool  (*set_core_online)(int core, bool online);   /* cpu0 always stays */
+    bool  (*set_governor)(const char *governor);
+} ZylCpuHal;
 
 /* ═══════════════════════════════════════════════════════
    Boot HAL — 부트로더 환경과 A/B 슬롯 배치
@@ -220,8 +228,10 @@ const ZylAudioHal    *zyl_hal_audio(void);
 const ZylVibratorHal *zyl_hal_vibrator(void);
 const ZylWifiHal     *zyl_hal_wifi(void);
 const ZylBtHal       *zyl_hal_bt(void);
-ZylDisplayHal        *zyl_hal_display(void);
-ZylBatteryHal        *zyl_hal_battery(void);
-ZylStorageHal        *zyl_hal_storage(void);
+const ZylDisplayHal  *zyl_hal_display(void);
+const ZylBatteryHal  *zyl_hal_battery(void);
+const ZylStorageHal  *zyl_hal_storage(void);
+const ZylTorchHal    *zyl_hal_torch(void);
+const ZylCpuHal      *zyl_hal_cpu(void);
 
 #endif /* ZYL_HAL_H */

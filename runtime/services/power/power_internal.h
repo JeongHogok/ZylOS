@@ -3,7 +3,7 @@
  *
  * 역할: 전력 관리 서비스 내부 공유 헤더 — 구조체, 상수, 유틸리티
  * 수행범위: 서브시스템 간 공유 타입·함수 선언
- * 의존방향: power.h, gio/gio.h, sysfs
+ * 의존방향: power.h, gio/gio.h, hal.h (Display·CPU·Battery HAL)
  * SOLID: ISP — 내부 서브시스템에만 노출
  * ────────────────────────────────────────────────────────── */
 
@@ -18,28 +18,20 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <gio/gio.h>
+#include "hal.h"
 
 /* ─── 내부 상수 ─── */
-#define BACKLIGHT_PATH       "/sys/class/backlight"
-#define CPUFREQ_GOV_PATH     "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor"
+#define ACTIVE_GOVERNOR      "schedutil"   /* awake: the scheduler drives the clock */
 #define MAX_WAKELOCKS        32
 #define WAKELOCK_TIMEOUT_SEC 600
 
-/* ─── hal_cpu.c 함수 선언 (HAL CPU 거버너 제어) ─── */
-extern int zyl_cpu_set_governor(const char *governor);
-extern int zyl_cpu_get_core_count(void);
-extern int zyl_cpu_set_core_online(int core, int online);
-extern int zyl_cpu_get_power_profile(void);
-extern int zyl_cpu_set_power_profile(int profile);
 
 /* ─── 내부 구조체 ─── */
 struct ZylPowerService {
     ZylPowerState state;
     ZylPowerConfig config;
-    int brightness;               /* 현재 밝기 0-100 */
-    int saved_brightness;         /* screen_off 전 밝기 (복원용) */
-    char *backlight_device;       /* sysfs backlight 장치 경로 */
-    int max_brightness;           /* 장치 최대 밝기 값 */
+    int brightness;               /* the user's level 0-100; dimming and screen-off
+                                     change only what the backlight shows */
 
     /* 웨이크락 */
     char *wakelocks[MAX_WAKELOCKS];
@@ -69,19 +61,12 @@ typedef struct {
     char             tag[128];
 } WakelockTimeoutCtx;
 
-/* ─── 공유 유틸리티: sysfs 읽기/쓰기 ─── */
-int  sysfs_read_int(const char *path);
-bool sysfs_write_int(const char *path, int val);
-bool sysfs_write_str(const char *path, const char *str);
-
 /* ─── 상태 전환 (여러 서브시스템에서 사용) ─── */
 void transition_state(ZylPowerService *svc, ZylPowerState new_state);
 
-/* ─── 백라이트 서브시스템 ─── */
-char *detect_backlight_device(int *max_brightness);
-
 /* ─── 디스플레이 서브시스템 ─── */
 void reset_idle_timers(ZylPowerService *svc);
+void apply_brightness(ZylPowerService *svc, int level);   /* the backlight only */
 
 /* ─── CPU/Doze 서브시스템 ─── */
 gboolean zyl_power_enter_doze(gpointer data);

@@ -111,6 +111,7 @@
       qsState[key] = !qsState[key];
       btn.classList.toggle('active', qsState[key]);
       if (RADIOS[key]) setRadio(key, qsState[key]);
+      else if (SERVICE_TILES[key]) applyTile(key, qsState[key]);
       else sendQsSetting(key, qsState[key]);
     });
   });
@@ -138,6 +139,37 @@
     }, function () { refreshRadio(key); });
   }
 
+  /* Tiles a service carries out; the setting keeps the choice where one is kept */
+  var SERVICE_TILES = {
+    flashlight: { service: 'camera', method: 'setTorch' },
+    rotate:     { service: 'display', method: 'setAutoRotate', category: 'display', key: 'autoRotate' },
+    silent:     { service: 'audio', method: 'setSilentMode', category: 'sound', key: 'silentMode' }
+  };
+
+  function applyTile(key, on) {
+    var t = SERVICE_TILES[key];
+    sendServiceRequest(t.service, t.method, { enabled: on });
+    if (t.category) sendServiceRequest('settings', 'update', { category: t.category, key: t.key, value: on });
+  }
+
+  function disableTile(btn) {
+    if (!btn) return;
+    btn.disabled = true;
+    btn.setAttribute('aria-disabled', 'true');
+    btn.classList.remove('active');
+  }
+
+  /* What this device has: no flash LED, no backlight → the control stays, disabled */
+  ZylBridge.requestService('camera', 'getCapabilities').then(function (caps) {
+    if (!caps || !caps.torch) disableTile(qsBtns.flashlight);
+  }, function () { disableTile(qsBtns.flashlight); });
+  ZylBridge.requestService('power', 'getCapabilities').then(function (caps) {
+    if (caps && caps.backlight === false && brightnessEl) {
+      brightnessEl.disabled = true;
+      brightnessEl.setAttribute('aria-disabled', 'true');
+    }
+  }, function () {});
+
   /* No radio on this device: the button stays, disabled */
   Object.keys(RADIOS).forEach(function (key) {
     ZylBridge.requestService(RADIOS[key], 'getCapabilities').then(function (caps) {
@@ -152,9 +184,6 @@
 
   function sendQsSetting(key, value) {
     var categoryMap = {
-      silent:     { category: 'sound',        key: 'silent' },
-      rotate:     { category: 'display',      key: 'autoRotate' },
-      flashlight: { category: 'display',      key: 'flashlight' },
       airplane:   { category: 'connectivity', key: 'airplaneMode' },
       dnd:        { category: 'notification', key: 'dndEnabled' },
       location:   { category: 'location',     key: 'enabled' }
@@ -187,6 +216,8 @@
   if (brightnessEl) {
     brightnessEl.addEventListener('input', function () {
       var pct = parseInt(brightnessEl.value, 10);
+      /* The power service drives the backlight; the setting keeps the level */
+      sendServiceRequest('power', 'setBrightness', { percent: pct });
       sendServiceRequest('settings', 'update', {
         category: 'display',
         key: 'brightness',
@@ -394,6 +425,9 @@
   function handleServiceResponse(msg) {
     /* Battery level from power service */
     if (msg.service === 'power' && msg.method === 'getState' && msg.data) {
+      /* No battery fitted (a development board): no battery to show */
+      var batteryBox = document.getElementById('sb-battery');
+      if (batteryBox) batteryBox.classList.toggle('hidden', msg.data.batteryPresent === false);
       if (batteryPct && msg.data.batteryLevel !== undefined) {
         batteryPct.textContent = msg.data.batteryLevel + '%';
       }

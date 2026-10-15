@@ -270,14 +270,29 @@ var powerTests = (function () {
   var invoke = createMockInvoker({ 'power_get_state': { state: 'ACTIVE', battery: { level: 85, charging: false } } });
   var pwr = ns.power({ invoke: invoke });
 
-  return asyncTest('setBrightness clamps to 0-100', function () {
+  return asyncTest('setBrightness clamps to 0-100 and shows in getState', function () {
     return pwr.setBrightness({ percent: 150 }).then(function (r) {
-      assert.strictEqual(r.brightness, 100);
+      assert.strictEqual(r, true);
+      return pwr.getState();
+    }).then(function (s) {
+      assert.strictEqual(s.brightness, 100);
     });
   }).then(function () {
     return asyncTest('getState includes batteryLevel', function () {
       return pwr.getState().then(function (s) {
         assert.strictEqual(s.batteryLevel, 85);
+        assert.strictEqual(s.batteryPresent, true);
+      });
+    });
+  }).then(function () {
+    /* A host without a battery: the device has none — no invented level */
+    var none = ns.power({ invoke: createMockInvoker({ 'power_get_state': { state: 'ACTIVE', battery: { present: false } } }) });
+    return asyncTest('no battery is reported as none, not as a level', function () {
+      return Promise.all([none.getState(), none.getCapabilities()]).then(function (r) {
+        assert.strictEqual(r[0].batteryPresent, false);
+        assert.strictEqual(r[0].batteryLevel, undefined);
+        assert.strictEqual(r[0].plugged, true);
+        assert.deepStrictEqual(r[1], { backlight: true, battery: false });
       });
     });
   });

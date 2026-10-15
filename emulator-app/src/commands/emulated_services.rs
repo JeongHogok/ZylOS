@@ -82,9 +82,15 @@ static BRIGHTNESS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::
 
 #[tauri::command]
 pub fn power_get_state() -> serde_json::Value {
-    let battery = crate::platform::get_battery_info().unwrap_or_else(|_| {
-        serde_json::json!({"level": 100, "charging": true})
-    });
+    // The host's battery is the virtual device's; a host without one (a
+    // desktop) means a device without one — never an invented level
+    let battery = match crate::platform::get_battery_info() {
+        Ok(mut b) => {
+            b["present"] = serde_json::json!(true);
+            b
+        }
+        Err(_) => serde_json::json!({ "present": false }),
+    };
     let brightness = BRIGHTNESS.load(std::sync::atomic::Ordering::Relaxed);
 
     serde_json::json!({

@@ -9,6 +9,7 @@ hal_sources = files(
   'hal_display.c',
   'hal_battery.c',
   'hal_storage.c',
+  'hal_torch.c',
   'hal_cpu.c',
 )
 
