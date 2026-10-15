@@ -126,7 +126,7 @@ jobs:
             name="${f%.c}"
             clang -g -O1 -fsanitize=fuzzer,address \
               -DZYL_USE_WEBKIT2GTK \
-              -Iinclude -I. \
+              -I../include -I. \
               "$f" $PKG_FLAGS -o "$name"
             mkdir -p "corpus/$name"
             "./$name" "corpus/$name" -max_len=4096 -runs=10000 || exit 1

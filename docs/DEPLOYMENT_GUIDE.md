@@ -54,7 +54,7 @@ ninja -C builddir
 
 ### 크로스 컴파일 (RISC-V 타겟)
 ```bash
-meson setup builddir-riscv --cross-file tools/riscv64-cross.ini
+meson setup builddir-riscv --cross-file board/bpi-f3/cross-riscv64.ini
 ninja -C builddir-riscv
 ```
 

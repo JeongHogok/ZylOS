@@ -9,7 +9,7 @@
 - **RISC-V 네이티브**: SpacemiT K1 SoC (8코어 X60) 최적화
 - **Wayland 컴포지터**: wlroots 0.18 기반 모바일 전용 (제스처, 풀스크린)
 - **웹 앱 런타임**: WebKitGTK 기반 — HTML/CSS/JS로 앱 개발
-- **26개 C 서비스 디렉토리 / 29개 JS 서비스 모듈**: OS 이미지 소유, 에뮬레이터는 IPC 라우터만 담당
+- **37개 C 서비스 디렉토리 / 33개 JS 서비스 모듈**: OS 이미지 소유, 에뮬레이터는 IPC 라우터만 담당
 - **22개 시스템 앱**: 홈, 잠금, 설정, 브라우저, 파일, 터미널, 카메라, 갤러리, 전화, 메시지, 연락처, 날씨, 시계, 음악, 계산기, 메모, 앱스토어, OOBE, 상태바, 키보드, 공유 라이브러리, 가상 키보드
 - **디바이스 독립 아키텍처**: OS 이미지(apps/)가 에뮬레이터 없이 실제 디바이스에서 독립 동작
 - **ZylBridge IPC**: requestId + Promise 매칭 방식, 4모드 자동 감지 (native/webkit/iframe/standalone)
@@ -20,7 +20,7 @@
 - **클립보드 API**: 앱 간 텍스트/mimeType 공유 (clipboard.js 서비스)
 - **앱별 i18n**: 공유 엔진(shared/i18n.js) + 앱별 번역 데이터 (ko/en/ja/zh/es)
 - **7계층 보안**: iframe sandbox + CSP + 권한 체크 + 파일 보호 + 도메인 화이트리스트 + 앱 워치독 + Verified Boot
-- **네이티브 보안**: OpenSSL AES-256-GCM 크리덴셜, 앱 봉인(스토어·프로비저닝된 개발자 서명, 파일마다 SHA-256), libseccomp BPF (3프로필), dm-verity
+- **네이티브 보안**: OpenSSL AES-256-GCM 크리덴셜, 앱 봉인(스토어·프로비저닝된 개발자 서명, 파일마다 SHA-256), libseccomp BPF (3프로필 — 구현만, 아직 어떤 프로세스에도 적용되지 않음), dm-verity
 - **네이티브 에뮬레이터**: Tauri 2.x (Rust) — IPC 라우터 + 컴포지터, aes-gcm 암호화
 - **A/B OTA**: 원자적 시스템 업데이트 + RSA-2048 서명 검증 + 자동 롤백
 - **Verified Boot**: FIT 이미지 서명 + dm-verity (rootfs 무결성)
@@ -47,7 +47,7 @@
 | **IPC** | D-Bus | C 서비스 간 통신 (~22개 D-Bus 데몬) |
 | **앱 프레임워크** | HTML/CSS/JS (ES5) | 시스템 앱 22개 |
 | **HAL** | C (sysfs, wpa_supplicant, BlueZ, PipeWire) | 하드웨어 추상화 (9개 구현체) |
-| **샌드박싱** | namespace + libseccomp BPF (3프로필 46규칙) + cgroup v2 | 앱 격리 |
+| **샌드박싱** | namespace + libseccomp BPF (3프로필 46규칙) + cgroup v2 — 구현만, 아직 어떤 프로세스에도 적용되지 않음 | 앱 격리 |
 | **크리덴셜** | OpenSSL AES-256-GCM + PBKDF2-HMAC-SHA256 | 인증 정보 암호화 |
 | **패키징** | .zpkg + 봉인(.zyl-seal, RSA-SHA256) — 스토어 키 또는 프로비저닝된 개발자 키 | 앱 배포/검증 |
 | **업데이트** | A/B 파티션 + RSA-2048 서명 검증 | 원자적 OTA |
@@ -75,12 +75,12 @@
 | 서비스 | D-Bus 이름 | 역할 |
 |--------|-----------|------|
 | accessibility | org.zylos.Accessibility | 고대비, 폰트 스케일링 |
-| account | org.zylos.AccountManager | 계정 관리 |
-| alarm | org.zylos.AlarmManager | 알람 스케줄링 |
+| account | org.zylos.AccountService | 계정 관리 |
+| alarm | org.zylos.AlarmService | 알람 스케줄링 |
 | appstore | (라이브러리) | RSA-2048+SHA-256 패키지 검증/설치 |
 | audio | org.zylos.AudioService | PipeWire 오디오, 볼륨 카테고리 |
 | auth | org.zylos.AuthService | 생체/PIN 인증 |
-| bluetooth | org.zylos.BluetoothManager | BlueZ 연동, BT 스캔/연결 |
+| bluetooth | org.zylos.BluetoothService | BlueZ 연동, BT 스캔/연결 |
 | camera | org.zylos.CameraService | V4L2 카메라 제어 |
 | crash | org.zylos.CrashHandler | 크래시 덤프 수집/보고 |
 | credential | org.zylos.CredentialManager | AES-256-GCM + PBKDF2 키체인 |
@@ -89,28 +89,30 @@
 | input | org.zylos.InputService | 가상 키보드, IME, 하드웨어 키 |
 | location | org.zylos.LocationService | GPS (GPSD) + GeoIP 퓨전 |
 | logger | org.zylos.Logger | JSON 구조화 로깅 |
-| nfc | org.zylos.NFCManager | NFC 태그 읽기/쓰기 |
+| nfc | org.zylos.NfcService | NFC 태그 읽기/쓰기 |
 | notification | org.zylos.Notification | 알림 생성/조회/채널 관리 |
 | power | org.zylos.PowerManager | Doze 상태머신, CPU 거버너, 웨이크락 |
-| sandbox | (라이브러리) | namespace + libseccomp BPF + cgroup v2 |
+| sandbox | (라이브러리) | namespace + libseccomp BPF + cgroup v2 — 아직 어떤 프로세스에도 적용되지 않음 |
 | sensors | org.zylos.SensorService | 가속도계, 자이로, 근접, 조도 |
-| telemetry | org.zylos.TelemetryService | 익명 사용 통계 수집 |
+| telemetry | org.zylos.Telemetry | 익명 사용 통계 수집 |
 | telephony | org.zylos.Telephony | ModemManager 통합, 통화/SMS |
 | updater | org.zylos.Updater | A/B OTA, RSA-2048 서명 검증, 부팅 후 슬롯 확정 |
 | usb | org.zylos.UsbManager | USB 가젯 모드 (MTP/PTP/ADB) |
 | user | org.zylos.UserManager | 멀티유저, 프로필 전환, 앱별 UID |
-| wifi | org.zylos.WiFiManager | wpa_supplicant 연동, WiFi 스캔/연결 |
+| wifi | org.zylos.WifiService | wpa_supplicant 연동, WiFi 스캔/연결 |
 
-### JS 서비스 모듈 (29개 — apps/system/services/)
+### JS 서비스 모듈 (33개 — apps/system/services/)
 
 | 서비스 | 역할 |
 |--------|------|
 | accessibility | 고대비, 폰트 스케일 |
+| app-seal | 스토어 앱 봉인 판정 (기기 app_seal.c 와 같은 규칙) |
+| appdata | 앱별 비공개 데이터 (컨테이너) |
 | apps | 설치된 앱 목록/관리 |
 | appstore | 서명된 카탈로그, .zpkg 봉인 검증/설치·삭제, 개발 빌드(프로비저닝) |
 | audio | 5개 볼륨 카테고리, 키클릭, 알림음, 진동 |
 | bluetooth | BT 디바이스 조회 (비동기) |
-| browser | URL 로딩/탐색 |
+| bootctl | 부트로더 잠금 해제 요청 |
 | clipboard | 텍스트/mimeType 클립보드 copy/paste/clear |
 | contacts | 연락처 CRUD, 검색, 그룹 관리 |
 | credential | 암호화 키체인 |
@@ -119,8 +121,10 @@
 | fs | 마운트 디스크 이미지 I/O |
 | input | 키보드/IME 상태 |
 | location | IP 기반 geolocation (비동기) |
+| lock | 화면 잠금 PIN |
 | logger | JSON 구조화 로깅 |
 | messaging | SMS/MMS 대화 스레드 |
+| netstats | 앱별 데이터 사용량 |
 | network | HTTP fetch (비동기) |
 | notification | 채널 기반 알림 (post/cancel/clear) |
 | power | 밝기, 배터리, 절전 모드 |
@@ -128,17 +132,17 @@
 | sensors | 가속도/자이로/근접/조도 |
 | settings | 영속 설정 JSON |
 | storage | 디스크 사용량 조회 |
+| telemetry | 동의 기반 익명 통계 |
 | telephony | 통화 발신/수신/종료, SIM 정보 |
 | updater | A/B 파티션 OTA 업데이트, 버전 비교 |
 | usb | configfs 가젯 (MTP/ADB) |
 | user | 사용자 프로필 |
 | wifi | WiFi 스캔/연결 (비동기) |
 
-### HAL 구현체 (8개 — runtime/hal/)
+### HAL 구현체 (12개 — runtime/hal/)
 
 | 파일 | 역할 |
 |------|------|
-| hal_linux.c | HAL Registry 팩토리 (모듈 조립/초기화) |
 | hal_wifi.c | wpa_supplicant 연동 |
 | hal_bt.c | BlueZ 연동 |
 | hal_display.c | DRM/KMS 디스플레이 |
@@ -146,6 +150,11 @@
 | hal_battery.c | sysfs 배터리 상태 |
 | hal_storage.c | 블록 디바이스 I/O |
 | hal_cpu.c | CPU 거버너 + 코어 온오프 |
+| hal_board.c | 보드 정보 (모델·SoC·메모리·기기 ID) |
+| hal_boot.c | 부트로더 환경 (A/B 슬롯·잠금) |
+| hal_torch.c | 손전등 LED |
+| hal_vibrator.c | 진동 모터 |
+| hal_emulator.c | 에뮬레이터 보드 (하드웨어 없음) |
 
 ### 시스템 프레임워크 (apps/system/)
 
@@ -243,7 +252,7 @@ ninja -C builddir
 
 ### 크로스 컴파일 (RISC-V)
 ```bash
-meson setup builddir-riscv --cross-file tools/riscv64-cross.ini
+meson setup builddir-riscv --cross-file board/bpi-f3/cross-riscv64.ini
 ninja -C builddir-riscv
 ```
 
@@ -280,9 +289,9 @@ ninja -C builddir-riscv
 | 크리덴셜 암호화 | **AES-256-GCM** + PBKDF2-HMAC-SHA256 (100,000회) | OpenSSL EVP API |
 | 앱 패키지 서명 | **RSA-2048+SHA-256 실검증** | OpenSSL EVP, libzip |
 | OTA 서명 검증 | **RSA-2048+SHA-256 실검증** | OpenSSL EVP |
-| seccomp 필터 | **libseccomp BPF — 3프로필, 46개 규칙** | DEFAULT/STRICT/PERMISSIVE |
+| seccomp 필터 | libseccomp BPF — 3프로필, 46개 규칙 (구현만, 아직 어떤 프로세스에도 적용되지 않음) | DEFAULT/STRICT/PERMISSIVE |
 | Verified Boot | **FIT 이미지 서명 + dm-verity** | gen-boot-keys.sh + sign-image.sh |
-| 앱 격리 | **namespace + cgroup v2 + 앱별 UID** | 프로세스별 독립 네임스페이스 |
+| 앱 격리 | namespace + cgroup v2 + 앱별 UID (구현만, 아직 어떤 프로세스에도 적용되지 않음) | 앱 데이터는 앱별 컨테이너 |
 | 런타임 퍼미션 | **ZylPermissionDialog** | 위험 권한 사용자 승인 필수 |
 
 ### 알려진 제한사항
@@ -340,7 +349,7 @@ apps/                          시스템 앱 22개 (HTML/CSS/JS, ES5)
     security.js                  파일 보호, 자격증명 격리
     sandbox.js                   iframe sandbox + CSP + 도메인 화이트리스트
     app-registry.js              동적 앱 레지스트리 (app.json 기반)
-    services/                    JS 서비스 모듈 29개
+    services/                    JS 서비스 모듈 33개
   apps/shared/                 공유 런타임
     bridge.js                    IPC 추상화 (requestId + Promise, 4모드)
     i18n.js                      다국어 엔진 (ko/en/ja/zh/es)

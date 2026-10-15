@@ -25,13 +25,13 @@ Linux 커널 위에 Wayland 컴포지터 + WebKitGTK 앱 런타임으로 구성�
 ├─────────────────────────────────────────────────────┤
 │   JS-Native Bridge (postMessage IPC + requestId)    │  ← Promise 매칭, 4모드 자동 감지
 ├─────────────────────────────────────────────────────┤
-│  JS 서비스 모듈 (apps/system/services/ — 29개)        │  ← 비즈니스 로직 (OS 이미지 소유)
+│  JS 서비스 모듈 (apps/system/services/ — 33개)        │  ← 비즈니스 로직 (OS 이미지 소유)
 ├─────────────────────────────────────────────────────┤
-│      C 서비스 (D-Bus IPC — 26개 디렉토리)             │  ← ~22개 D-Bus 데몬
+│      C 서비스 (D-Bus IPC — 37개 디렉토리)             │  ← ~22개 D-Bus 데몬
 ├─────────────────────────────────────────────────────┤
 │  Wayland Compositor (wlroots 기반)                   │  ← 윈도우/터치/제스처 관리
 ├─────────────────────────────────────────────────────┤
-│       HAL (Hardware Abstraction — 8개)                │  ← Linux 드라이버 ↔ 서비스 연결
+│       HAL (Hardware Abstraction — 12개)               │  ← Linux 드라이버 ↔ 서비스 연결
 ├─────────────────────────────────────────────────────┤
 │   Linux Kernel (SpacemiT BSP 6.6)                   │  ← DRM, GPU, 터치, 센서, 모뎀
 ├─────────────────────────────────────────────────────┤
@@ -60,11 +60,11 @@ Linux 커널 위에 Wayland 컴포지터 + WebKitGTK 앱 런타임으로 구성�
 | 서비스 | D-Bus 이름 | 역할 |
 |--------|-----------|------|
 | accessibility | org.zylos.Accessibility | 고대비, 폰트 스케일링 |
-| account | org.zylos.AccountManager | 계정 관리 |
-| alarm | org.zylos.AlarmManager | 알람 스케줄링 |
+| account | org.zylos.AccountService | 계정 관리 |
+| alarm | org.zylos.AlarmService | 알람 스케줄링 |
 | audio | org.zylos.AudioService | PipeWire 오디오, 5개 볼륨 카테고리 |
 | auth | org.zylos.AuthService | 생체/PIN 인증 |
-| bluetooth | org.zylos.BluetoothManager | BlueZ 연동, BT 스캔/연결 |
+| bluetooth | org.zylos.BluetoothService | BlueZ 연동, BT 스캔/연결 |
 | camera | org.zylos.CameraService | V4L2 카메라 제어 |
 | crash | org.zylos.CrashHandler | 크래시 덤프 수집/보고 |
 | credential | org.zylos.CredentialManager | AES-256-GCM + PBKDF2 키체인 |
@@ -72,26 +72,25 @@ Linux 커널 위에 Wayland 컴포지터 + WebKitGTK 앱 런타임으로 구성�
 | input | org.zylos.InputService | 가상 키보드, IME, 하드웨어 키 |
 | location | org.zylos.LocationService | GPS (GPSD) + GeoIP 퓨전 |
 | logger | org.zylos.Logger | JSON 구조화 로깅 |
-| nfc | org.zylos.NFCManager | NFC 태그 읽기/쓰기 |
+| nfc | org.zylos.NfcService | NFC 태그 읽기/쓰기 |
 | notification | org.zylos.Notification | 알림 생성/조회/채널 관리 |
 | power | org.zylos.PowerManager | Doze 상태머신, CPU 거버너, 웨이크락 |
 | sensors | org.zylos.SensorService | 가속도계, 자이로, 근접, 조도 |
-| telemetry | org.zylos.TelemetryService | 익명 사용 통계 |
+| telemetry | org.zylos.Telemetry | 익명 사용 통계 |
 | telephony | org.zylos.Telephony | ModemManager 통합, 통화/SMS |
 | usb | org.zylos.UsbManager | USB 가젯 모드 (MTP/PTP/ADB) |
 | user | org.zylos.UserManager | 멀티유저, 앱별 UID |
-| wifi | org.zylos.WiFiManager | wpa_supplicant 연동, WiFi 스캔/연결 |
+| wifi | org.zylos.WifiService | wpa_supplicant 연동, WiFi 스캔/연결 |
 
-#### 라이브러리 서비스 (4개 — D-Bus 데몬 없음):
+#### 라이브러리 (D-Bus 데몬 없음):
 
 | 서비스 | 역할 |
 |--------|------|
-| appstore | RSA-2048+SHA-256 패키지 검증/설치 (libzip) |
-| dbus | 비동기 D-Bus 유틸리티 |
-| sandbox | namespace + libseccomp BPF + cgroup v2 |
-| updater | A/B OTA, RSA-2048 서명 검증 |
+| sandbox | namespace + libseccomp BPF + cgroup v2 — 구현만, 아직 어떤 프로세스에도 적용되지 않음 |
 
-### JS 서비스 모듈 (29개 — apps/system/services/)
+appstore(`org.zylos.AppStore`)와 updater(`org.zylos.Updater`)는 D-Bus 데몬이다.
+
+### JS 서비스 모듈 (33개 — apps/system/services/)
 
 서비스 비즈니스 로직은 OS 이미지(`apps/system/services.js` 라우터 + `services/*.js` 모듈)에 소유되며,
 에뮬레이터는 순수 IPC 라우터로서 앱↔서비스 간 메시지만 전달합니다.
@@ -103,7 +102,6 @@ Linux 커널 위에 Wayland 컴포지터 + WebKitGTK 앱 런타임으로 구성�
 | appstore | 서명된 카탈로그, .zpkg 봉인 검증/설치·삭제, 개발 빌드(프로비저닝) |
 | audio | 5개 볼륨 카테고리, 키클릭, 알림음, 진동 |
 | bluetooth | BT 디바이스 조회 (비동기) |
-| browser | URL 로딩/탐색 |
 | clipboard | 텍스트/mimeType 클립보드 copy/paste/clear |
 | contacts | 연락처 CRUD, 검색, 그룹 관리 |
 | credential | 암호화 키체인 |
@@ -181,11 +179,10 @@ URI 기반 앱 간 데이터 공유 게이트웨이.
 
 ### HAL - Hardware Abstraction Layer (runtime/hal/)
 
-8개:
+12개:
 
 | 파일 | 인터페이스 | 구현 |
 |------|-----------|------|
-| hal_linux.c | HAL Registry 팩토리 | 모든 HAL 모듈 조립/초기화 |
 | hal_wifi.c | WiFi 스캔/연결 | wpa_supplicant (실기기) |
 | hal_bt.c | BT 스캔/페어링 | BlueZ (실기기) |
 | hal_display.c | 해상도/밝기/회전 | DRM/KMS sysfs (실기기) |
@@ -193,6 +190,11 @@ URI 기반 앱 간 데이터 공유 게이트웨이.
 | hal_battery.c | 배터리 상태/충전 | sysfs (실기기) |
 | hal_storage.c | 블록 디바이스 I/O | sysfs (실기기) |
 | hal_cpu.c | CPU 거버너/코어 온오프 | sysfs cpufreq (실기기) |
+| hal_board.c | 보드 정보 (모델·SoC·메모리·기기 ID) | device tree, /proc (실기기) |
+| hal_boot.c | A/B 슬롯·부트로더 잠금 상태 | U-Boot 환경 (실기기) |
+| hal_torch.c | 손전등 | LED sysfs (실기기) |
+| hal_vibrator.c | 진동 | force-feedback / sysfs (실기기) |
+| hal_emulator.c | 에뮬레이터 보드 | 하드웨어 없음 — 없다고 보고 |
 
 에뮬레이터 구현: 브라우저 Web API (hal-browser.js)
 
@@ -339,10 +341,12 @@ CSS에 `zoom: var(...)` 를 쓰면 조용히 1이 된다. `zoom` 은 vw/vh 를 �
 
 ### 7계층 보안
 1. **Verified Boot**: FIT 이미지 서명 (RSA-2048) + dm-verity (rootfs 무결성)
-2. **파일시스템**: mount namespace + bind mount
-3. **시스콜**: libseccomp BPF (3프로필 — STRICT/DEFAULT/PERMISSIVE, 총 46개 규칙)
-4. **네트워크**: network namespace (권한 없으면 차단)
-5. **리소스**: cgroup v2 (메모리/CPU/PID 제한)
+2. **파일시스템**: mount namespace + bind mount ¹
+3. **시스콜**: libseccomp BPF (3프로필 — STRICT/DEFAULT/PERMISSIVE, 총 46개 규칙) ¹
+4. **네트워크**: network namespace (권한 없으면 차단) ¹
+5. **리소스**: cgroup v2 (메모리/CPU/PID 제한) ¹
+
+¹ `runtime/services/sandbox` 에 구현돼 있으나 아직 어떤 프로세스에도 적용되지 않음 (WAM 의 zygote 와 함께 미연결)
 6. **IPC**: D-Bus 정책 XML (권한별 서비스 접근)
 7. **앱 권한 시행**: ZylPermissions + ZylPermissionDialog — 서비스 호출 시 권한 실시간 검증
 

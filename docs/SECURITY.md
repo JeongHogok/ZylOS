@@ -58,6 +58,10 @@ python3 -I tools/build-store.py package --key store.key …   # 스토어: 공�
 
 ### libseccomp BPF 3프로필 (sandbox.c)
 
+> 구현돼 있으나 **아직 어떤 프로세스에도 적용되지 않음**: `zyl-sandbox` 라이브러리는 어떤 실행 파일에도 링크되지
+> 않고, 적용 지점인 WAM zygote 도 호출되지 않는다. 앱 격리는 현재 WebKitGTK 의 웹 프로세스
+> 샌드박스, 앱별 컨테이너, OS 레이어 권한 검사에 의존한다.
+
 | 프로필 | 대상 | 설명 |
 |--------|------|------|
 | **STRICT** | 서드파티 앱 | DEFAULT 규칙 + 추가 제한 |
