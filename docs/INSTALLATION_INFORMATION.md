@@ -66,18 +66,45 @@ OTA 업데이터도 같은 파일 이름과 슬롯 변수를 씁니다.
 1. 설정 > 개발자 옵션 > **다시 잠그기 요청** → **요청하기**
 2. 다시 시작해 버튼으로 확인 — `/data` 가 지워지고 검증 부팅이 다시 켜집니다.
 
-## 제품 출하용 U-Boot 요건
+## 제품 출하용 부트로더
 
-이 보장은 부트로더가 다음과 같이 빌드되어야 성립합니다. 하나라도 빠지면 환경 저장소를
-쓸 수 있는 누구나 `bootcmd` 를 바꿔 검증을 끌 수 있습니다.
+이 보장은 부트로더가 부트 정책을 내장하고 바깥에서 바꿀 수 없어야 성립합니다. 하나라도
+빠지면 환경 저장소를 쓸 수 있는 누구나 `bootcmd` 를 바꿔 검증을 끌 수 있습니다.
+`tools/build-bootloader.sh` 가 고정한 제조사 U-Boot·OpenSBI 에 `board/bpi-f3/bootloader`
+(패치·설정 조각)를 얹어 그렇게 빌드하고, 결과를 스스로 검증합니다.
 
 | 설정 | 이유 |
 |------|------|
-| `CONFIG_FIT_SIGNATURE`, 공개키를 제어 DTB 에 `required = "conf"` 로 | 잠긴 기기의 서명 강제 (`tools/sign-image.sh` 가 키를 `u-boot.dtb` 에 기록) |
+| `CONFIG_(SPL_)FIT_SIGNATURE` + `(SPL_)RSA`, 공개키를 DTB 에 `required = "conf"` 로 | SPL 이 OpenSBI·U-Boot 를, U-Boot 가 OS 를 검증 (제조사 설정은 RSA 가 빠져 있어 아무것도 검증하지 않았다) |
 | `CONFIG_USE_DEFAULT_ENV_FILE` = `board/bpi-f3/u-boot-env.txt` | 부트 로직은 바이너리에 고정 |
-| `CONFIG_ENV_WRITEABLE_LIST` 에 `zyl_active_slot zyl_next_slot zyl_boot_count zyl_unlocked zyl_lock_seen zyl_oem_unlock_allowed` 만 | 저장소에서는 상태 변수만 읽는다 |
+| `CONFIG_ENV_WRITEABLE_LIST` — 그 파일의 "Runtime state" 변수만 | 저장소에서는 상태 변수만 읽는다 |
+| `CONFIG_BOOTDELAY=-2`, fastboot 환경·설정 접근 없음, 레거시·Android 이미지 없음 | 셸도, USB 로 환경을 바꾸거나 서명 없는 이미지를 띄우는 길도 없다 |
+| `CONFIG_ZYL_OS` (패치) | 제조사의 bootfs/네트워크 환경 가져오기·SD 자동 플래싱·요청 셸을 끔, 칩 ID 로 기기 ID |
 | `CONFIG_CMD_BUTTON` + DT 에 `zyl_unlock_button` 라벨의 버튼 | 기기 앞의 확인 |
-| `CONFIG_CMD_PART`, `CONFIG_CMD_MMC`(erase) | 데이터 삭제 |
+| `CONFIG_CMD_PART`, `CONFIG_CMD_MMC`(erase, wp) | 데이터 삭제, 부팅 영역 쓰기 보호 |
 
-부트 ROM → SPL → U-Boot 의 서명 체인(SoC 의 보안 부팅 퓨즈)은 보드 공급사 절차를 따르며,
-GPLv3 의 대상인 Zyl OS 이미지 설치와는 별개입니다.
+잠금 해제는 OS 이미지의 검증만 끕니다. 부트로더(FSBL·OpenSBI·U-Boot)는 잠금과 무관하게
+제조사 키로 검증되며, 잠금 해제한 소유자도 수정한 Zyl OS 를 설치·실행할 수 있으므로
+GPLv3 §6 의 설치 정보 요건과 충돌하지 않습니다 (U-Boot 는 GPLv2, OpenSBI 는 BSD).
+
+## eFuse — 루트 키 해시 굽기 (빌드 선택)
+
+Boot ROM 은 eFuse 의 루트 공개키 해시(ROTPKH, bank 4)가 비어 있으면 FSBL 의 서명을 보지
+않습니다. 그 상태에서는 기기를 손에 쥔 사람이 SD 카드나 USB(FEL)로 자기 FSBL 을 띄울 수
+있습니다. 해시를 구우면 그때부터 Boot ROM 은 `zylos-rotpk` 로 서명된 FSBL 만 실행합니다.
+
+```bash
+tools/build-bootloader.sh --key-dir <keys> --burn-rotpk out/
+```
+
+- 이렇게 빌드한 U-Boot 만 굽습니다 (`zyl_rotpk_burn=1`). 기본 빌드에는 굽는 코드가 없습니다
+- **잠긴 기기에서, eMMC boot0 의 FSBL 이 바로 그 빌드의 FSBL 일 때만** (바이트 단위 SHA-256
+  비교) 굽고, bank 4 를 잠급니다. eFuse 가 이미 같은 값이면 아무것도 하지 않고, 다른 값이면
+  거부합니다. 빌드는 그 FSBL 의 루트 키·`rotpk_hash`·두 서명을 미리 검증합니다
+- **되돌릴 수 없습니다.** 루트 키(`zylos-rotpk.key`)를 잃으면 그 기기의 부트로더는 더 이상
+  바꿀 수 없습니다
+- **실기기에서 검증되지 않았습니다.** 제조사는 Boot ROM 이 기대하는 해시 형식을 문서화하지
+  않았습니다. Zyl OS 는 제조사 도구가 FSBL 안에 넣는 `rotpk_hash`(RSA 모듈러스 256바이트의
+  SHA-256)를 그대로 굽습니다. 형식이 다르면 그 보드는 어떤 FSBL 도 부팅하지 못합니다.
+  **버려도 되는 보드로 먼저 확인하십시오.** 제조사 U-Boot 는 bank 8 미만 쓰기를 막아 두었고,
+  Zyl 패치가 bank 4 에 한해 그 경로를 엽니다 (`board/bpi-f3/bootloader`)

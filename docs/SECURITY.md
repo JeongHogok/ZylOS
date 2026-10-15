@@ -90,10 +90,26 @@ python3 -I tools/build-store.py package --key store.key …   # 스토어: 공�
 ## Verified Boot
 
 ### 부트체인 무결성
-- **FIT 이미지 서명**: 커널 + DTB + 램디스크를 하나의 FIT 이미지로 묶어 RSA-2048 서명
+각 단계가 다음 단계를 검증합니다. 키는 `tools/gen-boot-keys.sh` 가 만듭니다.
+
+| 단계 | 누가 검증 | 키 | 만드는 곳 |
+|---|---|---|---|
+| FSBL(SPL) | Boot ROM — eFuse 에 루트 키 해시가 있을 때만 | `zylos-rotpk`(헤더) · `zylos-spl-key`(SPL) | `tools/build-bootloader.sh` |
+| OpenSBI · U-Boot FIT | SPL (공개키가 FSBL 안 DTB 에 required) | `zylos-fw-key` | `tools/build-bootloader.sh` |
+| 커널 · DTB · 램디스크 FIT | U-Boot (공개키가 U-Boot DTB 에 required) | `zylos-boot-key` | `tools/sign-image.sh` |
+| rootfs | 커널 dm-verity (루트 해시는 서명된 커널 인자) | — | `tools/sign-image.sh` |
+| 사용자 앱 | appstore · WAM 봉인 | 스토어 키 / 프로비저닝된 개발자 키 | `tools/build-store.py` |
+
+- **부트 정책은 U-Boot 에 내장** (`board/bpi-f3/u-boot-env.txt`): 저장소의 환경에서는
+  런타임 상태 변수만 읽고, 셸·자동 부팅 중단·fastboot 환경 접근·서명 없는(레거시·Android)
+  이미지 부팅이 없다. 제조사 U-Boot 의 bootfs/네트워크 환경 가져오기·SD 자동 플래싱도 끈다
+- **부팅 영역 쓰기 보호**: U-Boot 가 OS 로 넘기기 전에 eMMC 부트 파티션(FSBL)을 전원이
+  꺼질 때까지 쓰기 금지 — 침해된 OS 가 부트로더를 영구히 바꿀 수 없다
+- **기기 ID**: 칩이 공장에서 퓨즈한 ID (`serial-number`) — 개발 빌드 프로비저닝의 기준
+- **eFuse (빌드 선택)**: `--burn-rotpk` 로 빌드한 부트로더만 루트 키 해시를 굽는다.
+  굽지 않은 기기의 Boot ROM 은 FSBL 서명을 보지 않으므로, 기기를 손에 쥔 공격자는
+  SD 카드·USB 로 자기 FSBL 을 띄울 수 있다 — [INSTALLATION_INFORMATION.md](INSTALLATION_INFORMATION.md)
 - **dm-verity**: rootfs 파티션 블록 단위 해시 트리 — 변조된 블록 읽기 시 커널 패닉 또는 읽기 전용 마운트
-- 부트 키 생성: `tools/gen-boot-keys.sh`
-- 이미지 서명 + verity 생성: `tools/sign-image.sh`
 - 에뮬레이터 환경에서는 비적용 (실기기 전용)
 - 슬롯별 서명 이미지: 커널 인자(슬롯 파티션, dm-verity 루트 해시, `zyl.slot`)가 서명되는 DTB 안에 있어 환경 변수로 바꿀 수 없다
 - **부트로더 잠금 해제** (GPLv3 §6): 설정에서 허용 + 부팅 시 기기 버튼 확인 + `/data` 삭제 후에만 전환, 해제 상태는 부팅마다 경고 — [INSTALLATION_INFORMATION.md](INSTALLATION_INFORMATION.md)
@@ -127,10 +143,6 @@ python3 -I tools/build-store.py package --key store.key …   # 스토어: 공�
 ---
 
 ## 보안 관련 설정
-
-### 개발자 모드
-- 개발자 모드 활성화 시 앱 서명 검증이 우회됩니다
-- 프로덕션 환경에서는 반드시 비활성화하세요
 
 ### 화면 잠금
 - 기본 PIN 없음 (밀어서 잠금 해제). OOBE 에서 PIN 설정을 권장합니다
@@ -197,7 +209,10 @@ python3 -I tools/build-store.py package --key store.key …   # 스토어: 공�
 ### Verified Boot
 - **현재**: 실기기 전용. 에뮬레이터 환경에서는 FIT 서명/dm-verity 비적용
 - **영향**: 에뮬레이터에서 OS 이미지 변조 감지 불가
-- **권고**: 프로덕션 배포 시 `tools/sign-image.sh`로 서명 필수
+- **권고**: 프로덕션 배포 시 `tools/build-bootloader.sh`·`tools/sign-image.sh`로 서명 필수
+- **eFuse**: 루트 키 해시를 굽지 않은 기기는 물리 접근(SD·USB 부팅)으로 체인의 첫 단계를
+  우회할 수 있다. 굽기는 되돌릴 수 없고, Boot ROM 이 기대하는 해시 형식을 제조사가 문서화하지
+  않아 실기기에서 검증되지 않았다 — 버려도 되는 보드로 먼저 확인할 것
 
 ### 생체 인증 (auth 서비스)
 - **현재**: auth 서비스는 구현되어 있으나 BPI-F3 지문 센서 하드웨어 연동은 BSP 드라이버에 의존

@@ -105,13 +105,22 @@ builddir-riscv/
 
 ### 3.1 부트 키 생성
 ```bash
-# RSA-2048 부트 서명 키 쌍 생성
+# 부팅 체인의 RSA-2048 키 — 없는 것만 만들고 있는 키는 그대로 둔다
 ./tools/gen-boot-keys.sh board/bpi-f3/keys
 
-# 출력:
-#   board/bpi-f3/keys/zylos-boot-key.key     ← 비밀키 (절대 배포 금지!)
-#   board/bpi-f3/keys/zylos-boot-key.crt     ← 자체 서명 인증서
-#   board/bpi-f3/keys/zylos-boot-key.pub     ← PEM 공개키
+# 출력 (*.key 는 비밀키 — 절대 배포 금지!):
+#   zylos-boot-key.{key,crt,pub}   OS FIT (U-Boot 가 검증)
+#   zylos-fw-key.{key,crt,pub}     OpenSBI·U-Boot FIT (SPL 이 검증)
+#   zylos-spl-key.{key,pub}        FSBL 안의 SPL (Boot ROM 이 검증)
+#   zylos-rotpk.{key,pub}          루트 키 — 해시가 eFuse 에 (선택)
+```
+
+### 3.1.1 부트로더 빌드
+```bash
+# 고정한 제조사 U-Boot·OpenSBI + Zyl 부트 정책, 서명하고 결과를 스스로 검증
+./tools/build-bootloader.sh --key-dir board/bpi-f3/keys build/bootloader
+# eFuse 에 루트 키 해시를 굽는 부트로더 (되돌릴 수 없음): --burn-rotpk
+# 설치 위치: board/bpi-f3/README.md "Bootloader"
 ```
 
 ### 3.2 FIT 이미지 서명 + dm-verity 생성
@@ -119,11 +128,12 @@ builddir-riscv/
 # FIT 이미지 서명 (커널+DTB+램디스크) + rootfs dm-verity 해시 트리
 ./tools/sign-image.sh rootfs.img build/signed
 
-# 출력:
-#   build/signed/zylos.fit             ← 서명된 FIT 이미지
-#   build/signed/rootfs.img            ← dm-verity 해시 트리 임베드된 rootfs
-#   build/signed/rootfs.verity         ← dm-verity 해시 트리 (별도 파티션용)
-#   build/signed/verity-params.txt     ← dm-verity 파라미터 (부팅 인자 포함)
+# 출력 (슬롯 a, --slot b 면 b):
+#   build/signed/fit-image-a.itb        ← 서명된 FIT (커널 인자가 서명되는 DTB 안에)
+#   build/signed/verity-hashtree-a.img  ← dm-verity 해시 트리 (verity 파티션용)
+#   build/signed/cmdline-a.txt          ← 그 커널 인자
+#   build/signed/verity-params-a.txt    ← dm-verity 파라미터
+#   build/signed/MANIFEST.sha256
 ```
 
 ### 3.3 dm-verity rootfs 마운트 인자
