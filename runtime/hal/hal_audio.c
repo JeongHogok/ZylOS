@@ -1,226 +1,182 @@
 /* ──────────────────────────────────────────────────────────
- * [Clean Architecture] Data Layer - Implementation
+ * [Clean Architecture] Infrastructure Layer - HAL (Linux)
  *
- * 역할: Audio HAL Linux 구현체 — PipeWire (wpctl) / ALSA 폴백
- * 수행범위: 볼륨 조절 (stream별), 진동/무음 모드, 상태 조회
- * 의존방향: hal.h (Domain), stdio/stdlib (Platform)
- * SOLID: DIP — hal.h 인터페이스 구현, SRP — 오디오 제어만 담당
+ * 역할: Audio HAL Linux 구현 — PipeWire 출력·마이크, 톤 재생, 통화 경로
+ * 수행범위: wpctl 로 기본 출력의 볼륨·음소거와 기본 입력(마이크) 음소거,
+ *           사인파 WAV 를 만들어 pw-play 로 재생(끝나면 임시 파일 삭제),
+ *           pactl 포트 목록에서 이어피스·스피커가 둘 다 있는 출력을 찾아
+ *           스피커폰 전환(set-sink-port). 둘 중 하나라도 없으면 전환 불가
+ * 의존방향: hal.h (Domain), glib (g_spawn, child watch), json-glib (pactl -f json)
+ * SOLID: SRP — 오디오 장치 접근만. 스트림별 볼륨·무음 정책은 audio 서비스 몫
  * ────────────────────────────────────────────────────────── */
 
+#define _GNU_SOURCE
 #include "hal.h"
 
+#include <fcntl.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <spawn.h>
-#include <sys/wait.h>
+#include <glib.h>
+#include <json-glib/json-glib.h>
 
-extern char **environ;
-
-#define SETTINGS_DIR "/data/settings"
-
-/* Safe argv-based command execution with optional stdout capture. */
-static int spawn_capture_first_line(const char *path,
-                                    char *const argv[],
-                                    char *out,
-                                    size_t out_len) {
-    int pipefd[2] = {-1, -1};
-    posix_spawn_file_actions_t acts;
-    posix_spawn_file_actions_init(&acts);
-
-    if (out && out_len > 0) {
-        if (pipe(pipefd) != 0) {
-            posix_spawn_file_actions_destroy(&acts);
-            return -1;
-        }
-        posix_spawn_file_actions_adddup2(&acts, pipefd[1], STDOUT_FILENO);
-        posix_spawn_file_actions_addclose(&acts, pipefd[0]);
-    }
-
-    pid_t pid;
-    char *envp[] = { "PATH=/usr/bin:/usr/sbin:/bin:/sbin", NULL };
-    int rc = posix_spawn(&pid, path, &acts, NULL, argv, envp);
-    posix_spawn_file_actions_destroy(&acts);
-    if (out && out_len > 0) close(pipefd[1]);
-    if (rc != 0) {
-        if (out && out_len > 0) close(pipefd[0]);
-        return -1;
-    }
-
-    if (out && out_len > 0) {
-        ssize_t n = read(pipefd[0], out, out_len - 1);
-        close(pipefd[0]);
-        if (n > 0) {
-            out[n] = '\0';
-            size_t len = strlen(out);
-            if (len > 0 && out[len - 1] == '\n') out[len - 1] = '\0';
-        } else {
-            out[0] = '\0';
-        }
-    }
-
-    int status = 0;
-    if (waitpid(pid, &status, 0) == -1) return -1;
-    return (WIFEXITED(status) && WEXITSTATUS(status) == 0) ? 0 : -1;
+/* A tool on PATH (Debian keeps wpctl/pactl/pw-play in /usr/bin); stdout kept when out != NULL */
+static bool run(const char *const argv[], char **out) {
+    int status = -1;
+    GSpawnFlags flags = G_SPAWN_SEARCH_PATH | G_SPAWN_STDERR_TO_DEV_NULL |
+                        (out ? 0 : G_SPAWN_STDOUT_TO_DEV_NULL);
+    return g_spawn_sync(NULL, (char **)argv, NULL, flags, NULL, NULL, out, NULL, &status, NULL) &&
+           g_spawn_check_wait_status(status, NULL);
 }
 
-static ZylAudioState g_audio = {
-    .media_volume        = 70,
-    .notification_volume = 80,
-    .alarm_volume        = 90,
-    .call_volume         = 70,
-    .vibration           = true,
-    .silent_mode         = false,
-};
+static int audio_get_output_volume(void) {
+    const char *argv[] = { "wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@", NULL };
+    char *out = NULL;
+    float v = 0;
+    int vol = -1;
+    if (run(argv, &out) && sscanf(out, "Volume: %f", &v) == 1) vol = CLAMP((int)lroundf(v * 100), 0, 100);
+    g_free(out);
+    return vol;
+}
 
-static bool g_has_wpctl = false;
-static bool g_has_amixer = false;
+static bool audio_set_output_volume(int percent) {
+    char arg[16];
+    snprintf(arg, sizeof(arg), "%.2f", CLAMP(percent, 0, 100) / 100.0);
+    const char *argv[] = { "wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", arg, NULL };
+    return run(argv, NULL);
+}
 
-/* ─── Helper: check if command exists ─── */
-static bool cmd_exists(const char *cmd) {
-    /* Check common paths directly instead of using shell */
-    const char *dirs[] = {"/usr/bin/", "/usr/sbin/", "/bin/", "/sbin/", NULL};
-    char path[512];
-    for (int i = 0; dirs[i]; i++) {
-        snprintf(path, sizeof(path), "%s%s", dirs[i], cmd);
-        if (access(path, X_OK) == 0) return true;
+static bool set_mute(const char *target, bool mute) {
+    const char *argv[] = { "wpctl", "set-mute", target, mute ? "1" : "0", NULL };
+    return run(argv, NULL);
+}
+
+static bool audio_set_output_mute(bool mute) { return set_mute("@DEFAULT_AUDIO_SINK@", mute); }
+static bool audio_set_input_mute(bool mute)  { return set_mute("@DEFAULT_AUDIO_SOURCE@", mute); }
+
+/* ─── Tones ─── */
+static bool write_tone_wav(int fd, int freq, int duration_ms, int volume_pct) {
+    const int rate = 44100;
+    if (duration_ms > 10000) duration_ms = 10000;
+    int samples = rate * duration_ms / 1000;
+    uint32_t data_size = (uint32_t)samples * 2, riff = 36 + data_size, byte_rate = rate * 2;
+    uint8_t h[44] = { 'R','I','F','F', 0,0,0,0, 'W','A','V','E', 'f','m','t',' ', 16,0,0,0, 1,0, 1,0,
+                      0,0,0,0, 0,0,0,0, 2,0, 16,0, 'd','a','t','a', 0,0,0,0 };
+    for (int i = 0; i < 4; i++) {
+        h[4 + i]  = (uint8_t)(riff >> (8 * i));
+        h[24 + i] = (uint8_t)((uint32_t)rate >> (8 * i));
+        h[28 + i] = (uint8_t)(byte_rate >> (8 * i));
+        h[40 + i] = (uint8_t)(data_size >> (8 * i));
+    }
+    FILE *f = fdopen(fd, "wb");
+    if (!f) return false;
+    fwrite(h, 1, sizeof(h), f);
+    float amp = 32767.0f * (float)CLAMP(volume_pct, 0, 100) / 100.0f * 0.5f;
+    for (int i = 0; i < samples; i++) {
+        int16_t s = (int16_t)(amp * sin(2.0 * G_PI * freq * i / rate));
+        fwrite(&s, 2, 1, f);
+    }
+    return fclose(f) == 0;
+}
+
+static void on_tone_done(GPid pid, gint status, gpointer path) {
+    (void)status;
+    g_spawn_close_pid(pid);
+    unlink(path);
+    g_free(path);
+}
+
+static bool audio_play_tone(int freq_hz, int duration_ms, int volume_percent) {
+    if (freq_hz <= 0 || duration_ms <= 0) return false;
+    char *path = g_strdup("/tmp/zyl-tone-XXXXXX.wav");
+    int fd = g_mkstemp_full(path, O_RDWR, 0600);
+    if (fd < 0 || !write_tone_wav(fd, freq_hz, duration_ms, volume_percent)) {
+        if (fd >= 0) unlink(path);
+        g_free(path);
+        return false;
+    }
+    const char *argv[] = { "pw-play", path, NULL };
+    GPid pid;
+    if (!g_spawn_async(NULL, (char **)argv, NULL,
+                       G_SPAWN_SEARCH_PATH | G_SPAWN_DO_NOT_REAP_CHILD |
+                       G_SPAWN_STDOUT_TO_DEV_NULL | G_SPAWN_STDERR_TO_DEV_NULL,
+                       NULL, NULL, &pid, NULL)) {
+        unlink(path);
+        g_free(path);
+        return false;
+    }
+    g_child_watch_add(pid, on_tone_done, path);
+    return true;
+}
+
+/* ─── Call routing ─── */
+typedef struct { char sink[256], earpiece[128], speaker[128]; } CallRoute;
+
+/* ALSA UCM names the call outputs; pactl reports them as port types or names */
+static bool port_is(JsonObject *port, const char *const kinds[]) {
+    const char *type = json_object_has_member(port, "type") ? json_object_get_string_member(port, "type") : "";
+    const char *name = json_object_get_string_member(port, "name");
+    for (int i = 0; kinds[i]; i++) {
+        if ((type && g_ascii_strcasecmp(type, kinds[i]) == 0) ||
+            (name && strcasestr(name, kinds[i]))) return true;
     }
     return false;
 }
 
-/* ─── Settings persistence ─── */
-static void save_audio_settings(void) {
-    char path[512];
-    snprintf(path, sizeof(path), "%s/audio_state", SETTINGS_DIR);
-    FILE *f = fopen(path, "w");
-    if (!f) return;
-    fprintf(f, "media=%d\n", g_audio.media_volume);
-    fprintf(f, "notification=%d\n", g_audio.notification_volume);
-    fprintf(f, "alarm=%d\n", g_audio.alarm_volume);
-    fprintf(f, "call=%d\n", g_audio.call_volume);
-    fprintf(f, "vibration=%d\n", g_audio.vibration ? 1 : 0);
-    fprintf(f, "silent=%d\n", g_audio.silent_mode ? 1 : 0);
-    fflush(f);
-    fsync(fileno(f));
-    fclose(f);
-}
-
-static void load_audio_settings(void) {
-    char path[512];
-    snprintf(path, sizeof(path), "%s/audio_state", SETTINGS_DIR);
-    FILE *f = fopen(path, "r");
-    if (!f) return;
-    char line[128];
-    while (fgets(line, sizeof(line), f)) {
-        int val = 0;
-        if (sscanf(line, "media=%d", &val) == 1) g_audio.media_volume = val;
-        else if (sscanf(line, "notification=%d", &val) == 1) g_audio.notification_volume = val;
-        else if (sscanf(line, "alarm=%d", &val) == 1) g_audio.alarm_volume = val;
-        else if (sscanf(line, "call=%d", &val) == 1) g_audio.call_volume = val;
-        else if (sscanf(line, "vibration=%d", &val) == 1) g_audio.vibration = (val != 0);
-        else if (sscanf(line, "silent=%d", &val) == 1) g_audio.silent_mode = (val != 0);
+static bool find_call_route(CallRoute *r) {
+    static const char *const EARPIECE[] = { "earpiece", "handset", NULL };
+    static const char *const SPEAKER[]  = { "speaker", NULL };
+    const char *argv[] = { "pactl", "-f", "json", "list", "sinks", NULL };
+    char *out = NULL;
+    bool found = false;
+    JsonParser *p = json_parser_new();
+    if (run(argv, &out) && json_parser_load_from_data(p, out, -1, NULL) &&
+        JSON_NODE_HOLDS_ARRAY(json_parser_get_root(p))) {
+        JsonArray *sinks = json_node_get_array(json_parser_get_root(p));
+        for (guint i = 0; i < json_array_get_length(sinks) && !found; i++) {
+            JsonObject *sink = json_array_get_object_element(sinks, i);
+            if (!sink || !json_object_has_member(sink, "ports")) continue;
+            memset(r, 0, sizeof(*r));
+            JsonArray *ports = json_object_get_array_member(sink, "ports");
+            for (guint k = 0; ports && k < json_array_get_length(ports); k++) {
+                JsonObject *port = json_array_get_object_element(ports, k);
+                const char *name = port ? json_object_get_string_member(port, "name") : NULL;
+                if (!name) continue;
+                if (port_is(port, EARPIECE)) g_strlcpy(r->earpiece, name, sizeof(r->earpiece));
+                else if (port_is(port, SPEAKER)) g_strlcpy(r->speaker, name, sizeof(r->speaker));
+            }
+            const char *sink_name = json_object_get_string_member(sink, "name");
+            found = r->earpiece[0] && r->speaker[0] && sink_name;
+            if (found) g_strlcpy(r->sink, sink_name, sizeof(r->sink));
+        }
     }
-    fclose(f);
+    g_object_unref(p);
+    g_free(out);
+    return found;
 }
 
-/* ─── Apply volume to system mixer ─── */
-static int apply_volume(const char *stream, int percent) {
-    (void)stream; /* All streams map to master for now — future: PipeWire node routing */
-
-    if (g_has_wpctl) {
-        char vol_arg[16];
-        snprintf(vol_arg, sizeof(vol_arg), "%.2f", percent / 100.0);
-        char *argv[] = {
-            "/usr/bin/wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", vol_arg, NULL
-        };
-        return spawn_capture_first_line("/usr/bin/wpctl", argv, NULL, 0);
-    }
-    if (g_has_amixer) {
-        char pct_arg[16];
-        snprintf(pct_arg, sizeof(pct_arg), "%d%%", percent);
-        char *argv[] = {
-            "/usr/bin/amixer", "set", "Master", pct_arg, NULL
-        };
-        if (access("/usr/bin/amixer", X_OK) == 0)
-            return spawn_capture_first_line("/usr/bin/amixer", argv, NULL, 0);
-        char *argv2[] = { "/bin/amixer", "set", "Master", pct_arg, NULL };
-        return spawn_capture_first_line("/bin/amixer", argv2, NULL, 0);
-    }
-    return -1;
+static bool audio_speakerphone_supported(void) {
+    CallRoute r;
+    return find_call_route(&r);
 }
 
-/* ─── HAL implementation ─── */
-static int audio_init(void) {
-    g_has_wpctl = cmd_exists("wpctl");
-    g_has_amixer = cmd_exists("amixer");
-    load_audio_settings();
-    return 0;
+static bool audio_set_speakerphone(bool on) {
+    CallRoute r;
+    if (!find_call_route(&r)) return false;
+    const char *argv[] = { "pactl", "set-sink-port", r.sink, on ? r.speaker : r.earpiece, NULL };
+    return run(argv, NULL);
 }
 
-static void audio_shutdown(void) {
-    save_audio_settings();
-}
-
-static int audio_set_volume(const char *stream, int percent) {
-    if (!stream) return -1;
-    if (percent < 0) percent = 0;
-    if (percent > 100) percent = 100;
-
-    if (strcmp(stream, "media") == 0)             g_audio.media_volume = percent;
-    else if (strcmp(stream, "notification") == 0)  g_audio.notification_volume = percent;
-    else if (strcmp(stream, "alarm") == 0)         g_audio.alarm_volume = percent;
-    else if (strcmp(stream, "call") == 0)          g_audio.call_volume = percent;
-    else return -1;
-
-    save_audio_settings();
-    return apply_volume(stream, percent);
-}
-
-static int audio_get_volume(const char *stream, int *out_percent) {
-    if (!stream || !out_percent) return -1;
-
-    if (strcmp(stream, "media") == 0)             *out_percent = g_audio.media_volume;
-    else if (strcmp(stream, "notification") == 0)  *out_percent = g_audio.notification_volume;
-    else if (strcmp(stream, "alarm") == 0)         *out_percent = g_audio.alarm_volume;
-    else if (strcmp(stream, "call") == 0)          *out_percent = g_audio.call_volume;
-    else return -1;
-
-    return 0;
-}
-
-static int audio_set_vibration(bool enabled) {
-    g_audio.vibration = enabled;
-    save_audio_settings();
-    return 0;
-}
-
-static int audio_set_silent_mode(bool enabled) {
-    g_audio.silent_mode = enabled;
-    save_audio_settings();
-    if (enabled && (g_has_wpctl || g_has_amixer)) {
-        apply_volume("media", 0);
-    }
-    return 0;
-}
-
-static int audio_get_state(ZylAudioState *out) {
-    if (!out) return -1;
-    *out = g_audio;
-    return 0;
-}
-
-/* ─── HAL 인스턴스 ─── */
-static ZylAudioHal audio_hal_instance = {
-    .init            = audio_init,
-    .shutdown        = audio_shutdown,
-    .set_volume      = audio_set_volume,
-    .get_volume      = audio_get_volume,
-    .set_vibration   = audio_set_vibration,
-    .set_silent_mode = audio_set_silent_mode,
-    .get_state       = audio_get_state,
+static const ZylAudioHal audio_hal = {
+    .get_output_volume      = audio_get_output_volume,
+    .set_output_volume      = audio_set_output_volume,
+    .set_output_mute        = audio_set_output_mute,
+    .set_input_mute         = audio_set_input_mute,
+    .play_tone              = audio_play_tone,
+    .speakerphone_supported = audio_speakerphone_supported,
+    .set_speakerphone       = audio_set_speakerphone,
 };
 
-ZylAudioHal *zyl_hal_audio_linux(void) {
-    return &audio_hal_instance;
-}
+const ZylAudioHal *zyl_hal_audio(void) { return &audio_hal; }

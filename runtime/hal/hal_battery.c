@@ -170,6 +170,6 @@ static ZylBatteryHal battery_hal_instance = {
     .set_change_callback = battery_set_change_callback,
 };
 
-ZylBatteryHal *zyl_hal_battery_linux(void) {
+ZylBatteryHal *zyl_hal_battery(void) {
     return &battery_hal_instance;
 }

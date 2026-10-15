@@ -1,15 +1,16 @@
 /* ──────────────────────────────────────────────────────────
  * [Clean Architecture] Domain Layer - Interface
  *
- * 역할: Hardware Abstraction Layer 인터페이스 정의
- * 수행범위: WiFi, BT, 디스플레이, 사운드, 배터리, 센서 추상화
+ * 역할: Hardware Abstraction Layer 포트 — 서비스가 하드웨어에 닿는 유일한 길
+ * 수행범위: 부트로더, 오디오(통화 경로 포함), 진동, Wi-Fi, 블루투스, 디스플레이,
+ *           배터리, 저장공간. 각 모듈은 그 하드웨어가 이 보드에 있는지도 답한다 —
+ *           없으면 기능은 남고 비활성으로 보인다
  * 의존방향: stdbool.h, stdint.h
- * SOLID: DIP — 하드웨어 구현이 아닌 추상 인터페이스에 의존.
- *        ISP — 각 하드웨어 모듈별 독립 인터페이스.
+ * SOLID: DIP — 서비스는 이 인터페이스에만 의존. ISP — 모듈별 접근자
  *
- * 이 인터페이스는 두 가지 구현을 가진다:
- *   1. 실기기: Linux 커널 드라이버 + wpa_supplicant/BlueZ/PipeWire
- *   2. 에뮬레이터: 브라우저 Web API (navigator.connection 등)
+ * 구현은 보드 계약(board/<id>/meson.build 의 board_hal_backend)이 고른다:
+ *   linux    — 커널 드라이버 + PipeWire/NetworkManager/BlueZ/sysfs (hal_<모듈>.c)
+ *   emulator — VM·개발 호스트용 가상 하드웨어 (hal_emulator.c)
  * ────────────────────────────────────────────────────────── */
 
 #ifndef ZYL_HAL_H
@@ -129,32 +130,35 @@ typedef struct {
 } ZylDisplayHal;
 
 /* ═══════════════════════════════════════════════════════
-   Audio HAL
-   실기기: PipeWire / ALSA
-   에뮬레이터: Web Audio API
+   Audio HAL — 출력·마이크와 통화 경로
+   실기기: PipeWire (wpctl, pactl, pw-play)
+   에뮬레이터: 메모리 상태, 통화 경로 없음
    ═══════════════════════════════════════════════════════ */
 
 typedef struct {
-    int     media_volume;       /* 0 ~ 100 */
-    int     notification_volume;
-    int     alarm_volume;
-    int     call_volume;
-    bool    vibration;
-    bool    silent_mode;
-} ZylAudioState;
+    int   (*get_output_volume)(void);              /* 0 ~ 100, -1 unknown */
+    bool  (*set_output_volume)(int percent);
+    bool  (*set_output_mute)(bool mute);
+    bool  (*set_input_mute)(bool mute);            /* the microphone: a call's uplink */
+    /* A short sine tone, not waiting for it to finish */
+    bool  (*play_tone)(int freq_hz, int duration_ms, int volume_percent);
+    /* Calls: true when the earpiece and the loudspeaker are separate outputs
+       the OS can switch between. Without both there is nothing to switch */
+    bool  (*speakerphone_supported)(void);
+    bool  (*set_speakerphone)(bool on);
+} ZylAudioHal;
+
+/* ═══════════════════════════════════════════════════════
+   Vibrator HAL
+   실기기: 입력 장치의 force-feedback(FF_RUMBLE) — pwm/gpio-vibrator 등
+   에뮬레이터: 없음
+   ═══════════════════════════════════════════════════════ */
 
 typedef struct {
-    int   (*init)(void);
-    void  (*shutdown)(void);
-
-    int   (*set_volume)(const char *stream, int percent);
-    int   (*get_volume)(const char *stream, int *out_percent);
-
-    int   (*set_vibration)(bool enabled);
-    int   (*set_silent_mode)(bool enabled);
-
-    int   (*get_state)(ZylAudioState *out);
-} ZylAudioHal;
+    bool  (*present)(void);
+    /* on, off, on, ... in milliseconds; returns at once */
+    bool  (*vibrate)(const int *pattern_ms, int count);
+} ZylVibratorHal;
 
 /* ═══════════════════════════════════════════════════════
    Battery HAL
@@ -225,28 +229,13 @@ typedef struct {
    고른다(runtime/hal/meson.build). 서비스는 쓰는 모듈의 접근자만 부른다.
    ═══════════════════════════════════════════════════════ */
 
-const ZylBootHal *zyl_hal_boot(void);
-
-/* ═══════════════════════════════════════════════════════
-   HAL Registry — 전체 HAL 모듈을 하나로 묶는 구조체
-   ═══════════════════════════════════════════════════════ */
-
-typedef struct {
-    ZylWifiHal      *wifi;
-    ZylBtHal        *bluetooth;
-    ZylDisplayHal   *display;
-    ZylAudioHal     *audio;
-    ZylBatteryHal   *battery;
-    ZylStorageHal   *storage;
-} ZylHalRegistry;
-
-/*
- * HAL 초기화 — 플랫폼에 따라 구현 선택
- *   실기기:    zyl_hal_create_linux()
- *   에뮬레이터: zyl_hal_create_emulator()
- */
-ZylHalRegistry *zyl_hal_create_linux(void);
-ZylHalRegistry *zyl_hal_create_emulator(void);
-void            zyl_hal_destroy(ZylHalRegistry *hal);
+const ZylBootHal     *zyl_hal_boot(void);
+const ZylAudioHal    *zyl_hal_audio(void);
+const ZylVibratorHal *zyl_hal_vibrator(void);
+ZylWifiHal           *zyl_hal_wifi(void);
+ZylBtHal             *zyl_hal_bt(void);
+ZylDisplayHal        *zyl_hal_display(void);
+ZylBatteryHal        *zyl_hal_battery(void);
+ZylStorageHal        *zyl_hal_storage(void);
 
 #endif /* ZYL_HAL_H */

@@ -196,6 +196,6 @@ static ZylDisplayHal display_hal_instance = {
     .get_state           = display_get_state,
 };
 
-ZylDisplayHal *zyl_hal_display_linux(void) {
+ZylDisplayHal *zyl_hal_display(void) {
     return &display_hal_instance;
 }

@@ -439,6 +439,7 @@ body {
   -webkit-backdrop-filter: blur(4px);
   transition: all 0.2s;
 }
+.incall-action-btn:disabled { opacity: 0.35; cursor: default; }
 .incall-action-btn.active svg {
   background: rgba(34,197,94,0.2);
   color: #22c55e;

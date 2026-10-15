@@ -352,7 +352,7 @@ fi
 #     메서드나 인자가 없으면 에뮬레이터에서는 되고 기기에서는 실패한다.
 #     기존 공백(settings 데몬 부재, JS 전용 메서드)은 상한으로 묶고, 늘면 실패.
 #     공백을 메우면 상한을 낮출 것.
-CONTRACT_GAP_MAX=1
+CONTRACT_GAP_MAX=0
 CONTRACT_GAPS=$(python3 - "$ROOT" <<'PYCHK'
 import re, glob, sys
 root = sys.argv[1]

@@ -175,6 +175,25 @@ test('calllog',
   )
 )
 
+# Test: Audio HAL — speakerphone only with both earpiece and loudspeaker,
+# output volume, microphone mute (fake wpctl/pactl)
+test('hal-audio',
+  executable('test-hal-audio',
+    'test_hal_audio.c',
+    include_directories: include_directories('../runtime/hal'),
+    dependencies: [gio_dep, json_glib_dep, meson.get_compiler('c').find_library('m')],
+  )
+)
+
+# Test: Vibrator HAL — the motor is the input device with FF_RUMBLE (fake sysfs)
+test('hal-vibrator',
+  executable('test-hal-vibrator',
+    'test_hal_vibrator.c',
+    include_directories: include_directories('../runtime/hal'),
+    dependencies: [gio_dep, dependency('threads')],
+  )
+)
+
 # Test: device app scan — a user app must not replace a system app by reusing its id
 test('manifest-scan',
   executable('test-manifest-scan',

@@ -305,6 +305,6 @@ static ZylWifiHal wifi_hal_instance = {
     .get_signal_strength = wifi_get_signal_strength,
 };
 
-ZylWifiHal *zyl_hal_wifi_linux(void) {
+ZylWifiHal *zyl_hal_wifi(void) {
     return &wifi_hal_instance;
 }

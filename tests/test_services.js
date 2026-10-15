@@ -1342,6 +1342,14 @@ var callTests = (function () {
         assert.strictEqual(typeof tel.addCallLog, 'undefined');   /* apps cannot write the log */
       });
     }),
+    asyncTest('audio says what this device has: no call audio here, vibration if the page can', function () {
+      var audio = ns.audio({ settingsSvc: { _getSetting: function () { return Promise.resolve({}); },
+                                            _updateSetting: function () {} } });
+      return Promise.all([audio.getCapabilities(), audio.setSpeakerphone({ enabled: true })]).then(function (r) {
+        assert.deepStrictEqual(r[0], { speakerphone: false, vibrator: true });   /* stub has navigator.vibrate */
+        assert.strictEqual(r[1], false);
+      });
+    }),
     asyncTest('vibration follows the sound setting at the moment it is asked', function () {
       var sound = { vibration: false };
       var buzzed = 0;

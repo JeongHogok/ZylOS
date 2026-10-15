@@ -1,30 +1,23 @@
-#define _GNU_SOURCE
 /* ──────────────────────────────────────────────────────────
  * [Clean Architecture] Application Layer - Service
  *
- * 역할: PipeWire 오디오 서비스 — 볼륨 제어, 마이크 음소거, 톤 재생
- * 수행범위: PipeWire 세션 연결, 스트림별 볼륨 get/set(이름: media·notif·alarm·
- *           ringtone·system), 마이크 음소거(통화 중 음소거), sine 톤 생성
- * 의존방향: audio.h, gio/gio.h, pipewire/pipewire.h
- * SOLID: SRP — 오디오 관리만 담당
+ * 역할: 오디오 서비스 (org.zylos.AudioService) — 소리 정책과 D-Bus
+ * 수행범위: 스트림별 볼륨(이름: media·notif·alarm·ringtone·system, media 가
+ *           기기 출력), 무음, 마이크 음소거(통화 중 음소거), 톤·키 클릭(무음일 때
+ *           키 클릭은 조용), 스피커폰, 진동(설정 sound.vibration 을 따름), 이
+ *           기기에 있는 기능(스피커폰·진동 모터) 보고 — 없는 기능은 앱이 비활성
+ * 의존방향: audio.h, hal.h (Audio·Vibrator HAL), gio/gio.h (D-Bus)
+ * SOLID: SRP — 소리 정책만. DIP — 장치는 ZylAudioHal/ZylVibratorHal 로만
  * ────────────────────────────────────────────────────────── */
 
 #include "audio.h"
+#include "hal.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
-#include <spawn.h>
-#include <sys/wait.h>
 #include <gio/gio.h>
 #include <glib-unix.h>
-
-/* PipeWire integration via wpctl (WirePlumber CLI).
- * Direct libpipewire API requires async event loops that conflict
- * with GMainLoop. wpctl provides synchronous volume control. */
-
-#define TONE_TMP_TEMPLATE "/tmp/zyl-tone-XXXXXX.wav"
 
 struct ZylAudioService {
     int volumes[5]; /* per-stream volume 0-100 */
@@ -32,71 +25,6 @@ struct ZylAudioService {
     GDBusConnection *dbus;
     guint dbus_owner_id;
 };
-
-/* ─── PipeWire volume via wpctl ─── */
-
-static int pw_set_volume(int percent) {
-    float vol = (float)percent / 100.0f;
-    char vol_str[16];
-    snprintf(vol_str, sizeof(vol_str), "%.2f", vol);
-    pid_t pid;
-    char *argv[] = {"wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", vol_str, NULL};
-    char *envp[] = {"PATH=/usr/bin:/bin", NULL};
-    int rc = posix_spawn(&pid, "/usr/bin/wpctl", NULL, NULL, argv, envp);
-    if (rc != 0) return -1;
-    int status;
-    waitpid(pid, &status, 0);
-    return status;
-}
-
-static int pw_get_volume(void) {
-    int pipefd[2];
-    if (pipe(pipefd) < 0) return 50;
-
-    pid_t pid;
-    posix_spawn_file_actions_t acts;
-    posix_spawn_file_actions_init(&acts);
-    posix_spawn_file_actions_adddup2(&acts, pipefd[1], STDOUT_FILENO);
-    posix_spawn_file_actions_addclose(&acts, pipefd[0]);
-
-    const char *argv[] = { "wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@", NULL };
-    char *envp[] = { "PATH=/usr/bin:/bin", NULL };
-
-    int rc = posix_spawn(&pid, "/usr/bin/wpctl", &acts, NULL,
-                         (char *const *)argv, envp);
-    posix_spawn_file_actions_destroy(&acts);
-    close(pipefd[1]);
-
-    if (rc != 0) { close(pipefd[0]); return 50; }
-
-    char buf[128] = {0};
-    ssize_t n = read(pipefd[0], buf, sizeof(buf) - 1);
-    close(pipefd[0]);
-    waitpid(pid, NULL, 0);
-
-    int vol = 50;
-    if (n > 0) {
-        buf[n] = '\0';
-        float v = 0.0f;
-        if (sscanf(buf, "Volume: %f", &v) == 1) {
-            vol = (int)(v * 100.0f);
-            if (vol < 0) vol = 0;
-            if (vol > 100) vol = 100;
-        }
-    }
-    return vol;
-}
-
-/* target: @DEFAULT_AUDIO_SINK@ (speaker) or @DEFAULT_AUDIO_SOURCE@ (microphone) */
-static bool pw_set_mute(const char *target, bool mute) {
-    pid_t pid;
-    char *argv[] = {"wpctl", "set-mute", (char *)target, mute ? "1" : "0", NULL};
-    char *envp[] = {"PATH=/usr/bin:/bin", NULL};
-    int rc = posix_spawn(&pid, "/usr/bin/wpctl", NULL, NULL, argv, envp);
-    int status = -1;
-    if (rc == 0) waitpid(pid, &status, 0);
-    return rc == 0 && WIFEXITED(status) && WEXITSTATUS(status) == 0;
-}
 
 /* Stream names apps use (apps/system/services/audio.js), in ZylAudioStream order */
 static const char *const STREAM_NAMES[] = {"media", "notif", "alarm", "ringtone", "system"};
@@ -107,49 +35,21 @@ static int stream_from_name(const char *name) {
     return -1;
 }
 
-/* ─── Tone generation via PipeWire (pw-play fallback) ─── */
-
-static int generate_tone_wav(const char *path, int freq, int duration_ms,
-                              int volume_pct) {
-    int sample_rate = 44100;
-    /* Clamp duration to prevent integer overflow (max ~48 seconds at 44100Hz) */
-    if (duration_ms > 48000) duration_ms = 48000;
-    int num_samples = sample_rate * duration_ms / 1000;
-    int data_size = num_samples * 2; /* 16-bit mono */
-    int file_size = 44 + data_size;
-    float amplitude = 32767.0f * ((float)volume_pct / 100.0f) * 0.5f;
-
-    FILE *f = fopen(path, "wb");
-    if (!f) return -1;
-
-    /* WAV header */
-    uint8_t hdr[44] = {
-        'R','I','F','F', 0,0,0,0, 'W','A','V','E',
-        'f','m','t',' ', 16,0,0,0, 1,0, 1,0,
-        0,0,0,0, 0,0,0,0, 2,0, 16,0,
-        'd','a','t','a', 0,0,0,0
-    };
-    /* Fill sizes */
-    int riff_size = file_size - 8;
-    hdr[4]  = riff_size & 0xFF; hdr[5]  = (riff_size >> 8) & 0xFF;
-    hdr[6]  = (riff_size >> 16) & 0xFF; hdr[7]  = (riff_size >> 24) & 0xFF;
-    hdr[24] = sample_rate & 0xFF; hdr[25] = (sample_rate >> 8) & 0xFF;
-    hdr[26] = (sample_rate >> 16) & 0xFF; hdr[27] = (sample_rate >> 24) & 0xFF;
-    int byte_rate = sample_rate * 2;
-    hdr[28] = byte_rate & 0xFF; hdr[29] = (byte_rate >> 8) & 0xFF;
-    hdr[30] = (byte_rate >> 16) & 0xFF; hdr[31] = (byte_rate >> 24) & 0xFF;
-    hdr[40] = data_size & 0xFF; hdr[41] = (data_size >> 8) & 0xFF;
-    hdr[42] = (data_size >> 16) & 0xFF; hdr[43] = (data_size >> 24) & 0xFF;
-    fwrite(hdr, 1, 44, f);
-
-    /* Generate sine wave */
-    for (int i = 0; i < num_samples; i++) {
-        double t = (double)i / (double)sample_rate;
-        int16_t sample = (int16_t)(amplitude * sin(2.0 * M_PI * freq * t));
-        fwrite(&sample, 2, 1, f);
+/* Whether to vibrate is a setting (Settings > Sound writes sound.vibration):
+   asked when needed, so a change applies at once with no second copy */
+static bool vibration_wanted(ZylAudioService *svc) {
+    if (!svc->dbus) return true;
+    GVariant *r = g_dbus_connection_call_sync(svc->dbus, "org.zylos.Settings", "/org/zylos/Settings",
+        "org.zylos.Settings", "Get", g_variant_new("(s)", "sound"), G_VARIANT_TYPE("(a{sv})"),
+        G_DBUS_CALL_FLAGS_NONE, 1000, NULL, NULL);
+    gboolean on = TRUE;
+    if (r) {
+        GVariant *d = g_variant_get_child_value(r, 0);
+        g_variant_lookup(d, "vibration", "b", &on);
+        g_variant_unref(d);
+        g_variant_unref(r);
     }
-    fclose(f);
-    return 0;
+    return on;
 }
 
 /* ─── D-Bus ─── */
@@ -157,6 +57,9 @@ static int generate_tone_wav(const char *path, int freq, int duration_ms,
 static const char *audio_introspection_xml =
     "<node>"
     "  <interface name='" ZYL_AUDIO_DBUS_NAME "'>"
+    "    <method name='GetCapabilities'>"
+    "      <arg type='a{sv}' name='capabilities' direction='out'/>"
+    "    </method>"
     "    <method name='GetVolume'>"
     "      <arg type='s' name='stream' direction='in'/>"
     "      <arg type='i' name='volume' direction='out'/>"
@@ -169,6 +72,14 @@ static const char *audio_introspection_xml =
     "    <method name='SetMicMute'>"
     "      <arg type='b' name='muted' direction='in'/>"
     "      <arg type='b' name='applied' direction='out'/>"
+    "    </method>"
+    "    <method name='SetSpeakerphone'>"
+    "      <arg type='b' name='enabled' direction='in'/>"
+    "      <arg type='b' name='applied' direction='out'/>"
+    "    </method>"
+    "    <method name='Vibrate'>"
+    "      <arg type='ai' name='pattern' direction='in'/>"
+    "      <arg type='b' name='vibrated' direction='out'/>"
     "    </method>"
     "    <method name='GetMute'>"
     "      <arg type='b' name='muted' direction='out'/>"
@@ -184,6 +95,16 @@ static const char *audio_introspection_xml =
     "  </interface>"
     "</node>";
 
+/* What this device has — the same answer as the emulator's audio service */
+static GVariant *capabilities_variant(void) {
+    GVariantBuilder d;
+    g_variant_builder_init(&d, G_VARIANT_TYPE("a{sv}"));
+    g_variant_builder_add(&d, "{sv}", "speakerphone",
+                          g_variant_new_boolean(zyl_hal_audio()->speakerphone_supported()));
+    g_variant_builder_add(&d, "{sv}", "vibrator", g_variant_new_boolean(zyl_hal_vibrator()->present()));
+    return g_variant_new("(a{sv})", &d);
+}
+
 static void handle_audio_method(GDBusConnection *conn, const gchar *sender,
                                  const gchar *path, const gchar *iface,
                                  const gchar *method, GVariant *params,
@@ -191,7 +112,9 @@ static void handle_audio_method(GDBusConnection *conn, const gchar *sender,
     ZylAudioService *svc = data;
     (void)conn; (void)sender; (void)path; (void)iface;
 
-    if (g_strcmp0(method, "GetVolume") == 0 || g_strcmp0(method, "SetVolume") == 0) {
+    if (g_strcmp0(method, "GetCapabilities") == 0) {
+        g_dbus_method_invocation_return_value(inv, capabilities_variant());
+    } else if (g_strcmp0(method, "GetVolume") == 0 || g_strcmp0(method, "SetVolume") == 0) {
         const gchar *name = NULL;
         gint32 value = 0;
         if (g_strcmp0(method, "GetVolume") == 0) g_variant_get(params, "(&s)", &name);
@@ -215,11 +138,23 @@ static void handle_audio_method(GDBusConnection *conn, const gchar *sender,
             zyl_audio_set_volume(svc, (ZylAudioStream)stream, value)));
         g_dbus_method_invocation_return_value(inv, g_variant_new("(a{sv})", &d));
     } else if (g_strcmp0(method, "SetMicMute") == 0) {
-        /* The phone's mute: the uplink of a call is the default microphone */
         gboolean muted = FALSE;
         g_variant_get(params, "(b)", &muted);
         g_dbus_method_invocation_return_value(inv, g_variant_new("(b)",
-            pw_set_mute("@DEFAULT_AUDIO_SOURCE@", muted)));
+            zyl_hal_audio()->set_input_mute(muted)));
+    } else if (g_strcmp0(method, "SetSpeakerphone") == 0) {
+        gboolean on = FALSE;
+        g_variant_get(params, "(b)", &on);
+        g_dbus_method_invocation_return_value(inv, g_variant_new("(b)",
+            zyl_hal_audio()->set_speakerphone(on)));
+    } else if (g_strcmp0(method, "Vibrate") == 0) {
+        GVariant *arr = g_variant_get_child_value(params, 0);
+        gsize n = 0;
+        const gint32 *pattern = g_variant_get_fixed_array(arr, &n, sizeof(gint32));
+        bool done = n > 0 && vibration_wanted(svc) &&
+                    zyl_hal_vibrator()->vibrate(pattern, (int)n);
+        g_variant_unref(arr);
+        g_dbus_method_invocation_return_value(inv, g_variant_new("(b)", done));
     } else if (g_strcmp0(method, "GetMute") == 0) {
         g_dbus_method_invocation_return_value(inv,
             g_variant_new("(b)", zyl_audio_get_mute(svc)));
@@ -273,8 +208,9 @@ ZylAudioService *zyl_audio_create(void) {
     svc->volumes[ZYL_AUDIO_STREAM_SYSTEM]   = 50;
     svc->muted = false;
 
-    /* Sync with PipeWire */
-    svc->volumes[ZYL_AUDIO_STREAM_MEDIA] = pw_get_volume();
+    /* The media stream is the device output: start from what it is set to */
+    int out = zyl_hal_audio()->get_output_volume();
+    if (out >= 0) svc->volumes[ZYL_AUDIO_STREAM_MEDIA] = out;
 
     svc->dbus_owner_id = g_bus_own_name(G_BUS_TYPE_SESSION,
         ZYL_AUDIO_DBUS_NAME, G_BUS_NAME_OWNER_FLAGS_NONE,
@@ -299,8 +235,7 @@ int zyl_audio_set_volume(ZylAudioService *svc, ZylAudioStream stream,
     if (!svc || stream < 0 || stream > 4) return -1;
     int clamped = percent < 0 ? 0 : (percent > 100 ? 100 : percent);
     svc->volumes[stream] = clamped;
-    /* Apply to PipeWire for media stream */
-    if (stream == ZYL_AUDIO_STREAM_MEDIA) pw_set_volume(clamped);
+    if (stream == ZYL_AUDIO_STREAM_MEDIA) zyl_hal_audio()->set_output_volume(clamped);
     g_message("[Audio] Volume stream=%d → %d%%", stream, clamped);
     return clamped;
 }
@@ -312,56 +247,20 @@ bool zyl_audio_get_mute(ZylAudioService *svc) {
 void zyl_audio_set_mute(ZylAudioService *svc, bool muted) {
     if (!svc) return;
     svc->muted = muted;
-    pw_set_mute("@DEFAULT_AUDIO_SINK@", muted);
+    zyl_hal_audio()->set_output_mute(muted);
     g_message("[Audio] Mute: %s", muted ? "ON" : "OFF");
-}
-
-/* Child-watch callback: reap zombie and unlink temp WAV file */
-static void on_play_child_exit(GPid pid, gint status, gpointer data) {
-    (void)status;
-    g_spawn_close_pid(pid);
-    if (data) { unlink((const char *)data); free(data); }
 }
 
 int zyl_audio_play_tone(ZylAudioService *svc, int freq_hz,
                          int duration_ms) {
     if (!svc || svc->muted) return -1;
-    if (freq_hz <= 0 || duration_ms <= 0) return -1;
-
-    char tmp[] = TONE_TMP_TEMPLATE;
-    int fd = mkstemps(tmp, 4);
-    if (fd < 0) return -1;
-    close(fd);
-
-    int vol = svc->volumes[ZYL_AUDIO_STREAM_SYSTEM];
-    if (generate_tone_wav(tmp, freq_hz, duration_ms, vol) < 0) {
-        unlink(tmp);
-        return -1;
-    }
-
-    /* Play via pw-play (PipeWire) using posix_spawn (no shell) */
-    pid_t play_pid;
-    char *play_argv[] = {"pw-play", tmp, NULL};
-    char *play_envp[] = {"PATH=/usr/bin:/bin", NULL};
-    int play_rc = posix_spawn(&play_pid, "/usr/bin/pw-play", NULL, NULL, play_argv, play_envp);
-    if (play_rc != 0) {
-        /* ALSA fallback */
-        char *aplay_argv[] = {"aplay", tmp, NULL};
-        play_rc = posix_spawn(&play_pid, "/usr/bin/aplay", NULL, NULL, aplay_argv, play_envp);
-        if (play_rc != 0) {
-            unlink(tmp);
-            return -1;
-        }
-    }
-
-    /* Reap child via GLib child-watch to avoid zombies and clean up temp file */
-    char *tmp_copy = strdup(tmp);
-    g_child_watch_add(play_pid, on_play_child_exit, tmp_copy);
-    return 0;
+    return zyl_hal_audio()->play_tone(freq_hz, duration_ms,
+                                      svc->volumes[ZYL_AUDIO_STREAM_SYSTEM]) ? 0 : -1;
 }
 
 /* ─── 데몬 진입점 ─── */
 
+#ifndef ZYL_TEST
 static GMainLoop *g_audio_loop = NULL;
 
 static gboolean on_signal_audio(gpointer data) {
@@ -375,7 +274,7 @@ int main(int argc, char *argv[]) {
     (void)argc; (void)argv;
     ZylAudioService *svc = zyl_audio_create();
     if (!svc) { g_critical("[Audio] Failed to create service"); return 1; }
-    g_message("[Audio] Zyl OS Audio Service started (PipeWire/ALSA)");
+    g_message("[Audio] Zyl OS Audio Service started");
     g_audio_loop = g_main_loop_new(NULL, FALSE);
     g_unix_signal_add(SIGTERM, on_signal_audio, NULL);
     g_unix_signal_add(SIGINT,  on_signal_audio, NULL);
@@ -384,3 +283,4 @@ int main(int argc, char *argv[]) {
     zyl_audio_destroy(svc);
     return 0;
 }
+#endif /* ZYL_TEST */

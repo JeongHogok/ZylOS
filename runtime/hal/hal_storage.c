@@ -48,6 +48,6 @@ static ZylStorageHal storage_hal_instance = {
     .get_state = storage_get_state,
 };
 
-ZylStorageHal *zyl_hal_storage_linux(void) {
+ZylStorageHal *zyl_hal_storage(void) {
     return &storage_hal_instance;
 }

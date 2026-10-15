@@ -2,11 +2,12 @@
  * [Clean Architecture] Platform Layer - Emulator
  *
  * 역할: ZylOS HAL 에뮬레이터 — 순수 인메모리 가상 하드웨어 구현
- * 수행범위: WiFi/BT/Display/Audio/Battery/Storage 6개 모듈 에뮬레이션.
+ * 수행범위: 가상 Wi-Fi/BT/디스플레이/배터리/저장공간, 오디오는 볼륨 상태만.
+ *          없는 하드웨어(부트로더, 통화 경로, 진동 모터)는 없다고 답한다.
  *          실제 하드웨어, D-Bus, sysfs, gio 완전 불필요.
  *          Linux과 macOS 모두 빌드 가능.
  * 의존방향: hal.h (Domain Interface)만 의존. 외부 라이브러리 없음.
- * SOLID: DIP — ZylHalRegistry 추상 인터페이스만 구현.
+ * SOLID: DIP — hal.h 의 포트만 구현 (모듈 접근자).
  *        SRP — 모듈별 독립된 상태 구조체와 함수군.
  *        ISP — 각 HAL 인터페이스를 독립 구현 블록으로 분리.
  * ────────────────────────────────────────────────────────── */
@@ -392,67 +393,39 @@ static ZylDisplayHal g_display_hal = {
 
 
 /* ══════════════════════════════════════════════════════════
-   Audio 에뮬레이터
+   Audio 에뮬레이터 — 출력 볼륨·음소거 상태만. 소리를 낼 장치도, 이어피스와
+   스피커를 나눌 통화 경로도 없다
    ══════════════════════════════════════════════════════════ */
 
-static int  g_audio_media        = 70;
-static int  g_audio_notification = 80;
-static int  g_audio_alarm        = 100;
-static int  g_audio_call         = 70;
-static bool g_audio_vibration    = true;
-static bool g_audio_silent       = false;
+static int  g_audio_volume = 70;
+static bool g_audio_muted  = false;
+static bool g_audio_mic_muted = false;
 
-static int  audio_init(void) { return 0; }
-static void audio_shutdown(void) {}
-
-static int audio_set_volume(const char *stream, int percent) {
-    if (!stream || percent < 0 || percent > 100) return -1;
-    if (strcmp(stream, "media")        == 0) { g_audio_media        = percent; return 0; }
-    if (strcmp(stream, "notification") == 0) { g_audio_notification = percent; return 0; }
-    if (strcmp(stream, "alarm")        == 0) { g_audio_alarm        = percent; return 0; }
-    if (strcmp(stream, "call")         == 0) { g_audio_call         = percent; return 0; }
-    return -1;
+static int  emu_audio_get_output_volume(void) { return g_audio_volume; }
+static bool emu_audio_set_output_volume(int percent) {
+    g_audio_volume = percent < 0 ? 0 : percent > 100 ? 100 : percent;
+    return true;
 }
+static bool emu_audio_set_output_mute(bool mute) { g_audio_muted = mute; return true; }
+static bool emu_audio_set_input_mute(bool mute) { g_audio_mic_muted = mute; return true; }
+static bool emu_audio_play_tone(int f, int ms, int vol) { (void)f; (void)ms; (void)vol; return false; }
+static bool emu_audio_speakerphone_supported(void) { return false; }
+static bool emu_audio_set_speakerphone(bool on) { (void)on; return false; }
 
-static int audio_get_volume(const char *stream, int *out_percent) {
-    if (!stream || !out_percent) return -1;
-    if (strcmp(stream, "media")        == 0) { *out_percent = g_audio_media;        return 0; }
-    if (strcmp(stream, "notification") == 0) { *out_percent = g_audio_notification; return 0; }
-    if (strcmp(stream, "alarm")        == 0) { *out_percent = g_audio_alarm;        return 0; }
-    if (strcmp(stream, "call")         == 0) { *out_percent = g_audio_call;         return 0; }
-    return -1;
-}
-
-static int audio_set_vibration(bool enabled) {
-    g_audio_vibration = enabled;
-    return 0;
-}
-
-static int audio_set_silent_mode(bool enabled) {
-    g_audio_silent = enabled;
-    return 0;
-}
-
-static int audio_get_state(ZylAudioState *out) {
-    if (!out) return -1;
-    out->media_volume        = g_audio_media;
-    out->notification_volume = g_audio_notification;
-    out->alarm_volume        = g_audio_alarm;
-    out->call_volume         = g_audio_call;
-    out->vibration           = g_audio_vibration;
-    out->silent_mode         = g_audio_silent;
-    return 0;
-}
-
-static ZylAudioHal g_audio_hal = {
-    .init            = audio_init,
-    .shutdown        = audio_shutdown,
-    .set_volume      = audio_set_volume,
-    .get_volume      = audio_get_volume,
-    .set_vibration   = audio_set_vibration,
-    .set_silent_mode = audio_set_silent_mode,
-    .get_state       = audio_get_state,
+static const ZylAudioHal g_audio_hal = {
+    .get_output_volume      = emu_audio_get_output_volume,
+    .set_output_volume      = emu_audio_set_output_volume,
+    .set_output_mute        = emu_audio_set_output_mute,
+    .set_input_mute         = emu_audio_set_input_mute,
+    .play_tone              = emu_audio_play_tone,
+    .speakerphone_supported = emu_audio_speakerphone_supported,
+    .set_speakerphone       = emu_audio_set_speakerphone,
 };
+
+/* 진동 모터 없음 */
+static bool emu_vib_present(void) { return false; }
+static bool emu_vib_vibrate(const int *p, int n) { (void)p; (void)n; return false; }
+static const ZylVibratorHal g_vibrator_hal = { .present = emu_vib_present, .vibrate = emu_vib_vibrate };
 
 
 /* ══════════════════════════════════════════════════════════
@@ -592,41 +565,16 @@ static ZylStorageHal g_storage_hal = {
 
 
 /* ══════════════════════════════════════════════════════════
-   HAL Registry 생성 / 소멸
+   모듈 접근자 — 상태를 쓰는 모듈은 처음 쓸 때 init
    ══════════════════════════════════════════════════════════ */
 
-ZylHalRegistry *zyl_hal_create_emulator(void) {
-    ZylHalRegistry *hal = malloc(sizeof(ZylHalRegistry));
-    if (!hal) return NULL;
-
-    hal->wifi      = &g_wifi_hal;
-    hal->bluetooth = &g_bt_hal;
-    hal->display   = &g_display_hal;
-    hal->audio     = &g_audio_hal;
-    hal->battery   = &g_battery_hal;
-    hal->storage   = &g_storage_hal;
-
-    /* 순서: 의존성 없으므로 임의 순서 가능 */
-    hal->wifi->init();
-    hal->bluetooth->init();
-    hal->display->init();
-    hal->audio->init();
-    hal->battery->init();
-    hal->storage->init();
-
-    return hal;
-}
-
-void zyl_hal_destroy(ZylHalRegistry *hal) {
-    if (!hal) return;
-    hal->storage->shutdown();
-    hal->battery->shutdown();   /* 스레드 join 포함 */
-    hal->audio->shutdown();
-    hal->display->shutdown();
-    hal->bluetooth->shutdown();
-    hal->wifi->shutdown();
-    free(hal);
-}
+const ZylAudioHal    *zyl_hal_audio(void) { return &g_audio_hal; }
+const ZylVibratorHal *zyl_hal_vibrator(void) { return &g_vibrator_hal; }
+ZylWifiHal    *zyl_hal_wifi(void)    { return &g_wifi_hal; }
+ZylBtHal      *zyl_hal_bt(void)      { return &g_bt_hal; }
+ZylDisplayHal *zyl_hal_display(void) { return &g_display_hal; }
+ZylBatteryHal *zyl_hal_battery(void) { return &g_battery_hal; }
+ZylStorageHal *zyl_hal_storage(void) { return &g_storage_hal; }
 
 /* ──────────────────────────────────────────────────────────
    Boot — 가상 기기에는 A/B 부트로더가 없다: 업데이트·잠금 해제 비활성

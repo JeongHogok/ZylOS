@@ -2,7 +2,8 @@
 // [Clean Architecture] Domain Layer - Service Module
 //
 // Role: Audio service — volume, vibration, silent mode, sounds
-// Scope: per-stream volume, notification/beep/key sounds, alert tones, vibrate
+// Scope: per-stream volume, notification/beep/key sounds, alert tones, vibrate,
+//        capabilities (speakerphone, vibrator), speakerphone, microphone mute
 // Dependency Direction: Domain -> settings service
 // SOLID: SRP — audio control only
 // ----------------------------------------------------------
@@ -84,6 +85,12 @@
         settingsSvc._updateSetting('sound', 'silentMode', audioState.silentMode);
         return Promise.resolve(audioState.silentMode);
       },
+      /* What this device has — same answer as the device's GetCapabilities.
+         The emulator carries no call audio (no earpiece to switch from) */
+      getCapabilities: function () {
+        return Promise.resolve({ speakerphone: false, vibrator: typeof navigator.vibrate === 'function' });
+      },
+      setSpeakerphone: function () { return Promise.resolve(false); },
       /* Call uplink mute — the emulator carries no call audio */
       setMicMute: function () { return Promise.resolve(false); },
       playNotificationSound: function () {

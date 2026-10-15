@@ -79,6 +79,9 @@
   /* ─── Vibration Toggle ─── */
   var kbVibToggle = document.getElementById('kb-vibration-toggle');
   if (kbVibToggle) {
+    core.getCapabilities('audio').then(function (caps) {
+      if (!caps.vibrator) core.disableFor(kbVibToggle, null);
+    });
     kbVibToggle.addEventListener('change', function () {
       core.updateSetting('keyboard', 'vibrationEnabled', kbVibToggle.checked);
     });

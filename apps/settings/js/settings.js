@@ -162,6 +162,28 @@
     return ZylBridge.requestService(service, method, params || {});
   }
 
+  /* What a service's hardware can do on this device ({} when unknown) —
+     asked once per service; modules disable controls for what is missing */
+  var capabilityCache = {};
+  function getCapabilities(service) {
+    if (!capabilityCache[service]) {
+      capabilityCache[service] = requestService(service, 'getCapabilities').then(function (c) {
+        return c || {};
+      }, function () { return {}; });
+    }
+    return capabilityCache[service];
+  }
+
+  /* A control whose hardware is not here: kept, disabled, with the note shown */
+  function disableFor(input, noteId) {
+    if (input) {
+      input.disabled = true;
+      input.setAttribute('aria-disabled', 'true');
+    }
+    var note = noteId && document.getElementById(noteId);
+    if (note) note.classList.remove('hidden');
+  }
+
   /* ─── Send a setting update (Promise-based) ─── */
   function updateSetting(category, key, value) {
     return requestService('settings', 'update', { category: category, key: key, value: value });
@@ -325,6 +347,8 @@
   window.ZylSettingsCore = {
     t: t,
     requestService: requestService,
+    getCapabilities: getCapabilities,
+    disableFor: disableFor,
     onServiceEvent: function (service, event, fn) { ZylBridge.onServiceEvent(service, event, fn); },
     sendToSystem: function (msg) { ZylBridge.sendToSystem(msg); },
     updateSetting: updateSetting,

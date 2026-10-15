@@ -289,6 +289,6 @@ static ZylBtHal bt_hal_instance = {
     .get_paired_devices = bt_get_paired_devices,
 };
 
-ZylBtHal *zyl_hal_bt_linux(void) {
+ZylBtHal *zyl_hal_bt(void) {
     return &bt_hal_instance;
 }
