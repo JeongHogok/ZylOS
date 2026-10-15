@@ -26,12 +26,16 @@
    deleting the app deletes the container */
 #define WAM_CONTAINERS  "/data/appdata"
 #define WAM_BRIDGE_JS   "/usr/share/zyl-os/wam/bridge.js"
+/* Whose signatures make a user-installed app's code trusted (the store's key) */
+#define WAM_STORE_CONFIG "/etc/zyl-os/store.json"
+#define WAM_REVOKED      WAM_USER_DIR "/.revoked"
 
 /* ─── WAM server ─── */
 typedef struct {
     GApplication    *app;
     GHashTable      *manifests;   /* id -> ZylAppManifest* */
     GHashTable      *instances;   /* id -> ZylAppInstance* */
+    GHashTable      *seals;       /* id -> ZylSeal* — every user-installed app has one */
     guint            dbus_owner_id;
 
     /* Abstract interfaces wired up in main() */

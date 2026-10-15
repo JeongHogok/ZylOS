@@ -8,15 +8,21 @@
  *           서명 → 안전하게 풀기 → app.json 이 카탈로그와 같은 id·버전인지 →
  *           /data/apps/<id> 로 교체 → AppInstalled), 삭제(패키지 + 앱 컨테이너
  *           /data/appdata/<id> 통째로 → AppRemoved: WAM·알림·알람이 각자 정리).
+ *           설치되는 앱은 봉인돼 있어야 한다(app_seal.c): 카탈로그 앱은 스토어 키,
+ *           InstallFile(사용자 파일의 .zpkg)은 스토어 키 또는 스토어가 이 기기에
+ *           허락한 개발자. 카탈로그의 폐기 인증서 목록을 /data/apps/.revoked 에 둔다.
  *           시스템 앱은 대상이 아니다. 설정: /etc/zyl-os/store.json { url, publicKey }
  *           — 없으면 "unconfigured". 한 번에 작업 하나
  * 의존방향: gio (D-Bus, GSubprocess → curl), store_catalog.h, store_package.h,
- *           container.h, ota_verify.h (서명: tools/build-store.py 가 만든 것)
+ *           app_seal.h, container.h, ota_verify.h (서명: tools/build-store.py 가 만든 것),
+ *           hal.h (기기 ID)
  * SOLID: SRP — 앱 설치·삭제 흐름만. 해석·풀기·검증은 각 모듈
  * ────────────────────────────────────────────────────────── */
 
+#include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <gio/gio.h>
 #include <glib/gstdio.h>
@@ -25,6 +31,8 @@
 
 #include "store_catalog.h"
 #include "store_package.h"
+#include "app_seal.h"
+#include "hal.h"
 #include "../appdata/container.h"
 #include "../updater/ota_verify.h"
 
@@ -40,6 +48,10 @@
 #ifndef ZYL_CONTAINERS_ROOT
 #define ZYL_CONTAINERS_ROOT ZYL_CONTAINERS
 #endif
+#ifndef ZYL_FILES_ROOT
+#define ZYL_FILES_ROOT "/data/users/0/files"   /* where InstallFile's packages come from */
+#endif
+#define REVOKED_FILE ZYL_APPS_DIR "/.revoked"
 #define CATALOG_MAX (1024 * 1024)
 
 /* ─── Config and what is on the device ─── */
@@ -114,6 +126,90 @@ static bool remove_app(const char *id) {
     g_free(pkg);
     g_free(box);
     return ok;
+}
+
+/* ─── Seals: only code signed as it is runs ─── */
+
+/* NULL when the unpacked app in dir is sealed as required; else the reason.
+   store_only: the catalog's apps must be the store's own, never a development build */
+static const char *seal_reason(const char *dir, const char *id, const char *version,
+                               const char *store_pem, bool store_only) {
+    ZylBoardInfo board;
+    memset(&board, 0, sizeof(board));
+    zyl_hal_board()->get(&board);
+    char **revoked = zyl_seal_load_revoked(REVOKED_FILE);
+    ZylSeal *seal = NULL;
+    ZylSealVerdict v = zyl_seal_open(dir, id, version, store_pem, board.device_id,
+                                     (const char *const *)revoked, g_get_real_time() / G_USEC_PER_SEC,
+                                     true, &seal);
+    const char *why = NULL;
+    if (v == ZYL_SEAL_NOT_PROVISIONED) why = "not_provisioned";
+    else if (v == ZYL_SEAL_EXPIRED) why = "expired";
+    else if (v == ZYL_SEAL_REVOKED) why = "revoked";
+    else if (v != ZYL_SEAL_OK || (store_only && zyl_seal_developer(seal))) why = "bad_package";
+    if (why) g_warning("[AppStore] %s: %s", id, zyl_seal_verdict_message(v));
+    zyl_seal_free(seal);
+    g_strfreev(revoked);
+    return why;
+}
+
+/* What the store last said is revoked: the WAM stops development builds signed by them */
+static void save_revoked(const char *json, gssize len) {
+    char **revoked = zyl_store_catalog_revoked(json, len);
+    char *text = g_strjoinv("\n", revoked);
+    g_mkdir_with_parents(ZYL_APPS_DIR, 0750);
+    g_file_set_contents_full(REVOKED_FILE, text, -1, G_FILE_SET_CONTENTS_CONSISTENT, 0644, NULL);
+    g_free(text);
+    g_strfreev(revoked);
+}
+
+/* Forward: the swap is below */
+static bool swap_in(const char *work, const char *id);
+
+/* A package from the user's files — a development build provisioned for this
+   device, or the store's own. NULL (and *out_id) when installed, else the reason */
+static const char *install_file(const char *rel, const char *store_pem, char **out_id) {
+    char root[PATH_MAX], real[PATH_MAX];
+    char *full = rel ? g_build_filename(ZYL_FILES_ROOT, rel, NULL) : NULL;
+    char *work = NULL, *dir = NULL, *id = NULL, *version = NULL;
+    const char *why = NULL, *detail = NULL;
+    *out_id = NULL;
+    /* Only the user's own files: a path cannot reach the system or another app */
+    if (!full || strstr(rel, "..") || !realpath(ZYL_FILES_ROOT, root) || !realpath(full, real) ||
+        strncmp(real, root, strlen(root)) != 0 || real[strlen(root)] != '/')
+        why = "invalid_package";
+    if (!why) {
+        g_mkdir_with_parents(ZYL_APPS_DIR, 0750);
+        work = g_build_filename(ZYL_APPS_DIR, ".staging-XXXXXX", NULL);
+        if (!g_mkdtemp(work)) { g_clear_pointer(&work, g_free); why = "io"; }
+    }
+    if (!why) {
+        dir = g_build_filename(work, "app", NULL);
+        if (!zyl_store_unpack(real, dir, &detail)) why = "invalid_package";
+    }
+    if (!why) {
+        id = manifest_field(dir, "id");
+        version = manifest_field(dir, "version");
+        if (!id || !version || !zyl_container_valid_id(id) || !strchr(id, '.') ||
+            !zyl_store_check_manifest(dir, id, version, &detail)) why = "invalid_package";
+    }
+    if (!why && is_system_app(id)) why = "system_app";
+    if (!why) {
+        char *have = installed_version(id);
+        if (have && zyl_store_version_cmp(have, version) > 0) why = "up_to_date";   /* never a downgrade */
+        g_free(have);
+    }
+    if (!why) why = seal_reason(dir, id, version, store_pem, false);
+    if (!why && !swap_in(work, id)) why = "io";
+    if (!why) *out_id = g_strdup(id);
+    if (detail && why) g_warning("[AppStore] %s: %s", rel ? rel : "", detail);
+    if (work) zyl_remove_tree(work);
+    g_free(work);
+    g_free(dir);
+    g_free(id);
+    g_free(version);
+    g_free(full);
+    return why;
 }
 
 /* The unpacked app replaces what is installed (an update keeps the container) */
@@ -238,7 +334,8 @@ static void on_package(Job *j, bool downloaded) {
     else if (!zyl_store_unpack(pkg, dir, &why) || !zyl_store_check_manifest(dir, a->id, a->version, &why)) {
         g_warning("[AppStore] %s: %s", a->id, why);
         why = "invalid_package";
-    } else if (!swap_in(j->work, a->id)) why = "io";
+    } else if (!(why = seal_reason(dir, a->id, a->version, j->cfg.key_pem, true)) &&
+               !swap_in(j->work, a->id)) why = "io";
     g_free(pkg);
     g_free(dir);
     if (why) { finish(j, why); return; }
@@ -290,6 +387,7 @@ static void on_catalog_sig(Job *j, bool downloaded) {
     else if (!g_file_get_contents(cat, &json, &len, NULL) ||
              !(j->catalog = zyl_store_catalog_parse(json, (gssize)len, j->cfg.url)))
         why = "invalid";
+    else save_revoked(json, (gssize)len);
     g_free(sig);
     g_free(json);
     g_free(cat);
@@ -339,6 +437,8 @@ static const char *appstore_xml =
     "      <arg type='a{sv}' name='outcome' direction='out'/></method>"
     "    <method name='Uninstall'><arg type='s' name='app_id' direction='in'/>"
     "      <arg type='a{sv}' name='outcome' direction='out'/></method>"
+    "    <method name='InstallFile'><arg type='s' name='path' direction='in'/>"
+    "      <arg type='a{sv}' name='outcome' direction='out'/></method>"
     "    <signal name='AppInstalled'><arg type='s' name='app_id'/></signal>"
     "    <signal name='AppRemoved'><arg type='s' name='app_id'/></signal>"
     "  </interface>"
@@ -367,6 +467,29 @@ static void uninstall(const char *id, GDBusMethodInvocation *inv) {
     g_dbus_method_invocation_return_value(inv, g_variant_new("(@a{sv})", outcome(!why, why)));
 }
 
+/* A package the user has (Files → open): installed only if sealed as allowed */
+static void install_from_file(const char *rel, GDBusMethodInvocation *inv) {
+    StoreConfig cfg;
+    char *id = NULL;
+    const char *why = g_job ? "busy" : !load_config(&cfg) ? "unconfigured" : NULL;
+    if (!why) {
+        why = install_file(rel, cfg.key_pem, &id);
+        config_clear(&cfg);
+    }
+    if (!why) {
+        g_message("[AppStore] installed %s from a file", id);
+        g_dbus_connection_emit_signal(g_conn, NULL, "/org/zylos/AppStore", "org.zylos.AppStore",
+                                      "AppInstalled", g_variant_new("(s)", id), NULL);
+    }
+    GVariant *o = g_variant_ref_sink(outcome(!why, why));
+    GVariantDict d;
+    g_variant_dict_init(&d, o);
+    g_variant_unref(o);
+    g_variant_dict_insert(&d, "appId", "s", id ? id : "");
+    g_dbus_method_invocation_return_value(inv, g_variant_new("(@a{sv})", g_variant_dict_end(&d)));
+    g_free(id);
+}
+
 static void handle(GDBusConnection *conn, const gchar *sender, const gchar *path, const gchar *iface,
                    const gchar *method, GVariant *params, GDBusMethodInvocation *inv, gpointer data) {
     (void)conn; (void)sender; (void)path; (void)iface; (void)data;
@@ -375,6 +498,7 @@ static void handle(GDBusConnection *conn, const gchar *sender, const gchar *path
     if (g_strcmp0(method, "GetCatalog") == 0) start(OP_CATALOG, NULL, inv);
     else if (g_strcmp0(method, "Install") == 0) start(OP_INSTALL, id, inv);
     else if (g_strcmp0(method, "Uninstall") == 0) uninstall(id, inv);
+    else if (g_strcmp0(method, "InstallFile") == 0) install_from_file(id, inv);
 }
 
 static const GDBusInterfaceVTable vtable = { .method_call = handle };

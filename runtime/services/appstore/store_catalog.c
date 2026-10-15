@@ -58,6 +58,25 @@ int zyl_store_version_cmp(const char *a, const char *b) {
     return r;
 }
 
+char **zyl_store_catalog_revoked(const char *json, gssize len) {
+    GPtrArray *out = g_ptr_array_new();
+    JsonParser *p = json_parser_new();
+    if (json && json_parser_load_from_data(p, json, len, NULL) && JSON_NODE_HOLDS_OBJECT(json_parser_get_root(p))) {
+        JsonObject *root = json_node_get_object(json_parser_get_root(p));
+        JsonNode *n = json_object_has_member(root, "revoked") ? json_object_get_member(root, "revoked") : NULL;
+        JsonArray *a = n && JSON_NODE_HOLDS_ARRAY(n) ? json_node_get_array(n) : NULL;
+        for (guint i = 0; a && i < json_array_get_length(a); i++) {
+            JsonNode *e = json_array_get_element(a, i);
+            if (JSON_NODE_HOLDS_VALUE(e) && json_node_get_value_type(e) == G_TYPE_STRING &&
+                is_hex64(json_node_get_string(e)))
+                g_ptr_array_add(out, g_ascii_strdown(json_node_get_string(e), -1));
+        }
+    }
+    g_object_unref(p);
+    g_ptr_array_add(out, NULL);
+    return (char **)g_ptr_array_free(out, FALSE);
+}
+
 void zyl_store_app_free(gpointer data) {
     ZylStoreApp *a = data;
     if (!a) return;

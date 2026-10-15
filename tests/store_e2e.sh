@@ -3,11 +3,12 @@
 # [Clean Architecture] Infrastructure Layer - Test
 #
 # 역할: 앱스토어 종단 테스트 — 설치부터 삭제까지, 앱이 남기는 것이 없는지
-# 수행범위: 스토어 키·TLS 인증서 생성 → tools/build-store.py 로 패키지·서명된
+# 수행범위: 스토어 키·TLS 인증서 생성 → tools/build-store.py 로 봉인된 패키지·서명된
 #           카탈로그 → 로컬 HTTPS 서버 → 사설 세션 버스의 appstore·appdata·fs·
 #           notification 데몬(테스트 경로로 빌드) → 카탈로그, 설치, 앱이 데이터·
 #           파일·알림·웹 저장소를 만들고 → 삭제 → 기기 쪽 어디에도 앱 흔적 없음.
-#           변조된 패키지·서명 안 맞는 카탈로그는 거부
+#           변조된 패키지·서명 안 맞는 카탈로그·개발자가 봉인한 카탈로그 앱은 거부.
+#           개발 빌드(사용자 파일의 .zpkg): 프로필에 있는 기기에서만, 폐기되면 거부
 # 의존방향: openssl, curl, python3, dbus-run-session, gdbus
 # SOLID: SRP — 스토어 종단 흐름 검증만
 #
@@ -17,7 +18,8 @@ set -euo pipefail
 APPSTORE=$1 APPDATA=$2 FS=$3 NOTIF=$4 TOOL=$5
 R=/tmp/zyl-store-e2e
 rm -rf "$R"
-mkdir -p "$R"/{apps,appdata,files,system,notifications,srv,src/hello}
+mkdir -p "$R"/{apps,appdata,files/Downloads,system,notifications,srv,src/hello,src/devapp,src/sneaky,sys/proc/device-tree}
+printf 'DEV-E2E' > "$R/sys/proc/device-tree/serial-number"     # this device's ID
 ID=com.example.hello
 
 openssl genrsa -out "$R/store.key" 2048 2>/dev/null
@@ -28,7 +30,24 @@ openssl req -x509 -newkey rsa:2048 -nodes -keyout "$R/tls.key" -out "$R/tls.crt"
 printf '{"id":"%s","name":"Hello","version":"1.0.0","entry":"index.html","permissions":["network"]}' "$ID" \
     > "$R/src/hello/app.json"
 echo '<!doctype html><title>hello</title>' > "$R/src/hello/index.html"
-python3 -I "$TOOL" package "$R/src/hello" "$R/srv" >/dev/null
+python3 -I "$TOOL" package --key "$R/store.key" "$R/src/hello" "$R/srv" >/dev/null
+
+# A developer the store vouches for, provisioned for this device only
+openssl genrsa -out "$R/dev.key" 2048 2>/dev/null
+openssl rsa -in "$R/dev.key" -pubout -out "$R/dev.pub" 2>/dev/null
+python3 -I "$TOOL" dev-cert --key "$R/store.key" --developer acme --name ACME --pubkey "$R/dev.pub" --out "$R/acme.cert.json" >/dev/null
+python3 -I "$TOOL" profile --key "$R/store.key" --cert "$R/acme.cert.json" --app 'com.acme.*' --device DEV-E2E --out "$R/here.profile.json" >/dev/null
+python3 -I "$TOOL" profile --key "$R/store.key" --cert "$R/acme.cert.json" --app 'com.acme.*' --device OTHER --out "$R/there.profile.json" >/dev/null
+for n in devapp sneaky; do
+  printf '{"id":"com.acme.%s","name":"%s","version":"1.0.0","entry":"index.html"}' "$n" "$n" > "$R/src/$n/app.json"
+  echo '<p>dev</p>' > "$R/src/$n/index.html"
+done
+python3 -I "$TOOL" package --key "$R/dev.key" --cert "$R/acme.cert.json" --profile "$R/here.profile.json" "$R/src/devapp" "$R/files/Downloads" >/dev/null
+mkdir -p "$R/elsewhere"
+python3 -I "$TOOL" package --key "$R/dev.key" --cert "$R/acme.cert.json" --profile "$R/there.profile.json" "$R/src/devapp" "$R/elsewhere" >/dev/null
+cp "$R/elsewhere/com.acme.devapp-1.0.0.zpkg" "$R/files/Downloads/elsewhere.zpkg"
+# A development build slipped into the store's catalog
+python3 -I "$TOOL" package --key "$R/dev.key" --cert "$R/acme.cert.json" --profile "$R/here.profile.json" "$R/src/sneaky" "$R/srv" >/dev/null
 python3 -I "$TOOL" catalog --key "$R/store.key" "$R/srv" >/dev/null
 
 PORT=$(python3 -I -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')
@@ -52,9 +71,9 @@ PY
 export CURL_CA_BUNDLE="$R/tls.crt"
 for i in $(seq 50); do curl -sf "https://127.0.0.1:$PORT/catalog.json" >/dev/null && break; sleep 0.1; done
 
-dbus-run-session -- bash -s "$APPSTORE" "$APPDATA" "$FS" "$NOTIF" "$R" "$ID" <<'BUS'
+dbus-run-session -- bash -s "$APPSTORE" "$APPDATA" "$FS" "$NOTIF" "$R" "$ID" "$TOOL" <<'BUS'
 set -euo pipefail
-APPSTORE=$1 APPDATA=$2 FS=$3 NOTIF=$4 R=$5 ID=$6
+APPSTORE=$1 APPDATA=$2 FS=$3 NOTIF=$4 R=$5 ID=$6 TOOL=$7
 "$APPSTORE" & "$APPDATA" & "$FS" & "$NOTIF" &
 for n in AppStore AppData FileSystem Notification; do
   for i in $(seq 50); do gdbus introspect --session -d org.zylos.$n -o /org/zylos/$n >/dev/null 2>&1 && break; sleep 0.1; done
@@ -94,5 +113,24 @@ cp "$R/pkg.bak" "$R/srv/$ID-1.0.0.zpkg"
 sed -i 's/"Hello"/"Evil"/' "$R/srv/catalog.json"
 call AppStore GetCatalog | grep -q "'state': <'untrusted'>" || fail "unsigned catalog trusted"
 echo "  ✓ tampered package and catalog refused"
+cp "$R/pkg.bak" "$R/srv/$ID-1.0.0.zpkg"
+python3 -I "$TOOL" catalog --key "$R/store.key" "$R/srv" >/dev/null
+
+call AppStore Install com.acme.sneaky | grep -q "bad_package" || fail "a development build installed from the catalog"
+OUT=$(call AppStore InstallFile Downloads/com.acme.devapp-1.0.0.zpkg)
+echo "$OUT" | grep -q "'ok': <true>" || fail "provisioned development build refused: $OUT"
+[ -f "$R/apps/com.acme.devapp/.zyl-seal/seal.json" ] || fail "development build not installed with its seal"
+call AppStore InstallFile Downloads/elsewhere.zpkg | grep -q "not_provisioned" || fail "a build for another device installed"
+call AppStore InstallFile ../../etc/passwd | grep -q "invalid_package" || fail "a path outside the user's files was read"
+echo "  ✓ development builds only on the provisioned device; none through the catalog"
+
+# The store revokes the developer: the next catalog says so, and their builds stop
+sha256sum "$R/acme.cert.json" | cut -c1-64 > "$R/revoked.txt"
+python3 -I "$TOOL" catalog --key "$R/store.key" --revoked "$R/revoked.txt" "$R/srv" >/dev/null
+call AppStore GetCatalog | grep -q "'state': <'ok'>" || fail "catalog with revocations not ok"
+grep -q "$(cat "$R/revoked.txt")" "$R/apps/.revoked" || fail "revocation list not kept"
+call AppStore Uninstall com.acme.devapp >/dev/null
+call AppStore InstallFile Downloads/com.acme.devapp-1.0.0.zpkg | grep -q "revoked" || fail "a revoked developer's build installed"
+echo "  ✓ revoked developer refused"
 BUS
 echo "=== store e2e passed ==="

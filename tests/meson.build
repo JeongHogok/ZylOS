@@ -295,15 +295,29 @@ test('manifest-scan',
 _openssl_dep = dependency('openssl', version: '>=1.1.1')
 _libzip_dep = dependency('libzip')
 _store_src = ['../runtime/services/appstore/store_catalog.c', '../runtime/services/appstore/store_package.c',
-              '../runtime/services/appdata/container.c', '../runtime/services/updater/ota_verify.c']
+              '../runtime/services/appstore/app_seal.c', '../runtime/services/appdata/container.c',
+              '../runtime/services/updater/ota_verify.c', '../runtime/hal/hal_board.c']
+_store_inc = include_directories('../runtime/hal')
 
 # Test: catalog validation, versions, safe unpacking (.., absolute, links),
 # app.json must be the catalog's app, update swap, removal leaves nothing
 test('store',
   executable('test-store', 'test_store.c', _store_src,
+    include_directories: _store_inc,
     dependencies: [gio_dep, json_glib_dep, _libzip_dep, _openssl_dep],
-    c_args: ['-DZYL_TEST'],
+    c_args: ['-DZYL_TEST', '-DZYL_SYSFS_ROOT="/tmp/zyl-store-test/sys"'],
   )
+)
+
+# Test: app seals — the store's own, a development build only where its
+# store-signed certificate and profile allow (app, device, expiry, revocation),
+# every file exactly as sealed
+test('app-seal',
+  executable('test-app-seal', 'test_app_seal.c',
+    '../runtime/services/appstore/app_seal.c', '../runtime/services/updater/ota_verify.c',
+    dependencies: [gio_dep, json_glib_dep, _openssl_dep],
+  ),
+  workdir: meson.project_source_root(),
 )
 
 # Test: a removed app's alarms go, from memory and from disk
@@ -322,9 +336,11 @@ test('alarm',
 _e2e = '/tmp/zyl-store-e2e'
 _e2e_appstore = executable('e2e-appstore',
   '../runtime/services/appstore/appstore.c', _store_src,
+  include_directories: _store_inc,
   dependencies: [gio_dep, json_glib_dep, _libzip_dep, _openssl_dep],
   c_args: ['-DZYL_STORE_CONFIG="@0@/store.json"'.format(_e2e), '-DZYL_APPS_DIR="@0@/apps"'.format(_e2e),
-           '-DZYL_SYSTEM_APPS_DIR="@0@/system"'.format(_e2e), '-DZYL_CONTAINERS_ROOT="@0@/appdata"'.format(_e2e)])
+           '-DZYL_SYSTEM_APPS_DIR="@0@/system"'.format(_e2e), '-DZYL_CONTAINERS_ROOT="@0@/appdata"'.format(_e2e),
+           '-DZYL_FILES_ROOT="@0@/files"'.format(_e2e), '-DZYL_SYSFS_ROOT="@0@/sys"'.format(_e2e)])
 _e2e_appdata = executable('e2e-appdata',
   '../runtime/services/appdata/appdata.c', '../runtime/services/appdata/container.c',
   dependencies: [gio_dep], c_args: ['-DZYL_APPDATA_ROOT="@0@/appdata"'.format(_e2e)])

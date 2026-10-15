@@ -210,6 +210,10 @@ typedef struct {
     char     soc[96];         /* device tree: the SoC's compatible ("spacemit,k1-x"); x86: CPU model */
     uint64_t ram_bytes;
     char     kernel[96];      /* "6.6.36" */
+    /* This device's own ID, which development profiles list (device tree
+       serial-number — the bootloader sets it from the chip's factory ID).
+       "" when the board gives none: no development build can run on it */
+    char     device_id[72];
 } ZylBoardInfo;
 
 typedef struct {
