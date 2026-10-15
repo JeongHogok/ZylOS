@@ -753,7 +753,7 @@ export WEBKIT_INSPECTOR_SERVER=0.0.0.0:8090
 | 13 | input | getKeyboardState, setIME |
 | 14 | sensors | getAccelerometer, getGyroscope, getProximity, getLight |
 | 15 | location | getPosition |
-| 16 | telephony | getSignal, getSIMInfo, call, sendSMS |
+| 16 | telephony | getState, getCallState, dial, answer, hangup, sendDTMF, getCallLog, deleteCallLog (기록은 서비스가 통화 상태로 남김) |
 | 17 | usb | getState, setMode |
 | 18 | user | getCurrentUser, listUsers, switchUser |
 | 19 | credential | store, lookup, delete |
@@ -762,7 +762,7 @@ export WEBKIT_INSPECTOR_SERVER=0.0.0.0:8090
 | 22 | sandbox | getPolicy |
 | 23 | logger | getLogs, clearLogs |
 | 24 | accessibility | getSettings, setFontScale, setHighContrast |
-| 25 | audio | getVolume, setVolume, playNotificationSound, vibrate |
+| 25 | audio | getVolume, setVolume ({stream: media·notif·alarm·ringtone·system, value}), setMicMute, playNotificationSound, vibrate |
 | 26 | contacts | getAll, getById, create, update, delete, search |
 | 27 | messaging | getConversations, getMessages, sendMessage, deleteMessage |
 | 28 | clipboard | copy, paste, clear |

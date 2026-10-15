@@ -2,7 +2,8 @@
 // [Clean Architecture] Domain Layer - Service Module
 //
 // Role: Contacts service — CRUD for contact records
-// Scope: getAll, getById, create, update, delete, search
+// Scope: getAll, getById, create, update (only the fields given; starred =
+//        favorite, shown by Phone), delete, search
 // Dependency Direction: Domain -> invoker abstraction
 // SOLID: SRP — contacts management only
 // ----------------------------------------------------------
@@ -41,9 +42,18 @@
           return invoke('fs_write_file', { path: 'Documents/Contacts/' + id + '.json', content: JSON.stringify(contact) });
         }).then(function () { return contact; }).catch(function () { return null; });
       },
+      /* Only the fields given change: starring from Phone keeps the name,
+         editing in Contacts keeps the star */
       update: function (p) {
-        var contact = { id: p.id, name: p.name || '', phone: p.phone || '', email: p.email || '' };
-        return invoke('fs_write_file', { path: 'Documents/Contacts/' + p.id + '.json', content: JSON.stringify(contact) }).then(function () { return contact; }).catch(function () { return null; });
+        var path = 'Documents/Contacts/' + p.id + '.json';
+        return invoke('fs_read_file', { path: path }).then(function (c) {
+          var contact = JSON.parse(c);
+          ['name', 'phone', 'email'].forEach(function (k) {
+            if (p[k] !== undefined) contact[k] = String(p[k]);
+          });
+          if (p.starred !== undefined) contact.starred = !!p.starred;
+          return invoke('fs_write_file', { path: path, content: JSON.stringify(contact) }).then(function () { return contact; });
+        }).catch(function () { return null; });
       },
       'delete': function (p) {
         return invoke('fs_remove', { path: 'Documents/Contacts/' + p.id + '.json' });

@@ -15,7 +15,7 @@ TimeoutStopSec=5
 NoNewPrivileges=true
 ProtectSystem=strict
 # Emergency alert history (Cell Broadcast)
-ReadWritePaths=/data/alerts
+ReadWritePaths=/data/alerts /data/telephony
 ProtectHome=true
 PrivateTmp=true
 PrivateDevices=false

@@ -85,6 +85,8 @@
         settingsSvc._updateSetting('sound', 'silentMode', audioState.silentMode);
         return Promise.resolve(audioState.silentMode);
       },
+      /* Call uplink mute — the emulator carries no call audio */
+      setMicMute: function () { return Promise.resolve(false); },
       getVibration: function () { return Promise.resolve(audioState.vibration); },
       setVibration: function (p) {
         audioState.vibration = !!p.enabled;

@@ -1294,6 +1294,69 @@ var alertTests = (function () {
 })();
 
 /* ═══════════════════════════════════════════════════════
+   Call log and favorites (JS telephony/contacts, emulator contract of
+   telephony.c GetCallLog/DeleteCallLog and contacts.starred)
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ call log / favorites');
+
+var callTests = (function () {
+  var store = {};
+  var settingsSvc = {
+    _getSetting: function (cat) { return Promise.resolve(store[cat] || null); },
+    _updateSetting: function (cat, k, v) { store[cat] = store[cat] || {}; store[cat][k] = v; }
+  };
+  var tel = ns.telephony({ settingsSvc: settingsSvc });
+  var files = {};
+  var contacts = ns.contacts({ invoke: function (cmd, a) {
+    if (cmd === 'fs_read_file') return files[a.path] ? Promise.resolve(files[a.path]) : Promise.reject(new Error('missing'));
+    if (cmd === 'fs_write_file') { files[a.path] = a.content; return Promise.resolve(true); }
+    return Promise.resolve(true);
+  } });
+  return Promise.all([
+    asyncTest('a call is logged by the service, newest first, and can be deleted', function () {
+      return tel.dial({ number: '0212345678' }).then(function () { return tel.hangup(); })
+        .then(function () { return tel.dial({ number: '01011112222' }); })
+        .then(function () { return tel.hangup(); })
+        .then(function () { return tel.getCallLog(); })
+        .then(function (log) {
+          assert.strictEqual(log.length, 2);
+          assert.strictEqual(log[0].number, '01011112222');
+          assert.strictEqual(log[0].type, 'outgoing');
+          assert.ok(log[0].id > log[1].id && typeof log[0].time === 'number');
+          return tel.deleteCallLog({ id: log[1].id }).then(function (ok) {
+            assert.strictEqual(ok, true);
+            return tel.deleteCallLog({ id: log[1].id });
+          });
+        })
+        .then(function (again) {
+          assert.strictEqual(again, false);
+          return tel.getCallLog();
+        })
+        .then(function (log) { assert.strictEqual(log.length, 1); });
+    }),
+    asyncTest('no modem: nothing invented, no tones sent', function () {
+      return Promise.all([tel.getState(), tel.sendDTMF({ digit: '5' })]).then(function (r) {
+        assert.strictEqual(r[0].simPresent, false);
+        assert.strictEqual(r[0].operator, '');
+        assert.strictEqual(r[1], false);
+        assert.strictEqual(typeof tel.addCallLog, 'undefined');   /* apps cannot write the log */
+      });
+    }),
+    asyncTest('starring a contact keeps its details; editing keeps the star', function () {
+      files['Documents/Contacts/c_1.json'] = JSON.stringify({ id: 'c_1', name: 'Ana', phone: '010', email: '' });
+      return contacts.update({ id: 'c_1', starred: true }).then(function (c) {
+        assert.strictEqual(c.name, 'Ana');
+        assert.strictEqual(c.starred, true);
+        return contacts.update({ id: 'c_1', name: 'Ana Kim', phone: '011', email: 'a@k' });
+      }).then(function (c) {
+        assert.strictEqual(c.name, 'Ana Kim');
+        assert.strictEqual(c.starred, true);
+      });
+    })
+  ]);
+})();
+
+/* ═══════════════════════════════════════════════════════
    Compositor instance-state store (emulator-app/ui/js/app-state.js)
    ═══════════════════════════════════════════════════════ */
 console.log('\n■ ZylAppStateStore');
@@ -1506,7 +1569,7 @@ console.log('\n■ zylI18n time');
    Wait for all async tests and report
    ═══════════════════════════════════════════════════════ */
 Promise.all([settingsTests, displayTests, inputTests, sensorsTests,
-             usbTests, powerTests, audioTests, fsTests, updaterTests, telemetryTests,
+             usbTests, powerTests, audioTests, fsTests, updaterTests, telemetryTests, callTests,
              netstatsTests, alertTests, lockTests, deviceBridgeTests, appStateTests])
   .then(function () {
     console.log('\n════════════════════════');

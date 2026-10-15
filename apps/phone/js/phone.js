@@ -2,8 +2,9 @@
 // [Clean Architecture] Presentation Layer - Page
 //
 // 역할: 전화 앱 — 키패드, 통화기록, 연락처, 즐겨찾기, 통화화면, DTMF
-// 수행범위: 키패드 입력, 발신/수신/종료, 통화기록 조회/삭제, 연락처 목록, 즐겨찾기, DTMF 톤
-// 의존방향: shared/bridge.js → postMessage IPC (telephony, contacts)
+// 수행범위: 키패드 입력, 발신/수신/종료, 통화기록 조회/삭제(기록은 telephony 서비스가
+//          통화 상태로 남김), 연락처 목록, 즐겨찾기(연락처의 starred), 음소거, DTMF 톤
+// 의존방향: shared/bridge.js → postMessage IPC (telephony, contacts, audio)
 // SOLID: SRP — 전화 관련 UI만 담당, OCP — 통화기록 확장 가능
 //
 // 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
@@ -56,18 +57,6 @@
         if (serviceCallbacks[key]) {
           serviceCallbacks[key](msg.data, msg.error);
         }
-        return;
-      }
-
-      /* Incoming call notification from telephony service */
-      if (msg.type === 'telephony.incomingCall' && msg.data) {
-        handleIncomingCall(msg.data);
-        return;
-      }
-
-      /* Call state change */
-      if (msg.type === 'telephony.callStateChanged' && msg.data) {
-        handleCallStateChange(msg.data);
         return;
       }
 
@@ -132,7 +121,6 @@
   var isDtmfVisible = false;
   var dtmfDigits = '';
   var pendingDeleteLogId = null;
-  var favoritesSet = {};
   var longPressTimer = null;
 
   /* ═══════════════════════════════════════════════════════════
@@ -162,7 +150,7 @@
 
     if (tabName === 'recents') { loadRecents(); }
     if (tabName === 'contacts') { loadContacts(); }
-    if (tabName === 'favorites') { loadFavorites(); }
+    if (tabName === 'favorites') { loadContacts(); }
   }
 
   for (var i = 0; i < tabs.length; i++) {
@@ -261,18 +249,16 @@
       (secs < 10 ? '0' : '') + secs;
   }
 
+  /* The microphone is shared: a call muted to the end must not stay muted */
+  function releaseMute() {
+    if (isMuted) requestService('audio', 'setMicMute', { muted: false });
+    isMuted = false;
+  }
+
   function endCall() {
-    requestService('telephony', 'hangup', { number: currentCallNumber });
+    requestService('telephony', 'hangup', {});
     clearInterval(callTimerInterval);
-
-    var duration = Math.floor((Date.now() - callStartTime) / 1000);
-    requestService('telephony', 'addCallLog', {
-      number: currentCallNumber,
-      type: 'outgoing',
-      duration: duration,
-      timestamp: Date.now()
-    });
-
+    releaseMute();
     incallOverlay.classList.add('hidden');
     isDtmfVisible = false;
     dtmfDigits = '';
@@ -285,7 +271,7 @@
   btnMute.addEventListener('click', function () {
     isMuted = !isMuted;
     btnMute.classList.toggle('active', isMuted);
-    requestService('telephony', 'setMute', { muted: isMuted });
+    requestService('audio', 'setMicMute', { muted: isMuted });
   });
 
   btnSpeaker.addEventListener('click', function () {
@@ -384,6 +370,7 @@
     }
     if (data.state === 'ended') {
       clearInterval(callTimerInterval);
+      releaseMute();
       incallOverlay.classList.add('hidden');
       isDtmfVisible = false;
       dtmfDigits = '';
@@ -400,14 +387,15 @@
     requestService('telephony', 'getCallLog', {});
   }
 
+  /* [{ id, number, type, time, duration }], newest first */
   onServiceResponse('telephony', 'getCallLog', function (data) {
-    if (!data || !Array.isArray(data.logs) || data.logs.length === 0) {
+    if (!Array.isArray(data) || data.length === 0) {
       recentsList.innerHTML = '';
       recentsEmpty.classList.remove('hidden');
       return;
     }
     recentsEmpty.classList.add('hidden');
-    renderRecents(data.logs);
+    renderRecents(data);
   });
 
   var DIR_ICONS = {
@@ -428,10 +416,10 @@
                    log.type === 'missed' ? zylI18n.t('phone.missed') :
                    zylI18n.t('phone.outgoing');
       }
-      var timeStr = formatRecentTime(log.timestamp);
+      var timeStr = formatRecentTime(log.time);
       var displayName = log.name || log.number || '';
       var nameClass = dirClass === 'missed' ? 'recent-name missed' : 'recent-name';
-      var logId = log.id || '';
+      var logId = log.id ? String(log.id) : '';
       html += '<div class="recent-item" data-number="' + escapeAttr(log.number || '') + '" data-log-id="' + escapeAttr(logId) + '">' +
         '<div class="recent-direction ' + dirClass + '">' + (DIR_ICONS[dirClass] || '') + '</div>' +
         '<div class="recent-info">' +
@@ -514,7 +502,7 @@
 
   btnDeleteConfirm.addEventListener('click', function () {
     if (pendingDeleteLogId) {
-      requestService('telephony', 'deleteCallLog', { id: pendingDeleteLogId });
+      requestService('telephony', 'deleteCallLog', { id: Number(pendingDeleteLogId) });
     }
     hideDeleteLogModal();
     /* Reload recents after deletion */
@@ -540,12 +528,11 @@
     requestService('contacts', 'getAll', {});
   }
 
+  /* Favorites are the starred contacts: one list, two views */
   onServiceResponse('contacts', 'getAll', function (data) {
-    if (!data || !Array.isArray(data.contacts)) {
-      contactsList.innerHTML = '';
-      return;
-    }
-    renderContacts(data.contacts);
+    var contacts = Array.isArray(data) ? data : [];
+    renderContacts(contacts);
+    renderFavorites(contacts.filter(function (c) { return c.starred; }));
   });
 
   function avatarColor(name) {
@@ -564,8 +551,8 @@
       var initial = (c.name || '?').charAt(0).toUpperCase();
       var phone = c.phone || c.number || '';
       var colorClass = avatarColor(c.name || phone);
-      var contactId = c.id || phone;
-      var isStarred = !!favoritesSet[contactId];
+      var contactId = c.id || '';
+      var isStarred = !!c.starred;
       var starClass = 'btn-star' + (isStarred ? ' starred' : '');
       var starTitle = '';
       if (typeof zylI18n !== 'undefined') {
@@ -588,7 +575,7 @@
     if (starBtn) {
       var contactId = starBtn.getAttribute('data-contact-id');
       if (contactId) {
-        toggleFavorite(contactId);
+        toggleFavorite(contactId, starBtn.classList.contains('starred'));
       }
       return;
     }
@@ -606,32 +593,8 @@
      Favorites
      ═══════════════════════════════════════════════════════════ */
 
-  function loadFavorites() {
-    requestService('telephony', 'getFavorites', {});
-  }
-
-  onServiceResponse('telephony', 'getFavorites', function (data) {
-    if (!data || !Array.isArray(data.favorites) || data.favorites.length === 0) {
-      favoritesList.innerHTML = '';
-      favoritesEmpty.classList.remove('hidden');
-      /* Update favoritesSet */
-      favoritesSet = {};
-      return;
-    }
-    favoritesEmpty.classList.add('hidden');
-    /* Build favoritesSet lookup */
-    favoritesSet = {};
-    for (var i = 0; i < data.favorites.length; i++) {
-      var fav = data.favorites[i];
-      var favId = fav.id || fav.contactId || '';
-      if (favId) {
-        favoritesSet[favId] = true;
-      }
-    }
-    renderFavorites(data.favorites);
-  });
-
   function renderFavorites(favorites) {
+    favoritesEmpty.classList.toggle('hidden', favorites.length > 0);
     var html = '';
     for (var i = 0; i < favorites.length; i++) {
       var fav = favorites[i];
@@ -657,30 +620,12 @@
     }
   });
 
-  function toggleFavorite(contactId) {
-    if (favoritesSet[contactId]) {
-      requestService('telephony', 'removeFavorite', { contactId: contactId });
-      delete favoritesSet[contactId];
-    } else {
-      requestService('telephony', 'addFavorite', { contactId: contactId });
-      favoritesSet[contactId] = true;
-    }
-    /* Refresh contacts to update star icons */
-    loadContacts();
-    /* Refresh favorites list */
-    loadFavorites();
+  function toggleFavorite(contactId, starred) {
+    ZylBridge.requestService('contacts', 'update', { id: contactId, starred: !starred })
+      .then(loadContacts, loadContacts);
   }
 
-  onServiceResponse('telephony', 'addFavorite', function () {
-    loadFavorites();
-  });
-
-  onServiceResponse('telephony', 'removeFavorite', function () {
-    loadFavorites();
-  });
-
-  /* Load favorites on init to populate favoritesSet */
-  loadFavorites();
+  loadContacts();
 
   /* ═══════════════════════════════════════════════════════════
      Helpers
