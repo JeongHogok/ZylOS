@@ -270,7 +270,7 @@ int main(void) {
 
     GTestDBus *bus = g_test_dbus_new(G_TEST_DBUS_NONE);
     g_test_dbus_up(bus);
-    /* One private bus plays both the system bus (ModemManager) and the session bus */
+    /* One private bus plays both ModemManager and the Zyl services */
     g_setenv("DBUS_SYSTEM_BUS_ADDRESS", g_test_dbus_get_bus_address(bus), TRUE);
 
     g_addr = g_test_dbus_get_bus_address(bus);
@@ -279,7 +279,7 @@ int main(void) {
     while (!g_atomic_int_get(&ready)) g_usleep(1000);
     GDBusConnection *mm = g_mm;
 
-    GDBusConnection *os = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, NULL);
+    GDBusConnection *os = g_bus_get_sync(G_BUS_TYPE_SYSTEM, NULL, NULL);
     g_dbus_connection_signal_subscribe(os, NULL, ZYL_TELEPHONY_DBUS_NAME, "EmergencyAlert",
         NULL, NULL, G_DBUS_SIGNAL_FLAGS_NONE, on_alert, NULL, NULL);
     g_dbus_connection_signal_subscribe(os, NULL, ZYL_TELEPHONY_DBUS_NAME, "CallStateChanged",

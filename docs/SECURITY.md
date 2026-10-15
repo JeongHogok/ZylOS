@@ -2,8 +2,8 @@
 
 ## 보안 모델 개요
 
-Zyl OS는 7계층 보안(Verified Boot, namespace, libseccomp BPF, cgroup, network, D-Bus 정책, 앱 권한 시행)과
-OpenSSL 기반 암호화, 앱 서명 시스템을 통해 보안을 제공합니다.
+Zyl OS는 6계층 보안(Verified Boot, WebKit 샌드박스, AppArmor+systemd 하드닝, 앱 컨테이너,
+D-Bus 버스 정책, 앱 권한 시행)과 OpenSSL 기반 암호화, 앱 서명 시스템을 통해 보안을 제공합니다.
 
 ### 서비스 아키텍처 보안
 

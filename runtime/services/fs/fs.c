@@ -347,7 +347,7 @@ static gboolean on_term(gpointer loop) {
 
 int main(void) {
     ensure_layout();
-    g_bus_own_name(G_BUS_TYPE_SESSION, "org.zylos.FileSystem", G_BUS_NAME_OWNER_FLAGS_NONE,
+    g_bus_own_name(G_BUS_TYPE_SYSTEM, "org.zylos.FileSystem", G_BUS_NAME_OWNER_FLAGS_NONE,
                    on_bus, NULL, NULL, NULL, NULL);
     GMainLoop *loop = g_main_loop_new(NULL, FALSE);
     g_unix_signal_add(SIGTERM, on_term, loop);

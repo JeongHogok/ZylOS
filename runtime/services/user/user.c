@@ -156,7 +156,7 @@ ZylUserService *zyl_user_create(void) {
     svc->current_uid = owner_uid;
     svc->users[0].is_active = true;
 
-    svc->dbus_owner_id = g_bus_own_name(G_BUS_TYPE_SESSION,
+    svc->dbus_owner_id = g_bus_own_name(G_BUS_TYPE_SYSTEM,
         ZYL_USER_DBUS_NAME, G_BUS_NAME_OWNER_FLAGS_NONE,
         on_user_bus, NULL, NULL, svc, NULL);
 

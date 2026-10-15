@@ -66,6 +66,9 @@ elif [ "$OS" = "Linux" ]; then
         info "빌드 도구 설치..."
         sudo apt install -y meson ninja-build pkg-config cmake git
 
+        info "이미지 빌드 도구 설치 (tools/build-image.sh)..."
+        sudo apt install -y debootstrap fdisk e2fsprogs systemd dbus
+
         info "QEMU RISC-V 설치..."
         sudo apt install -y qemu-system-riscv64 qemu-user-static
 

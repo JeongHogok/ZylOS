@@ -462,7 +462,7 @@ ZylInputService *zyl_input_create(void)
     }
 
     svc->bus_owner_id = g_bus_own_name(
-        G_BUS_TYPE_SESSION,
+        G_BUS_TYPE_SYSTEM,
         ZYL_INPUT_DBUS_NAME,
         G_BUS_NAME_OWNER_FLAGS_NONE,
         on_bus_acquired,

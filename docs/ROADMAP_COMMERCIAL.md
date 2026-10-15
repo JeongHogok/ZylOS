@@ -1,500 +1,146 @@
-# ZylOS 상용 OS 로드맵
+# Zyl OS 상용화 로드맵
 
-**목표**: BPI-F3 (SpacemiT K1 RISC-V) 상에서 일상 사용 가능한 상용 모바일 OS
-**기준**: Android/iOS/Tizen 대비 최소 기능 동등성 (Minimum Viable Commercial OS)
-**현재**: v0.1.0 Developer Preview — 3차 감사 완료, 기술부채 제로
+**목표**: 우리가 **직접 만들어 파는 기기**에 얹는 상용 모바일 OS
+**1호 제품**: 휴대폰 (phone 프로파일)
+**폼팩터**: 8종 전부 대응 — 단 "대응"의 단계를 구분한다 (아래 성숙도 사다리)
+**스토어**: 운영한다
+**현재 상태**: 실기기 0대. 코드는 서 있고 QEMU 에서 부팅까지 검증된다
 
----
-
-## Phase 구조
-
-| Phase | 목표 | 의존 | 예상 규모 |
-|-------|------|------|-----------|
-| **A** | GPU 파이프라인 + 프레임워크 | 없음 (최우선) | ~5,000 LoC |
-| **B** | 보안 부팅 체인 | A (GPU 안정화 후) | ~3,000 LoC |
-| **C** | 미디어 파이프라인 | A (GPU 가속 필요) | ~4,000 LoC |
-| **D** | 전력 관리 | A (거버너 연동) | ~2,500 LoC |
-| **E** | 프로세스 격리 강화 | B (보안 기반) | ~2,000 LoC |
-| **F** | 앱 에코시스템 | E (격리 완성 후) | ~6,000 LoC |
-| **G** | 네트워킹 스택 | 없음 | ~3,000 LoC |
-| **H** | 입력/접근성/생체 | A (UI 프레임워크) | ~3,000 LoC |
-| **I** | 계정/동기화/백업 | F (스토어), G (네트워크) | ~4,000 LoC |
-| **J** | 알림/멀티태스킹 | A (컴포지터) | ~2,500 LoC |
-| **K** | 위치/NFC/기타 HAL | 없음 | ~2,000 LoC |
-| **L** | 개발자 도구/SDK | F (앱 포맷 확정) | ~5,000 LoC |
-| **M** | 테스트/인증 | 전체 | ~3,000 LoC |
-| **N** | 국제화/OTA 고도화 | 없음 | ~1,500 LoC |
-
-**총 예상**: ~46,500 LoC 신규 → 코드베이스 ~93,000 LoC로 성장
+> 이 문서는 2026-10-16 에 다시 썼다. 이전 판(Phase A~N, ~46,500 LoC 추정)은
+> 구현 전에 쓴 희망 목록이라 지금과 어긋났다: 보안 부팅·dm-verity 는 이미
+> 완료(PR #13), 앱별 UID 는 하지 않기로 결정(PR #15, WebKit 샌드박스로 대체),
+> 생체·NFC 는 하드웨어가 없어 서비스를 삭제, 계정 서비스도 삭제했다.
 
 ---
 
-## Phase A: GPU 파이프라인 + 그래픽 프레임워크 [CRITICAL]
+## 순서를 정하는 원칙
 
-### A1. IMG BXE GPU 드라이버 통합
+**기능을 더 얹기 전에, 소스 → 이미지 → 부팅 → 로그 회수 루프를 먼저 닫는다.**
+한 번도 기기에서 켜본 적 없는 코드는 "있다"가 아니라 "모른다"다. 실제로
+이번에 미연결 코드에서 부팅을 막는 버그가 셋 나왔다(세션 버스, 네임스페이스
+제한, GVariant 형식 문자열).
 
-**현재**: CPU 소프트웨어 렌더링. wlroots가 llvmpipe 폴백.
-**목표**: IMG BXE-2-32 (PowerVR) GPU 가속 → DRM/KMS → wlroots GPU 렌더.
+보드가 0대인 동안은 **QEMU 레인**이 그 루프를 대신한다. SoC 고유 경로
+(GPU·모뎀·ISP·eFuse·DRM/KMS)만 남고, 나머지 OS 전부는 하드웨어 없이 매 커밋
+검증된다.
 
-```
-┌─────────────────────────────────────────┐
-│ WebKitGTK (GL 가속 렌더링)               │
-├─────────────────────────────────────────┤
-│ wlroots 0.18 (DRM/KMS 백엔드)           │
-├─────────────────────────────────────────┤
-│ Mesa (pvr Gallium3D 드라이버)            │
-├─────────────────────────────────────────┤
-│ Linux DRM/KMS (spacemit-drm)            │
-├─────────────────────────────────────────┤
-│ IMG BXE firmware (blob)                  │
-└─────────────────────────────────────────┘
-```
+## 폼팩터 성숙도 사다리
 
-**작업**:
-1. SpacemiT BSP에서 DRM/KMS 드라이버 활성화 (`CONFIG_DRM_SPACEMIT`, `CONFIG_DRM_PVR`)
-2. Mesa pvr Gallium3D 드라이버 빌드 (또는 IMG 독점 드라이버 바이너리 통합)
-3. wlroots 빌드 시 DRM 백엔드 활성화 (`-Dbackends=drm,libinput`)
-4. 컴포지터 main.c에서 GPU 출력 우선 선택
-5. DTS(`bpi-f3-zyl.dts`)에 GPU 노드 활성화
+"모든 제품에 대응"은 L0·L1 으로 보장하고, L2·L3 은 제품 출시 순서대로 올린다.
 
-**파일**:
-- `system/dts/bpi-f3-zyl.dts` — GPU 노드 추가
-- `compositor/meson.build` — DRM 백엔드 의존성
-- `tools/setup-toolchain.sh` — Mesa 빌드 옵션
-- `docs/GPU_INTEGRATION.md` — 드라이버 설정 가이드
+| 단계 | 의미 | 지키는 방법 | 비용 |
+|------|------|------------|------|
+| **L0 빌드됨** | 그 프로파일로 설정·빌드된다 | CI 가 8종 전부 | 있음(완료) |
+| **L1 조립·부팅** | 이미지가 조립되고 QEMU 에서 뜬다 | `tests/test_image_profiles.sh`, QEMU 레인 | 낮음 |
+| **L2 보드 검증** | 실기기에서 입력·화면·전력 + 그 폼팩터의 정의 기능 | 보드 + 사람 | 보드당 4~8주 |
+| **L3 출하** | 인증·OTA·스토어·AS 포함 | 제품 단위 | 제품당 |
 
-**검증**: `wlr_renderer_autocreate` → GLES2/Vulkan 백엔드 선택 확인, `glxinfo` 또는 `eglinfo` GPU 이름 확인.
-
-### A2. WebKitGTK GL 가속
-
-**현재**: `WEBKIT_HARDWARE_ACCELERATION_POLICY_ALWAYS` 설정했으나 GPU 없이 효과 없음.
-**목표**: GPU 사용 가능 시 WebKitGTK가 GL 컴포지팅 + 텍스처 업로드.
-
-**작업**:
-1. A1 완료 후 WebKitGTK가 자동으로 GPU 감지
-2. `webkit_settings_set_hardware_acceleration_policy(ALWAYS)` 유지
-3. RISC-V용 WebKitGTK JIT 비활성화 확인 (`WEBKIT_DISABLE_JIT=1` 환경변수)
-4. CSS `will-change`, `transform: translateZ(0)` 최적화 가이드
-
-**파일**:
-- `runtime/wam/src/wam.c` — WebKit 설정 검증
-- `system/zyl-wam.service` — 환경변수 `WEBKIT_DISABLE_JIT=1`
-
-### A3. 프레임 성능 모니터링
-
-**현재**: FPS 측정 수단 없음.
-**목표**: 컴포지터에 프레임 타이밍 추적 + 60fps 타겟.
-
-**작업**:
-1. `compositor/src/output/output.c`의 frame 콜백에 타이밍 측정 추가
-2. 16.67ms 초과 시 로그 경고
-3. D-Bus `org.zylos.Compositor.GetFrameStats` 메서드 추가
-
-**파일**:
-- `compositor/src/output/output.c` — 프레임 카운터
-- `compositor/include/zyl_compositor.h` — 통계 구조체
+폼팩터별 "정의 기능"(L2 통과 기준):
+phone/pda 통화·SMS·데이터·카메라·배터리 하루 · tablet 회전·대화면·배터리 ·
+tv HDMI·리모컨·상시전원 · watch 소형화면·절전 · auto 상시전원·빠른 부팅 ·
+desktop 외부 입력·다중 해상도 · appliance 키오스크·무인 복구
 
 ---
 
-## Phase B: 보안 부팅 체인 [CRITICAL]
+## Phase 0 — 하드웨어 없이 (진행 중)
 
-### B1. U-Boot Verified Boot
+> 종료 조건: `git clone` 에서 이미지 한 장이 나오고, QEMU 에서 홈 화면까지 뜨며,
+> 그 절차가 CI 로 재현된다.
 
-**현재**: U-Boot → 커널 서명 검증 없음.
-**목표**: U-Boot FIT 이미지 + RSA-2048 서명 검증.
+| # | 산출물 | 상태 |
+|---|--------|------|
+| 1 | 서비스 버스 결정 + 정책 (`system/dbus-1/zyl-os.conf`) | 완료 |
+| 2 | 이미지 빌드 (`tools/build-image.sh`) — 소스 → 디스크 이미지 | 완료 |
+| 3 | QEMU 부팅 레인 (`tools/run-qemu.sh`, `zyl-selftest`) + CI | 완료 |
+| 4 | 폼팩터 8종 조립 검증 (`tests/test_image_profiles.sh`) | 완료 |
+| 5 | GPU 드라이버 재배포권 질의 (SoC 공급 협의 안건) | 사업 측 |
+| 6 | 보드 조달 (최소 3대 + 직렬 케이블) | 사업 측 |
 
-```
-U-Boot SPL (ROM 검증)
-  → U-Boot (SPL이 서명 검증)
-    → Linux Kernel + DTB (U-Boot이 FIT 서명 검증)
-      → initramfs → rootfs (dm-verity)
-```
+**Phase 0 가 실제로 잡은 것** (전부 기기에서 부팅을 막았을 버그):
+세션 버스 ↔ 유닛 불일치, `RestrictNamespaces=true` 로 WebKit 샌드박스 차단,
+`alarm.Set` 의 GVariant 형식 문자열, 유닛이 쓰는 `/var` 경로 미생성(logger·
+credential), 런타임 공유 라이브러리 누락 5종(서비스 exit 127), 컴포지터의
+`/run/user/0`, 컴포지터↔WAM Wayland 소켓 경로 불일치, fstab 의 파티션 장치 이름.
+지금 이미지는 부팅해 자기점검 **53/53** 통과한다.
 
-**작업**:
-1. U-Boot `.its` (Image Tree Source) 작성 — kernel + dtb + ramdisk 포함
-2. RSA-2048 키 쌍 생성 (`mkimage -G key.pem`)
-3. U-Boot defconfig에 `CONFIG_FIT_SIGNATURE=y`, `CONFIG_RSA=y` 활성화
-4. 서명된 FIT 이미지 생성 스크립트
+남은 소프트웨어 과제 (다음 조각):
+1. **화면 스택** — QEMU 게스트에 `/dev/dri` 가 없어 컴포지터·WAM 이 조건으로
+   건너뛴다. virtio-gpu 를 DRM 으로 올리고 컴포지터가 Wayland 소켓을 만드는
+   것까지 레인에서 확인해야 한다. 그다음이 WAM·홈 화면
+2. **riscv64 레인** — 교차 빌드 + 2단계 부트스트랩(binfmt). 실기기와 같은
+   아키텍처·HAL 백엔드를 보드 없이 돌려 보는 유일한 방법
+3. **verity·A/B** — `sign-image.sh` 의 출력을 이미지 조립에 연결(슬롯 B·해시
+   트리 채우기), 레인에서 A→B 전환·롤백 흉내내기
 
-**파일**:
-- `board/bpi-f3/fit-image.its` — FIT 이미지 소스
-- `board/bpi-f3/keys/` — 서명 키 (공개키만 repo에 포함)
-- `tools/sign-image.sh` — FIT 서명 스크립트
-- `board/bpi-f3/u-boot-env.txt` — 부트 명령
+## Phase 1 — 첫 불 (보드 도착 +2주)
 
-### B2. dm-verity rootfs 무결성
+QEMU 에서 이미 도는 것은 다시 깨지지 않는다. 보드에서 새로 보는 것만 남는다:
+직렬 콘솔 → U-Boot 정책 → 커널/DTS → DRM/KMS(컴포지터) → 터치 → WAM → 홈.
+`zyl_rotpk show` 로 eFuse 형식을 대조하고, `zyl-selftest` 로 서비스 상태를 받는다.
 
-**현재**: rootfs 무결성 검증 없음.
-**목표**: dm-verity로 읽기 전용 시스템 파티션 무결성 보장.
+## Phase 2 — 휴대폰이라고 부를 수 있는 상태 (6~10주)
 
-**작업**:
-1. 빌드 시 `veritysetup format /dev/rootfs`로 해시 트리 생성
-2. 커널 커맨드라인에 `root=/dev/dm-0 dm-mod.create="..." ` verity 설정
-3. 해시 트리를 별도 파티션에 저장
-4. 변조 감지 시 recovery 모드로 부팅
+| 항목 | 기준 |
+|------|------|
+| GPU | `img-gpu-powervr` 바인딩 확인. **재배포권이 없으면 소프트웨어 렌더링 전제**로 UI 예산 재설정 |
+| 통신 | ModemManager 실모뎀: 통화·SMS·데이터·APN·재난문자, 통신사 1곳 실측 |
+| 미디어 | PipeWire 라우팅(통화/미디어/알람), 카메라 ISP → 사진 저장, 마이크 |
+| 입력·화면 | 터치·제스처·회전·밝기, phone 프로파일 스케일링 |
+| 전력 | 충전·배터리 곡선·Doze 실측, 대기 하루 |
 
-**파일**:
-- `tools/build-verity.sh` — verity 이미지 생성
-- `board/bpi-f3/cmdline.txt` — 커널 커맨드라인
+## Phase 3 — 신뢰 (6~8주, 스토어 운영 포함)
 
-### B3. TEE (Trusted Execution Environment) — 향후
+1. **eFuse 확정** — 희생 보드로 형식 대조 → 굽기 → Boot ROM 이 서명만 받는 상태
+2. **OTA 엔드투엔드** — 서버 + 서명 매니페스트, A/B 전환·3회 실패 롤백 실기기 검증
+3. **키 운영** — 루트/부트/펌웨어/스토어 키 오프라인 또는 HSM, 폐기·교체 절차.
+   지금은 일회용 키뿐이다
+4. **스토어 운영** — 카탈로그 서버, 심사 파이프라인, 개발자 인증서 발급·폐기,
+   `system/store.json` 채우기
+5. **권한 동의** — 제3자 앱이 들어오는 시점에 첫 사용 동의 창(자리는 호출 게이트,
+   CLAUDE.md 규칙 8) + 설정의 앱별 권한 UI
+6. **법적 준비** — 개인정보 처리 고지, 오픈소스 고지, GPLv3 설치정보 점검
 
-**현재**: 없음.
-**RISC-V 제약**: SpacemiT K1에 TrustZone 동등 기능이 있는지 확인 필요.
-PMP(Physical Memory Protection)로 최소 격리 가능.
+## Phase 4 — 완성도 (8~12주)
 
-**작업**:
-1. SpacemiT K1 PMP 레지스터 설정 연구
-2. OpenSBI에서 보안 영역 설정
-3. 크리덴셜 암호화 키를 보안 영역에 저장
+- 성능 예산을 제품 기준으로: 콜드 스타트 300ms, 전환 60fps(또는 소프트웨어
+  렌더링 한계치), 앱 메모리 상한. `tests/perf` 를 실기기 측정으로 확장
+- **접근성** — 스크린리더(서비스 준비됨) + 설정 접근성 페이지(현재 placeholder),
+  폰트 스케일·고대비 실적용. 상용 제품에서 선택이 아니다
+- 알림 액션·인라인 리플라이, DND 완결, 최근 앱
+- i18n 실사용(5개 언어 레이아웃), 입력기 예측 변환
+- 복구 모드·공장 초기화 실기기 검증
 
----
+## Phase 5 — 팔기 위한 것 (Phase 0 와 동시에 시작)
 
-## Phase C: 미디어 파이프라인 [HIGH]
+소프트웨어가 아니지만 일정을 지배한다:
 
-### C1. 카메라 ISP + JPEG 인코딩
-
-**현재**: V4L2 raw YUYV 캡처만. 앱이 직접 변환해야 함.
-**목표**: 카메라 서비스가 JPEG 출력 + 포커스/노출 제어.
-
-**작업**:
-1. libjpeg-turbo 통합 — YUYV → JPEG 변환
-2. V4L2 컨트롤: `V4L2_CID_FOCUS_AUTO`, `V4L2_CID_EXPOSURE_AUTO`
-3. 카메라 서비스에 `captureJpeg()`, `setFocus()`, `setExposure()` 추가
-4. 썸네일 생성 (프리뷰용 320×240)
-
-**파일**:
-- `runtime/services/camera/camera.c` — JPEG 인코딩 + 컨트롤
-- `runtime/services/camera/meson.build` — libjpeg-turbo 의존성
-
-### C2. 동영상 녹화
-
-**현재**: 없음.
-**목표**: V4L2 → H.264 인코딩 → MP4 컨테이너.
-
-**작업**:
-1. GStreamer 또는 FFmpeg CLI 통합 (HW 인코더가 없으면 소프트웨어)
-2. 카메라 서비스에 `startRecording()`, `stopRecording()` 추가
-3. D-Bus 시그널로 녹화 상태 전파
-
-### C3. 오디오 녹음 (마이크)
-
-**현재**: PipeWire 재생만. 녹음 없음.
-**목표**: PipeWire 캡처 + WAV/Opus 저장.
-
-**작업**:
-1. `pw-record` 또는 PipeWire API로 캡처 스트림 오픈
-2. 오디오 서비스에 `startRecording()`, `stopRecording()` 추가
-3. 통화 앱과 연동 (마이크 입력 → telephony 서비스)
-
-### C4. 미디어 재생 (오디오/비디오)
-
-**현재**: Web Audio API 비프음만.
-**목표**: GStreamer/PipeWire 백엔드로 MP3/FLAC/MP4 재생.
-
-**작업**:
-1. 음악 앱에서 `audio.play(path)` → PipeWire 재생
-2. 갤러리 앱에서 동영상 재생 (GStreamer → Wayland subsurface)
-3. 미디어 세션 관리 (play/pause/next 하드키)
+- **전파·안전 인증** — KC(국내), CE/FCC(수출), 배터리 KC. 기기당 2~3개월
+- **통신사 인증** — 셀룰러 제품은 필수(IOT 시험)
+- **제조** — ODM/EMS, SoC 장기 공급 계약, PCB·기구·금형
+- **운영** — OTA·스토어 서버, AS·보증·리콜 경로
+- **자체 적합성 테스트** — 서비스 계약·권한·봉인·OTA 를 기기에서 자동 검증
 
 ---
 
-## Phase D: 전력 관리 [HIGH]
-
-### D1. CPU 거버너 + DVFS
-
-**현재**: 기본 커널 거버너(performance?). 제어 없음.
-**목표**: 사용 패턴에 따른 동적 주파수/전압 조절.
-
-**작업**:
-1. `cpufreq` sysfs 인터페이스 래퍼 — HAL에 추가
-2. 기본 거버너: `schedutil` (커널 스케줄러 연동)
-3. 파워 프로필: 성능/균형/절전 — 설정 앱에서 선택
-4. thermal throttling 감지 + 알림
-
-**파일**:
-- `runtime/hal/hal_cpu.c` — cpufreq 제어
-- `runtime/services/power/power.c` — 프로필 관리 확장
-- `apps/settings/js/settings.js` — 전력 모드 UI
-
-### D2. 앱별 배터리 제한
-
-**현재**: 없음.
-**목표**: 백그라운드 앱 CPU/네트워크 제한.
-
-**작업**:
-1. 앱 suspend 시 cgroup freeze (`cgroup.freeze = 1`)
-2. 배터리 사용량 추적 — cgroup `cpu.stat` 누적
-3. 설정 → 배터리 → 앱별 사용량 표시
-
-### D3. Doze/Standby 모드
-
-**현재**: 서스펜드(suspend-to-RAM)만.
-**목표**: 화면 꺼짐 후 단계적 전력 절감.
-
-```
-Screen Off → Idle (5분) → Doze (30분) → Deep Sleep
-  ↑ 웨이크락 보유 앱은 Idle 유지
-```
-
-**작업**:
-1. 파워 서비스에 상태 머신 추가 (ACTIVE → IDLE → DOZE → DEEP_SLEEP)
-2. DOZE: 네트워크 차단, 알람만 허용
-3. DEEP_SLEEP: suspend-to-RAM + 주기적 웨이크업 (알람 체크)
-
----
-
-## Phase E: 프로세스 격리 강화 [HIGH]
-
-### E1. 앱별 UID
-
-**현재**: 모든 앱이 `zyl-app` 단일 UID.
-**목표**: 앱 설치 시 고유 UID 할당.
-
-**작업**:
-1. 앱 설치 시 `/etc/passwd`에 `zyl-app-{id}` 사용자 생성 (UID 10000+)
-2. 앱 데이터 디렉토리 소유권 = 해당 UID
-3. WAM launch 시 `setuid` 전환
-4. 앱 간 파일 접근 불가 (DAC 강제)
-
-### E2. SELinux / Smack 통합
-
-**현재**: AppArmor만.
-**목표**: MAC(Mandatory Access Control) 강화.
-
-**작업**:
-1. RISC-V 커널에서 Smack 활성화 (SELinux보다 경량)
-2. 앱별 Smack 라벨 할당
-3. 서비스 간 통신 규칙 정의
-
-### E3. 콜드 스타트 단축
-
-**현재**: 앱마다 WebKit 이 새 웹 프로세스를 띄운다 (~2초).
-**목표**: ~200ms.
-
-**작업**:
-1. WebKit 의 프로세스 사전 준비 경로를 쓴다 — 직접 fork 하는 zygote 를 다시 만들지 말 것:
-   웹 프로세스를 띄우는 주체가 WebKit 이라 WAM 이 fork 해도 그 자식이 앱을 로드하지 않는다
-2. 앱 자원 선로딩 (`zyl-app://` 스킴 핸들러 캐시)
-3. `tests/perf/budgets.json` 의 시작 시간 예산으로 측정
-
----
-
-## Phase F: 앱 에코시스템 [HIGH]
-
-### F1. 앱스토어 서버
-
-**현재**: 로컬 설치/제거만.
-**목표**: HTTPS 앱 카탈로그 서버 + 검색 + 카테고리.
-
-**작업**:
-1. 서버 API 설계 (REST)
-   - `GET /v1/apps` — 앱 목록 (페이지네이션, 카테고리 필터)
-   - `GET /v1/apps/{id}` — 앱 상세
-   - `GET /v1/apps/{id}/download` — .zpkg 다운로드
-   - `POST /v1/apps/{id}/review` — 리뷰 등록
-2. 클라이언트: `apps/store/js/store.js`에 서버 연동
-3. 자동 업데이트 체크 (`updater` 서비스 확장)
-
-### F2. 앱 서명 인프라
-
-**현재**: 구현됨 — 앱 봉인(`.zyl-seal`), 스토어가 서명하는 개발자 인증서·
-프로비저닝 프로필(`tools/build-store.py dev-cert / profile`), 개발자 CLI
-(`tools/zyl keygen / package`), 카탈로그의 폐기 목록(`revoked`).
-**남은 작업**: 개발자가 공개 키·기기 ID 를 제출하고 인증서·프로필을 받는 포털
-
-### F3. 앱 결제
-
-**현재**: 없음.
-**목표**: 유료 앱 구매 + 인앱 결제.
-
-**작업**: 외부 결제 게이트웨이 (Stripe/PayPal) 통합. OS 수준에서는 라이선스 토큰 검증.
-
-### F4. 개발자 SDK
-
-**현재**: APP_DEVELOPMENT_GUIDE.md만.
-**목표**: 앱 템플릿 + API 레퍼런스 + 에뮬레이터 통합.
-
-**작업**:
-1. `zyl create-app <name>` CLI 도구
-2. app.json 스키마 JSON Schema 정의
-3. API 레퍼런스 자동 생성 (JSDoc → HTML)
-4. VS Code 확장 (구문 강조, 앱 실행)
-
----
-
-## Phase G: 네트워킹 스택 [MEDIUM]
-
-### G1. VPN 클라이언트
-
-**작업**: WireGuard 커널 모듈 + NetworkManager VPN 플러그인. 설정 앱 UI.
-
-### G2. WiFi 핫스팟
-
-**작업**: `hostapd` + `dnsmasq` 통합. AP 모드 전환.
-
-### G3. 캡티브 포털 감지
-
-**작업**: 연결 후 `http://connectivitycheck.zylos.dev/generate_204` 프로브. 302 → 브라우저 열기.
-
-### G4. IPv6
-
-**작업**: 커널 `CONFIG_IPV6=y` + NetworkManager IPv6 자동 설정.
-
-### G5. mDNS
-
-**작업**: Avahi 데몬 통합. `.local` 도메인 해석.
-
----
-
-## Phase H: 입력/접근성/생체 [MEDIUM]
-
-### H1. 예측 변환 + 자동 완성
-
-**작업**: hunspell 사전 + n-gram 기반 예측. 키보드 앱에 후보 표시 바.
-
-### H2. 음성 입력
-
-**작업**: Whisper.cpp (로컬 STT) 또는 서버 사이드. 마이크 HAL 연동.
-
-### H3. 스크린리더
-
-**작업**: AT-SPI 완성 + Orca 경량 포크 또는 자체 TTS 엔진.
-
-### H4. 생체 인증
-
-**작업**: 지문 센서 HAL (libfprint) + PAM 모듈. PIN 대체/보조.
-
----
-
-## Phase I: 계정/동기화/백업 [MEDIUM]
-
-### I1. 계정 서비스
-
-**작업**: OAuth 2.0 클라이언트 + 계정 관리 D-Bus 서비스. 다중 계정 지원.
-
-### I2. 클라우드 백업
-
-**작업**: 설정/연락처/메시지 → 암호화 → 클라우드 스토리지 (S3 호환).
-
-### I3. 크로스 디바이스 동기화
-
-**작업**: 연락처/캘린더 → CalDAV/CardDAV 서버 동기화.
-
----
-
-## Phase J: 알림/멀티태스킹 [MEDIUM]
-
-### J1. 알림 액션 + 인라인 리플라이
-
-**작업**: 알림에 버튼 액션 (수락/거부/리플라이) + 앱 콜백.
-
-### J2. 방해 금지(DND) 모드
-
-**작업**: 시간/연락처/앱 기반 필터. 우선순위 알림만 통과.
-
-### J3. 분할 화면
-
-**작업**: 컴포지터에 split view 모드. 두 앱 동시 표시.
-
-### J4. PiP (Picture in Picture)
-
-**작업**: 컴포지터에 floating window 레이어. 동영상/통화 앱 지원.
-
----
-
-## Phase K: 위치/NFC/기타 HAL [LOW~MEDIUM]
-
-### K1. WiFi/Cell 삼각측량
-
-**작업**: wpa_supplicant BSS 목록 + 셀 타워 → 위치 추정 DB.
-
-### K2. 지오펜싱
-
-**작업**: 위치 서비스에 등록/해제 + 진입/이탈 이벤트.
-
-### K3. NFC
-
-**작업**: libnfc HAL + D-Bus 서비스 (하드웨어 의존).
-
----
-
-## Phase L: 개발자 도구/SDK [MEDIUM]
-
-### L1. 원격 디버그
-
-**작업**: WebKitGTK 원격 인스펙터 활성화 + ADB 유사 도구.
-
-### L2. 프로파일러
-
-**작업**: 앱별 CPU/메모리/네트워크 사용량 실시간 모니터링 UI.
-
-### L3. 레이아웃 인스펙터
-
-**작업**: 앱 DOM 트리 원격 탐색 (WebKitGTK inspector).
-
-### L4. 앱 템플릿 생성기
-
-**작업**: `zyl init` → 보일러플레이트 app.json + index.html + i18n 생성.
-
----
-
-## Phase M: 테스트/인증 [HIGH]
-
-### M1. CTS 급 적합성 테스트
-
-**작업**: 각 서비스 D-Bus API 자동 테스트 (500+ 케이스).
-
-### M2. 성능 벤치마크
-
-**작업**: 앱 launch 시간, 프레임 레이트, 메모리 사용량 측정 + 회귀 방지.
-
-### M3. 보안 퍼징 확장
-
-**작업**: 모든 D-Bus 서비스 + IPC 핸들러 + 파일 파서 퍼징.
-
-### M4. 하드웨어 호환성 테스트
-
-**작업**: 실제 BPI-F3 보드에서 전 서비스 동작 검증.
-
----
-
-## 우선순위 타임라인
-
-```
-v0.2.0 (Phase A+B+D):  GPU + 보안 부팅 + 전력 관리
-  → "실제 디바이스에서 60fps UI + 보안 부팅"
-
-v0.3.0 (Phase C+E+J):  미디어 + 격리 + 멀티태스킹
-  → "카메라/음악/동영상 + 앱 격리 완성"
-
-v0.4.0 (Phase F+L):    앱 에코시스템 + SDK
-  → "서드파티 앱 개발/배포 가능"
-
-v0.5.0 (Phase G+H+K):  네트워크/입력/HAL
-  → "VPN, 예측변환, 생체인증"
-
-v1.0.0 (Phase I+M+N):  계정/테스트/국제화
-  → "상용 출시"
-```
-
-## 의존성 그래프
-
-```
-A (GPU) ──→ B (보안부팅)
-  │          │
-  ├──→ C (미디어)
-  │          │
-  ├──→ D (전력)
-  │
-  └──→ J (멀티태스킹)
-            │
-B ──→ E (격리) ──→ F (에코시스템) ──→ I (계정)
-                       │
-                       └──→ L (SDK)
-G (네트워크) ─────────────────────→ I (계정)
-H (입력/접근성) ── 독립
-K (HAL) ── 독립
-M (테스트) ── 전체 의존
-N (국제화) ── 독립
-```
+## 하지 않기로 한 것
+
+| 항목 | 이유 |
+|------|------|
+| 앱별 Linux UID | WebKit 샌드박스로 대체 (PR #15) |
+| SELinux / Smack | AppArmor + WebKit 샌드박스로 충분, 커널 작업 비용이 효용 초과 |
+| TEE | K1 에서 불가 |
+| 생체 인증 / NFC | 하드웨어 없음. 그 하드웨어가 있는 보드를 지원할 때 다시 |
+| 클라우드 동기화·백업 | 백엔드 운영 비용. 로컬 백업으로 대체 |
+| 앱 결제 | 스토어가 돌기 시작한 뒤 |
+| 분할 화면 · PiP | 1차 폼팩터(폰)에서 후순위 |
+| 원격 디버그·프로파일러 | WebKit 인스펙터로 대체 |
+
+## 버전
+
+Phase 0 종료 **0.2.0** · 첫 보드 부팅 0.3.0 · 1호 제품 출하 **1.0.0**
+
+## 가장 큰 미지수
+
+1. 소프트웨어 렌더링만으로 상용 수준 UI 가 되는가 (GPU 재배포권 여부에 달림)
+2. eFuse 해시 형식 — 틀리면 보드가 벽돌. `zyl_rotpk show` 로 먼저 대조
+3. 제조·인증 일정이 소프트웨어 일정을 덮는다

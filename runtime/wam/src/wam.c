@@ -649,9 +649,9 @@ static GDBusConnection *g_event_bus;   /* held for the WAM's lifetime: the
 
 static void subscribe_service_events(ZylWam *wam) {
     GError *err = NULL;
-    g_event_bus = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &err);
+    g_event_bus = g_bus_get_sync(G_BUS_TYPE_SYSTEM, NULL, &err);
     if (!g_event_bus) {
-        g_warning("WAM: no session bus for service events: %s", err->message);
+        g_warning("WAM: no system bus for service events: %s", err->message);
         g_error_free(err);
         return;
     }

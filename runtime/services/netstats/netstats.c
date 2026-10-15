@@ -427,7 +427,7 @@ int main(int argc, char *argv[]) {
     netstats_poll(&g_ns, now);
     netstats_save(&g_ns);
 
-    g_bus_own_name(G_BUS_TYPE_SESSION, "org.zylos.NetStats", G_BUS_NAME_OWNER_FLAGS_NONE,
+    g_bus_own_name(G_BUS_TYPE_SYSTEM, "org.zylos.NetStats", G_BUS_NAME_OWNER_FLAGS_NONE,
                    on_netstats_bus, NULL, NULL, NULL, NULL);
 
     GMainLoop *loop = g_main_loop_new(NULL, FALSE);

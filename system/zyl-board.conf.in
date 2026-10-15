@@ -1,0 +1,14 @@
+# ──────────────────────────────────────────────────────────
+# [Clean Architecture] Infrastructure Layer - Build Facts Template
+#
+# 역할: 이 빌드 디렉터리가 어떤 보드·아키텍처·프로파일용인지 meson 이 적어 둔다
+# 수행범위: 값 네 개. 빌드 로직 없음
+# 의존방향: meson.build (board/*/meson.build 의 선언을 그대로 옮긴다)
+# SOLID: DIP — meson 밖의 도구(tools/build-image.sh)가 빌드 설정을 추측하지 않고
+#        여기를 읽는다. 설치되지 않는다: 이미지가 아니라 빌드를 설명하는 파일이다
+# ──────────────────────────────────────────────────────────
+ZYL_BOARD=@ZYL_BOARD@
+ZYL_ARCH=@ZYL_ARCH@
+ZYL_PROFILE=@ZYL_PROFILE@
+ZYL_VERSION=@ZYL_VERSION@
+ZYL_PREFIX=@ZYL_PREFIX@

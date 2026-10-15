@@ -414,7 +414,7 @@ ZylCredentialStore *zyl_credential_create(const char *store_path) {
     ensure_dir(store_path);
 
     store->dbus_owner_id = g_bus_own_name(
-        G_BUS_TYPE_SESSION,
+        G_BUS_TYPE_SYSTEM,
         ZYL_CREDENTIAL_DBUS_NAME, G_BUS_NAME_OWNER_FLAGS_NONE,
         on_cred_bus, NULL, NULL, store, NULL);
 

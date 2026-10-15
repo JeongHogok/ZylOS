@@ -55,6 +55,12 @@ Linux 커널 위에 Wayland 컴포지터 + WebKitGTK 앱 런타임으로 구성�
 
 ### C 시스템 서비스 (32개 — runtime/services/, 주요 서비스)
 
+서비스는 **시스템 버스**에 이름을 올립니다. 유닛이 `Type=dbus` + `BusName=` 이므로
+systemd 가 기다리는 버스가 시스템 버스이고, 로그인 세션이 없는 기기 부팅에서 세션 버스를
+띄워 줄 주체도 없기 때문입니다. 누가 이름을 갖고 누가 부를 수 있는지는
+`system/dbus-1/zyl-os.conf` 한 곳이 정합니다 (기본 거부 — 서비스 데몬과 WAM 만 허용).
+`tests/test_dbus_policy.sh` 가 그 정책을 올린 실제 버스에서 소유·호출·거부를 검증합니다.
+
 #### D-Bus 데몬 서비스:
 
 | 서비스 | D-Bus 이름 | 역할 |
@@ -333,7 +339,7 @@ CSS에 `zoom: var(...)` 를 쓰면 조용히 1이 된다. `zoom` 은 vw/vh 를 �
    (webkitgtk-6.0 은 상시 ON, 4.1 폴백은 WAM 이 켠다)
 3. **데몬**: systemd 하드닝 + AppArmor 프로필 (`system/apparmor/zyl-*`)
 4. **앱 컨테이너**: `/data/appdata/<id>/` — 파일·웹 저장소·출처가 앱마다 분리
-5. **IPC**: D-Bus 정책 XML (권한별 서비스 접근)
+5. **IPC**: D-Bus 버스 정책 (`system/dbus-1/zyl-os.conf` — org.zylos.* 소유·호출은 서비스와 WAM 만)
 6. **앱 권한 시행**: 서비스 호출마다 OS 가 판정 (ZylPermissions / bridge.c), 사용자가 설정에서 끈 권한은 거부
 
 ### 앱 격리

@@ -151,7 +151,23 @@ install_data('system/store.json', install_dir: get_option('sysconfdir') / 'zyl-o
 install_data('system/sysusers.d/zyl-wam.conf',
              install_dir: get_option('prefix') / 'lib' / 'sysusers.d')
 install_data('system/tmpfiles.d/zyl-wam.conf', 'system/tmpfiles.d/zyl-data.conf',
+             'system/tmpfiles.d/zyl-state.conf',
              install_dir: get_option('prefix') / 'lib' / 'tmpfiles.d')
+
+# Build facts for tooling outside meson (tools/build-image.sh): which board,
+# architecture and profile this build directory is for. Not installed — it
+# describes the build, not the image.
+configure_file(
+  input: 'system/zyl-board.conf.in',
+  output: 'zyl-board.conf',
+  configuration: configuration_data({
+    'ZYL_BOARD':   board_id,
+    'ZYL_ARCH':    board_arch,
+    'ZYL_PROFILE': zyl_profile,
+    'ZYL_VERSION': meson.project_version(),
+    'ZYL_PREFIX':  get_option('prefix'),
+  }),
+)
 
 configure_file(
   input: 'system/zyl-release.in',
@@ -175,6 +191,18 @@ install_data('system/fonts/50-zyl-fonts.conf',
 install_data('system/recovery/recovery.sh',       install_dir: get_option('datadir') / 'zyl-os' / 'recovery', install_mode: 'rwxr-xr-x')
 install_data('system/recovery/factory-reset.sh',  install_dir: get_option('datadir') / 'zyl-os' / 'recovery', install_mode: 'rwxr-xr-x')
 install_data('system/recovery/recovery.service',  install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
+
+# Boot self test: not enabled by default (the unit has no [Install]).
+# `systemctl start zyl-selftest` on a device, or systemd.wants= on the kernel
+# command line in the QEMU lane and factory checks.
+install_data('tools/zyl-selftest',
+             install_dir: get_option('bindir'), install_mode: 'rwxr-xr-x')
+install_data('system/zyl-selftest.service', install_dir: _systemd_dir)
+
+# The service bus policy: who may own and call org.zylos.* on the system bus.
+# Without it the daemons cannot take their names once the bus denies by default.
+install_data('system/dbus-1/zyl-os.conf',
+             install_dir: get_option('datadir') / 'dbus-1' / 'system.d')
 
 # AppArmor profiles. zyl-apparmor.service loads every /etc/apparmor.d/zyl-* and
 # stops the boot on a parser error, so a profile whose binary this profile does

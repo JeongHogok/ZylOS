@@ -9,7 +9,12 @@ Type=simple
 User=root
 Environment=WLR_BACKENDS=drm
 Environment=WLR_DRM_DEVICES=/dev/dri/card0
-Environment=XDG_RUNTIME_DIR=/run/user/0
+# Wayland 소켓이 놓이는 곳. /run/user/0 은 로그인 세션이 있어야 생기고 기기에는
+# 세션이 없다 — systemd 가 만들어 주는 런타임 디렉터리를 쓴다. WAM 은 이
+# 경로의 소켓을 절대 경로로 가리킨다 (system/zyl-wam.service, AppArmor 프로필)
+RuntimeDirectory=zyl-session
+RuntimeDirectoryMode=0755
+Environment=XDG_RUNTIME_DIR=/run/zyl-session
 ExecStart=/usr/bin/zyl-compositor
 Restart=on-failure
 RestartSec=3

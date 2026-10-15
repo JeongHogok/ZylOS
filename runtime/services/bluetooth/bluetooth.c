@@ -140,7 +140,7 @@ static void on_bt_bus(GDBusConnection *conn, const gchar *name, gpointer data) {
 
 ZylBluetoothService *zyl_bt_create(void) {
     ZylBluetoothService *svc = g_new0(ZylBluetoothService, 1);
-    svc->dbus_owner_id = g_bus_own_name(G_BUS_TYPE_SESSION,
+    svc->dbus_owner_id = g_bus_own_name(G_BUS_TYPE_SYSTEM,
         ZYL_BT_DBUS_NAME, G_BUS_NAME_OWNER_FLAGS_NONE,
         on_bt_bus, NULL, NULL, svc, NULL);
     return svc;

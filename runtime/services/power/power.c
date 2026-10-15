@@ -232,7 +232,7 @@ ZylPowerService *zyl_power_create(void) {
     }
 
     /* D-Bus 등록 */
-    svc->dbus_owner_id = g_bus_own_name(G_BUS_TYPE_SESSION,
+    svc->dbus_owner_id = g_bus_own_name(G_BUS_TYPE_SYSTEM,
         ZYL_POWER_DBUS_NAME, G_BUS_NAME_OWNER_FLAGS_NONE,
         on_power_bus_acquired, NULL, NULL, svc, NULL);
 

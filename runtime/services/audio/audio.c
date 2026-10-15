@@ -238,7 +238,7 @@ ZylAudioService *zyl_audio_create(void) {
     int out = zyl_hal_audio()->get_output_volume();
     if (out >= 0) svc->volumes[ZYL_AUDIO_STREAM_MEDIA] = out;
 
-    svc->dbus_owner_id = g_bus_own_name(G_BUS_TYPE_SESSION,
+    svc->dbus_owner_id = g_bus_own_name(G_BUS_TYPE_SYSTEM,
         ZYL_AUDIO_DBUS_NAME, G_BUS_NAME_OWNER_FLAGS_NONE,
         on_audio_bus, NULL, NULL, svc, NULL);
 

@@ -1,0 +1,26 @@
+# ──────────────────────────────────────────────────────────
+# [Clean Architecture] Infrastructure Layer - Diagnostics Unit
+#
+# 역할: 부팅 자기점검을 OS 가 다 선 뒤에 한 번 돌린다
+# 수행범위: /usr/bin/zyl-selftest 실행, 결과를 콘솔과 journal 에 남김
+# 의존방향: zyl-os.target (그 뒤에 돈다), tools/zyl-selftest
+# SOLID: SRP — 점검 실행만
+#
+# [Install] 이 없다 = 기본으로 켜지지 않는다. 부를 때만 돈다:
+#   systemctl start zyl-selftest
+#   커널 인자 systemd.wants=zyl-selftest.service  (QEMU 레인·공장 검사)
+# ──────────────────────────────────────────────────────────
+
+[Unit]
+Description=Zyl OS self test
+After=zyl-os.target
+Wants=zyl-os.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/zyl-selftest
+RemainAfterExit=yes
+# 콘솔로도 보내야 직렬 콘솔만 있는 기기와 QEMU 에서 결과를 읽을 수 있다
+StandardOutput=journal+console
+StandardError=journal+console
+TimeoutStartSec=60

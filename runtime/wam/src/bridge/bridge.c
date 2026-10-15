@@ -624,7 +624,7 @@ static void handle_battery_get_level(const char *type, gpointer msg_obj,
     if (reply_ctx->callback_id < 0) return; /* no response needed */
 
     GError *err = NULL;
-    GDBusConnection *conn = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &err);
+    GDBusConnection *conn = g_bus_get_sync(G_BUS_TYPE_SYSTEM, NULL, &err);
     if (err) {
         zyl_bridge_reply_error(reply_ctx, "dbus unavailable");
         g_error_free(err);
@@ -659,7 +659,7 @@ static void handle_wifi_scan(const char *type, gpointer msg_obj,
     if (reply_ctx->callback_id < 0) return;
 
     GError *err = NULL;
-    GDBusConnection *conn = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &err);
+    GDBusConnection *conn = g_bus_get_sync(G_BUS_TYPE_SYSTEM, NULL, &err);
     if (err) {
         zyl_bridge_reply_error(reply_ctx, "dbus unavailable");
         g_error_free(err);
@@ -1209,9 +1209,9 @@ static void handle_service_request(const char *type, gpointer msg_obj,
            app_id, service, method, route->dbus_name, dbus_method);
 
     GError *err = NULL;
-    GDBusConnection *session = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &err);
+    GDBusConnection *session = g_bus_get_sync(G_BUS_TYPE_SYSTEM, NULL, &err);
     if (err) {
-        g_warning("Bridge: session bus error: %s", err->message);
+        g_warning("Bridge: system bus error: %s", err->message);
         zyl_bridge_reply_error(reply_ctx, "dbus unavailable");
         g_error_free(err);
         g_free(dbus_method);

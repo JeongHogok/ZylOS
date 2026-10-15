@@ -132,6 +132,27 @@ check "a locked device that boots nothing restarts, never a shell" "$out" \
 out=$(boot zyl_unlocked=1 zyl_lock_seen=1 FAKE_BOOT_FAIL=1)
 check "an unlocked device that boots nothing is left to its owner" "$out" "!reset" "did not boot"
 
+# ── 부트 정책과 파티션 레이아웃이 같은 사실을 말하는가 ──
+# zyl_boot_part·zyl_data 는 board/bpi-f3/partitions.conf 가 선언한 번호여야 한다.
+# 어긋나면 U-Boot 는 다른 파티션에서 FIT 을 찾고 /data 를 다른 곳에서 지운다.
+LAYOUT="$(cd "$(dirname "$0")/.." && pwd)/board/bpi-f3/partitions.conf"
+if [ -f "$LAYOUT" ]; then
+  # shellcheck disable=SC1090
+  . "$LAYOUT"
+  load_env
+  check_num() {   # 이름, env 값, 선언 값
+    if [ "$2" = "$3" ]; then
+      PASS=$((PASS + 1)); builtin echo "  ✓ $1 ($2)"
+    else
+      FAIL=$((FAIL + 1)); builtin echo "  ✗ $1: 부트 정책 $2, partitions.conf $3"
+    fi
+  }
+  check_num "boot 파티션 번호가 레이아웃과 같다" "${zyl_boot_part:-?}" "$ZYL_PART_BOOT"
+  check_num "data 파티션 번호가 레이아웃과 같다" "${zyl_data:-?}" "$ZYL_PART_DATA"
+else
+  FAIL=$((FAIL + 1)); builtin echo "  ✗ board/bpi-f3/partitions.conf 가 없다"
+fi
+
 builtin echo ""
 builtin echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
