@@ -87,6 +87,14 @@ int main(int argc, char *argv[])
     /* ── Renderer ── */
     server.renderer = wlr_renderer_autocreate(server.backend);
     if (!server.renderer) {
+        /* GPU 가 없는 기기(와 QEMU)에서는 EGL 이 소프트웨어 드라이버만 찾고
+           wlroots 가 그것을 거부한다 — 그래도 화면은 나와야 하므로 CPU
+           래스터라이저로 다시 만든다. GPU 가 있으면 위에서 이미 GLES2 를 잡는다 */
+        wlr_log(WLR_INFO, "GL renderer unavailable, falling back to pixman");
+        setenv("WLR_RENDERER", "pixman", 1);
+        server.renderer = wlr_renderer_autocreate(server.backend);
+    }
+    if (!server.renderer) {
         wlr_log(WLR_ERROR, "Failed to create wlr_renderer");
         return 1;
     }

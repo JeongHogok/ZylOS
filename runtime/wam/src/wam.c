@@ -666,6 +666,13 @@ static void subscribe_service_events(ZylWam *wam) {
 static void on_activate(GApplication *app, gpointer user_data) {
     ZylWam *wam = user_data;
 
+#ifndef ZYL_USE_WEBKIT2GTK
+    /* 6.0: schemes belong to the one web context; storage is per session.
+       GTK 가 디스플레이를 연 뒤여야 한다 — main() 에서 부르면 WebKit 이
+       플랫폼 레이어 없이 전역 컨텍스트를 만들다가 죽는다 (QEMU 레인이 잡음) */
+    register_app_scheme(webkit_web_context_get_default());
+#endif
+
     /* The WAM is a service: it runs until stopped, with or without app
        windows. App windows are not the application's, so without this hold
        g_application_run returned right after activation and the WAM exited. */
@@ -712,11 +719,6 @@ int main(int argc, char *argv[]) {
     wam.iface.remove_instance  = iface_remove_instance;
     wam.iface.count_instances  = iface_count_instances;
     wam.iface.impl_data        = &wam;
-
-#ifndef ZYL_USE_WEBKIT2GTK
-    /* 6.0: schemes belong to the one web context; storage is per session */
-    register_app_scheme(webkit_web_context_get_default());
-#endif
 
     /* Wire up the WebKitGTK engine */
     wam.engine.create_webview = webkit_create_webview;

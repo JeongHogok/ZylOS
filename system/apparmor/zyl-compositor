@@ -9,7 +9,10 @@
 
 #include <tunables/global>
 
-profile zyl-compositor /usr/bin/zyl-compositor {
+# flags=(attach_disconnected): 유닛이 ProtectSystem=strict·PrivateTmp 로
+# 마운트 네임스페이스 안에서 돌기 때문에, 그 안에서 열린 /dev/dri 같은
+# 경로가 AppArmor 에게 'disconnected path' 로 보여 거부된다
+profile zyl-compositor /usr/bin/zyl-compositor flags=(attach_disconnected) {
   #include <abstractions/base>
   #include <abstractions/dbus-session>
 
@@ -24,6 +27,7 @@ profile zyl-compositor /usr/bin/zyl-compositor {
   /usr/lib/@{multiarch}/**          mr,
 
   # GPU / DRI / input device access
+  /dev/dri/                         r,
   /dev/dri/**                       rw,
   /dev/input/**                     r,
   /dev/uinput                       rw,
@@ -34,8 +38,9 @@ profile zyl-compositor /usr/bin/zyl-compositor {
   # Framebuffer (fallback rendering)
   /dev/fb*                          rw,
 
-  # Wayland socket creation
-  owner /run/user/*/wayland-*       rw,
+  # Wayland socket creation — 유닛의 RuntimeDirectory=zyl-session 와 같은 경로
+  /run/zyl-session/                 rwk,
+  /run/zyl-session/**               rwk,
 
   # Cursor themes
   /usr/share/icons/**               r,
@@ -45,14 +50,35 @@ profile zyl-compositor /usr/bin/zyl-compositor {
   /usr/share/X11/xkb/**             r,
 
   # Temporary files (owner-only)
-  owner /tmp/zyl-compositor-*       rw,
+  owner /tmp/zyl-compositor-*       rwk,
 
-  # Runtime state
-  owner /run/zyl-os/compositor/**   rw,
+  # Runtime state (systemd 가 만드는 RuntimeDirectory)
+  /run/zyl-session/**               rwk,
 
   # D-Bus session bus (compositor signals)
   dbus (send, receive) bus=session
        peer=(name=org.zylos.*),
+
+  # GL/EGL 벤더 목록, 드라이버 설정, 장치 열거. Mesa 는 PCI 속성으로 드라이버를
+  # 고르는데 ARM·RISC-V 는 PCI 가 platform 아래 달려 표준 추상화가 닿지 않는다
+  /usr/share/glvnd/egl_vendor.d/{,**} r,
+  /etc/glvnd/egl_vendor.d/{,**}       r,
+  /usr/share/drirc.d/{,**}            r,
+  /etc/drirc                          r,
+  /sys/devices/**/drm/                r,
+  /sys/devices/**/{vendor,device,subsystem_vendor,subsystem_device,revision,class,config,uevent} r,
+
+  # 시작할 때 자기 권한을 한 번 떠보는 것들(GLib·libudev). 없어도 동작하므로
+  # 주지 않고, 감사 로그만 조용히 한다
+  deny capability net_admin,
+  deny capability sys_admin,
+  deny capability dac_override,
+  deny capability dac_read_search,
+
+  # udev 이벤트 모니터: wlroots 가 DRM·입력 장치 변화를 듣는 통로다.
+  # 막으면 "Failed to create udev monitor" 로 세션 생성에 실패하고 화면이 아예
+  # 안 나온다 (QEMU 레인이 잡았다)
+  network netlink raw,
 
   # Deny network access — compositor has no need
   deny network inet stream,

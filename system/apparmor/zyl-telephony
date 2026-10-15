@@ -37,7 +37,7 @@ profile zyl-telephony /usr/bin/zyl-telephony {
   /sys/class/tty/**                       r,
 
   # SIM / SMS / call log persistence
-  owner /var/lib/zyl-os/telephony/**      rw,
+  owner /var/lib/zyl-os/telephony/**      rwk,
 
   # Shared OS resources (read-only)
   /usr/share/zyl-os/**                    r,

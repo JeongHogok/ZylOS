@@ -22,8 +22,8 @@ profile zyl-audio /usr/bin/zyl-audio {
   /usr/lib/pipewire-*/**                  mr,
 
   # PipeWire runtime socket
-  owner /run/user/*/pipewire-*            rw,
-  owner /run/pipewire/**                  rw,
+  owner /run/user/*/pipewire-*            rwk,
+  owner /run/pipewire/**                  rwk,
 
   # ALSA devices
   /dev/snd/**                             rw,
@@ -34,7 +34,7 @@ profile zyl-audio /usr/bin/zyl-audio {
   /usr/bin/wpctl                          ix,
 
   # Tone temp files
-  owner /tmp/zyl-tone-*                   rw,
+  owner /tmp/zyl-tone-*                   rwk,
 
   # Shared OS resources (read-only)
   /usr/share/zyl-os/**                    r,

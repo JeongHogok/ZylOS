@@ -9,10 +9,25 @@
 
 #include <tunables/global>
 
-profile zyl-wam /usr/bin/zyl-wam {
+# flags=(attach_disconnected): 유닛이 ProtectSystem=strict·PrivateTmp 로
+# 마운트 네임스페이스 안에서 돌기 때문에, 그 안에서 열린 /dev/dri 같은
+# 경로가 AppArmor 에게 'disconnected path' 로 보여 거부된다
+profile zyl-wam /usr/bin/zyl-wam flags=(attach_disconnected) {
   #include <abstractions/base>
   #include <abstractions/dbus-session>
   #include <abstractions/nameservice>
+  # 글꼴: fontconfig 가 /usr/share/fonts 와 캐시를 못 읽으면 GTK 앱이 뜨지 않는다
+  # (QEMU 레인이 잡았다 — apparmor="DENIED" ... name="/usr/share/fonts/")
+  #include <abstractions/fonts>
+  # GSettings 스키마·아이콘·MIME: GTK 가 시작할 때 읽는다
+  #include <abstractions/freedesktop.org>
+  # 키 배열 규칙. 못 읽으면 GTK 가 키맵을 못 만들고 세그폴트로 죽는다
+  # (QEMU 레인이 잡았다 — DENIED name="/usr/share/X11/xkb/rules/evdev")
+  /usr/share/X11/xkb/{,**}          r,
+  # fontconfig 는 캐시를 하드링크로 원자 교체한다 (l 권한). HOME 은
+  # /var/lib/zyl-os/wam 이라 abstractions/fonts 의 @{HOME} 규칙이 닿지 않는다
+  owner /var/lib/zyl-os/wam/.cache/**  rwkl,
+  owner /var/lib/zyl-os/wam/.fontconfig/** rwkl,
 
   # WAM binary
   /usr/bin/zyl-wam                  mr,
@@ -24,6 +39,18 @@ profile zyl-wam /usr/bin/zyl-wam {
   /usr/lib/zyl-os/**                mr,
   /usr/lib/@{multiarch}/**          mr,
 
+  # GL/EGL: 배포판 표준 추상화를 쓴다. 없으면 GTK 가 렌더러를 못 고르고 WAM 이
+  # 뜨지 않는다 (QEMU 레인이 잡았다)
+  #include <abstractions/dri-common>
+  #include <abstractions/dri-enumerate>
+  #include <abstractions/mesa>
+  /usr/share/glvnd/egl_vendor.d/{,**}  r,
+  /etc/glvnd/egl_vendor.d/{,**}        r,
+  /sys/dev/char/**                     r,
+  # dri-enumerate 는 @{sys}/devices/pci* 만 본다. ARM·RISC-V 는 PCI 가
+  # platform 아래 달려(/sys/devices/platform/…/pci0000:00/…) 걸리지 않는다
+  /sys/devices/**/{vendor,device,subsystem_vendor,subsystem_device,revision,class,config,uevent} r,
+
   # WebKit's own helper processes (web, network, GPU), and the bubblewrap
   # sandbox it launches for each of them. A sandbox cannot be built from inside
   # a confined profile, so bwrap gets an unconfined child profile — the shape
@@ -34,27 +61,38 @@ profile zyl-wam /usr/bin/zyl-wam {
   /usr/bin/xdg-dbus-proxy           Cx -> bwrap,
 
   # GPU / DRI access for hardware-accelerated rendering
+  # WebKit 메모리 압력 감시: 막으면 압력 신호를 못 받고 캐시를 비우지 않는다
+  @{PROC}/zoneinfo                  r,
+  @{sys}/fs/cgroup/**/memory.{current,high,max,low,pressure} r,
+  owner @{PROC}/@{pid}/{cgroup,statm,cmdline} r,
+
+  /dev/                             r,
+  /dev/dri/                         r,
   /dev/dri/**                       rw,
+  # CPU 토폴로지: GTK·WebKit 이 스레드 수를 정할 때 읽는다
+  /sys/devices/system/cpu/**        r,
   /sys/devices/**/drm/**            r,
 
   # Wayland socket
-  owner /run/user/*/wayland-*       rw,
-  owner /run/zyl-wam/**             rw,
-  /run/zyl-session/wayland-*        rw,
+  owner /run/user/*/wayland-*       rwk,
+  owner /run/zyl-wam/**             rwk,
+  /run/zyl-session/wayland-*        rwk,
 
   # Temporary files (owner-only)
-  owner /tmp/zyl-wam-*              rw,
-  owner /tmp/zyl-wam-*/             rw,
-  owner /tmp/zyl-wam-*/**           rw,
+  owner /tmp/zyl-wam-*              rwkl,
+  owner /tmp/zyl-wam-*/             rwkl,
+  owner /tmp/zyl-wam-*/**           rwkl,
 
   # Web app data directories (owner-only)
-  owner /data/apps/**               rw,
+  # ** 는 디렉터리 자체에 닿지 않는다 — 앱 목록을 읽으려면 둘 다 필요하다
+  owner /data/apps/                 r,
+  owner /data/apps/**               rwkl,
   # Each app's container: the WAM keeps the app's WebKit storage there
-  owner /data/appdata/**            rw,
-  owner /var/lib/zyl-os/wam/**      rw,
+  owner /data/appdata/**            rwkl,
+  owner /var/lib/zyl-os/wam/**      rwkl,
 
   # Cache
-  owner /var/cache/zyl-os/wam/**    rw,
+  owner /var/cache/zyl-os/wam/**    rwkl,
 
   # D-Bus session bus
   dbus (send, receive) bus=session

@@ -31,7 +31,7 @@ profile zyl-camera /usr/bin/zyl-camera {
 
   # Captured image output (whitelist — no traversal)
   /data/camera/                           r,
-  owner /data/camera/**                   rw,
+  owner /data/camera/**                   rwk,
 
   # Shared OS resources (read-only)
   /usr/share/zyl-os/**                    r,

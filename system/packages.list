@@ -39,16 +39,25 @@ xdg-dbus-proxy          # 같은 샌드박스의 D-Bus 필터
 libwlroots-0.18        # 컴포지터 (패키지 이름은 배포판마다 다르다)
 libinput10               # 터치·키보드
 libdrm2                 # KMS 출력
-libgles2                # GL ES (소프트웨어 렌더링이라도 심볼이 필요)
-libegl1
+libgles2                # GL ES API (libglvnd 디스패치)
+libegl1                 # EGL API (libglvnd 디스패치)
+# **드라이버**: 위 둘은 디스패처일 뿐이고 실제 구현은 Mesa 가 준다. 없으면
+# GL/EGL 초기화가 실패하고 WAM 이 세그폴트로 죽는다 (QEMU 레인이 잡았다).
+# GPU 독점 드라이버를 못 쓰는 기기에서는 이 소프트웨어 경로(llvmpipe)가 유일하다
+libgl1-mesa-dri         # DRI 드라이버 (swrast/llvmpipe 포함)
+libegl-mesa0            # Mesa EGL 플랫폼 드라이버
+libglx-mesa0            # Mesa GLX
 libdisplay-info2        # EDID/모니터 정보
 libseat1                # 시트 관리
 libpixman-1-0           # 컴포지터 소프트웨어 렌더링
 libwayland-server0      # 컴포지터
 libxkbcommon0           # 키 배열
+xkb-data                # 키 배열 규칙(rules/evdev). 없으면 GTK 가 키맵을 못 만들고
+                        # WAM 이 세그폴트로 죽는다 (QEMU 레인이 잡았다)
 libgbm1                 # DRM 버퍼 할당
 
 # ── 글꼴 (없으면 한·중·일 UI 와 이모지가 전부 두부 ▯) ──
+fontconfig               # fc-cache — 이미지 빌드 때 글꼴 캐시를 구운다
 fonts-noto-core
 fonts-noto-mono
 fonts-noto-cjk

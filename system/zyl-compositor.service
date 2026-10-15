@@ -13,11 +13,19 @@ Environment=WLR_DRM_DEVICES=/dev/dri/card0
 # 세션이 없다 — systemd 가 만들어 주는 런타임 디렉터리를 쓴다. WAM 은 이
 # 경로의 소켓을 절대 경로로 가리킨다 (system/zyl-wam.service, AppArmor 프로필)
 RuntimeDirectory=zyl-session
-RuntimeDirectoryMode=0755
+# 소켓은 WAM 만 열 수 있어야 한다: 디렉터리·소켓을 zyl-wam 그룹에 주고
+# 그룹까지만 쓰기 허용. root:0755 로 두면 connect(2) 가 EACCES 로 막혀
+# GTK 가 wayland 백엔드를 포기하고 WAM 이 종료한다 (QEMU 레인이 잡았다)
+Group=zyl-wam
+RuntimeDirectoryMode=0750
+UMask=0007
 Environment=XDG_RUNTIME_DIR=/run/zyl-session
 ExecStart=/usr/bin/zyl-compositor
 Restart=on-failure
 RestartSec=3
+# 화면이 안 나올 때 단서는 여기뿐이다 (직렬 콘솔만 있는 기기·QEMU 레인)
+StandardOutput=journal+console
+StandardError=journal+console
 
 # Security hardening — root required for DRM/logind session
 NoNewPrivileges=true

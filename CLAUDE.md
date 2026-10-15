@@ -212,11 +212,15 @@ node tests/perf/run.js               # 앱 성능 예산 (Chrome 필요, CI 'per
 ```bash
 meson setup builddir --prefix=/usr -Dboard=emulator -Dprofile=phone
 ninja -C builddir
-tools/build-image.sh --builddir builddir --out out/image      # 소스 → 이미지 한 장
+tools/build-image.sh --builddir builddir --out out/image --with-kernel
+#   --with-kernel: QEMU 게스트는 이미지 안의 커널·모듈로 부팅해야 DRM·입력이
+#   보인다. 실기기는 서명 FIT 으로 커널을 받으므로 기본은 끔
 tools/run-qemu.sh --image out/image/zyl-os-emulator-phone.img \
                   --builddir builddir --check                  # 부팅 + 자기점검
 ```
-CI 의 `qemu-boot` 잡이 매 커밋 같은 일을 한다. 이 레인이 **검증하지 않는 것**:
+자기점검은 유닛·버스·정책·앱 디렉터리·`/data` 와 화면 체인(DRM → Wayland 소켓
+→ WAM 이 띄운 앱)까지 본다. CI 의 `qemu-boot` 잡이 매 커밋 같은 일을 한다.
+이 레인이 **검증하지 않는 것**:
 U-Boot·서명 FIT·dm-verity·A/B 전환(부트로더 빌드와 `tools/sign-image.sh`·
 `tests/test_boot_env.sh` 소관), SoC 고유 경로(GPU·모뎀·ISP·eFuse).
 기기에서도 같은 자기점검을 돌릴 수 있다: `systemctl start zyl-selftest`.

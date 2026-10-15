@@ -19,10 +19,11 @@ set -uo pipefail
 UNIT_DIRS=(/usr/lib/systemd/system /lib/systemd/system /etc/systemd/system)
 pass=0
 fail=0
+failed=""        # 직렬 콘솔은 줄을 흘린다 — 실패는 마지막에 다시 적는다
 skip=0
 say()  { echo "zyl-selftest: $*"; }
 ok()   { say "ok   $*"; pass=$((pass + 1)); }
-bad()  { say "FAIL $*"; fail=$((fail + 1)); }
+bad()  { say "FAIL $*"; fail=$((fail + 1)); failed="$failed\n  $*"; }
 # 하드웨어가 없어 systemd 가 건너뛴 유닛은 실패가 아니다 (Condition*= 미충족).
 # 화면 없는 어플라이언스에 DRM 이 없는 것은 정상이다
 skipped() { say "skip $*"; skip=$((skip + 1)); }
@@ -45,12 +46,21 @@ for u in $units; do
     # 자기점검 자신과 oneshot 보조 유닛은 활성 여부를 묻지 않는다
     case "$u" in zyl-selftest.service|zyl-apparmor.service) continue ;; esac
     state="$(systemctl is-active "$u" 2>/dev/null)"
+    # 아직 올라오는 중이면 기다려 준다 — WAM 은 WebKit 과 홈 앱을 띄우느라
+    # 느리고(에뮬레이션에서는 더), 시작 중인 유닛은 실패가 아니다
+    i=0
+    while [ "$state" = "activating" ] && [ $i -lt 30 ]; do
+        sleep 1; i=$((i + 1))
+        state="$(systemctl is-active "$u" 2>/dev/null)"
+    done
     if [ "$state" = "active" ]; then ok "unit $u"
     elif condition_failed "$u"; then skipped "unit $u (하드웨어 조건 미충족)"
     else
         why="$(systemctl show -p Result --value "$u" 2>/dev/null)"
         code="$(systemctl show -p ExecMainStatus --value "$u" 2>/dev/null)"
         bad "unit $u ($state, result=${why:-?}, exit=${code:-?})"
+        # 왜 죽었는지가 보통 여기 있다 — 기기에서 1차 진단이 된다
+        journalctl -u "$u" -n 3 --no-pager -o cat 2>/dev/null | sed 's/^/zyl-selftest:      | /'
     fi
 done
 
@@ -86,6 +96,16 @@ if [ -e /dev/dri/card0 ]; then
     ok "drm /dev/dri/card0"
     if [ -S /run/zyl-session/wayland-0 ]; then ok "wayland /run/zyl-session/wayland-0"
     else bad "wayland 소켓이 없다 (컴포지터가 화면을 잡지 못했다)"; fi
+    # 화면 체인의 끝: WAM 이 실제로 앱을 띄웠는가. 소켓만 있고 창이 없으면
+    # 사용자는 검은 화면을 본다
+    running="$(gdbus call --system -d org.zylos.WebAppManager \
+        -o /org/zylos/WebAppManager -m org.zylos.WebAppManager.ListRunning \
+        2>/dev/null)"
+    # 응답은 (['com.zylos.home'], 1) 꼴 — 앱 id 를 여기 또 적지 않고 개수만 본다
+    count="${running##*, }"; count="${count%)}"
+    if [ -z "$running" ]; then bad "wam ListRunning 이 응답하지 않는다"
+    elif [ "${count:-0}" -gt 0 ] 2>/dev/null; then ok "wam 앱 실행 중 $running"
+    else bad "wam 이 띄운 앱이 없다 ($running)"; fi
 else
     skipped "drm 장치 없음 — 화면 없는 기기면 정상 ($(ls /dev/dri 2>/dev/null | tr '\n' ' '))"
 fi
@@ -97,4 +117,6 @@ if [ "$fail" -eq 0 ]; then
     exit 0
 fi
 say "FAILED ($fail/$total 실패, 건너뜀 $skip)"
+# shellcheck disable=SC2059  # \n 을 실제 줄바꿈으로 펴는 것이 목적이다
+printf "zyl-selftest: 실패 목록:$failed\n" >&2
 exit 1
