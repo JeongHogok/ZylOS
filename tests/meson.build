@@ -130,6 +130,16 @@ test('settings',
   workdir: meson.project_source_root(),
 )
 
+# Test: screen lock credential (hash-only storage, failure waits that survive
+# a restart, current PIN to change/remove)
+test('lock',
+  executable('test-lock',
+    'test_lock.c',
+    dependencies: [gio_dep, dependency('openssl', version: '>=1.1.1')],
+    c_args: ['-DZYL_TEST'],
+  )
+)
+
 # Test: device app scan — a user app must not replace a system app by reusing its id
 test('manifest-scan',
   executable('test-manifest-scan',

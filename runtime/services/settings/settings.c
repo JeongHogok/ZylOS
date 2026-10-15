@@ -172,6 +172,10 @@ static void handle_settings_method(GDBusConnection *conn, const gchar *sender,
         if (!*category || !*key) {
             g_dbus_method_invocation_return_error(inv, G_DBUS_ERROR,
                 G_DBUS_ERROR_INVALID_ARGS, "category and key are required");
+        } else if (strcmp(category, "security") == 0 && strcmp(key, "pin") == 0) {
+            /* The PIN lives in the lock service as a hash, never here */
+            g_dbus_method_invocation_return_error(inv, G_DBUS_ERROR,
+                G_DBUS_ERROR_ACCESS_DENIED, "the PIN belongs to the lock service");
         } else {
             JsonObject *obj = settings_update(category, key, json_gvariant_serialize(value));
             g_dbus_method_invocation_return_value(inv,

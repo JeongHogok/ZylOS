@@ -202,13 +202,11 @@
             broadcastToCurrentApp('lifecycle.restore', { state: restored.state });
           }
 
-          /* Lockscreen: notifications + PIN */
+          /* Lockscreen: notifications (the PIN is the OS lock service's, not ours) */
           if (loadAppId === 'com.zylos.lockscreen') {
             notifications.forEach(function (n) {
               broadcastToCurrentApp('notification.push', n);
             });
-            /* Always send PIN state — lockscreen decides behavior based on empty vs set */
-            broadcastToCurrentApp('settings.pinChanged', { pin: _currentPin });
           }
           /* Home: wallpaper */
           if (loadAppId === 'com.zylos.home') {
@@ -943,7 +941,6 @@
 
   /* ── Apply real side effects when a setting changes ── */
   /* ─── 설정 변경 → 에뮬레이터에 실제 반영 ─── */
-  var _currentPin = '';
   /* The device's configured time zone (Settings > Date & time); 'auto' follows
      the system zone. Broadcast to every app on load, like the locale. */
   var _currentTimeZone = 'auto';
@@ -1062,13 +1059,6 @@
       syslog('Time zone: ' + _currentTimeZone, 'sys');
     }
 
-    /* ── PIN changed → save (sent to lockscreen on load) ── */
-    if (category === 'security' && key === 'pin') {
-      _currentPin = String(value);
-      syslog('PIN changed', 'sys');
-      syslog('PIN changed via Settings', 'sys');
-    }
-
     /* ── 앱 권한 변경 → 권한 시스템 업데이트 ── */
     if (category === 'app_permissions') {
       syslog('App permissions updated: ' + key, 'sys');
@@ -1119,16 +1109,7 @@
         case 'unlock':
           state.locked = false;
           syslog('Device unlocked', 'sys');
-          /* Ensure PIN is loaded from settings before proceeding */
-          var pinReload = ZylServices.handleRequest('settings', 'get', { category: 'security' });
-          if (pinReload && typeof pinReload.then === 'function') {
-            pinReload.then(function (sec) {
-              if (sec && sec.pin) _currentPin = String(sec.pin);
-              goHome();
-            }).catch(function () { goHome(); });
-          } else {
-            goHome();
-          }
+          goHome();
           break;
         case 'notification.create':
           pushNotification(msg);
@@ -1146,13 +1127,6 @@
           if (msg.locale) {
             ZylEmuI18n.setLocale(String(msg.locale));
             syslog('Locale: ' + msg.locale, 'sys');
-          }
-          break;
-        case 'settings.pinChanged':
-          /* Forward PIN change to lockscreen if it's running */
-          syslog('PIN changed via Settings', 'sys');
-          if (state.currentApp !== 'com.zylos.lockscreen') {
-            /* Store for when lockscreen loads */
           }
           break;
         case 'settings.wallpaperChanged':
@@ -1353,14 +1327,6 @@
       syslog('Boot complete', 'sys');
       state.booted = true;
       state.locked = true;
-
-      /* Load persisted PIN from settings (survives emulator restart) */
-      var pinLoad = ZylServices.handleRequest('settings', 'get', { category: 'security' });
-      if (pinLoad && typeof pinLoad.then === 'function') {
-        pinLoad.then(function (sec) {
-          if (sec && sec.pin) _currentPin = String(sec.pin);
-        });
-      }
 
       /* Load persisted time zone */
       var tzLoad = ZylServices.handleRequest('settings', 'get', { category: 'datetime' });

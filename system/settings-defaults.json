@@ -1,6 +1,10 @@
 {
-  "wifi": { "enabled": true },
-  "bluetooth": { "enabled": true },
+  "wifi": {
+    "enabled": true
+  },
+  "bluetooth": {
+    "enabled": true
+  },
   "display": {
     "brightness": 80,
     "darkMode": true,
@@ -17,12 +21,16 @@
     "silentMode": false
   },
   "security": {
-    "lockType": "swipe",
-    "pin": "",
     "fingerprint": false
   },
   "wallpaper": {
     "current": "default",
-    "options": ["default", "blue", "purple", "dark", "sunset"]
+    "options": [
+      "default",
+      "blue",
+      "purple",
+      "dark",
+      "sunset"
+    ]
   }
 }

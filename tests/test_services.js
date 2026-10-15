@@ -75,7 +75,7 @@ var moduleFiles = [
   'notification.js', 'power.js', 'display.js', 'input.js', 'sensors.js',
   'location.js', 'telephony.js', 'contacts.js', 'messaging.js', 'usb.js',
   'user.js', 'credential.js', 'appstore.js', 'updater.js', 'sandbox.js',
-  'logger.js', 'accessibility.js', 'audio.js', 'telemetry.js', 'netstats.js', 'bootctl.js'
+  'logger.js', 'accessibility.js', 'audio.js', 'telemetry.js', 'netstats.js', 'bootctl.js', 'lock.js'
 ];
 
 /* Provide window.addEventListener stub before loading modules */
@@ -753,6 +753,78 @@ console.log('\n■ ZylIme');
 })();
 
 /* ═══════════════════════════════════════════════════════
+   Screen lock credential (JS lock service, contract of runtime/services/lock)
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ lock service');
+
+var lockTests = (function () {
+  function make(store) {
+    store = store || {};
+    var settingsSvc = {
+      _getSetting: function (cat) { return Promise.resolve(store[cat] || null); },
+      _updateSetting: function (cat, k, v) { store[cat] = store[cat] || {}; store[cat][k] = v; }
+    };
+    return { svc: ns.lock({ settingsSvc: settingsSvc }), store: store };
+  }
+  function fail(svc, n) {
+    var p = Promise.resolve();
+    for (var i = 0; i < n; i++) p = p.then(function () { return svc.verifyPin({ pin: '0000' }); });
+    return p;
+  }
+
+  return Promise.all([
+    asyncTest('no PIN: verify passes, the PIN is never stored in plain text', function () {
+      var t = make();
+      return t.svc.verifyPin({ pin: '' }).then(function (r) {
+        assert.strictEqual(r.ok, true);
+        assert.strictEqual(r.hasPin, false);
+        return t.svc.setPin({ current: '', pin: '4821' });
+      }).then(function (r) {
+        assert.strictEqual(r.ok, true);
+        assert.ok(JSON.stringify(t.store).indexOf('4821') === -1);
+        assert.ok(/^pbkdf2-sha256\$/.test(t.store.lock.hash));
+        return t.svc.verifyPin({ pin: '4821' });
+      }).then(function (r) { assert.strictEqual(r.ok, true); });
+    }),
+    asyncTest('five failures make the user wait, even for the right PIN', function () {
+      var t = make();
+      return t.svc.setPin({ current: '', pin: '4821' }).then(function () {
+        return fail(t.svc, 5);
+      }).then(function () {
+        return t.svc.verifyPin({ pin: '4821' });
+      }).then(function (r) {
+        assert.strictEqual(r.ok, false);
+        assert.strictEqual(r.reason, 'locked_out');
+        assert.ok(r.retryAfterMs > 25000 && r.retryAfterMs <= 30000);
+      });
+    }),
+    asyncTest('changing or removing needs the current PIN; format is checked', function () {
+      var t = make();
+      return t.svc.setPin({ current: '', pin: '12a4' }).then(function (r) {
+        assert.strictEqual(r.reason, 'format');
+        return t.svc.setPin({ current: '', pin: '4821' });
+      }).then(function () {
+        return t.svc.setPin({ current: '1111', pin: '' });
+      }).then(function (r) {
+        assert.strictEqual(r.reason, 'wrong_pin');
+        return t.svc.setPin({ current: '4821', pin: '' });
+      }).then(function (r) {
+        assert.strictEqual(r.ok, true);
+        assert.strictEqual(r.hasPin, false);
+      });
+    }),
+    asyncTest('a plain-text PIN left by older builds is hashed and erased', function () {
+      var t = make({ security: { pin: '2580' } });
+      return t.svc.getState().then(function (r) {
+        assert.strictEqual(r.hasPin, true);
+        assert.strictEqual(t.store.security.pin, '');
+        return t.svc.verifyPin({ pin: '2580' });
+      }).then(function (r) { assert.strictEqual(r.ok, true); });
+    })
+  ]);
+})();
+
+/* ═══════════════════════════════════════════════════════
    apps/shared/bridge.js on the device (WAM / WebKitGTK)
    ═══════════════════════════════════════════════════════ */
 console.log('\n■ ZylBridge on the device');
@@ -1421,7 +1493,7 @@ console.log('\n■ zylI18n time');
    ═══════════════════════════════════════════════════════ */
 Promise.all([settingsTests, displayTests, inputTests, sensorsTests,
              usbTests, powerTests, audioTests, fsTests, updaterTests, telemetryTests,
-             netstatsTests, alertTests, deviceBridgeTests, appStateTests])
+             netstatsTests, alertTests, lockTests, deviceBridgeTests, appStateTests])
   .then(function () {
     console.log('\n════════════════════════');
     console.log('Total: ' + total + '  Passed: ' + passed + '  Failed: ' + failed);

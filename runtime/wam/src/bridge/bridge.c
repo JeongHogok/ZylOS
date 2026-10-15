@@ -717,6 +717,7 @@ static const ServiceRoute SERVICE_ROUTES[] = {
     {"telemetry",    "org.zylos.Telemetry",          "/org/zylos/Telemetry",          "org.zylos.Telemetry"},
     {"netstats",     "org.zylos.NetStats",           "/org/zylos/NetStats",           "org.zylos.NetStats"},
     {"bootctl",      "org.zylos.BootControl",        "/org/zylos/BootControl",        "org.zylos.BootControl"},
+    {"lock",         "org.zylos.Lock",               "/org/zylos/Lock",               "org.zylos.Lock"},
     {NULL, NULL, NULL, NULL}
 };
 
@@ -760,6 +761,7 @@ static const ServicePermission SERVICE_PERMISSIONS[] = {
     {"telemetry",     {"system", NULL}},
     {"netstats",      {"system", NULL}},
     {"bootctl",       {"system", NULL}},
+    {"lock",          {"system", NULL}},
     {"device",        {NULL}},
     {"storage",       {NULL}},
     {"apps",          {NULL}},

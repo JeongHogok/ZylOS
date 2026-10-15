@@ -149,14 +149,15 @@
     }
 
     msg.textContent = '';
-    /* Save PIN to system settings */
-    ZylBridge.sendToSystem({
-      type: 'service.request',
-      service: 'settings',
-      method: 'update',
-      params: { category: 'security', key: 'pin', value: pin }
+    /* The lock service keeps only a hash; move on once it has the PIN */
+    ZylBridge.requestService('lock', 'setPin', { current: '', pin: pin }).then(function (r) {
+      if (r && r.ok === true) { nextStep(); return; }
+      msg.textContent = zylI18n.t(r && r.reason === 'format' ? 'oobe.pin_format' : 'oobe.pin_failed');
+      msg.style.color = '#ef4444';
+    }, function () {
+      msg.textContent = zylI18n.t('oobe.pin_failed');
+      msg.style.color = '#ef4444';
     });
-    nextStep();
   };
 
   /* ─── Terms Agreement ─── */

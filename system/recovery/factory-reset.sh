@@ -4,7 +4,7 @@
 #
 # 역할: 팩토리 리셋 수행 — 사용자 데이터 및 앱 데이터 삭제
 # 수행범위: /data/users, /data/apps, /var/lib/zyl-os, /data/telemetry (UUID),
-#           /data/netstats, /data/alerts,
+#           /data/netstats, /data/alerts, /data/lock, /data/settings,
 #           /data/crash 삭제 후 sync → 재부팅
 # 의존방향: 없음
 # SOLID: SRP — 팩토리 리셋 실행만 담당
@@ -25,6 +25,8 @@ echo "  - /data/telemetry/*   (device UUID and telemetry queue)"
 echo "  - /data/crash/*       (crash reports)"
 echo "  - /data/netstats/*    (data usage)"
 echo "  - /data/alerts/*      (emergency alert history)"
+echo "  - /data/lock/*        (screen lock PIN)"
+echo "  - /data/settings/*    (settings)"
 echo ""
 
 read -r -p "Type YES to confirm: " confirm
@@ -54,9 +56,9 @@ if [ "$confirm" = "YES" ]; then
         echo "  [OK] /data/telemetry cleared (device UUID reset)"
     fi
 
-    # Data usage counts and emergency alert history describe where the
-    # previous owner was and what they did
-    for d in /data/netstats /data/alerts; do
+    # Data usage counts and alert history describe where the previous owner
+    # was; settings and the screen lock PIN are theirs too
+    for d in /data/netstats /data/alerts /data/lock /data/settings; do
         if [ -d "$d" ]; then
             rm -rf "$d"/*
             echo "  [OK] $d cleared"

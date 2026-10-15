@@ -32,17 +32,25 @@
 
   /* ─── State ─── */
   var enteredPin   = '';
-  var correctPin   = '';  /* Empty = no PIN set, swipe-only unlock */
+  var hasPin       = false;  /* false = swipe-only unlock */
   var pendingAppId = null;
-  var failCount    = 0;
   var lockoutUntil = 0;
 
-  /* Fetch current PIN from settings service */
-  ZylBridge.sendToSystem({
-    type: 'service.request',
-    service: 'settings',
-    method: 'get',
-    params: { category: 'security' }
+  /* The lock service holds the PIN (as a hash) and counts failures — this
+     screen only asks. It never learns the PIN, so no message can change it. */
+  function applyLockState(r) {
+    if (!r) return;
+    hasPin = r.hasPin === true;
+    if (r.retryAfterMs > 0) lockoutUntil = Date.now() + r.retryAfterMs;
+  }
+  function refreshLockState() {
+    ZylBridge.requestService('lock', 'getState').then(applyLockState, function () {
+      hasPin = true;   /* unknown must not mean "no PIN" */
+    });
+  }
+  refreshLockState();
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) refreshLockState();
   });
 
   /* ─── 파티클 생성 ─── */
@@ -124,7 +132,7 @@
     if (dy > SWIPE_THRESHOLD) {
       /* Threshold exceeded → check if PIN is set */
       lockMain.classList.add('sliding-out');
-      if (!correctPin) {
+      if (!hasPin) {
         /* No PIN set → swipe-only unlock */
         document.body.classList.add('unlocking');
         unlockFlash.classList.add('flash');
@@ -253,57 +261,64 @@
   }
 
   function verifyPin() {
-    /* Lockout check: 5 failed attempts → 30 second wait */
     if (Date.now() < lockoutUntil) {
-      updateLockoutDisplay();
+      startLockoutCountdown();
       enteredPin = '';
       updateDots();
       return;
     }
+    disableNumpad(true);
+    ZylBridge.requestService('lock', 'verifyPin', { pin: enteredPin }).then(function (r) {
+      disableNumpad(false);
+      if (r && r.ok === true) unlockNow();
+      else pinRejected(r);
+    }, function () {
+      disableNumpad(false);
+      pinRejected(null);   /* service unreachable: stay locked */
+    });
+  }
 
-    if (enteredPin === correctPin) {
-      failCount = 0;
-      clearLockoutTimer();
-      /* Success: zoom-out + flash effect */
-      document.body.classList.add('unlocking');
-      unlockFlash.classList.add('flash');
+  function unlockNow() {
+    clearLockoutTimer();
+    /* Success: zoom-out + flash effect */
+    document.body.classList.add('unlocking');
+    unlockFlash.classList.add('flash');
 
-      setTimeout(function () {
-        /* 에뮬레이터에 잠금해제 알림 */
-        if (pendingAppId) {
-          ZylBridge.sendToSystem({
-            type: 'app.launch', appId: pendingAppId
-          });
-        } else {
-          ZylBridge.sendToSystem({
-            type: 'unlock'
-          });
-        }
-
-        /* 자체 Bridge 호출 (WAM 환경) */
-        if (typeof ZylBridge !== 'undefined') {
-          ZylBridge.closeApp();
-        }
-      }, 500);
-    } else {
-      /* Failure: shake + error + lockout after 5 attempts */
-      failCount++;
-      if (failCount >= 5) {
-        lockoutUntil = Date.now() + 30000;
-        failCount = 0;
-        startLockoutCountdown();
+    setTimeout(function () {
+      /* 에뮬레이터에 잠금해제 알림 */
+      if (pendingAppId) {
+        ZylBridge.sendToSystem({
+          type: 'app.launch', appId: pendingAppId
+        });
+      } else {
+        ZylBridge.sendToSystem({
+          type: 'unlock'
+        });
       }
+
+      /* 자체 Bridge 호출 (WAM 환경) */
+      if (typeof ZylBridge !== 'undefined') {
+        ZylBridge.closeApp();
+      }
+    }, 500);
+  }
+
+  function pinRejected(r) {
+    if (r && r.retryAfterMs > 0) {
+      lockoutUntil = Date.now() + r.retryAfterMs;
+      startLockoutCountdown();     /* shows "try again in N s" */
+    } else {
       pinError.textContent = zylI18n.t('lock.wrong_pin');
       pinError.classList.add('show');
-      var dots = document.getElementById('pin-dots');
-      dots.classList.add('shake');
-
-      setTimeout(function () {
-        dots.classList.remove('shake');
-        enteredPin = '';
-        updateDots();
-      }, 500);
     }
+    var dots = document.getElementById('pin-dots');
+    dots.classList.add('shake');
+
+    setTimeout(function () {
+      dots.classList.remove('shake');
+      enteredPin = '';
+      updateDots();
+    }, 500);
   }
 
   /* ════════════════════════════════════════════
@@ -320,16 +335,6 @@
       /* Notification */
       if (msg.type === 'notification.push') {
         addLockNotification(msg.data);
-      }
-      /* PIN changed from settings */
-      if (msg.type === 'settings.pinChanged' && msg.data && msg.data.pin) {
-        correctPin = msg.data.pin;
-      }
-      /* Settings response — initial PIN load */
-      if (msg.type === 'service.response' && msg.service === 'settings' && msg.data) {
-        if (msg.data.pin) {
-          correctPin = String(msg.data.pin);
-        }
       }
     } catch (err) { /* ignore */ }
   });

@@ -128,8 +128,14 @@ openssl dgst -sha256 -sign developer.key -out SIGNATURE manifest.hash
 - 프로덕션 환경에서는 반드시 비활성화하세요
 
 ### 화면 잠금
-- 기본 PIN: 0000
-- 첫 부팅 시 OOBE에서 PIN 변경을 권장합니다
+- 기본 PIN 없음 (밀어서 잠금 해제). OOBE 에서 PIN 설정을 권장합니다
+- PIN 은 `lock` 서비스(기기: `runtime/services/lock`)만 다룬다 — PBKDF2-SHA256 솔트 해시로만
+  `/data/lock` 에 저장(0600), 잠금화면·설정·OOBE 는 검증·변경을 요청할 뿐 PIN 을 보관하지 않는다.
+  설정 저장소는 `security.pin` 쓰기를 거부한다
+- 실패 5회부터 30초 대기, 5회마다 두 배(최대 1시간). 재부팅·앱 재시작으로 초기화되지 않으며
+  대기 중에는 맞는 PIN 도 판정하지 않는다
+- 한계: 4자리 PIN 은 해시만으로 오프라인 대입을 막지 못한다 — TEE 결합 전까지 실제 방어선은
+  대기 정책과 `/data/lock` 접근 제한
 
 ### 터미널 명령 필터링
 - 에뮬레이터 터미널에서 22개 위험 명령 패턴을 Rust 백엔드에서 차단

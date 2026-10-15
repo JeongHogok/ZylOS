@@ -266,6 +266,7 @@ window.ZylSystemServices = (function () {
     if (ns.telemetry)     serviceMap.telemetry    = ns.telemetry(crossDeps);
     if (ns.netstats)      serviceMap.netstats     = ns.netstats(crossDeps);
     if (ns.bootctl)       serviceMap.bootctl      = ns.bootctl(crossDeps);
+    if (ns.lock)          serviceMap.lock         = ns.lock(crossDeps);
     if (ns.audio) {
       var audioMod = ns.audio(crossDeps);
       serviceMap.audio = audioMod;
