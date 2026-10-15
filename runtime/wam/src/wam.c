@@ -380,6 +380,9 @@ static GtkWidget *webkit_create_webview(ZylWebEngine   *self,
                                           "base-cache-directory", cache_dir, NULL)
         : webkit_website_data_manager_new_ephemeral();
     WebKitWebContext *ctx = webkit_web_context_new_with_website_data_manager(store);
+    /* The app's web process is isolated by WebKit itself: bubblewrap namespaces
+       + seccomp. webkitgtk-6.0 has it always on and dropped this setter. */
+    webkit_web_context_set_sandbox_enabled(ctx, TRUE);
     register_app_scheme(ctx);
     webkit_web_context_set_tls_errors_policy(ctx, WEBKIT_TLS_ERRORS_POLICY_FAIL);
     webkit_user_content_manager_register_script_message_handler(ucm, "bridge");
@@ -462,11 +465,7 @@ static void dbus_launch(GVariant *params, GDBusMethodInvocation *inv,
         }
 
         /* OOM: 앱 등록 + 포그라운드 설정 + 즉시 압박 체크 */
-        ZylAppManifest *m = wam->iface.get_manifest(&wam->iface, app_id);
-        bool is_sys = m ? m->is_system : false;
-        /* Pass pid=0: WAM runs WebKitGTK in-process, so there's no child PID.
-         * If zygote integration adds a real child PID, pass it here. */
-        zyl_oom_on_app_launched(g_oom, app_id, is_sys, 0);
+        zyl_oom_on_app_launched(g_oom, app_id);
         zyl_oom_on_app_foreground(g_oom, app_id);
         zyl_oom_check_pressure(g_oom);
     }
@@ -625,7 +624,7 @@ static void on_service_event(const char *service, const char *signal,
     if (show) {
         gboolean running = wam->iface.get_instance(&wam->iface, show) != NULL;
         if (zyl_lifecycle_launch(&wam->iface, &wam->engine, show)) {
-            if (!running) zyl_oom_on_app_launched(g_oom, show, true, 0);
+            if (!running) zyl_oom_on_app_launched(g_oom, show);
             zyl_oom_on_app_foreground(g_oom, show);
         } else {
             g_warning("WAM: %s.%s needs %s, which could not start", service, signal, show);
@@ -657,6 +656,7 @@ static void subscribe_service_events(ZylWam *wam) {
         return;
     }
     zyl_bridge_subscribe_service_events(g_event_bus, on_service_event, wam);
+    zyl_bridge_watch_revocations(g_event_bus);
 }
 
 /* ════════════════════════════════════════════════════════════════
@@ -671,7 +671,7 @@ static void on_activate(GApplication *app, gpointer user_data) {
        g_application_run returned right after activation and the WAM exited. */
     g_application_hold(app);
 
-    /* OOM Killer 초기화 — cgroup v2 + 주기적 모니터링 시작 */
+    /* OOM Killer 초기화 — 주기적 메모리 압박 모니터링 시작 */
     g_oom = zyl_oom_init(&wam->iface);
 
     zyl_manifest_scan_dir(wam->manifests, WAM_APP_DIR,  TRUE);
@@ -680,7 +680,7 @@ static void on_activate(GApplication *app, gpointer user_data) {
 
     /* Auto-launch home screen */
     (void)zyl_lifecycle_launch(&wam->iface, &wam->engine, "com.zylos.home");
-    zyl_oom_on_app_launched(g_oom, "com.zylos.home", true, 0);
+    zyl_oom_on_app_launched(g_oom, "com.zylos.home");
     zyl_oom_on_app_foreground(g_oom, "com.zylos.home");
 
     subscribe_service_events(wam);

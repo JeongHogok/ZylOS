@@ -16,12 +16,6 @@
   var core = window.ZylSettingsCore;
   var PIN_DIALOG_HIDE_DELAY = 1500;
 
-  /* ─── Apply Security State ─── */
-  function applySecurityState(data) {
-    var fpToggle = document.getElementById('fingerprint-toggle');
-    if (fpToggle) fpToggle.checked = !!(data && data.fingerprint);
-  }
-
   /* The lock service holds the PIN; Settings only asks and shows the answer */
   function showLockType(hasPin) {
     var lockVal = document.getElementById('lock-type-value');
@@ -123,19 +117,5 @@
       }).then(null, function () { showPinMessage(lockMessage(null), '#ef4444'); });
     });
   }
-
-  /* ─── Fingerprint Toggle ─── */
-  var fpToggle = document.getElementById('fingerprint-toggle');
-  if (fpToggle) {
-    fpToggle.addEventListener('change', function () {
-      core.updateSetting('security', 'fingerprint', fpToggle.checked);
-    });
-  }
-
-  /* ─── Register with core ─── */
-  core.handlers.security = {
-    onSettingsGet: applySecurityState,
-    onSettingsUpdated: null
-  };
 
 })();

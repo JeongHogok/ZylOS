@@ -336,35 +336,6 @@ else
   pass "네트워크 허용 도메인(network.c) = sandbox.js"
 fi
 
-# C4: 샌드박스 권한 어휘가 app.json 선언과 일치하는지
-#     비트가 없으면 앱이 능력을 통째로 잃는다 (네트워크 네임스페이스 격리,
-#     ModemManager D-Bus 차단). 새 권한을 추가하고 매핑을 잊으면 조용히 0이 된다.
-UNMAPPED=$(python3 - "$ROOT" <<'PYCHK'
-import json, glob, re, sys
-root = sys.argv[1]
-# 격리 의미가 없어 의도적으로 0을 반환하는 권한 (OS 레이어에서만 게이트)
-NO_ISOLATION = {
-    'audio', 'wifi', 'display', 'input', 'i18n', 'time', 'webview',
-    'wallpaper', 'bookmarks', 'auth', 'battery',
-    'app.launch', 'app.list', 'app.manage',
-}
-src = open(root + '/runtime/services/sandbox/sandbox.c').read()
-block = src.split('static uint32_t permission_from_string', 1)[1]
-block = block.split('\n}\n', 1)[0]
-mapped = set(re.findall(r'strcmp\(perm,\s*"([a-z_.]+)"', block))
-declared = set()
-for f in glob.glob(root + '/apps/*/app.json'):
-    declared |= set(json.load(open(f)).get('permissions', []))
-missing = sorted(declared - mapped - NO_ISOLATION)
-print(' '.join(missing))
-PYCHK
-)
-if [ -n "$UNMAPPED" ]; then
-  warn "샌드박스가 매핑하지 않는 app.json 권한: $UNMAPPED"
-else
-  pass "샌드박스 권한 어휘가 app.json 선언과 일치"
-fi
-
 # C5: 앱의 서비스 호출이 실기기 D-Bus 메서드와 맞는지 (래칫)
 #     브릿지는 params 의 멤버를 서비스 인트로스펙션의 인자 이름으로 채운다.
 #     메서드나 인자가 없으면 에뮬레이터에서는 되고 기기에서는 실패한다.

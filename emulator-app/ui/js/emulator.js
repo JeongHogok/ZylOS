@@ -1063,9 +1063,6 @@
         case 'intent.chosen':
           if (!isLocked()) runIntent(ZylIntent.choose(state.currentApp, msg.token, msg.appId));
           break;
-        case 'app.minimize':
-          goHome();
-          break;
         case 'unlock':
           state.locked = false;
           syslog('Device unlocked', 'sys');

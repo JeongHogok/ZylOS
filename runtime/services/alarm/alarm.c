@@ -3,12 +3,14 @@
  * [Clean Architecture] Application Layer - Service
  *
  * 역할: 알람/스케줄러 서비스 구현 — D-Bus Set/Cancel/List + GLib 타이머 관리
- * 수행범위: 알람 등록/취소/조회, g_timeout_add 기반 트리거, AlarmTriggered 시그널 발송
- * 의존방향: alarm.h, gio/gio.h, glib.h
+ * 수행범위: 알람 등록/취소/조회, g_timeout_add 기반 트리거, AlarmTriggered 시그널,
+ *           트리거 시 알림 발송(앱이 안 떠 있어도 사용자가 알도록)
+ * 의존방향: alarm.h, notification.h, gio/gio.h, glib.h
  * SOLID: SRP — 알람 스케줄링과 D-Bus 통신만 담당
  * ────────────────────────────────────────────────────────── */
 
 #include "alarm.h"
+#include "../notification/notification.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -70,6 +72,22 @@ static void emit_alarm_triggered(ZylAlarmService *svc,
     }
 }
 
+/* ─── 트리거 알림 ───
+ * 앱이 떠 있지 않을 때 알람을 알리는 유일한 수단. 제목은 앱이 설정할 때 준
+ * 번역된 문자열이고, 우선순위는 URGENT — 방해 금지 모드에서도 울려야 한다. */
+static void post_alarm_notification(ZylAlarmService *svc, const ZylAlarm *a) {
+    if (!svc || !svc->dbus || !a->title || !a->title[0]) return;
+    g_dbus_connection_call(svc->dbus,
+        ZYL_NOTIFICATION_DBUS_NAME,
+        ZYL_NOTIFICATION_DBUS_PATH,
+        ZYL_NOTIFICATION_DBUS_IFACE,
+        "Post",
+        g_variant_new("(sssssi)",
+                      a->app_id ? a->app_id : "", "alarm", a->title, "", "",
+                      (gint32)ZYL_NOTIFICATION_PRIORITY_URGENT),
+        NULL, G_DBUS_CALL_FLAGS_NONE, -1, NULL, NULL, NULL);
+}
+
 /* ─── 타이머 콜백 컨텍스트 ─── */
 typedef struct {
     ZylAlarmService *svc;
@@ -94,8 +112,9 @@ static gboolean on_alarm_fire(gpointer data) {
     g_message("[Alarm] Triggered: tag=%s app=%s",
               entry->alarm.tag, entry->alarm.app_id ? entry->alarm.app_id : "");
 
-    /* D-Bus 시그널 발송 */
+    /* 떠 있는 앱에게는 시그널, 사용자에게는 알림 */
     emit_alarm_triggered(svc, entry->alarm.tag, entry->alarm.app_id);
+    post_alarm_notification(svc, &entry->alarm);
 
     if (entry->alarm.repeating && entry->alarm.interval_ms > 0) {
         /* 반복 알람 — 다음 트리거 예약 (interval_ms) */
@@ -110,6 +129,7 @@ static gboolean on_alarm_fire(gpointer data) {
         entry->timer_id = 0;
         g_free(entry->alarm.tag);
         g_free(entry->alarm.app_id);
+        g_free(entry->alarm.title);
         /* 마지막 엔트리로 교체 */
         int last = --svc->count;
         if (entry != &svc->entries[last]) {
@@ -131,6 +151,7 @@ static const char *alarm_introspection_xml =
     "      <arg type='t' name='interval_ms' direction='in'/>"
     "      <arg type='s' name='app_id'     direction='in'/>"
     "      <arg type='b' name='repeating'  direction='in'/>"
+    "      <arg type='s' name='title'      direction='in'/>"
     "      <arg type='b' name='ok'         direction='out'/>"
     "    </method>"
     "    <method name='Cancel'>"
@@ -138,7 +159,7 @@ static const char *alarm_introspection_xml =
     "      <arg type='b' name='ok'  direction='out'/>"
     "    </method>"
     "    <method name='List'>"
-    "      <arg type='a(sttsb)' name='alarms' direction='out'/>"
+    "      <arg type='aa{sv}' name='alarms' direction='out'/>"
     "    </method>"
     "    <signal name='AlarmTriggered'>"
     "      <arg type='s' name='tag'/>"
@@ -160,11 +181,12 @@ static void handle_alarm_method(GDBusConnection      *conn,
     (void)conn; (void)sender; (void)path; (void)iface;
 
     if (g_strcmp0(method, "Set") == 0) {
-        const gchar *tag, *app_id;
+        const gchar *tag, *app_id, *title;
         guint64      trigger_at, interval_ms;
         gboolean     repeating;
-        g_variant_get(params, "(&stts&sb)",
-                      &tag, &trigger_at, &interval_ms, &app_id, &repeating);
+        g_variant_get(params, "(&stts&sb&s)",
+                      &tag, &trigger_at, &interval_ms, &app_id, &repeating,
+                      &title);
 
         ZylAlarm alarm = {
             .tag        = (char *)tag,
@@ -172,6 +194,7 @@ static void handle_alarm_method(GDBusConnection      *conn,
             .interval_ms = interval_ms,
             .app_id     = (char *)app_id,
             .repeating  = (bool)repeating,
+            .title      = (char *)title,
         };
         int rc = zyl_alarm_set(svc, &alarm);
         g_dbus_method_invocation_return_value(inv,
@@ -190,19 +213,28 @@ static void handle_alarm_method(GDBusConnection      *conn,
         zyl_alarm_list(svc, &alarms, &count);
 
         GVariantBuilder builder;
-        g_variant_builder_init(&builder, G_VARIANT_TYPE("a(sttsb)"));
+        g_variant_builder_init(&builder, G_VARIANT_TYPE("aa{sv}"));
         for (int i = 0; i < count; i++) {
-            g_variant_builder_add(&builder, "(sttsb)",
-                alarms[i].tag        ? alarms[i].tag    : "",
-                (guint64)alarms[i].trigger_at,
-                (guint64)alarms[i].interval_ms,
-                alarms[i].app_id     ? alarms[i].app_id : "",
-                (gboolean)alarms[i].repeating);
+            GVariantBuilder d;
+            g_variant_builder_init(&d, G_VARIANT_TYPE("a{sv}"));
+            g_variant_builder_add(&d, "{sv}", "tag",
+                g_variant_new_string(alarms[i].tag ? alarms[i].tag : ""));
+            g_variant_builder_add(&d, "{sv}", "triggerAt",
+                g_variant_new_uint64(alarms[i].trigger_at));
+            g_variant_builder_add(&d, "{sv}", "intervalMs",
+                g_variant_new_uint64(alarms[i].interval_ms));
+            g_variant_builder_add(&d, "{sv}", "appId",
+                g_variant_new_string(alarms[i].app_id ? alarms[i].app_id : ""));
+            g_variant_builder_add(&d, "{sv}", "repeating",
+                g_variant_new_boolean(alarms[i].repeating));
+            g_variant_builder_add(&d, "{sv}", "title",
+                g_variant_new_string(alarms[i].title ? alarms[i].title : ""));
+            g_variant_builder_add(&builder, "a{sv}", &d);
         }
         zyl_alarm_list_free(alarms, count);
 
         g_dbus_method_invocation_return_value(inv,
-            g_variant_new("(a(sttsb))", &builder));
+            g_variant_new("(aa{sv})", &builder));
     }
 }
 
@@ -272,6 +304,8 @@ static void alarm_persist_save(ZylAlarmService *svc) {
         json_builder_add_string_value(b, a->app_id ? a->app_id : "");
         json_builder_set_member_name(b, "repeating");
         json_builder_add_boolean_value(b, a->repeating);
+        json_builder_set_member_name(b, "title");
+        json_builder_add_string_value(b, a->title ? a->title : "");
         json_builder_end_object(b);
     }
     json_builder_end_array(b);
@@ -334,6 +368,8 @@ static void alarm_persist_load(ZylAlarmService *svc) {
         alarm.app_id = g_strdup(json_object_has_member(ao, "app_id") ?
                                 json_object_get_string_member(ao, "app_id") : "");
         alarm.repeating = repeating;
+        alarm.title = g_strdup(json_object_has_member(ao, "title") ?
+                               json_object_get_string_member(ao, "title") : "");
 
         /* For repeating alarms that fired while service was down,
            advance trigger_at to the next future occurrence */
@@ -346,6 +382,7 @@ static void alarm_persist_load(ZylAlarmService *svc) {
         zyl_alarm_set(svc, &alarm);
         g_free(alarm.tag);
         g_free(alarm.app_id);
+        g_free(alarm.title);
     }
 
     g_object_unref(parser);
@@ -382,6 +419,7 @@ void zyl_alarm_service_destroy(ZylAlarmService *svc) {
         }
         g_free(svc->entries[i].alarm.tag);
         g_free(svc->entries[i].alarm.app_id);
+        g_free(svc->entries[i].alarm.title);
     }
 
     g_bus_unown_name(svc->dbus_owner_id);
@@ -409,6 +447,7 @@ int zyl_alarm_set(ZylAlarmService *svc, const ZylAlarm *alarm) {
         }
         g_free(entry->alarm.tag);
         g_free(entry->alarm.app_id);
+        g_free(entry->alarm.title);
     } else {
         /* 새 슬롯 */
         if (svc->count >= MAX_ALARMS) {
@@ -423,6 +462,7 @@ int zyl_alarm_set(ZylAlarmService *svc, const ZylAlarm *alarm) {
     entry->alarm.interval_ms = alarm->interval_ms;
     entry->alarm.app_id     = alarm->app_id ? g_strdup(alarm->app_id) : g_strdup("");
     entry->alarm.repeating  = alarm->repeating;
+    entry->alarm.title      = g_strdup(alarm->title ? alarm->title : "");
     entry->timer_id         = 0;
 
     /* 트리거 시각까지 남은 시간 (ms) 계산 */
@@ -461,6 +501,7 @@ int zyl_alarm_cancel(ZylAlarmService *svc, const char *tag) {
             }
             g_free(svc->entries[i].alarm.tag);
             g_free(svc->entries[i].alarm.app_id);
+            g_free(svc->entries[i].alarm.title);
             /* 마지막 엔트리로 교체 */
             int last = --svc->count;
             if (i != last) {
@@ -483,6 +524,7 @@ int zyl_alarm_forget_app(ZylAlarmService *svc, const char *app_id) {
         if (svc->entries[i].timer_id) g_source_remove(svc->entries[i].timer_id);
         g_free(svc->entries[i].alarm.tag);
         g_free(svc->entries[i].alarm.app_id);
+        g_free(svc->entries[i].alarm.title);
         int last = --svc->count;
         if (i != last) svc->entries[i] = svc->entries[last];
         memset(&svc->entries[last], 0, sizeof(AlarmEntry));
@@ -510,6 +552,7 @@ int zyl_alarm_list(ZylAlarmService *svc, ZylAlarm **out, int *count) {
         result[i].interval_ms = svc->entries[i].alarm.interval_ms;
         result[i].app_id     = g_strdup(svc->entries[i].alarm.app_id);
         result[i].repeating  = svc->entries[i].alarm.repeating;
+        result[i].title      = g_strdup(svc->entries[i].alarm.title);
     }
 
     *out   = result;
@@ -522,6 +565,7 @@ void zyl_alarm_list_free(ZylAlarm *alarms, int count) {
     for (int i = 0; i < count; i++) {
         g_free(alarms[i].tag);
         g_free(alarms[i].app_id);
+        g_free(alarms[i].title);
     }
     free(alarms);
 }

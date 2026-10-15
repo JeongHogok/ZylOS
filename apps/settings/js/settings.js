@@ -387,7 +387,6 @@
   /* Request settings state for all categories */
   requestServiceFire('settings', 'get', { category: 'display' });
   requestServiceFire('settings', 'get', { category: 'sound' });
-  requestServiceFire('settings', 'get', { category: 'security' });
   requestServiceFire('settings', 'get', { category: 'keyboard' });
   requestServiceFire('settings', 'get', { category: 'wallpaper' });
   requestServiceFire('settings', 'get', { category: 'app_permissions' });

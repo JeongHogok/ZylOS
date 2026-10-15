@@ -2,14 +2,14 @@
 
 이 파일은 AI 어시스턴트와 모든 개발자가 반드시 따라야 하는 프로젝트 규칙입니다.
 
-## 코드베이스 현황 (2026-03-31)
+## 코드베이스 현황 (2026-10-15)
 
-- **파일 수**: 375개
-- **LoC**: ~66,300줄
-- **C 서비스 디렉토리**: 26개 (runtime/services/)
-- **systemd 서비스**: 25개 (system/*.service)
-- **JS 서비스 모듈**: 29개 (apps/system/services/)
-- **HAL 구현체**: 8개 (runtime/hal/)
+- **파일 수**: 528개 (`git ls-files`)
+- **LoC**: ~74,600줄 (추적 중인 .c .h .js .css .html .rs .sh .py)
+- **C 서비스 디렉토리**: 32개 (runtime/services/, 전부 D-Bus 데몬)
+- **systemd 서비스**: 35개 (system/*.service — 서비스 32 + wam·compositor·apparmor)
+- **JS 서비스 모듈**: 33개 (apps/system/services/)
+- **HAL 구현체**: 12개 (runtime/hal/)
 - **시스템 앱**: 22개 (apps/, shared 포함)
 - **에뮬레이터**: Tauri 2.x (Rust), aes-gcm 암호화
 
@@ -88,6 +88,11 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 - 앱이 스스로를 시스템앱으로 선언하는 것을 신뢰하지 않음
 - `settings.json`, `.credentials/`, `.system/`은 보호 경로
 - 서비스 권한 체크는 OS 레이어에서만 수행
+- 사용자가 설정에서 끈 권한(`settings` 의 `app_permissions`)은 두 게이트 모두에서
+  거부한다 — 에뮬레이터 `ZylPermissions`, 기기 `bridge.c`(WAM 이 settings 의
+  `CategoryChanged` 로 따라간다). 시스템 앱의 권한은 끌 수 없다.
+  첫 사용 동의 창은 없다 — 넣는다면 자리는 이 두 게이트이고, 그리는 쪽은 앱 화면에
+  OS 공용 코드(인텐트 선택 시트와 같은 방식)다
 - 부트 정책은 `board/bpi-f3/u-boot-env.txt` 단일 출처(`tests/test_boot_env.sh`),
   부트로더는 `tools/build-bootloader.sh` 로만 빌드·서명. 저장소·USB·파일이 부팅을
   바꾸는 경로를 되살리지 말 것. eFuse 굽기는 기본 off(`--burn-rotpk` 일 때만)

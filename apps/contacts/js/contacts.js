@@ -99,23 +99,8 @@
   }
 
   function loadContacts() {
-    /* ── 런타임 퍼미션: contacts 권한 체크 후 로드 ── */
-    if (typeof ZylPermissionDialog !== 'undefined') {
-      ZylPermissionDialog.checkAndRequest('com.zylos.contacts', 'contacts').then(function (granted) {
-        if (granted) {
-          requestServiceFire('contacts', 'getAll');
-        } else {
-          if (contactList) {
-            contactList.innerHTML = '<div class="empty-state">' + t('contacts.permission_denied') + '</div>';
-          }
-        }
-      }).catch(function (err) {
-        if (typeof console !== 'undefined') console.error('[Contacts] permission check failed:', err);
-      });
-    } else {
-      /* ZylPermissionDialog 미로드 시 폴백 */
-      requestServiceFire('contacts', 'getAll');
-    }
+    /* 권한 판정은 OS 몫이다: 거부되면 응답이 오지 않고 목록은 빈 상태로 남는다 */
+    requestServiceFire('contacts', 'getAll');
   }
 
   /* ── View Management ── */

@@ -5,9 +5,3 @@ executable('zyl-accessibility',
   dependencies: [gio],
   install: true,
 )
-
-executable('zyl-a11y-atspi',
-  'a11y_atspi.c',
-  dependencies: [gio],
-  install: true,
-)

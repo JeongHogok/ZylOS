@@ -38,11 +38,11 @@ PrivateTmp=true
 PrivateDevices=false
 ProtectKernelTunables=true
 ProtectKernelModules=true
-# WAM OOM killer requires cgroup v2 write access
-ProtectControlGroups=false
-RestrictNamespaces=true
-# Allow cgroup path for OOM killer app memory accounting
-ReadWritePaths=/sys/fs/cgroup/zylos.apps
+ProtectControlGroups=true
+# WebKit wraps every web process in bubblewrap, which creates user/mount/pid
+# namespaces. RestrictNamespaces=true blocks that, and webkitgtk-6.0 cannot run
+# its web processes unsandboxed — the WAM would start but no app would load.
+RestrictNamespaces=false
 # App data directories; /data/appdata: each app's WebKit storage in its container
 ReadWritePaths=/data/apps /data/appdata /var/lib/zyl-os/wam /var/cache/zyl-os/wam
 

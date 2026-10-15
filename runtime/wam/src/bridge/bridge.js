@@ -84,10 +84,6 @@
 
       close: function () {
         postBridge({ type: "app.close", appId: "{{APP_ID}}" });
-      },
-
-      minimize: function () {
-        postBridge({ type: "app.minimize", appId: "{{APP_ID}}" });
       }
     },
 

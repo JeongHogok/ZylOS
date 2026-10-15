@@ -86,6 +86,18 @@ ZylBridge.notify('알림 제목', '알림 내용', {
 | clearAll | — | `notification` |
 | setDndMode | `{ enabled }` | `notification` |
 
+### alarm — 알람
+| 메서드 | 파라미터 | 권한 |
+|--------|----------|------|
+| set | `{ tag, triggerAt, intervalMs, appId, repeating, title }` | `notification` |
+| cancel | `{ tag }` | `notification` |
+| list | — | `notification` |
+
+`triggerAt` 은 epoch ms. 같은 `tag` 로 다시 set 하면 갱신된다. `repeating` 이면
+`intervalMs` 마다 다시 울린다. 트리거 때 OS 가 `title` 로 알림을 띄우므로
+(앱이 떠 있지 않아도 울린다) 번역된 문자열을 줘야 한다 — OS 는 번역을 갖지
+않아 `title` 이 비면 알림 없이 `AlarmTriggered` 시그널만 간다.
+
 ### audio — 오디오
 | 메서드 | 파라미터 | 설명 |
 |--------|----------|------|

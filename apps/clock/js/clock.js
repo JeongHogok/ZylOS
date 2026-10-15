@@ -3,7 +3,8 @@
 //
 // 역할: 시계 앱 — 시계, 알람(스누즈 포함), 세계시계, 타이머, 스톱워치
 // 수행범위: 탭 전환, 실시간 시계, 알람 관리/체크/스누즈, 세계시계 관리, 타이머 카운트다운, 스톱워치 랩
-// 의존방향: shared/clock.js, shared/bridge.js → postMessage IPC (settings, notification)
+// 의존방향: shared/clock.js, shared/bridge.js → postMessage IPC
+//           (settings, alarm, audio) — 울리는 일은 OS alarm 서비스 소관
 // SOLID: SRP — 시간 관련 UI만 담당, OCP — 알람/도시 목록 확장 가능
 //
 // 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
@@ -203,15 +204,118 @@
 
   var DAY_KEYS = ['clock.day_sun', 'clock.day_mon', 'clock.day_tue', 'clock.day_wed', 'clock.day_thu', 'clock.day_fri', 'clock.day_sat'];
 
+  /* ── OS 알람 서비스 등록 ──
+     앱이 떠 있지 않을 때 울리는 것은 OS alarm 서비스다: 서비스가 다음 시각을
+     들고 있다가 알림을 띄운다. 아래 앱 안 검사는 앱이 열려 있을 때 스누즈
+     화면을 띄우는 용도일 뿐이다.
+     shortcut: 요일 알람을 7일 고정 간격으로 반복시키므로 서머타임이 바뀌면
+     앱을 다시 열 때까지(열면 다시 등록한다) 한 시간 어긋난다. 요일을 아는
+     스케줄은 alarm 서비스가 가져야 한다 */
+  var ALARM_APP_ID = 'com.zylos.clock';
+  var ALARM_TAG = 'clock:alarm:';
+  var SNOOZE_TAG = 'clock:snooze:';
+  var WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+  function alarmTitle(alarm) {
+    return (alarm.label || zylI18n.t('clock.alarm')) + ' ' +
+           pad(alarm.hour) + ':' + pad(alarm.minute);
+  }
+
+  /* 사용자 시간대에서 hour:minute 이 다음으로 오는 순간 (epoch ms).
+     weekday 가 null 이면 가장 이른 날, 아니면 그 요일. 0 = 못 찾음 */
+  function nextOccurrence(hour, minute, weekday) {
+    var tz = zylI18n.getTimeZone();
+    var now = Date.now();
+    for (var i = 0; i < 8; i++) {
+      var probe = new Date(now + i * 86400000);
+      var p = zylI18n.parts(probe);
+      if (!p) return 0;
+      if (weekday !== null && p.weekday !== weekday) continue;
+      var wall = Date.UTC(p.year, p.month - 1, p.day, hour, minute);
+      var at = wall - zylI18n.zoneOffsetMinutes(tz, probe) * 60000;
+      if (at > now) return at;
+    }
+    return 0;
+  }
+
+  /* 지금 목록이 서비스에 있어야 하는 등록들: tag → 등록 내용 */
+  function desiredAlarms() {
+    var want = {};
+    for (var i = 0; i < alarms.length; i++) {
+      var a = alarms[i];
+      if (a.enabled === false) continue;
+      var title = alarmTitle(a);
+      if (!a.days || a.days.length === 0) {
+        /* 저장할 때 적어 둔 예정 시각을 그대로 쓴다 — 서비스 등록과 "울렸는지"
+           판정이 같은 값을 봐야 한다 */
+        var once = (a.firesAt && a.firesAt > Date.now())
+          ? a.firesAt : nextOccurrence(a.hour, a.minute, null);
+        if (once) {
+          want[ALARM_TAG + a.id] = {
+            triggerAt: once, intervalMs: 0, repeating: false, title: title
+          };
+        }
+        continue;
+      }
+      for (var d = 0; d < a.days.length; d++) {
+        var when = nextOccurrence(a.hour, a.minute, a.days[d]);
+        if (!when) continue;
+        want[ALARM_TAG + a.id + ':' + a.days[d]] = {
+          triggerAt: when, intervalMs: WEEK_MS, repeating: true, title: title
+        };
+      }
+    }
+    return want;
+  }
+
+  function setServiceAlarm(tag, w) {
+    requestService('alarm', 'set', {
+      tag: tag,
+      triggerAt: w.triggerAt,
+      intervalMs: w.intervalMs,
+      appId: ALARM_APP_ID,
+      repeating: w.repeating,
+      title: w.title
+    });
+  }
+
+  /* 서비스에 있는 것과 있어야 하는 것을 맞춘다 (응답에서 차이를 계산) */
+  function syncAlarmService() {
+    requestService('alarm', 'list');
+  }
+
+  onServiceResponse('alarm', 'list', function (params, data) {
+    var want = desiredAlarms();
+    var have = Array.isArray(data) ? data : [];
+    for (var i = 0; i < have.length; i++) {
+      var tag = (have[i] && have[i].tag) || '';
+      if (tag.indexOf(ALARM_TAG) === 0 && !want[tag]) {
+        requestService('alarm', 'cancel', { tag: tag });
+      }
+    }
+    Object.keys(want).forEach(function (tag) { setServiceAlarm(tag, want[tag]); });
+  });
+
   /* ── Persist alarms via settings service ── */
 
   function saveAlarms() {
+    /* 1회성 알람에는 예정 시각을 같이 적는다: 앱이 닫힌 사이에 울렸는지는
+       그 시각이 지났는지로만 알 수 있다 (울리는 쪽은 서비스다) */
+    for (var i = 0; i < alarms.length; i++) {
+      var a = alarms[i];
+      if (a.enabled === false || (a.days && a.days.length > 0)) {
+        delete a.firesAt;
+      } else if (!a.firesAt || a.firesAt < Date.now()) {
+        a.firesAt = nextOccurrence(a.hour, a.minute, null);
+      }
+    }
     var serialized = JSON.stringify(alarms);
     requestService('settings', 'update', {
       category: 'alarms',
       key: 'list',
       value: serialized
     });
+    syncAlarmService();
   }
 
   function loadAlarms() {
@@ -227,7 +331,19 @@
           if (Array.isArray(parsed)) {
             alarms = parsed;
             alarmsLoaded = true;
+            /* 닫혀 있는 동안 지나간 1회성 알람은 울린 것이다 — 끄지 않으면
+               다음에 열 때 내일 시각으로 다시 등록된다 */
+            var fired = false;
+            for (var k = 0; k < alarms.length; k++) {
+              var al = alarms[k];
+              if (al.enabled === false || (al.days && al.days.length > 0)) continue;
+              if (al.firesAt && al.firesAt < Date.now()) {
+                al.enabled = false;
+                fired = true;
+              }
+            }
             renderAlarms();
+            if (fired) { saveAlarms(); renderAlarms(); } else { syncAlarmService(); }
           }
         } catch (err) {
           alarms = [];
@@ -432,6 +548,9 @@
   }
 
   function dismissSnooze() {
+    if (activeSnoozeAlarm) {
+      requestService('alarm', 'cancel', { tag: SNOOZE_TAG + activeSnoozeAlarm.id });
+    }
     activeSnoozeAlarm = null;
     if (snoozeTimerId) { clearTimeout(snoozeTimerId); snoozeTimerId = null; }
     if (snoozeOverlay) snoozeOverlay.classList.add('hidden');
@@ -449,7 +568,11 @@
       var alarm = activeSnoozeAlarm;
       if (snoozeOverlay) snoozeOverlay.classList.add('hidden');
 
-      /* Re-trigger after SNOOZE_MINUTES */
+      /* Re-trigger after SNOOZE_MINUTES — 앱을 떠나도 울리도록 서비스에도 */
+      setServiceAlarm(SNOOZE_TAG + alarm.id, {
+        triggerAt: Date.now() + SNOOZE_MINUTES * 60 * 1000,
+        intervalMs: 0, repeating: false, title: alarmTitle(alarm)
+      });
       snoozeTimerId = setTimeout(function () {
         triggerAlarm(alarm, -1); /* -1 = snooze re-trigger, don't disable */
       }, SNOOZE_MINUTES * 60 * 1000);
@@ -499,15 +622,8 @@
   }
 
   function triggerAlarm(alarm, index) {
-    /* Send notification via IPC */
-    requestService('notification', 'post', {
-      appId: 'com.zylos.clock',
-      channelId: 'alarm',
-      title: alarm.label || zylI18n.t('clock.alarm'),
-      body: pad(alarm.hour) + ':' + pad(alarm.minute),
-      icon: '',
-      priority: 2
-    });
+    /* 알림은 OS alarm 서비스가 띄운다 (앱이 닫혀 있어도 울려야 하므로).
+       여기서는 앱이 열려 있을 때의 소리와 스누즈 화면만 담당한다 */
 
     /* Play beep sound */
     playBeep(880, 200, 5);

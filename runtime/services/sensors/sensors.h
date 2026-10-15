@@ -49,7 +49,8 @@ typedef struct ZylSensorService ZylSensorService;
 ZylSensorService *zyl_sensor_create(void);
 void              zyl_sensor_destroy(ZylSensorService *svc);
 
-/* 리스너 등록: 지정 타입의 센서를 rate_hz 주기로 폴링하여 콜백 호출 */
+/* 리스너 등록: 지정 타입의 센서를 rate_hz 주기로 폴링하여 콜백 호출.
+   cb 가 NULL 이면 최신값 캐시와 SensorEvent 시그널만 (서비스 자체 폴링) */
 int  zyl_sensor_register_listener(ZylSensorService *svc,
                                    ZylSensorType type,
                                    float rate_hz,

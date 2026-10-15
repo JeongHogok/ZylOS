@@ -73,19 +73,15 @@ builddir-riscv/
 ├── runtime/wam/zyl-wam               # 웹 앱 매니저
 ├── runtime/services/
 │   ├── accessibility/zyl-accessibility
-│   ├── account/zyl-account
 │   ├── alarm/zyl-alarm
 │   ├── audio/zyl-audio
-│   ├── auth/zyl-auth
 │   ├── bluetooth/zyl-bluetooth
 │   ├── camera/zyl-camera
-│   ├── crash/zyl-crash-handler
 │   ├── credential/zyl-credential
 │   ├── display/zyl-display
 │   ├── input/zyl-input
 │   ├── location/zyl-location
 │   ├── logger/zyl-logger
-│   ├── nfc/zyl-nfc
 │   ├── notification/zyl-notification
 │   ├── power/zyl-power
 │   ├── sensors/zyl-sensors
@@ -173,6 +169,19 @@ sudo systemd-nspawn -D $ROOTFS apt-get install -y \
 
 `ninja install` 이 `/etc/fonts/conf.d/50-zyl-fonts.conf` 를 설치해 기본 글꼴과
 언어별 한자 자형(한·중·일은 같은 코드포인트를 다르게 그린다)을 정합니다.
+
+### 앱 격리 패키지 (필수)
+
+앱 코드가 도는 WebKitGTK 웹 프로세스는 WebKit 이 bubblewrap 으로 격리합니다. 이 두
+패키지가 없으면 샌드박스가 **조용히 꺼진 채** 앱이 정상 동작하므로 눈치채기 어렵습니다.
+
+```bash
+sudo systemd-nspawn -D $ROOTFS apt-get install -y \
+  bubblewrap xdg-dbus-proxy
+# Arch 계열 rootfs: pacman -S bubblewrap xdg-dbus-proxy
+```
+
+확인: 앱을 띄운 뒤 `ps -o args= -C WebKitWebProcess` 에 `bwrap` 이 보여야 합니다.
 
 ### 네트워크·모뎀 패키지 (필수)
 

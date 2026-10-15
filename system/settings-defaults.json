@@ -14,9 +14,6 @@
     "vibration": true,
     "silentMode": false
   },
-  "security": {
-    "fingerprint": false
-  },
   "wallpaper": {
     "current": "default",
     "options": [

@@ -267,6 +267,44 @@ static void test_policy_unreviewed_service_fails_closed(void)
     assert(app_may_call(&m, "not-a-service") == FALSE);
 }
 
+/* The user switched a permission off in Settings (the settings service's
+   app_permissions): the device used to ignore it entirely. */
+static void test_policy_user_revocation_takes_the_service_away(void)
+{
+    const char *perms[] = { "camera", "contacts", NULL };
+    ZylAppManifest m = perm_manifest("com.example.cam", FALSE, perms);
+    assert(app_may_call(&m, "camera"));
+
+    revocations_set("com.example.cam", "camera");
+    assert(app_may_call(&m, "camera") == FALSE);
+    assert(app_may_call(&m, "contacts"));           /* only what was switched off */
+    assert(app_may_call(&m, "device"));             /* no permission required */
+
+    /* Another app's revocation is not this app's */
+    revocations_set("com.example.other", "contacts");
+    assert(app_may_call(&m, "contacts"));
+
+    /* Switching it back on in Settings rewrites the list */
+    revocations_set("com.example.cam", "");
+    assert(app_may_call(&m, "camera"));
+
+    /* A system app is never revocable — the same rule as permissions.js */
+    ZylAppManifest sys = perm_manifest("com.zylos.camera", TRUE, perms);
+    revocations_set("com.zylos.camera", "camera");
+    assert(app_may_call(&sys, "camera"));
+}
+
+/* Several permissions at once, as Settings writes them */
+static void test_policy_revocation_list_is_comma_separated(void)
+{
+    const char *perms[] = { "camera", "contacts", "messaging", NULL };
+    ZylAppManifest m = perm_manifest("com.example.many", FALSE, perms);
+    revocations_set("com.example.many", "camera, messaging");
+    assert(app_may_call(&m, "camera") == FALSE);
+    assert(app_may_call(&m, "messaging") == FALSE);
+    assert(app_may_call(&m, "contacts"));
+}
+
 
 /* ── service.request argument marshalling (params_to_dbus_args) ──
    The bridge used to send every call as one JSON string, which no typed
@@ -549,6 +587,8 @@ int main(void)
     RUN_TEST(test_policy_reserved_permissions_cannot_be_self_declared);
     RUN_TEST(test_policy_services_without_requirement_are_open);
     RUN_TEST(test_policy_unreviewed_service_fails_closed);
+    RUN_TEST(test_policy_user_revocation_takes_the_service_away);
+    RUN_TEST(test_policy_revocation_list_is_comma_separated);
     RUN_TEST(test_args_no_input_is_empty_tuple);
     RUN_TEST(test_args_follow_signature_not_one_json_string);
     RUN_TEST(test_args_camel_case_fills_snake_case);

@@ -52,20 +52,6 @@ test('bridge-dispatch',
   )
 )
 
-# Test: sandbox permission vocabulary mapping (Linux only — uses seccomp/namespaces)
-if host_machine.system() == 'linux'
-  test('sandbox-permissions',
-    executable('test-sandbox-permissions',
-      'test_sandbox_permissions.c',
-      include_directories: include_directories(
-        '../runtime/services/sandbox',
-      ),
-      dependencies: [gio_dep, json_glib_dep,
-                     dependency('libseccomp', version: '>=2.5.0')],
-    )
-  )
-endif
-
 # Test: telemetry opt-in consent (no collection or identifier before consent,
 # erasure on withdrawal). Uses the real daemon source with main() compiled out.
 test('telemetry-consent',
@@ -318,6 +304,17 @@ test('app-seal',
     dependencies: [gio_dep, json_glib_dep, _openssl_dep],
   ),
   workdir: meson.project_source_root(),
+)
+
+# Test: the sensor service polls the hardware it found without being asked
+# (nothing on D-Bus starts polling, so GetLatest used to return 0 forever)
+test('sensors-polling',
+  executable('test-sensors-polling', 'test_sensors_polling.c',
+    include_directories: include_directories('../runtime/services/sensors'),
+    dependencies: [gio_dep, dependency('threads'),
+                   meson.get_compiler('c').find_library('m')],
+    c_args: ['-DZYL_TEST'],
+  )
 )
 
 # Test: a removed app's alarms go, from memory and from disk

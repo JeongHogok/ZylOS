@@ -107,7 +107,11 @@ window.ZylSystemServices = (function () {
     if (ns.bluetooth)     serviceMap.bluetooth    = ns.bluetooth(deps);
     if (ns.network)       serviceMap.network      = ns.network(deps);
     if (ns.appdata)       serviceMap.appdata      = ns.appdata(deps);
-    if (ns.notification)  serviceMap.notification = ns.notification(deps);
+    if (ns.notification) {
+      var notifMod = ns.notification(deps);
+      serviceMap.notification = notifMod;
+      _modules.notification = notifMod;
+    }
     if (ns.power)         serviceMap.power        = ns.power(deps);
     if (ns.display) {
       var dispMod = ns.display(deps);
@@ -160,7 +164,6 @@ window.ZylSystemServices = (function () {
         if (m && typeof m._forgetApp === 'function') m._forgetApp(appId);
       });
       if (typeof ZylPermissions !== 'undefined' && ZylPermissions.forgetApp) ZylPermissions.forgetApp(appId);
-      if (typeof ZylPermissionDialog !== 'undefined' && ZylPermissionDialog.forgetApp) ZylPermissionDialog.forgetApp(appId);
       if (settingsMod) settingsMod._removeSetting('app_permissions', appId);
       if (appsMod) appsMod._invalidate();
       window.dispatchEvent(new CustomEvent('zyl:app-removed', { detail: appId }));
@@ -174,7 +177,8 @@ window.ZylSystemServices = (function () {
       appsSvc: appsMod,
       seal: sealMod,
       deviceRef: (_modules.device && _modules.device._getRef) ? _modules.device._getRef() : {},
-      logFn: loggerMod ? loggerMod._addEntry : null
+      logFn: loggerMod ? loggerMod._addEntry : null,
+      notificationSvc: _modules.notification
     };
 
     if (ns.telephony)     serviceMap.telephony    = ns.telephony(crossDeps);
@@ -188,6 +192,7 @@ window.ZylSystemServices = (function () {
     if (ns.netstats)      serviceMap.netstats     = ns.netstats(crossDeps);
     if (ns.bootctl)       serviceMap.bootctl      = ns.bootctl(crossDeps);
     if (ns.lock)          serviceMap.lock         = ns.lock(crossDeps);
+    if (ns.alarm)         serviceMap.alarm        = ns.alarm(crossDeps);
     if (ns.audio) {
       var audioMod = ns.audio(crossDeps);
       serviceMap.audio = audioMod;
