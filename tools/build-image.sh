@@ -75,11 +75,15 @@ for c in debootstrap mkfs.ext4 sfdisk ninja python3; do
 done
 [ "$(id -u)" = "0" ] || { echo "✗ root 로 실행해야 한다 (debootstrap) — 컨테이너를 쓸 것" >&2; exit 1; }
 
+# 절대 경로로 바꾼다: DESTDIR 은 `ninja -C builddir` 의 작업 디렉터리 기준으로
+# 풀리므로 상대 경로를 그대로 넘기면 설치물이 빌드 디렉터리 안에 쌓인다
+mkdir -p "$OUT"
+OUT="$(cd "$OUT" && pwd)"
 W="$OUT/work"
 ROOTFS="$W/rootfs"
 STAGE="$W/stage"
 rm -rf "$W"
-mkdir -p "$ROOTFS" "$STAGE" "$OUT"
+mkdir -p "$ROOTFS" "$STAGE"
 
 step() { echo "▸ $*"; }
 echo "═══ Zyl OS 이미지 (board=$ZYL_BOARD profile=$ZYL_PROFILE arch=$DEB_ARCH v$ZYL_VERSION) ═══"
@@ -88,6 +92,10 @@ echo "═══ Zyl OS 이미지 (board=$ZYL_BOARD profile=$ZYL_PROFILE arch=$DE
 step "ninja install → staging"
 DESTDIR="$STAGE" ninja -C "$BUILDDIR" install >"$W/install.log" 2>&1 || {
     tail -20 "$W/install.log"; exit 1; }
+# 설치가 정말 거기 갔는지 — 비어 있어도 cp 는 조용히 성공한다
+[ -f "$STAGE/usr/lib/systemd/system/zyl-os.target" ] || {
+    echo "✗ staging 에 zyl-os.target 이 없다: $STAGE" >&2
+    echo "  (prefix 가 /usr 인지, DESTDIR 이 절대 경로인지 확인)" >&2; exit 1; }
 
 # ── 2. 최소 rootfs ──
 step "rootfs 부트스트랩 ($SUITE/$DEB_ARCH)"

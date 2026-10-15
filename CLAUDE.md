@@ -97,6 +97,23 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
   부트로더는 `tools/build-bootloader.sh` 로만 빌드·서명. 저장소·USB·파일이 부팅을
   바꾸는 경로를 되살리지 말 것. eFuse 굽기는 기본 off(`--burn-rotpk` 일 때만)
 
+### 8-1. 사실의 단일 출처 — 같은 사실을 두 곳에 적지 않는다
+
+아래는 각각 **한 곳**만 고치고, 나머지는 그 파일을 읽는다. 어긋나면 테스트가 막는다.
+
+| 사실 | 단일 출처 | 읽는 쪽 |
+|------|-----------|---------|
+| 파티션 레이아웃 | `board/<id>/partitions.conf` | `build-image.sh`, `sign-image.sh`, `u-boot-env.txt`(테스트가 대조) |
+| 실행 시점 패키지 | `system/packages.list` | `build-image.sh`, DEPLOYMENT_GUIDE |
+| 보드·아키텍처·프로파일·prefix | meson → `builddir/zyl-board.conf` | `build-image.sh`, `run-qemu.sh` |
+| 서비스 집합 | `meson.build` 의 `zyl_profile_extras` | 생성되는 `zyl-os.target` |
+| 버스 접근 권한 | `system/dbus-1/zyl-os.conf` | dbus-daemon, `tests/test_dbus_policy.sh` |
+| 서비스 권한 정책 | `apps/system/permissions.js` | `bridge.c`(verify-all 이 대조) |
+
+서비스는 **시스템 버스**를 쓴다 — 유닛이 `Type=dbus` + `BusName=` 이므로 systemd 가
+기다리는 버스가 시스템 버스고, 로그인 세션이 없는 기기 부팅에는 세션 버스가 없다.
+새 서비스도 `G_BUS_TYPE_SYSTEM` 으로 이름을 올릴 것.
+
 ### 9. Intent 시스템 경계 규칙
 
 - 앱 간 직접 함수 호출 금지 → 반드시 `ZylIntent.startActivity()` 경유
@@ -187,8 +204,22 @@ bash tests/verify-all.sh
 bash tests/check-os-independence.sh  # OS 이미지만
 bash tests/test_js_syntax.sh         # JS 문법
 bash tests/test_manifests.sh         # app.json
+bash tests/test_image_profiles.sh    # 폼팩터 8종이 이미지로 성립하는지 (meson 필요)
 node tests/perf/run.js               # 앱 성능 예산 (Chrome 필요, CI 'perf' 잡)
 ```
+
+### 보드 없이 전체 경로 검증 (리눅스/컨테이너, root)
+```bash
+meson setup builddir --prefix=/usr -Dboard=emulator -Dprofile=phone
+ninja -C builddir
+tools/build-image.sh --builddir builddir --out out/image      # 소스 → 이미지 한 장
+tools/run-qemu.sh --image out/image/zyl-os-emulator-phone.img \
+                  --builddir builddir --check                  # 부팅 + 자기점검
+```
+CI 의 `qemu-boot` 잡이 매 커밋 같은 일을 한다. 이 레인이 **검증하지 않는 것**:
+U-Boot·서명 FIT·dm-verity·A/B 전환(부트로더 빌드와 `tools/sign-image.sh`·
+`tests/test_boot_env.sh` 소관), SoC 고유 경로(GPU·모뎀·ISP·eFuse).
+기기에서도 같은 자기점검을 돌릴 수 있다: `systemctl start zyl-selftest`.
 
 ### 성능 예산
 앱마다 시작 시간·메인스레드 블로킹·힙·DOM 노드·레이아웃 수를 CPU 스로틀 +
