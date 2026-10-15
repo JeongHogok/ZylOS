@@ -120,8 +120,11 @@ console.log('\n■ Device Service');
   test('getInfo returns osVersion', function () {
     assert.strictEqual(info.osVersion, '0.1.0');
   });
-  test('getInfo returns SoC', function () {
-    assert.ok(info.soc.indexOf('RISC-V') !== -1);
+  test('the SoC is the virtual device profile\'s — nothing invented without one', function () {
+    assert.strictEqual(info.soc, '');
+    assert.strictEqual(info.kernel, '');
+    dev._applyProfile({ soc: 'SpacemiT K1', ram: '4GB' });
+    assert.strictEqual(dev.getInfo().soc, 'SpacemiT K1 (RISC-V)');
   });
   test('getUptime returns non-negative', function () {
     return dev.getUptime().then(function (v) {

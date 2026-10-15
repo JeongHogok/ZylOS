@@ -175,17 +175,6 @@ window.ZylSystemServices = (function () {
   }
 
   /* ===============================================================
-     Utilities
-     =============================================================== */
-  function formatBytes(bytes) {
-    if (!bytes) return '0 B';
-    var units = ['B', 'KB', 'MB', 'GB'];
-    var i = Math.floor(Math.log(bytes) / Math.log(1024));
-    if (i >= units.length) i = units.length - 1;
-    return (bytes / Math.pow(1024, i)).toFixed(1) + ' ' + units[i];
-  }
-
-  /* ===============================================================
      Module Assembly + Service Map
      =============================================================== */
   var SYSTEM_APPS = (typeof ZylPermissions !== 'undefined') ? ZylPermissions.SYSTEM_APPS : [];
@@ -193,7 +182,7 @@ window.ZylSystemServices = (function () {
   var _modules = {}; /* references to instantiated modules for cross-deps */
 
   function assembleModules() {
-    var deps = { invoke: _invoke, formatBytes: formatBytes, SYSTEM_APPS: SYSTEM_APPS };
+    var deps = { invoke: _invoke, SYSTEM_APPS: SYSTEM_APPS };
 
     /* Independent modules */
     if (ns.fs)            serviceMap.fs           = ns.fs(deps);
@@ -249,7 +238,7 @@ window.ZylSystemServices = (function () {
 
     /* Modules with cross-dependencies */
     var crossDeps = {
-      invoke: _invoke, formatBytes: formatBytes, SYSTEM_APPS: SYSTEM_APPS,
+      invoke: _invoke, SYSTEM_APPS: SYSTEM_APPS,
       settingsSvc: settingsMod,
       appsSvc: appsMod,
       deviceRef: (_modules.device && _modules.device._getRef) ? _modules.device._getRef() : {},

@@ -3,6 +3,7 @@
   "name": "Zyl Keyboard",
   "version": "1.0.0",
   "entry": "js/keyboard.js",
+  "launcher": false,
   "permissions": [
     "input",
     "i18n",

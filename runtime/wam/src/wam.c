@@ -278,6 +278,21 @@ static void dbus_list_apps(GVariant *params, GDBusMethodInvocation *inv,
         g_variant_new("(as)", &builder));
 }
 
+/* apps.getInstalled — every installed app as apps see it (manifest.c) */
+static void dbus_get_installed(GVariant *params, GDBusMethodInvocation *inv,
+                               gpointer user_data) {
+    ZylWam *wam = user_data;
+    (void)params;
+    GVariantBuilder list;
+    g_variant_builder_init(&list, G_VARIANT_TYPE("aa{sv}"));
+    GHashTableIter iter;
+    gpointer value;
+    g_hash_table_iter_init(&iter, wam->manifests);
+    while (g_hash_table_iter_next(&iter, NULL, &value))
+        g_variant_builder_add_value(&list, zyl_manifest_app_info(value));
+    g_dbus_method_invocation_return_value(inv, g_variant_new("(aa{sv})", &list));
+}
+
 static void dbus_list_running(GVariant *params, GDBusMethodInvocation *inv,
                               gpointer user_data) {
     ZylWam *wam = user_data;
@@ -300,6 +315,7 @@ static const ZylDbusMethodEntry dbus_methods[] = {
     { "Suspend",     dbus_suspend     },
     { "Resume",      dbus_resume      },
     { "ListApps",    dbus_list_apps   },
+    { "GetInstalled", dbus_get_installed },
     { "ListRunning", dbus_list_running },
     { NULL, NULL }
 };

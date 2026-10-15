@@ -44,6 +44,9 @@ for field in ['id', 'name', 'version', 'entry']:
 if not isinstance(m.get('id'), str) or len(m['id']) == 0:
     print(f'EMPTY id in $f')
     sys.exit(1)
+if 'launcher' in m and not isinstance(m['launcher'], bool):
+    print(f'launcher must be true or false in $f')
+    sys.exit(1)
 ff = m.get('formFactors')
 if ff is not None:
     valid = set('$VALID_FF'.split(',')) | {'*'}

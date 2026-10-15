@@ -4,7 +4,8 @@
 // Role: OS-level application registry — single source of truth for
 //       installed apps, paths, icons, dock config, and visibility policy
 // Scope: App registration from manifests, path resolution, icon lookup,
-//        OS policy (default dock, hidden-from-grid, undeletable)
+//        recents policy. Launcher visibility is the manifest's "launcher",
+//        the default dock is a setting (home.dock), deletability is "system"
 // Dependency Direction: Domain -> none (pure registry, populated by service layer)
 // SOLID: SRP — app metadata registry only
 //        OCP — new apps added via register() without modifying existing code
@@ -19,15 +20,6 @@ window.ZylAppRegistry = (function () {
 
   var _apps = {}; // appId -> {name, path, system, icon, color, permissions, formFactors, iconSvg}
 
-  /* ═══ OS Policy Config ═══ */
-  var OS_CONFIG = {
-    defaultDock: ['com.zylos.phone', 'com.zylos.contacts', 'com.zylos.messages', 'com.zylos.settings'],
-    hiddenFromGrid: ['com.zylos.lockscreen', 'com.zylos.statusbar', 'com.zylos.oobe', 'com.zylos.home', 'com.zylos.keyboard'],
-    /* Apps excluded from recents/multitasking — system UI components */
-    excludeFromRecents: ['com.zylos.lockscreen', 'com.zylos.statusbar', 'com.zylos.oobe'],
-    /* undeletable is dynamically derived from app.system flag */
-  };
-
   /* ═══ Registration ═══ */
   function register(appList) {
     (appList || []).forEach(function (app) {
@@ -40,29 +32,9 @@ window.ZylAppRegistry = (function () {
         color: app.color || 'icon-blue',
         permissions: app.permissions || [],
         formFactors: app.formFactors || [],
-        iconSvg: app.iconSvg || ''
+        iconSvg: app.iconSvg || '',
+        launcher: app.launcher !== false
       };
-    });
-    /* Also register hidden system apps that may not appear in getInstalled */
-    var hiddenSys = {
-      'com.zylos.oobe':       { name: 'Setup',       path: 'apps/oobe/index.html' },
-      'com.zylos.lockscreen': { name: 'Lock Screen', path: 'apps/lockscreen/index.html' },
-      'com.zylos.statusbar':  { name: 'Status Bar',  path: 'apps/statusbar/index.html' },
-      'com.zylos.home':       { name: 'Home',        path: 'apps/home/index.html' },
-      'com.zylos.keyboard':   { name: 'Keyboard',    path: 'apps/keyboard/index.html' }
-    };
-    Object.keys(hiddenSys).forEach(function (id) {
-      if (!_apps[id]) {
-        _apps[id] = {
-          name: hiddenSys[id].name,
-          path: hiddenSys[id].path,
-          system: true,
-          icon: '',
-          color: '',
-          permissions: [],
-          iconSvg: ''
-        };
-      }
     });
   }
 
@@ -72,30 +44,11 @@ window.ZylAppRegistry = (function () {
   function getAllIds() { return Object.keys(_apps); }
 
   /* ═══ OS Policy ═══ */
-  function isHiddenFromGrid(appId) {
-    if (OS_CONFIG.hiddenFromGrid.indexOf(appId) !== -1) return true;
-    /* Form-factor policy: an app that does not declare this device class must
-       not appear in the launcher — a watch has no terminal, a TV has no dialer.
-       Routed through the existing visibility seam so every consumer inherits it. */
-    var app = _apps[appId];
-    if (app && typeof ZylFormFactor !== 'undefined') {
-      return !ZylFormFactor.supportsApp(app.formFactors);
-    }
-    return false;
-  }
-
-  function isUndeletable(appId) {
-    var app = _apps[appId];
-    /* Default true: if app is unknown/unregistered, treat as undeletable (safe default) */
-    return app ? app.system : true;
-  }
-
-  function getDefaultDock() {
-    return OS_CONFIG.defaultDock.slice();
-  }
-
+  /* System UI (lock screen, status bar, setup, home) is not an app one
+     returns to: the same manifest fact that keeps it out of the launcher */
   function isExcludedFromRecents(appId) {
-    return OS_CONFIG.excludeFromRecents.indexOf(appId) !== -1;
+    var app = _apps[appId];
+    return !!app && app.launcher === false;
   }
 
   return {
@@ -103,9 +56,6 @@ window.ZylAppRegistry = (function () {
     getApp: getApp,
     getPath: getPath,
     getAllIds: getAllIds,
-    isHiddenFromGrid: isHiddenFromGrid,
-    isUndeletable: isUndeletable,
-    getDefaultDock: getDefaultDock,
     isExcludedFromRecents: isExcludedFromRecents
   };
 })();

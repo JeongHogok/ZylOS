@@ -3,6 +3,7 @@
   "name": "Home",
   "version": "1.0.0",
   "entry": "index.html",
+  "launcher": false,
   "icon": "assets/home-icon.png",
   "permissions": [
     "app.launch",

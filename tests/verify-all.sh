@@ -360,18 +360,21 @@ br = open(root + '/runtime/wam/src/bridge/bridge.c').read()
 routes = dict(re.findall(r'\{"(\w+)",\s*"org\.zylos\.\w+",\s*"/[^"]+",\s*"([^"]+)"\}', br))
 defs = {}
 for h in glob.glob(root + '/runtime/**/*.[ch]', recursive=True):
-    defs.update(re.findall(r'#define\s+(ZYL_\w+)\s+"([^"]*)"', open(h, errors='ignore').read()))
+    defs.update(re.findall(r'#define\s+(\w+)\s+"([^"]*)"', open(h, errors='ignore').read()))
 ifaces = {}
-for f in glob.glob(root + '/runtime/services/**/*.c', recursive=True):
-    src = re.sub(r'"\s*(ZYL_\w+)\s*"', lambda m: defs.get(m.group(1), m.group(0)),
+# Every D-Bus interface the runtime serves — the services and the WAM itself (apps)
+for f in glob.glob(root + '/runtime/**/*.c', recursive=True):
+    src = re.sub(r'"\s*([A-Z_][A-Z0-9_]+)\s*"', lambda m: defs.get(m.group(1), m.group(0)),
                  open(f, errors='ignore').read())
     xml = ''.join(re.findall(r'"((?:[^"\\\n]|\\.)*)"', src))
     for name, body in re.findall(r"<interface name='([\w.]+)'>(.*?)</interface>", xml, re.S):
         d = ifaces.setdefault(name, {})
         for m in re.finditer(r"<method name='(\w+)'\s*(/?)>(.*?)(?=<method|$)", body, re.S):
             args = [] if m.group(2) else re.findall(r'<arg\b([^>]*)>', m.group(3))
+            # An a{sv} named params takes the whole request (bridge.c) — no key to match
             d[m.group(1)] = [re.search(r"name='(\w+)'", a).group(1) for a in args
-                             if "direction='in'" in a and "name='" in a]
+                             if "direction='in'" in a and "name='" in a
+                             and not ("name='params'" in a and "type='a{sv}'" in a)]
 norm = lambda s: s.replace('_', '').lower()
 gaps = []
 for f in glob.glob(root + '/apps/**/*.js', recursive=True):
@@ -393,6 +396,34 @@ elif [ "$GAP_COUNT" -lt "$CONTRACT_GAP_MAX" ]; then
   fail "앱→기기 서비스 계약 공백이 ${GAP_COUNT}건으로 줄었음 — CONTRACT_GAP_MAX 를 ${GAP_COUNT} 로 낮출 것"
 else
   pass "앱→기기 서비스 계약 공백 ${GAP_COUNT}건 (상한 고정, 늘면 실패)"
+fi
+
+# Services apps call that no device route serves at all: on a device every such
+# request is refused ("unknown service"). The gap check above sees only routed
+# services, so these are counted on their own.
+UNROUTED_MAX=9
+UNROUTED=$(python3 - "$ROOT" <<'PYCHK'
+import re, glob, sys
+root = sys.argv[1]
+br = open(root + '/runtime/wam/src/bridge/bridge.c').read()
+routes = set(re.findall(r'\{"(\w+)",\s*"org\.zylos\.\w+"', br))
+called = set()
+for f in glob.glob(root + '/apps/**/*.js', recursive=True):
+    if '/apps/system/' in f: continue
+    src = open(f).read()
+    called.update(re.findall(r"requestService(?:Fire|Async)?\(\s*'(\w+)'", src))
+    called.update(re.findall(r"service:\s*'(\w+)',\s*method:", src))
+missing = sorted(called - routes)
+print(len(missing), ' '.join(missing))
+PYCHK
+)
+UNROUTED_COUNT=${UNROUTED%% *}
+if [ "$UNROUTED_COUNT" -gt "$UNROUTED_MAX" ]; then
+  fail "기기 라우트 없는 서비스 ${UNROUTED_COUNT}개 (상한 ${UNROUTED_MAX}): ${UNROUTED#* }"
+elif [ "$UNROUTED_COUNT" -lt "$UNROUTED_MAX" ]; then
+  fail "기기 라우트 없는 서비스가 ${UNROUTED_COUNT}개로 줄었음 — UNROUTED_MAX 를 ${UNROUTED_COUNT} 로 낮출 것"
+else
+  pass "기기 라우트 없는 서비스 ${UNROUTED_COUNT}개 (상한 고정, 늘면 실패): ${UNROUTED#* }"
 fi
 
 # ═════════════════════════════════════════════════════════════

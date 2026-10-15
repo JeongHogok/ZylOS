@@ -32,6 +32,15 @@ typedef struct {
 ZylAppManifest *zyl_manifest_parse(const char *app_dir);
 
 /*
+ * What apps see of an installed app (apps.getInstalled) — the same fields as
+ * the emulator's apps service: id, name, nameKey, icon, color, version,
+ * description, system, permissions, formFactors, iconSvg, launcher.
+ * "system" is the OS's own decision (m->is_system), never the app's word.
+ * Returns a floating a{sv}.
+ */
+GVariant *zyl_manifest_app_info(const ZylAppManifest *m);
+
+/*
  * Free all memory owned by a manifest.  Safe to call with NULL.
  */
 void zyl_manifest_free(gpointer data);

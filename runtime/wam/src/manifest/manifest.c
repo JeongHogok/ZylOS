@@ -81,6 +81,63 @@ ZylAppManifest *zyl_manifest_parse(const char *app_dir) {
 }
 
 /* ─── Free a manifest ─── */
+static GVariant *string_array(JsonObject *obj, const char *member) {
+    GVariantBuilder b;
+    g_variant_builder_init(&b, G_VARIANT_TYPE("as"));
+    JsonArray *arr = obj && json_object_has_member(obj, member) &&
+                     JSON_NODE_HOLDS_ARRAY(json_object_get_member(obj, member))
+                     ? json_object_get_array_member(obj, member) : NULL;
+    for (guint i = 0; arr && i < json_array_get_length(arr); i++) {
+        JsonNode *n = json_array_get_element(arr, i);
+        if (JSON_NODE_HOLDS_VALUE(n) && json_node_get_value_type(n) == G_TYPE_STRING)
+            g_variant_builder_add(&b, "s", json_node_get_string(n));
+    }
+    return g_variant_builder_end(&b);
+}
+
+static const char *text_member(JsonObject *obj, const char *member, const char *fallback) {
+    if (!obj || !json_object_has_member(obj, member)) return fallback;
+    JsonNode *n = json_object_get_member(obj, member);
+    return JSON_NODE_HOLDS_VALUE(n) && json_node_get_value_type(n) == G_TYPE_STRING
+           ? json_node_get_string(n) : fallback;
+}
+
+GVariant *zyl_manifest_app_info(const ZylAppManifest *m) {
+    /* Presentation fields are read from app.json as shipped; the parsed
+       manifest keeps only what the WAM itself needs */
+    char *path = g_build_filename(m->base_path, "app.json", NULL);
+    JsonParser *p = json_parser_new();
+    JsonObject *obj = json_parser_load_from_file(p, path, NULL) &&
+                      JSON_NODE_HOLDS_OBJECT(json_parser_get_root(p))
+                      ? json_node_get_object(json_parser_get_root(p)) : NULL;
+    const char *last = strrchr(m->id, '.');
+    last = last ? last + 1 : m->id;
+    char *name_key = g_strconcat("app.", last, NULL);
+    gboolean launcher = TRUE;
+    if (obj && json_object_has_member(obj, "launcher") &&
+        json_node_get_value_type(json_object_get_member(obj, "launcher")) == G_TYPE_BOOLEAN)
+        launcher = json_object_get_boolean_member(obj, "launcher");
+
+    GVariantBuilder d;
+    g_variant_builder_init(&d, G_VARIANT_TYPE("a{sv}"));
+    g_variant_builder_add(&d, "{sv}", "id", g_variant_new_string(m->id));
+    g_variant_builder_add(&d, "{sv}", "name", g_variant_new_string(m->name ? m->name : last));
+    g_variant_builder_add(&d, "{sv}", "nameKey", g_variant_new_string(name_key));
+    g_variant_builder_add(&d, "{sv}", "icon", g_variant_new_string(text_member(obj, "iconKey", last)));
+    g_variant_builder_add(&d, "{sv}", "color", g_variant_new_string(text_member(obj, "color", "icon-blue")));
+    g_variant_builder_add(&d, "{sv}", "version", g_variant_new_string(m->version ? m->version : "1.0.0"));
+    g_variant_builder_add(&d, "{sv}", "description", g_variant_new_string(text_member(obj, "description", "")));
+    g_variant_builder_add(&d, "{sv}", "system", g_variant_new_boolean(m->is_system));
+    g_variant_builder_add(&d, "{sv}", "permissions", string_array(obj, "permissions"));
+    g_variant_builder_add(&d, "{sv}", "formFactors", string_array(obj, "formFactors"));
+    g_variant_builder_add(&d, "{sv}", "iconSvg", g_variant_new_string(text_member(obj, "iconSvg", "")));
+    g_variant_builder_add(&d, "{sv}", "launcher", g_variant_new_boolean(launcher));
+    g_free(name_key);
+    g_object_unref(p);
+    g_free(path);
+    return g_variant_builder_end(&d);
+}
+
 void zyl_manifest_free(gpointer data) {
     ZylAppManifest *m = data;
     if (!m) return;

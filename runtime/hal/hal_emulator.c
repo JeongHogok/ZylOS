@@ -13,7 +13,7 @@
  *        ISP — 각 HAL 인터페이스를 독립 구현 블록으로 분리.
  * ────────────────────────────────────────────────────────── */
 
-#define _POSIX_C_SOURCE 200809L
+#define _DEFAULT_SOURCE   /* sysconf(_SC_PHYS_PAGES) */
 
 #include "hal.h"
 #include <stdlib.h>
@@ -23,6 +23,8 @@
 #include <stdint.h>
 #include <time.h>
 #include <sys/statvfs.h>
+#include <sys/utsname.h>
+#include <unistd.h>
 
 /* ──────────────────────────────────────────────────────────
    내부 유틸리티
@@ -304,6 +306,19 @@ static const ZylTorchHal g_torch_hal = { .present = emu_torch_present, .get = em
 static int  emu_cpu_core_count(void) { return 1; }
 static bool emu_cpu_set_core_online(int core, bool online) { (void)core; (void)online; return false; }
 static bool emu_cpu_set_governor(const char *g) { (void)g; return false; }
+/* 가상 기기 — 메모리와 커널은 이 VM 의 실제 값 */
+static bool emu_board_get(ZylBoardInfo *out) {
+    memset(out, 0, sizeof(*out));
+    snprintf(out->model, sizeof(out->model), "Zyl OS Virtual Device");
+    snprintf(out->soc, sizeof(out->soc), "virtual");
+    long pages = sysconf(_SC_PHYS_PAGES), page = sysconf(_SC_PAGESIZE);
+    if (pages > 0 && page > 0) out->ram_bytes = (uint64_t)pages * (uint64_t)page;
+    struct utsname u;
+    if (uname(&u) == 0) snprintf(out->kernel, sizeof(out->kernel), "%s", u.release);
+    return true;
+}
+static const ZylBoardHal g_board_hal = { .get = emu_board_get };
+
 static const ZylCpuHal g_cpu_hal = {
     .core_count = emu_cpu_core_count, .set_core_online = emu_cpu_set_core_online, .set_governor = emu_cpu_set_governor,
 };
@@ -322,6 +337,7 @@ const ZylBatteryHal  *zyl_hal_battery(void)  { return &g_battery_hal; }
 const ZylStorageHal  *zyl_hal_storage(void)  { return &g_storage_hal; }
 const ZylTorchHal    *zyl_hal_torch(void)    { return &g_torch_hal; }
 const ZylCpuHal      *zyl_hal_cpu(void)      { return &g_cpu_hal; }
+const ZylBoardHal    *zyl_hal_board(void)    { return &g_board_hal; }
 
 /* ──────────────────────────────────────────────────────────
    Boot — 가상 기기에는 A/B 부트로더가 없다: 업데이트·잠금 해제 비활성

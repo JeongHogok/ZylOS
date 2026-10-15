@@ -280,6 +280,7 @@ static const char *MARSHAL_XML =
     "<arg type='s' name='title' direction='in'/><arg type='i' name='priority' direction='in'/></method>"
     "<method name='SetEnabled'><arg type='b' name='enabled' direction='in'/></method>"
     "<method name='SetLevel'><arg type='d' name='level' direction='in'/></method>"
+    "<method name='Update'><arg type='a{sv}' name='params' direction='in'/></method>"
     "</interface></node>";
 
 static char *marshal_as(const char *method, const char *params_json,
@@ -412,6 +413,13 @@ static void test_service_request_reaches_typed_dbus_method(void) {
     g_object_unref(bus);
 }
 
+/* An update changing only some fields gets the request as it came */
+static void test_args_params_object_is_the_whole_request(void) {
+    expect_args("Update", "{\"id\":\"c_1\",\"starred\":true}",
+                "({'id': <'c_1'>, 'starred': <true>},)");
+    expect_args("Update", "{}", "({},)");
+}
+
 static void test_args_third_party_app_id_is_the_caller(void) {
     /* A third-party app cannot post as another app — app_id is its own */
     char *got = marshal_as("Post",
@@ -527,6 +535,7 @@ int main(void)
     RUN_TEST(test_args_third_party_app_id_is_the_caller);
     RUN_TEST(test_event_reaches_only_apps_allowed_to_call_the_service);
     RUN_TEST(test_events_only_from_the_services_own_name);
+    RUN_TEST(test_args_params_object_is_the_whole_request);
     RUN_TEST(test_service_request_reaches_typed_dbus_method);
     printf("\nResults: %d/%d passed\n", tests_pass, tests_run);
     return tests_pass == tests_run ? 0 : 1;

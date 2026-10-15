@@ -2,6 +2,7 @@ gio = dependency('gio-2.0')
 
 hal_sources = files(
   'hal_boot.c',
+  'hal_board.c',
   'hal_audio.c',
   'hal_vibrator.c',
   'hal_wifi.c',

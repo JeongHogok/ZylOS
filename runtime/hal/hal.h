@@ -200,6 +200,23 @@ typedef struct {
 } ZylCpuHal;
 
 /* ═══════════════════════════════════════════════════════
+   Board HAL — 이 기기가 무엇인지
+   실기기: 디바이스 트리(model, compatible) 또는 DMI, /proc/meminfo, uname
+   에뮬레이터: 가상 기기, 메모리·커널은 VM 실측
+   ═══════════════════════════════════════════════════════ */
+
+typedef struct {
+    char     model[96];       /* "Banana Pi BPI-F3" */
+    char     soc[96];         /* device tree: the SoC's compatible ("spacemit,k1-x"); x86: CPU model */
+    uint64_t ram_bytes;
+    char     kernel[96];      /* "6.6.36" */
+} ZylBoardInfo;
+
+typedef struct {
+    bool  (*get)(ZylBoardInfo *out);
+} ZylBoardHal;
+
+/* ═══════════════════════════════════════════════════════
    Boot HAL — 부트로더 환경과 A/B 슬롯 배치
    실기기: U-Boot 환경 (fw_printenv/fw_setenv), 파티션은 board/bpi-f3/README.md
    에뮬레이터: 없음 — present() false, 시스템 업데이트·잠금 해제 비활성
@@ -233,5 +250,6 @@ const ZylBatteryHal  *zyl_hal_battery(void);
 const ZylStorageHal  *zyl_hal_storage(void);
 const ZylTorchHal    *zyl_hal_torch(void);
 const ZylCpuHal      *zyl_hal_cpu(void);
+const ZylBoardHal    *zyl_hal_board(void);
 
 #endif /* ZYL_HAL_H */

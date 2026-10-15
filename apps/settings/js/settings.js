@@ -290,7 +290,13 @@
   }
 
   /* ─── Storage Renderer ─── */
-  function renderStorageInfo(data) {
+  /* Bytes from the storage service; units are this locale's (zylI18n) */
+  function renderStorageInfo(usage) {
+    var data = {
+      total: zylI18n.formatBytes(usage.total || 0),
+      used: zylI18n.formatBytes(usage.used || 0),
+      available: zylI18n.formatBytes(usage.available || 0)
+    };
     /* Update main menu summary */
     var summary = document.getElementById('storage-summary');
     if (summary) summary.textContent = data.used + ' / ' + data.total;
@@ -318,7 +324,7 @@
 
   handlers.storage = {
     onServiceResponse: function (method, data) {
-      if (method === 'getFormatted' && data) renderStorageInfo(data);
+      if (method === 'getUsage' && data) renderStorageInfo(data);
     }
   };
 
@@ -375,7 +381,7 @@
   requestServiceFire('wifi', 'getNetworks');
   requestServiceFire('bluetooth', 'getDevices');
   requestServiceFire('device', 'getInfo');
-  requestServiceFire('storage', 'getFormatted');
+  requestServiceFire('storage', 'getUsage');
 
   /* Request settings state for all categories */
   requestServiceFire('settings', 'get', { category: 'display' });

@@ -34,7 +34,7 @@
 
   function requestFileSystem() {
     requestServiceFire('fs', 'getAllData');
-    requestServiceFire('storage', 'getFormatted');
+    requestServiceFire('storage', 'getUsage');
   }
 
   /* Listen for messages from emulator */
@@ -70,7 +70,7 @@
         }
       }
 
-      if (msg.service === 'storage' && msg.method === 'getFormatted' && msg.data) {
+      if (msg.service === 'storage' && msg.method === 'getUsage' && msg.data) {
         updateStorageBar(msg.data);
       }
     } catch (err) { /* ignore */ }
@@ -98,7 +98,7 @@
     var valueEl = document.getElementById('storage-value');
     var fillEl = document.getElementById('storage-fill');
     if (valueEl && data) {
-      valueEl.textContent = (data.used || '0 B') + ' / ' + (data.total || '0 B');
+      valueEl.textContent = zylI18n.formatBytes(data.used || 0) + ' / ' + zylI18n.formatBytes(data.total || 0);
     }
     if (fillEl && data) {
       fillEl.style.width = Math.min(data.percent || 0, 100) + '%';

@@ -259,25 +259,13 @@ pub fn list_installed_apps() -> Result<Vec<serde_json::Value>, String> {
                                The 'system' field here is advisory only — overridden by OS. */
                             let is_system = false; /* always false from Rust — OS decides */
 
-                            /* A1: Hidden system apps are excluded from list_installed_apps
-                             * because they are UI components, not user-visible apps.
-                             * Their permissions are registered separately by
-                             * ZylPermissions.registerFromAppList() which auto-registers
-                             * ALL SYSTEM_APPS with full permissions regardless of this list.
-                             * This is intentional — see permissions.js:registerFromAppList(). */
-                            let is_hidden = app_id == "com.zylos.lockscreen"
-                                || app_id == "com.zylos.statusbar"
-                                || app_id == "com.zylos.oobe"
-                                || app_id == "com.zylos.home"
-                                || app_id == "com.zylos.keyboard";
-
                             if let Some(obj) = manifest.as_object_mut() {
                                 obj.insert("installed".into(), serde_json::json!(true));
                                 obj.insert("system".into(), serde_json::json!(is_system));
                             }
-                            if !is_hidden {
-                                apps.push(manifest);
-                            }
+                            /* Whether an app shows in the launcher is its manifest's
+                               "launcher" field — the OS reads it, not this list */
+                            apps.push(manifest);
                         }
                     }
                 }

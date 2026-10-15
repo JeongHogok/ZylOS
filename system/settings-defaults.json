@@ -26,5 +26,8 @@
       "dark",
       "sunset"
     ]
+  },
+  "home": {
+    "dock": "com.zylos.phone,com.zylos.contacts,com.zylos.messages,com.zylos.settings"
   }
 }

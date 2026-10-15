@@ -719,6 +719,10 @@ static const ServiceRoute SERVICE_ROUTES[] = {
     {"bootctl",      "org.zylos.BootControl",        "/org/zylos/BootControl",        "org.zylos.BootControl"},
     {"lock",         "org.zylos.Lock",               "/org/zylos/Lock",               "org.zylos.Lock"},
     {"updater",      "org.zylos.Updater",            "/org/zylos/Updater",            "org.zylos.Updater"},
+    /* The installed apps are the WAM's own: it answers on its bus name */
+    {"apps",         "org.zylos.WebAppManager",      "/org/zylos/WebAppManager",      "org.zylos.WebAppManager"},
+    {"device",       "org.zylos.Device",             "/org/zylos/Device",             "org.zylos.Device"},
+    {"storage",      "org.zylos.Storage",            "/org/zylos/Storage",            "org.zylos.Storage"},
     {NULL, NULL, NULL, NULL}
 };
 
@@ -937,6 +941,16 @@ static GVariant *params_to_dbus_args(const GDBusMethodInfo *method,
         if (caller_id && strcmp(arg->signature, "s") == 0 &&
             arg_name_matches(arg->name, "appid")) {
             v = g_variant_new_string(caller_id);
+        } else if (strcmp(arg->name, "params") == 0 && strcmp(arg->signature, "a{sv}") == 0) {
+            /* The whole request: for a method whose fields are each optional
+               (an update that changes only what it was given) */
+            JsonObject *all = params ? json_object_ref(params) : json_object_new();
+            JsonNode *whole = json_node_init_object(json_node_alloc(), all);
+            v = json_gvariant_deserialize(whole, "a{sv}", NULL);
+            json_node_unref(whole);
+            json_object_unref(all);
+            if (!v) g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                                "argument 'params' is not an object");
         } else if (!node) {
             g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
                         "missing argument '%s'", arg->name);
