@@ -122,6 +122,15 @@ fi
 step "Zyl 파일 설치"
 cp -a "$STAGE"/. "$ROOTFS"/
 
+# 글꼴 캐시: 비어 있으면 WAM 이 뜰 때마다 /var/cache/fontconfig 를 고치려 하고
+# (루트 소유라) 거부당한다. 첫 화면도 그만큼 늦는다. 다른 아키텍처면 binfmt 가
+# 있어야 하므로 실패해도 넘어간다
+if chroot "$ROOTFS" /usr/bin/fc-cache -s >>"$W/bootstrap.log" 2>&1; then
+    step "글꼴 캐시 생성"
+else
+    echo "  (글꼴 캐시 생성 건너뜀 — 첫 실행이 느려진다)" >&2
+fi
+
 # ── 2-1. 링크 검사: 설치한 바이너리가 이미지 안에서 전부 풀리는가 ──
 # exit 127 로 부팅에서 죽는 것을 빌드에서 잡는다. 실행하지 않고 ELF 의
 # DT_NEEDED 만 읽으므로 다른 아키텍처에서도 된다
@@ -181,6 +190,19 @@ systemctl --root="$ROOTFS" mask getty.target >/dev/null 2>&1 || true
 systemctl --root="$ROOTFS" mask getty@.service >/dev/null 2>&1 || true
 systemctl --root="$ROOTFS" mask serial-getty@.service >/dev/null 2>&1 || true
 systemctl --root="$ROOTFS" mask console-getty.service >/dev/null 2>&1 || true
+
+# ── 3-1. 이미지의 커널·initrd 를 꺼내 둔다 ──
+# 기기에서는 서명 FIT 이 커널을 들고 있다. QEMU 레인은 그 자리를 이 두 파일로
+# 메운다 — 호스트 커널을 쓰면 모듈 버전이 어긋나 DRM·입력이 올라오지 않는다
+if [ $WITH_KERNEL = 1 ]; then
+    step "커널·initrd 추출"
+    K="$(ls -1 "$ROOTFS"/boot/vmlinuz-* 2>/dev/null | sort -V | tail -1)"
+    R="$(ls -1 "$ROOTFS"/boot/initrd.img-* 2>/dev/null | sort -V | tail -1)"
+    [ -n "$K" ] && [ -n "$R" ] || { echo "✗ 이미지에 커널·initrd 가 없다" >&2; exit 1; }
+    cp "$K" "$OUT/vmlinuz"
+    cp "$R" "$OUT/initrd.img"
+    echo "  $(basename "$K") → $OUT/vmlinuz"
+fi
 
 # ── 4. rootfs 이미지 ──
 step "rootfs ext4 (${ZYL_SIZE_ROOT_MIB} MiB)"

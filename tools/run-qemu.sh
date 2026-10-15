@@ -69,7 +69,14 @@ case "$ARCH" in
 esac
 command -v "$QEMU" >/dev/null 2>&1 || { echo "✗ $QEMU 가 없다" >&2; exit 1; }
 
-# 커널·initrd: 기기에서는 서명 FIT 가 이 자리다. 레인에서는 호스트 것을 쓴다
+# 커널·initrd: 기기에서는 서명 FIT 가 이 자리다. 레인에서는 이미지가 자기
+# 커널을 들고 있으면(build-image.sh --with-kernel) 그것을 쓴다 — 호스트 커널은
+# 모듈 버전이 어긋나 DRM·입력 드라이버가 올라오지 않는다
+IMGDIR="$(cd "$(dirname "$IMAGE")" && pwd)"
+if [ -z "$KERNEL" ] && [ -f "$IMGDIR/vmlinuz" ]; then
+    KERNEL="$IMGDIR/vmlinuz"
+    [ -z "$INITRD" ] && [ -f "$IMGDIR/initrd.img" ] && INITRD="$IMGDIR/initrd.img"
+fi
 if [ -z "$KERNEL" ]; then
     KERNEL="$(ls -1 /boot/vmlinuz-* 2>/dev/null | sort -V | tail -1 || true)"
 fi
