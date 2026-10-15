@@ -311,7 +311,8 @@ test('app-seal',
 test('sensors-polling',
   executable('test-sensors-polling', 'test_sensors_polling.c',
     include_directories: include_directories('../runtime/services/sensors'),
-    dependencies: [gio_dep, dependency('threads')],
+    dependencies: [gio_dep, dependency('threads'),
+                   meson.get_compiler('c').find_library('m')],
     c_args: ['-DZYL_TEST'],
   )
 )
