@@ -181,7 +181,8 @@ sudo tools/run-qemu.sh --image out/image/zyl-os-emulator-phone.img \
 
 `--check` 는 커널 인자로 자기점검(`zyl-selftest`)을 켜고, 그 결과를 종료 코드로
 돌려줍니다. 검증 범위: systemd 유닛 기동, 시스템 버스와 정책, 서비스 이름,
-앱 디렉터리·`/data`. **검증하지 않는 것**: U-Boot·서명 FIT·dm-verity·A/B 전환
+앱 디렉터리·`/data`, 화면 체인(`/dev/dri` → Wayland 소켓 → WAM 이 띄운 앱).
+**검증하지 않는 것**: U-Boot·서명 FIT·dm-verity·A/B 전환
 (부트로더 빌드와 `tools/sign-image.sh`·`tests/test_boot_env.sh` 소관), SoC 고유
 경로(GPU·모뎀·ISP). CI 의 `qemu-boot` 잡이 매 커밋 같은 일을 합니다.
 

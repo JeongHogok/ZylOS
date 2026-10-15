@@ -53,6 +53,7 @@ desktop 외부 입력·다중 해상도 · appliance 키오스크·무인 복구
 | 2 | 이미지 빌드 (`tools/build-image.sh`) — 소스 → 디스크 이미지 | 완료 |
 | 3 | QEMU 부팅 레인 (`tools/run-qemu.sh`, `zyl-selftest`) + CI | 완료 |
 | 4 | 폼팩터 8종 조립 검증 (`tests/test_image_profiles.sh`) | 완료 |
+| 4-1 | 화면 스택 — DRM → 컴포지터 → WAM → 홈 앱, 레인에서 확인 | 완료 |
 | 5 | GPU 드라이버 재배포권 질의 (SoC 공급 협의 안건) | 사업 측 |
 | 6 | 보드 조달 (최소 3대 + 직렬 케이블) | 사업 측 |
 
@@ -61,15 +62,22 @@ desktop 외부 입력·다중 해상도 · appliance 키오스크·무인 복구
 `alarm.Set` 의 GVariant 형식 문자열, 유닛이 쓰는 `/var` 경로 미생성(logger·
 credential), 런타임 공유 라이브러리 누락 5종(서비스 exit 127), 컴포지터의
 `/run/user/0`, 컴포지터↔WAM Wayland 소켓 경로 불일치, fstab 의 파티션 장치 이름.
-지금 이미지는 부팅해 자기점검 **53/53** 통과한다.
+
+**화면 스택이 잡은 것** (전부 기기에서 검은 화면이었을 버그): 이미지가 자기
+커널을 들고 가지 않아 DRM 모듈 버전 불일치, udev 모니터 netlink 차단, 파일 락
+권한, GTK 초기화 전 WebKit 전역 컨텍스트 생성(세그폴트), root:0755 Wayland
+소켓(WAM 이 connect 못 함), `xkb-data` 누락(세그폴트), `NoNewPrivileges` 가
+AppArmor 자식 프로필 전이를 막아 WebKit 샌드박스 불가, `ProtectKernelTunables`
+가 bubblewrap 의 proc 마운트를 막음, GPU 없을 때 wlroots 가 소프트웨어 렌더를
+거부하고 포기, 첫 commit 전에 보낸 xdg configure.
+
+지금 이미지는 부팅해 자기점검 **57/57** 통과하고, 그 안에 1280x800 화면 위에
+홈 앱이 떠 있다. AppArmor 거부 0건.
 
 남은 소프트웨어 과제 (다음 조각):
-1. **화면 스택** — QEMU 게스트에 `/dev/dri` 가 없어 컴포지터·WAM 이 조건으로
-   건너뛴다. virtio-gpu 를 DRM 으로 올리고 컴포지터가 Wayland 소켓을 만드는
-   것까지 레인에서 확인해야 한다. 그다음이 WAM·홈 화면
-2. **riscv64 레인** — 교차 빌드 + 2단계 부트스트랩(binfmt). 실기기와 같은
+1. **riscv64 레인** — 교차 빌드 + 2단계 부트스트랩(binfmt). 실기기와 같은
    아키텍처·HAL 백엔드를 보드 없이 돌려 보는 유일한 방법
-3. **verity·A/B** — `sign-image.sh` 의 출력을 이미지 조립에 연결(슬롯 B·해시
+2. **verity·A/B** — `sign-image.sh` 의 출력을 이미지 조립에 연결(슬롯 B·해시
    트리 채우기), 레인에서 A→B 전환·롤백 흉내내기
 
 ## Phase 1 — 첫 불 (보드 도착 +2주)
