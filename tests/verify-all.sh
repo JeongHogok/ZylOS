@@ -272,6 +272,25 @@ for cfile in $(find "$ROOT/runtime" -name '*.c' 2>/dev/null); do
 done
 if [ -n "$MISSING_C" ]; then warn "C 파일 CA 헤더 누락:\n$MISSING_C"; else pass "C 파일 CA 헤더 존재"; fi
 
+# C4-1: 도구·테스트 스크립트와 선언 파일도 같은 헤더 규칙을 지킨다 (규칙 7).
+#       이미지·부팅 경로가 스크립트와 선언 파일로 되어 있어 여기가 비면
+#       "이 파일이 무엇을 책임지는가"를 아무도 적지 않은 채 늘어난다.
+MISSING_SH=""
+for f in "$ROOT"/tools/*.sh "$ROOT"/tools/zyl-selftest "$ROOT"/tests/*.sh \
+         "$ROOT"/board/*/partitions.conf "$ROOT"/system/packages.list \
+         "$ROOT"/system/*.conf.in "$ROOT"/system/tmpfiles.d/*.conf \
+         "$ROOT"/system/dbus-1/*.conf; do
+  [ -f "$f" ] || continue
+  if [ "$(head -14 "$f" | grep -c 'Clean Architecture\|클린아키텍처' || true)" -eq 0 ]; then
+    MISSING_SH="${MISSING_SH}  $(echo "$f" | sed "s|$ROOT/||")\n"
+  fi
+done
+if [ -n "$MISSING_SH" ]; then
+  fail "스크립트·선언 파일 CA 헤더 누락:\n$MISSING_SH"
+else
+  pass "도구·테스트·선언 파일 CA 헤더 존재"
+fi
+
 # C5: 실기기 WAM 권한 정책이 permissions.js 와 같은지
 #     permissions.js 가 권위(규칙 8). bridge.c 는 사본이며, 어긋나면 에뮬레이터와
 #     실기기가 서로 다른 권한으로 동작한다. 라우트가 있는데 정책이 없는 서비스는
