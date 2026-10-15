@@ -671,7 +671,7 @@ static void on_activate(GApplication *app, gpointer user_data) {
        g_application_run returned right after activation and the WAM exited. */
     g_application_hold(app);
 
-    /* OOM Killer 초기화 — cgroup v2 + 주기적 모니터링 시작 */
+    /* OOM Killer 초기화 — 주기적 메모리 압박 모니터링 시작 */
     g_oom = zyl_oom_init(&wam->iface);
 
     zyl_manifest_scan_dir(wam->manifests, WAM_APP_DIR,  TRUE);
