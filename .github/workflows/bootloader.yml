@@ -1,0 +1,40 @@
+# ──────────────────────────────────────────────────────────
+# [Clean Architecture] Infrastructure Layer - CI
+#
+# 역할: 부트로더 빌드·서명 검증 — 고정한 제조사 소스 + Zyl 패치가 여전히
+#       적용·빌드되고, 서명 체인(FSBL·OpenSBI·U-Boot·OS 키)이 맞는지
+# 수행범위: 일회용 키로 tools/build-bootloader.sh 를 굽지 않는 빌드와
+#           --burn-rotpk 빌드 둘 다 (스크립트가 결과를 스스로 검증한다)
+# 의존방향: tools/build-bootloader.sh, tools/gen-boot-keys.sh
+# SOLID: SRP — 부트로더 경로만 (바뀐 경우에만 실행)
+# ──────────────────────────────────────────────────────────
+name: Bootloader
+on:
+  push:
+    paths:
+      - 'board/bpi-f3/**'
+      - 'tools/build-bootloader.sh'
+      - 'tools/gen-boot-keys.sh'
+      - '.github/workflows/bootloader.yml'
+  pull_request:
+    paths:
+      - 'board/bpi-f3/**'
+      - 'tools/build-bootloader.sh'
+      - 'tools/gen-boot-keys.sh'
+      - '.github/workflows/bootloader.yml'
+jobs:
+  build-bootloader:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the cross toolchain and build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-riscv64-linux-gnu bison flex bc libssl-dev libgnutls28-dev \
+            device-tree-compiler python3-yaml python3-setuptools xxd
+      - name: Build and verify (no eFuse burning)
+        run: |
+          bash tools/gen-boot-keys.sh "$RUNNER_TEMP/keys"
+          bash tools/build-bootloader.sh --key-dir "$RUNNER_TEMP/keys" "$RUNNER_TEMP/plain"
+      - name: Build and verify (--burn-rotpk)
+        run: bash tools/build-bootloader.sh --key-dir "$RUNNER_TEMP/keys" --burn-rotpk "$RUNNER_TEMP/burn"

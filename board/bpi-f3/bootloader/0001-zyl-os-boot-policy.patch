@@ -1,0 +1,277 @@
+Zyl OS boot policy for the SpacemiT K1 U-Boot (spacemit-com/uboot-2022.10,
+the commit tools/build-bootloader.sh pins).
+
+- CONFIG_ZYL_OS: storage may set only the variables include/zyl_env_flags.h
+  lists (tools/build-bootloader.sh writes it from board/bpi-f3/u-boot-env.txt);
+  no environment from bootfs, no automatic flashing from an SD card, no shell
+  on request; zyl_serial sets serial# (the device tree's serial-number, the
+  OS's device ID) from the chip ID in eFuse
+- CONFIG_ZYL_ROTPK_BURN: zyl_rotpk burn — fuse the Root of Trust public key
+  hash (bank 4) and lock it, only if the FSBL in eMMC boot0 is the one this
+  build signed (include/zyl_rotpk.h)
+
+diff --git a/board/spacemit/k1-x/Kconfig b/board/spacemit/k1-x/Kconfig
+index ea5c6b51..d9212615 100644
+--- a/board/spacemit/k1-x/Kconfig
++++ b/board/spacemit/k1-x/Kconfig
+@@ -33,6 +33,25 @@ config SPACEMIT_BUILD_BIN
+ 	bool "build fsbl.bin for spacemit image"
+ 	default n
+ 
++config ZYL_OS
++	bool "Zyl OS boot policy"
++	depends on SPACEMIT_K1X_EFUSE && ENV_WRITEABLE_LIST
++	help
++	  The boot policy of a Zyl OS device (its board/bpi-f3/u-boot-env.txt):
++	  storage may set only the variables include/zyl_env_flags.h lists; no
++	  environment from bootfs or the network, no automatic flashing from an
++	  SD card, no shell on request. Adds zyl_serial: serial# (the device
++	  tree's serial-number, the OS's device ID) from the chip ID in eFuse.
++
++config ZYL_ROTPK_BURN
++	bool "Zyl OS: burn the Root of Trust public key hash into eFuse"
++	depends on ZYL_OS
++	help
++	  Adds "zyl_rotpk burn": programs eFuse bank 4 (ROTPKH) and locks it,
++	  only if the FSBL in eMMC boot0 is exactly the one this build signed
++	  (include/zyl_rotpk.h). Irreversible. The vendor does not document the
++	  hash the Boot ROM expects: try it on a board you can afford to lose.
++
+ config BOARD_SPECIFIC_OPTIONS # dummy
+ 	def_bool y
+ 	select SPACEMIT_X60
+diff --git a/board/spacemit/k1-x/Makefile b/board/spacemit/k1-x/Makefile
+index 26d34d28..3abf504f 100644
+--- a/board/spacemit/k1-x/Makefile
++++ b/board/spacemit/k1-x/Makefile
+@@ -8,3 +8,6 @@ obj-$(CONFIG_SPL_BUILD)	+= spl.o k1x-i2c-eeprom.o
+ obj-$(CONFIG_SPLASH_SOURCE) +=splash.o
+ obj-$(CONFIG_ENV_IS_IN_NFS) +=nfs_env.o
+ obj-$(CONFIG_SPACEMIT_SHUTDOWN_CHARGE) += show_battery.o
++ifndef CONFIG_SPL_BUILD
++obj-$(CONFIG_ZYL_OS) += zyl.o
++endif
+diff --git a/board/spacemit/k1-x/k1x.c b/board/spacemit/k1-x/k1x.c
+index 662d334a..2f061c9a 100644
+--- a/board/spacemit/k1-x/k1x.c
++++ b/board/spacemit/k1-x/k1x.c
+@@ -772,7 +772,9 @@ void setenv_boot_mode(void)
+ 		break;
+ 	case BOOT_MODE_USB:
+ 		// for fastboot image download and run test
++#ifdef CONFIG_BOOTCOMMAND	/* Zyl OS: none — the built-in policy boots */
+ 		env_set("bootcmd", CONFIG_BOOTCOMMAND);
++#endif
+ 		break;
+ 	default:
+ 		env_set("boot_device", "");
+@@ -1024,7 +1026,10 @@ int board_late_init(void)
+ 
+ 	run_fastboot_command();
+ 
+-	run_cardfirmware_flash_command();
++	/* Zyl OS: nothing from an SD card, the network or a file decides what
++	   boots — only the built-in policy (CONFIG_ZYL_OS) */
++	if (!IS_ENABLED(CONFIG_ZYL_OS))
++		run_cardfirmware_flash_command();
+ 
+ #ifdef CONFIG_ENV_IS_IN_NFS
+ 	run_net_flash_command();
+@@ -1032,14 +1037,15 @@ int board_late_init(void)
+ 
+ 	probe_shutdown_charge();
+ 
+-	ret = run_uboot_shell();
++	ret = IS_ENABLED(CONFIG_ZYL_OS) ? -1 : run_uboot_shell();
+ 	if (!ret) {
+ 		pr_info("reboot into uboot shell\n");
+ 		return 0;
+ 	}
+ 
+ 	/*import env.txt from bootfs*/
+-	import_env_from_bootfs();
++	if (!IS_ENABLED(CONFIG_ZYL_OS))
++		import_env_from_bootfs();
+ 
+ 	if (!is_video_connected) {
+ 		env_set("stdout", "serial");
+diff --git a/board/spacemit/k1-x/zyl.c b/board/spacemit/k1-x/zyl.c
+new file mode 100644
+index 00000000..28a57932
+--- /dev/null
++++ b/board/spacemit/k1-x/zyl.c
+@@ -0,0 +1,117 @@
++// SPDX-License-Identifier: GPL-2.0+
++/*
++ * Zyl OS boot policy commands for the SpacemiT K1 (CONFIG_ZYL_OS)
++ *
++ * zyl_serial      serial# — and so the device tree's serial-number, the OS's
++ *                 device ID — from the chip ID the factory fused (bank 7), not
++ *                 from the EEPROM, which can be rewritten
++ * zyl_rotpk burn  (CONFIG_ZYL_ROTPK_BURN) fuse the Root of Trust public key
++ *                 hash, only for the FSBL this build signed
++ */
++
++#include <common.h>
++#include <blk.h>
++#include <command.h>
++#include <dm.h>
++#include <env.h>
++#include <malloc.h>
++#include <misc.h>
++#include <part.h>
++#include <u-boot/sha256.h>
++
++#define FUSE_BANK_BYTES	32
++
++static int efuse_device(struct udevice **dev)
++{
++	return uclass_get_device_by_driver(UCLASS_MISC, DM_DRIVER_GET(spacemit_k1x_efuse), dev);
++}
++
++static int do_zyl_serial(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
++{
++	struct udevice *dev;
++	u8 f[FUSE_BANK_BYTES];
++	u64 id = 0;
++	char serial[24];
++
++	if (efuse_device(&dev) || misc_read(dev, 7 * FUSE_BANK_BYTES, f, sizeof(f)) < 0)
++		return CMD_RET_FAILURE;
++	/* bits 191..251 of bank 7, as board/spacemit/k1-x/spl.c reads them */
++	memcpy(&id, &f[24], sizeof(id));
++	id <<= 4;
++	id >>= 3;
++	id |= (f[23] & 0x80) >> 7;
++	if (!id)
++		return CMD_RET_FAILURE;
++	snprintf(serial, sizeof(serial), "K1-%016llX", id);
++	return env_set("serial#", serial) ? CMD_RET_FAILURE : CMD_RET_SUCCESS;
++}
++
++U_BOOT_CMD(zyl_serial, 1, 0, do_zyl_serial,
++	   "set serial# from the chip ID in eFuse", "");
++
++#ifdef CONFIG_ZYL_ROTPK_BURN
++#include <zyl_rotpk.h>	/* ZYL_FSBL_SIZE, ZYL_FSBL_SHA256: the FSBL this build signed */
++
++#define FSBL_BOOT0_OFFSET	0x200	/* bootinfo_emmc.json spl0_offset */
++#define ROTPK_SIZE		256	/* the FSBL begins with the RSA-2048 modulus */
++
++int efuse_burn_rotpkh(struct udevice *dev, const u8 *hash);
++
++static int do_zyl_rotpk(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
++{
++	static const u8 want_fsbl[32] = ZYL_FSBL_SHA256;
++	static const u8 zero[FUSE_BANK_BYTES];
++	struct blk_desc *desc = blk_get_dev("mmc", MMC_DEV_EMMC);
++	struct udevice *dev;
++	u8 have[FUSE_BANK_BYTES], digest[32], rotpkh[32];
++	ulong blocks;
++	u8 *fsbl;
++	int ret = CMD_RET_FAILURE;
++
++	if (argc != 2 || strcmp(argv[1], "burn"))
++		return CMD_RET_USAGE;
++	if (!desc || efuse_device(&dev) || misc_read(dev, 4 * FUSE_BANK_BYTES, have, sizeof(have)) < 0) {
++		printf("zyl_rotpk: no eFuse or eMMC - not burning\n");
++		return CMD_RET_FAILURE;
++	}
++	blocks = DIV_ROUND_UP(ZYL_FSBL_SIZE, desc->blksz);
++	fsbl = malloc(blocks * desc->blksz);
++	if (!fsbl)
++		return CMD_RET_FAILURE;
++	/* The FSBL the Boot ROM checks once the hash is fused: eMMC boot0 */
++	if (blk_dselect_hwpart(desc, 1) ||
++	    blk_dread(desc, FSBL_BOOT0_OFFSET / desc->blksz, blocks, fsbl) != blocks) {
++		printf("zyl_rotpk: cannot read the FSBL in boot0 - not burning\n");
++		goto out;
++	}
++	sha256_csum_wd(fsbl, ZYL_FSBL_SIZE, digest, CHUNKSZ_SHA256);
++	if (memcmp(digest, want_fsbl, sizeof(digest))) {
++		printf("zyl_rotpk: the FSBL in boot0 is not this build's - not burning\n");
++		goto out;
++	}
++	sha256_csum_wd(fsbl, ROTPK_SIZE, rotpkh, CHUNKSZ_SHA256);
++	if (!memcmp(have, rotpkh, sizeof(rotpkh))) {
++		ret = CMD_RET_SUCCESS;		/* already this key */
++		goto out;
++	}
++	if (memcmp(have, zero, sizeof(have))) {
++		printf("zyl_rotpk: eFuse already holds another key - not burning\n");
++		goto out;
++	}
++	printf("zyl_rotpk: burning the Root of Trust public key hash (irreversible)\n");
++	if (efuse_burn_rotpkh(dev, rotpkh)) {
++		printf("zyl_rotpk: burning failed\n");
++		goto out;
++	}
++	printf("zyl_rotpk: done - the Boot ROM now takes only FSBLs signed by this key\n");
++	ret = CMD_RET_SUCCESS;
++out:
++	blk_dselect_hwpart(desc, 0);
++	free(fsbl);
++	return ret;
++}
++
++U_BOOT_CMD(zyl_rotpk, 2, 0, do_zyl_rotpk,
++	   "fuse the Root of Trust public key hash",
++	   "burn - only if the FSBL in eMMC boot0 is the one this build signed");
++#endif
+diff --git a/drivers/misc/spacemit_k1x_efuse.c b/drivers/misc/spacemit_k1x_efuse.c
+index ab030edf..7dde58c0 100644
+--- a/drivers/misc/spacemit_k1x_efuse.c
++++ b/drivers/misc/spacemit_k1x_efuse.c
+@@ -372,6 +372,35 @@ int efuse_lock_bank(struct udevice *dev, uint32_t bank_index)
+ 	return efuse_write_bank_core(dev, 6, (uint32_t *)efuse_data);
+ }
+ 
++#if defined(CONFIG_ZYL_ROTPK_BURN) && !defined(CONFIG_SPL_BUILD)
++/*
++ * Zyl OS: program bank 4 (ROTPKH) and lock it. The vendor write path stops
++ * below bank 8 on purpose; this is the one bank Zyl OS burns, and only from
++ * the guarded "zyl_rotpk burn" (board/spacemit/k1-x/zyl.c)
++ */
++int efuse_burn_rotpkh(struct udevice *dev, const uint8_t *hash)
++{
++	uint32_t data[FUSE_BANK_WORDS], lock[FUSE_BANK_WORDS] = { BIT(4) };
++	uint8_t back[FUSE_BANK_BYTES];
++	int ret;
++
++	memcpy(data, hash, sizeof(data));
++	ret = efuse_power_on(dev);
++	if (ret)
++		return ret;
++	ret = efuse_write_bank_core(dev, 4, data);
++	if (!ret)
++		ret = efuse_read_bank(dev, 4 * FUSE_BANK_BYTES, back, sizeof(back));
++	if (!ret && memcmp(back, hash, sizeof(back)))
++		ret = -EIO;
++	/* bank 6 word 0: a hardware lock bit per bank (as efuse_lock_bank) */
++	if (!ret)
++		ret = efuse_write_bank_core(dev, 6, lock);
++	efuse_power_off(dev);
++	return ret;
++}
++#endif
++
+ static int spacemit_efuse_read(struct udevice *dev, int offset, void *buf, int size)
+ {
+ 	return efuse_read_bank(dev, offset, buf, size);
+diff --git a/include/configs/k1-x.h b/include/configs/k1-x.h
+index 1af9debc..33f5b928 100644
+--- a/include/configs/k1-x.h
++++ b/include/configs/k1-x.h
+@@ -210,6 +210,12 @@ enum private_part_offset {
+ 
+ #define MMC_DEV_SD	(0)
+ 
++#if defined(CONFIG_ZYL_OS)
++/* Which variables storage may set (CONFIG_ENV_FLAGS_LIST_STATIC): written by
++   Zyl OS tools/build-bootloader.sh from board/bpi-f3/u-boot-env.txt */
++#include <zyl_env_flags.h>
++#endif
++
+ #define BOOTFS_NAME	("bootfs")
+ 
+ /* Environment options */
