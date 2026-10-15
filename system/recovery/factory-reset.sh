@@ -7,7 +7,7 @@
 #           /data/netstats, /data/alerts, /data/lock, /data/settings,
 #           /data/telephony (call log), /data/contacts, /data/messages,
 #           /data/appdata (each app's private data),
-#           /data/crash 삭제 후 sync → 재부팅
+#           /data 삭제 후 sync → 재부팅
 # 의존방향: 없음
 # SOLID: SRP — 팩토리 리셋 실행만 담당
 # ----------------------------------------------------------
@@ -24,7 +24,6 @@ echo "  - /data/users/*"
 echo "  - /data/apps/*"
 echo "  - /var/lib/zyl-os/*"
 echo "  - /data/telemetry/*   (device UUID and telemetry queue)"
-echo "  - /data/crash/*       (crash reports)"
 echo "  - /data/netstats/*    (data usage)"
 echo "  - /data/alerts/*      (emergency alert history)"
 echo "  - /data/telephony/*   (call log)"
@@ -70,13 +69,6 @@ if [ "$confirm" = "YES" ]; then
             echo "  [OK] $d cleared"
         fi
     done
-
-    # Remove crash reports — these may contain sensitive stack traces and
-    # personal data from app processes.
-    if [ -d /data/crash ]; then
-        rm -rf /data/crash/*
-        echo "  [OK] /data/crash cleared"
-    fi
 
     # Also clear WAM/app caches
     if [ -d /var/cache/zyl-os ]; then

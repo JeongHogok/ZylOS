@@ -73,19 +73,15 @@ builddir-riscv/
 ├── runtime/wam/zyl-wam               # 웹 앱 매니저
 ├── runtime/services/
 │   ├── accessibility/zyl-accessibility
-│   ├── account/zyl-account
 │   ├── alarm/zyl-alarm
 │   ├── audio/zyl-audio
-│   ├── auth/zyl-auth
 │   ├── bluetooth/zyl-bluetooth
 │   ├── camera/zyl-camera
-│   ├── crash/zyl-crash-handler
 │   ├── credential/zyl-credential
 │   ├── display/zyl-display
 │   ├── input/zyl-input
 │   ├── location/zyl-location
 │   ├── logger/zyl-logger
-│   ├── nfc/zyl-nfc
 │   ├── notification/zyl-notification
 │   ├── power/zyl-power
 │   ├── sensors/zyl-sensors

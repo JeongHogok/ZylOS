@@ -24,6 +24,15 @@ profile zyl-wam /usr/bin/zyl-wam {
   /usr/lib/zyl-os/**                mr,
   /usr/lib/@{multiarch}/**          mr,
 
+  # WebKit's own helper processes (web, network, GPU), and the bubblewrap
+  # sandbox it launches for each of them. A sandbox cannot be built from inside
+  # a confined profile, so bwrap gets an unconfined child profile — the shape
+  # Ubuntu's own bwrap-userns-restrict uses.
+  /usr/libexec/webkit*/**           ixr,
+  /usr/lib/@{multiarch}/webkit*/**  ixr,
+  /usr/bin/bwrap                    Cx -> bwrap,
+  /usr/bin/xdg-dbus-proxy           Cx -> bwrap,
+
   # GPU / DRI access for hardware-accelerated rendering
   /dev/dri/**                       rw,
   /sys/devices/**/drm/**            r,
@@ -66,4 +75,7 @@ profile zyl-wam /usr/bin/zyl-wam {
   deny /usr/**                      w,
   deny /etc/**                      w,
   deny /boot/**                     rwmlkx,
+
+  profile bwrap flags=(unconfined) {
+  }
 }

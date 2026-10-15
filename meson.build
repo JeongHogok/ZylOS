@@ -32,7 +32,7 @@ subdir('board')   # defines board_id / board_soc / board_arch / board_hal_backen
 # ─── Form-factor profile → C service set ───────────────────
 # Every profile needs these: display, input, power, security, logging, OTA.
 zyl_core_services = [
-  'logger', 'display', 'input', 'power', 'crash',
+  'logger', 'display', 'input', 'power',
   'credential', 'user', 'accessibility', 'notification', 'updater', 'telemetry',
   'netstats', 'bootctl', 'settings', 'lock', 'device', 'storage', 'fs', 'clipboard', 'network', 'appdata',
 ]
@@ -41,30 +41,23 @@ zyl_core_services = [
 # shortcut: cellular tablets and LTE watches must use -Dprofile=phone for now;
 #           split into tablet-lte / watch-lte variants when a board needs it.
 zyl_profile_extras = {
-  'phone':     ['account', 'alarm', 'appstore', 'audio', 'auth', 'bluetooth',
-                'camera', 'contacts', 'location', 'messaging', 'nfc', 'sensors',
-                'telephony', 'usb', 'wifi'],
-  'tablet':    ['account', 'alarm', 'appstore', 'audio', 'auth', 'bluetooth',
-                'camera', 'contacts', 'location', 'messaging', 'sensors', 'usb',
+  'phone':     ['alarm', 'appstore', 'audio', 'bluetooth', 'camera', 'contacts',
+                'location', 'messaging', 'sensors', 'telephony', 'usb', 'wifi'],
+  'tablet':    ['alarm', 'appstore', 'audio', 'bluetooth', 'camera', 'contacts',
+                'location', 'messaging', 'sensors', 'usb', 'wifi'],
+  'tv':        ['alarm', 'appstore', 'audio', 'bluetooth', 'usb', 'wifi'],
+  'auto':      ['alarm', 'audio', 'bluetooth', 'camera', 'contacts', 'location',
+                'messaging', 'sensors', 'telephony', 'usb', 'wifi'],
+  'watch':     ['alarm', 'audio', 'bluetooth', 'contacts', 'location',
+                'messaging', 'sensors', 'wifi'],
+  'desktop':   ['alarm', 'appstore', 'audio', 'bluetooth', 'camera', 'usb',
                 'wifi'],
-  'tv':        ['account', 'alarm', 'appstore', 'audio', 'auth', 'bluetooth',
-                'usb', 'wifi'],
-  'auto':      ['account', 'alarm', 'audio', 'auth', 'bluetooth', 'camera',
-                'contacts', 'location', 'messaging', 'sensors', 'telephony', 'usb',
-                'wifi'],
-  'watch':     ['account', 'alarm', 'audio', 'auth', 'bluetooth', 'contacts',
-                'location', 'messaging', 'nfc', 'sensors', 'wifi'],
-  'desktop':   ['account', 'alarm', 'appstore', 'audio', 'auth', 'bluetooth',
-                'camera', 'nfc', 'usb', 'wifi'],
   'appliance': ['alarm', 'audio', 'wifi'],
-  'pda':       ['account', 'alarm', 'appstore', 'audio', 'auth', 'bluetooth',
-                'camera', 'contacts', 'location', 'messaging', 'nfc', 'usb', 'wifi'],
+  'pda':       ['alarm', 'appstore', 'audio', 'bluetooth', 'camera', 'contacts',
+                'location', 'messaging', 'usb', 'wifi'],
 }
 
 zyl_services = zyl_core_services + zyl_profile_extras[zyl_profile]
-
-# Unit basename differs from the service directory name.
-zyl_unit_overrides = {'crash': 'zyl-crash-handler'}
 
 # Subprojects
 subdir('compositor')
@@ -116,7 +109,7 @@ install_headers('runtime/hal/hal.h', subdir: 'zyl-os')
 # ─── systemd units — only those the profile actually builds ───
 zyl_units = ['zyl-compositor', 'zyl-wam', 'zyl-apparmor']
 foreach svc : zyl_services
-  zyl_units += zyl_unit_overrides.get(svc, 'zyl-' + svc)
+  zyl_units += 'zyl-' + svc
 endforeach
 
 _systemd_dir = get_option('prefix') / 'lib' / 'systemd' / 'system'

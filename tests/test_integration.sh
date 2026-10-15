@@ -42,19 +42,15 @@ EXPECTED_BINS=(
     zyl-compositor
     zyl-wam
     zyl-accessibility
-    zyl-account
     zyl-alarm
     zyl-audio
-    zyl-auth
     zyl-bluetooth
     zyl-camera
-    zyl-crash-handler
     zyl-credential
     zyl-display
     zyl-input
     zyl-location
     zyl-logger
-    zyl-nfc
     zyl-notification
     zyl-power
     zyl-sensors

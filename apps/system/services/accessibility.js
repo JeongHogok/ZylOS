@@ -2,7 +2,7 @@
 // [Clean Architecture] Domain Layer - Service Module
 //
 // Role: Accessibility service — high contrast, font scale, screen reader
-// Scope: getState, setHighContrast, setFontScale
+// Scope: getState, setHighContrast, setFontScale, setScreenReader, speak
 // Dependency Direction: Domain -> settings service
 // SOLID: SRP — accessibility features only
 // ----------------------------------------------------------
@@ -39,6 +39,18 @@
         a11yState.fontScale = parseFloat(p.scale) || 1.0;
         settingsSvc._updateSetting('accessibility', 'fontScale', a11yState.fontScale);
         return Promise.resolve(a11yState.fontScale);
+      },
+      setScreenReader: function (p) {
+        a11yState.screenReader = !!p.enabled;
+        settingsSvc._updateSetting('accessibility', 'screenReader', a11yState.screenReader);
+        return Promise.resolve(a11yState.screenReader);
+      },
+      speak: function (p) {
+        /* 기기는 espeak-ng, 에뮬레이터는 호스트 웹뷰의 음성 합성 */
+        var text = p && p.text;
+        if (!text || !window.speechSynthesis) return Promise.resolve(false);
+        window.speechSynthesis.speak(new window.SpeechSynthesisUtterance(text));
+        return Promise.resolve(true);
       }
     };
   };

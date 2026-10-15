@@ -2,7 +2,8 @@
  * [Clean Architecture] Application Layer - Service
  *
  * 역할: 접근성 서비스 구현 — D-Bus로 고대비/폰트스케일/스크린리더 관리
- * 수행범위: D-Bus 메서드 핸들링, 상태 관리, 시그널 발송
+ * 수행범위: D-Bus 메서드 핸들링, 상태 관리, 시그널 발송,
+ *           스크린리더 켜기(at-spi2-registryd + orca)와 읽어주기(espeak-ng)
  * 의존방향: accessibility.h, gio/gio.h
  * SOLID: SRP — 접근성 제어 로직만 담당
  * ---------------------------------------------------------- */
@@ -26,6 +27,12 @@ static const char *introspection_xml =
     "      <arg direction='in'  type='d' name='scale'/>"
     "      <arg direction='out' type='b' name='success'/>"
     "    </method>"
+    "    <method name='SetScreenReader'>"
+    "      <arg direction='in'  type='b' name='enabled'/>"
+    "    </method>"
+    "    <method name='Speak'>"
+    "      <arg direction='in'  type='s' name='text'/>"
+    "    </method>"
     "    <method name='GetState'>"
     "      <arg direction='out' type='b' name='high_contrast'/>"
     "      <arg direction='out' type='d' name='font_scale'/>"
@@ -48,6 +55,44 @@ struct _ZylAccessibilityService {
     guint                  bus_owner_id;
     guint                  registration_id;
 };
+
+/* -- Screen reader (AT-SPI2 + Orca + espeak-ng) -------------- */
+
+/*
+ * WebKitGTK already exposes app content over ATK → AT-SPI, so the OS only has
+ * to start the reader and speak its own chrome. Missing orca/espeak-ng is not
+ * an error: the image may ship neither.
+ */
+static void spawn_detached(gchar **argv)
+{
+    GError *error = NULL;
+    if (!g_spawn_async(NULL, argv, NULL,
+                       G_SPAWN_SEARCH_PATH | G_SPAWN_STDOUT_TO_DEV_NULL |
+                       G_SPAWN_STDERR_TO_DEV_NULL,
+                       NULL, NULL, NULL, &error)) {
+        g_message("Accessibility: %s unavailable: %s", argv[0],
+                  error ? error->message : "spawn failed");
+        g_clear_error(&error);
+    }
+}
+
+static void speak_text(const char *text)
+{
+    if (!text || !text[0]) {
+        return;
+    }
+    gchar *argv[] = { (gchar *)"espeak-ng", (gchar *)text, NULL };
+    spawn_detached(argv);
+}
+
+static void screen_reader_start(void)
+{
+    /* at-spi2-registryd is what carries the widget tree to the reader */
+    gchar *registry[] = { (gchar *)"/usr/libexec/at-spi2-registryd", NULL };
+    gchar *orca[]     = { (gchar *)"orca", (gchar *)"--no-setup", NULL };
+    spawn_detached(registry);
+    spawn_detached(orca);
+}
 
 /* -- Emit StateChanged signal ------------------------------- */
 
@@ -120,6 +165,24 @@ static void handle_method_call(GDBusConnection       *connection,
         }
         g_dbus_method_invocation_return_value(invocation,
             g_variant_new("(b)", success));
+
+    } else if (g_strcmp0(method_name, "SetScreenReader") == 0) {
+        gboolean enabled = FALSE;
+        g_variant_get(parameters, "(b)", &enabled);
+        svc->state.screen_reader_active = enabled;
+        if (enabled) {
+            screen_reader_start();
+        }
+        g_message("Accessibility: screen_reader=%s",
+                  enabled ? "true" : "false");
+        emit_state_changed(svc);
+        g_dbus_method_invocation_return_value(invocation, NULL);
+
+    } else if (g_strcmp0(method_name, "Speak") == 0) {
+        const gchar *text = NULL;
+        g_variant_get(parameters, "(&s)", &text);
+        speak_text(text);
+        g_dbus_method_invocation_return_value(invocation, NULL);
 
     } else if (g_strcmp0(method_name, "GetState") == 0) {
         g_dbus_method_invocation_return_value(invocation,

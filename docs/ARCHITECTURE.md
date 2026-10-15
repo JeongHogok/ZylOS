@@ -27,7 +27,7 @@ Linux 커널 위에 Wayland 컴포지터 + WebKitGTK 앱 런타임으로 구성�
 ├─────────────────────────────────────────────────────┤
 │  JS 서비스 모듈 (apps/system/services/ — 33개)        │  ← 비즈니스 로직 (OS 이미지 소유)
 ├─────────────────────────────────────────────────────┤
-│      C 서비스 (D-Bus IPC — 37개 디렉토리)             │  ← ~22개 D-Bus 데몬
+│      C 서비스 (D-Bus IPC — 32개 디렉토리)             │  ← 32개 D-Bus 데몬
 ├─────────────────────────────────────────────────────┤
 │  Wayland Compositor (wlroots 기반)                   │  ← 윈도우/터치/제스처 관리
 ├─────────────────────────────────────────────────────┤
@@ -53,26 +53,22 @@ Linux 커널 위에 Wayland 컴포지터 + WebKitGTK 앱 런타임으로 구성�
 - 모듈: manifest, lifecycle (suspend/resume/close), bridge, dbus_service
 - JS Bridge: webkit.messageHandlers → D-Bus → 시스템 서비스
 
-### C 시스템 서비스 (26개 — runtime/services/)
+### C 시스템 서비스 (32개 — runtime/services/, 주요 서비스)
 
-#### D-Bus 데몬 서비스 (~22개):
+#### D-Bus 데몬 서비스:
 
 | 서비스 | D-Bus 이름 | 역할 |
 |--------|-----------|------|
 | accessibility | org.zylos.Accessibility | 고대비, 폰트 스케일링 |
-| account | org.zylos.AccountService | 계정 관리 |
 | alarm | org.zylos.AlarmService | 알람 스케줄링 |
 | audio | org.zylos.AudioService | PipeWire 오디오, 5개 볼륨 카테고리 |
-| auth | org.zylos.AuthService | 생체/PIN 인증 |
 | bluetooth | org.zylos.BluetoothService | BlueZ 연동, BT 스캔/연결 |
 | camera | org.zylos.CameraService | V4L2 카메라 제어 |
-| crash | org.zylos.CrashHandler | 크래시 덤프 수집/보고 |
 | credential | org.zylos.CredentialManager | AES-256-GCM + PBKDF2 키체인 |
 | display | org.zylos.DisplayManager | 해상도, 회전, DPI |
 | input | org.zylos.InputService | 가상 키보드, IME, 하드웨어 키 |
 | location | org.zylos.LocationService | GPS (GPSD) + GeoIP 퓨전 |
 | logger | org.zylos.Logger | JSON 구조화 로깅 |
-| nfc | org.zylos.NfcService | NFC 태그 읽기/쓰기 |
 | notification | org.zylos.Notification | 알림 생성/조회/채널 관리 |
 | power | org.zylos.PowerManager | Doze 상태머신, CPU 거버너, 웨이크락 |
 | sensors | org.zylos.SensorService | 가속도계, 자이로, 근접, 조도 |
@@ -399,14 +395,13 @@ U-Boot
   → OpenSBI
   → Verified Boot 검증 (FIT 서명 + dm-verity)
   → Linux Kernel 6.6
-  → systemd (25개 서비스 유닛)
+  → systemd (35개 서비스 유닛)
     → Plymouth 부트 스플래시
     → zyl-compositor.service (Wayland)
     → zyl-wam.service (WAM)
     → zyl-notification.service
     → zyl-power.service
     → zyl-credential.service
-    → zyl-auth.service
     → zyl-wifi.service
     → ... (나머지 서비스)
     → 잠금화면 표시

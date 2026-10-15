@@ -197,7 +197,7 @@ OS 서비스는 프로세스마다 systemd 하드닝과 AppArmor 프로필로 �
   프로세스에서 돌고 WAM 이 그 PID 를 알 길이 없다. 어느 앱을 닫을지가 WAM 이 쥔 지렛대다
 
 ### systemd 서비스 보안 하드닝
-- 25개 systemd 서비스 유닛에 보안 하드닝 전체 적용
+- 35개 systemd 서비스 유닛에 보안 하드닝 전체 적용
 - `ProtectSystem=strict`, `ProtectHome=yes`, `PrivateTmp=yes`
 - `NoNewPrivileges=yes`, `CapabilityBoundingSet=` 최소 권한
 - `SystemCallFilter=@system-service` seccomp 필터
@@ -225,15 +225,10 @@ OS 서비스는 프로세스마다 systemd 하드닝과 AppArmor 프로필로 �
   우회할 수 있다. 굽기는 되돌릴 수 없고, Boot ROM 이 기대하는 해시 형식을 제조사가 문서화하지
   않아 실기기에서 검증되지 않았다 — 버려도 되는 보드로 먼저 확인할 것
 
-### 생체 인증 (auth 서비스)
-- **현재**: auth 서비스는 구현되어 있으나 BPI-F3 지문 센서 하드웨어 연동은 BSP 드라이버에 의존
-- **영향**: 지문 인증은 드라이버 통합 전까지 PIN 폴백만 동작
-- **계획**: 공식 SpacemiT BSP 지문 드라이버 릴리즈 후 통합
-
-### NFC (nfc 서비스)
-- **현재**: Linux libnfc 연동 구현 완료, 실기기 NFC 하드웨어 테스트 미완료
-- **영향**: NFC 기능 실기기 동작 미보장
-- **권고**: 테스트된 NFC 하드웨어 구성 확인 후 사용
+### 생체 인증·NFC
+- **현재**: 없음. BPI-F3 에 지문 센서도 NFC 안테나도 없어 서비스를 두지 않았다
+- **영향**: 화면 잠금은 PIN/패턴만 (`lock` 서비스)
+- **계획**: 그 하드웨어가 있는 보드를 지원할 때 `runtime/services/` 에 다시 들인다
 
 ### Telemetry
 - **현재**: 기본 비활성화
