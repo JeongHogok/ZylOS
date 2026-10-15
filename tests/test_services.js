@@ -1587,6 +1587,9 @@ var storeTests = (function () {
   function sign(buf) { return signWith(keys.privateKey, buf); }
   function hexOf(text) { return sha(Buffer.from(text)).toString('hex'); }
   var pkg = Buffer.from('a zip, as far as the OS is concerned');
+  /* One clock for every certificate this suite makes: the same certificate,
+     and so the same fingerprint, however many times it is built */
+  var NOW = Math.floor(Date.now() / 1000);
 
   /* What the container reports for an unpacked package (store_unpack, store_inspect):
      every file's hash and the seal's files, as the tool writes them */
@@ -1603,11 +1606,10 @@ var storeTests = (function () {
       hashes['.zyl-seal/' + name + '.sig'] = hexOf(seal[name + '.sig']);
     }
     if (o.dev) {
-      var now = Math.floor(Date.now() / 1000);
-      put('cert', { developer: 'acme', name: 'ACME', publicKey: devPub, notAfter: now + (o.expired ? -60 : 86400) },
+      put('cert', { developer: 'acme', name: 'ACME', publicKey: devPub, notAfter: NOW + (o.expired ? -60 : 86400) },
           keys.privateKey);
       put('profile', { cert: hashes['.zyl-seal/cert.json'], apps: ['com.example.*'], devices: ['DEV-1'],
-                       notAfter: now + 86400 }, keys.privateKey);
+                       notAfter: NOW + 86400 }, keys.privateKey);
     }
     put('seal', { version: 1, id: id, appVersion: version, files: files }, o.dev ? devKeys.privateKey : keys.privateKey);
     if (o.added) hashes['js/extra.js'] = hexOf('evil()');
