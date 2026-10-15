@@ -32,23 +32,21 @@ static bool sha256_file(const char *path, unsigned char out[EVP_MAX_MD_SIZE]) {
     return ok;
 }
 
-ZylOtaVerdict zyl_ota_verify(const char *pkg_path, const char *sha256_hex,
-                             const char *signature_b64, const char *pubkey_path) {
-    if (!signature_b64 || !*signature_b64) return ZYL_OTA_UNSIGNED;
+/* key: taken (freed here) */
+static ZylOtaVerdict verify_with(const char *pkg_path, const char *sha256_hex,
+                                 const char *signature_b64, EVP_PKEY *key) {
+    if (!signature_b64 || !*signature_b64) { EVP_PKEY_free(key); return ZYL_OTA_UNSIGNED; }
     unsigned char digest[EVP_MAX_MD_SIZE];
-    if (!sha256_file(pkg_path, digest)) return ZYL_OTA_UNREADABLE;
+    if (!sha256_file(pkg_path, digest)) { EVP_PKEY_free(key); return ZYL_OTA_UNREADABLE; }
 
     if (sha256_hex && *sha256_hex) {
         char hex[65];
         for (int i = 0; i < 32; i++) snprintf(hex + i * 2, 3, "%02x", digest[i]);
-        if (strncmp(hex, sha256_hex, 64) != 0 || strlen(sha256_hex) != 64) return ZYL_OTA_HASH_MISMATCH;
+        if (strncmp(hex, sha256_hex, 64) != 0 || strlen(sha256_hex) != 64) {
+            EVP_PKEY_free(key);
+            return ZYL_OTA_HASH_MISMATCH;
+        }
     }
-
-    FILE *kf = fopen(pubkey_path, "r");
-    if (!kf) return ZYL_OTA_NO_KEY;
-    EVP_PKEY *key = PEM_read_PUBKEY(kf, NULL, NULL, NULL);
-    fclose(kf);
-    if (!key) return ZYL_OTA_BAD_KEY;
 
     size_t b64_len = strlen(signature_b64);
     unsigned char *sig = malloc(b64_len * 3 / 4 + 4);
@@ -70,6 +68,28 @@ ZylOtaVerdict zyl_ota_verify(const char *pkg_path, const char *sha256_hex,
     EVP_PKEY_free(key);
     free(sig);
     return good ? ZYL_OTA_TRUSTED : ZYL_OTA_BAD_SIGNATURE;
+}
+
+ZylOtaVerdict zyl_ota_verify(const char *pkg_path, const char *sha256_hex,
+                             const char *signature_b64, const char *pubkey_path) {
+    if (!signature_b64 || !*signature_b64) return ZYL_OTA_UNSIGNED;
+    FILE *kf = fopen(pubkey_path, "r");
+    if (!kf) return ZYL_OTA_NO_KEY;
+    EVP_PKEY *key = PEM_read_PUBKEY(kf, NULL, NULL, NULL);
+    fclose(kf);
+    if (!key) return ZYL_OTA_BAD_KEY;
+    return verify_with(pkg_path, sha256_hex, signature_b64, key);
+}
+
+ZylOtaVerdict zyl_ota_verify_pem(const char *pkg_path, const char *sha256_hex,
+                                 const char *signature_b64, const char *pubkey_pem) {
+    if (!signature_b64 || !*signature_b64) return ZYL_OTA_UNSIGNED;
+    if (!pubkey_pem || !*pubkey_pem) return ZYL_OTA_NO_KEY;
+    BIO *bio = BIO_new_mem_buf(pubkey_pem, -1);
+    EVP_PKEY *key = bio ? PEM_read_bio_PUBKEY(bio, NULL, NULL, NULL) : NULL;
+    BIO_free(bio);
+    if (!key) return ZYL_OTA_BAD_KEY;
+    return verify_with(pkg_path, sha256_hex, signature_b64, key);
 }
 
 const char *zyl_ota_verdict_message(ZylOtaVerdict v) {

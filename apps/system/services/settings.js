@@ -78,6 +78,12 @@
         return updateSetting(p.category, p.key, p.value);
       },
       _loadFromBackend: _loadFromBackend,
+      /* A key gone, not set to null (the backend removes it from settings.json) */
+      _removeSetting: function (category, key) {
+        if (state[category]) delete state[category][key];
+        return invoke('save_settings', { category: category, key: key, value: null })
+          .catch(function () { /* fire-and-forget: non-critical persist */ });
+      },
       _getSetting: getSetting,
       _updateSetting: updateSetting,
       _getState: function () { return state; }

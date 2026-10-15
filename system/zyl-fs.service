@@ -9,10 +9,11 @@ Restart=on-failure
 RestartSec=10
 TimeoutStopSec=5
 
-# Only the user's file tree under /data/users
+# The user's file tree under /data/users, and third-party apps' own files in
+# their containers under /data/appdata
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/data/users
+ReadWritePaths=/data/users /data/appdata
 ProtectHome=true
 PrivateTmp=true
 PrivateDevices=true

@@ -729,6 +729,7 @@ static const ServiceRoute SERVICE_ROUTES[] = {
     {"clipboard",    "org.zylos.Clipboard",          "/org/zylos/Clipboard",          "org.zylos.Clipboard"},
     {"network",      "org.zylos.Network",            "/org/zylos/Network",            "org.zylos.Network"},
     {"appdata",      "org.zylos.AppData",            "/org/zylos/AppData",            "org.zylos.AppData"},
+    {"appstore",     "org.zylos.AppStore",           "/org/zylos/AppStore",           "org.zylos.AppStore"},
     {NULL, NULL, NULL, NULL}
 };
 
@@ -912,7 +913,10 @@ static char *capitalize_method(const char *method) {
  * An app_id argument from a third-party app is always the caller's own id:
  * otherwise any app could post notifications as com.zylos.messages.
  * A caller argument is the calling app for every app, system ones included,
- * and never comes from the request: whose data it is (clipboard source). */
+ * and never comes from the request: whose data it is (clipboard source).
+ * A container argument is "" for system apps (the user's shared files) and
+ * the calling app for every other app (its own container), never the
+ * request's: a third-party app's files are its own and go with it. */
 
 static gboolean arg_name_matches(const char *dbus_name, const char *json_key) {
     const char *a = dbus_name, *b = json_key;
@@ -949,6 +953,8 @@ static GVariant *params_to_dbus_args(const GDBusMethodInfo *method,
         GVariant *v = NULL;
         if (strcmp(arg->signature, "s") == 0 && strcmp(arg->name, "caller") == 0) {
             v = g_variant_new_string(app_id);
+        } else if (strcmp(arg->signature, "s") == 0 && strcmp(arg->name, "container") == 0) {
+            v = g_variant_new_string(is_system ? "" : app_id);
         } else if (!is_system && strcmp(arg->signature, "s") == 0 &&
                    arg_name_matches(arg->name, "appid")) {
             v = g_variant_new_string(app_id);

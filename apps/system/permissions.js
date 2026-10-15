@@ -220,12 +220,24 @@ window.ZylPermissions = (function () {
     return effective.indexOf(permission) !== -1;
   }
 
+
+  /**
+   * An app was removed: what it was granted and what the user revoked go with
+   * it. A system app is never forgotten.
+   */
+  function forgetApp(appId) {
+    if (_systemLocked[appId]) return;
+    delete _appPermissions[appId];
+    delete _userOverrides[appId];
+  }
+
   return {
     RESERVED_PERMISSIONS: RESERVED_PERMISSIONS,
     checkPermission: checkPermission,
     hasPermission: hasPermission,
     registerApp: registerApp,
     registerFromAppList: registerFromAppList,
+    forgetApp: forgetApp,
     setUserOverrides: setUserOverrides,
     setAppOverride: setAppOverride,
     getEffectivePermissions: getEffectivePermissions,

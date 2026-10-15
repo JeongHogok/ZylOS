@@ -10,6 +10,13 @@
   if (typeof zylI18n === 'undefined') return;
 
   zylI18n.addTranslations('ko', {
+    'store.unconfigured': '이 기기에는 앱스토어가 설정되어 있지 않습니다',
+    'store.error_network': '앱스토어에 연결할 수 없습니다',
+    'store.error_untrusted': '앱스토어의 내용을 확인할 수 없어 설치하지 않았습니다',
+    'store.error_busy': '다른 설치가 진행 중입니다',
+    'store.error_failed': '완료하지 못했습니다',
+    'store.developer': '개발자',
+    'store.permissions': '요구 권한',
     'store.title': '앱스토어',
     'store.search': '앱 검색...',
     'store.search_placeholder': '앱 검색...',
@@ -39,6 +46,13 @@
   });
 
   zylI18n.addTranslations('en', {
+    'store.unconfigured': 'No app store is set up on this device',
+    'store.error_network': "Couldn't reach the app store",
+    'store.error_untrusted': "The app store's content couldn't be verified, so nothing was installed",
+    'store.error_busy': 'Another install is in progress',
+    'store.error_failed': "Couldn't complete",
+    'store.developer': 'Developer',
+    'store.permissions': 'Permissions',
     'store.title': 'App Store',
     'store.search': 'Search apps...',
     'store.search_placeholder': 'Search apps...',
@@ -68,6 +82,13 @@
   });
 
   zylI18n.addTranslations('ja', {
+    'store.unconfigured': 'このデバイスにはアプリストアが設定されていません',
+    'store.error_network': 'アプリストアに接続できません',
+    'store.error_untrusted': 'アプリストアの内容を確認できないため、インストールしませんでした',
+    'store.error_busy': '別のインストールが進行中です',
+    'store.error_failed': '完了できませんでした',
+    'store.developer': '開発者',
+    'store.permissions': '必要な権限',
     'store.title': 'アプリストア',
     'store.search': 'アプリを検索...',
     'store.search_placeholder': 'アプリを検索...',
@@ -97,6 +118,13 @@
   });
 
   zylI18n.addTranslations('zh', {
+    'store.unconfigured': '此设备未设置应用商店',
+    'store.error_network': '无法连接应用商店',
+    'store.error_untrusted': '无法验证应用商店的内容，未进行安装',
+    'store.error_busy': '另一个安装正在进行',
+    'store.error_failed': '未能完成',
+    'store.developer': '开发者',
+    'store.permissions': '所需权限',
     'store.title': '应用商店',
     'store.search': '搜索应用...',
     'store.search_placeholder': '搜索应用...',
@@ -126,6 +154,13 @@
   });
 
   zylI18n.addTranslations('es', {
+    'store.unconfigured': 'No hay una tienda de apps configurada en este dispositivo',
+    'store.error_network': 'No se pudo conectar con la tienda de apps',
+    'store.error_untrusted': 'No se pudo verificar el contenido de la tienda, así que no se instaló nada',
+    'store.error_busy': 'Hay otra instalación en curso',
+    'store.error_failed': 'No se pudo completar',
+    'store.developer': 'Desarrollador',
+    'store.permissions': 'Permisos',
     'store.title': 'App Store',
     'store.search': 'Buscar aplicaciones...',
     'store.search_placeholder': 'Buscar apps...',

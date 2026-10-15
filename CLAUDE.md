@@ -130,6 +130,20 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 - 새 보드 추가 시: `board/<id>/meson.build` 에 `board_*` 계약 전부 선언.
   지원 못 하는 폼팩터는 `board_form_factors` 에서 빼서 빌드가 거부하게 할 것
 
+### 12. 앱 컨테이너 — 지우면 아무것도 남지 않는다 (iOS 방식)
+
+- 앱이 만드는 모든 것은 컨테이너 `/data/appdata/<앱 id>/` 에만:
+  비공개 데이터(`appdata` 서비스), 파일(제3자 앱의 `fs` 는 브리지의 `container`
+  로 자기 컨테이너가 루트), 웹 저장소(WAM 이 앱마다 `zyl-app://<id>/` 출처와
+  `webkit/` 세션). 앱이 공유 위치에 흔적을 남기는 API 를 새로 만들지 말 것
+- 앱별 상태를 갖는 서비스를 추가하면 삭제 때 정리 경로도 함께:
+  기기 `org.zylos.AppStore` 의 `AppRemoved` 시그널 구독, 에뮬레이터 모듈의
+  `_forgetApp(appId)`. `tests/store_e2e.sh` 가 삭제 후 흔적 0 을 검증한다
+- 앱이 누구인지는 OS 만 말한다: in-arg `caller`(항상 호출 앱), `container`
+  (시스템 앱이면 "", 아니면 그 앱), `app_id`(제3자 앱이면 그 앱) — 요청 값 무시
+- 스토어 패키지·카탈로그는 스토어 키 서명(패키지 전체의 SHA-256) 없이는 설치하지
+  않는다 (`docs/APPSTORE_API.md`, `tools/build-store.py`)
+
 ---
 
 ## 빌드 & 검증

@@ -130,6 +130,12 @@ void zyl_notification_get_active(ZylNotificationService  *service,
 /** Clear all non-persistent notifications. */
 void zyl_notification_clear_all(ZylNotificationService *service);
 
+/*
+ * An app was removed (org.zylos.AppStore AppRemoved): every notification it
+ * posted goes, persistent ones too — nothing of the app outlives it.
+ */
+void zyl_notification_forget_app(ZylNotificationService *service, const char *app_id);
+
 /* ── DND Operations ───────────────────────────────────────── */
 
 /**

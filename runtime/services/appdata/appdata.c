@@ -14,21 +14,16 @@
 #include <string.h>
 #include <gio/gio.h>
 #include <glib-unix.h>
+#include "container.h"
 
 #ifndef ZYL_APPDATA_ROOT
-#define ZYL_APPDATA_ROOT "/data/appdata"
+#define ZYL_APPDATA_ROOT ZYL_CONTAINERS
 #endif
 
 #define QUOTA_BYTES (5 * 1024 * 1024)
 #define KEY_MAX 256
 
-/* An app id names a directory: letters, digits, . _ - only, no "." or ".." */
-static bool valid_app_id(const char *id) {
-    if (!id || !*id || strlen(id) > 128 || strcmp(id, ".") == 0 || strstr(id, "..")) return false;
-    for (const char *p = id; *p; p++)
-        if (!g_ascii_isalnum(*p) && *p != '.' && *p != '_' && *p != '-') return false;
-    return true;
-}
+#define valid_app_id zyl_container_valid_id
 
 static char *store_path(const char *app) {
     return g_build_filename(ZYL_APPDATA_ROOT, app, "appdata", NULL);
@@ -62,6 +57,13 @@ static gsize used_bytes(GHashTable *t) {
     return n;
 }
 
+static bool make_container(const char *app) {
+    char *dir = zyl_container_dir(ZYL_APPDATA_ROOT, app, NULL, true);
+    bool ok = dir != NULL;
+    g_free(dir);
+    return ok;
+}
+
 static bool save(const char *app, GHashTable *t) {
     GVariantBuilder b;
     g_variant_builder_init(&b, G_VARIANT_TYPE("a{ss}"));
@@ -71,11 +73,9 @@ static bool save(const char *app, GHashTable *t) {
     while (g_hash_table_iter_next(&it, &k, &v)) g_variant_builder_add(&b, "{ss}", k, v);
     GVariant *all = g_variant_ref_sink(g_variant_builder_end(&b));
     char *path = store_path(app);
-    char *dir = g_path_get_dirname(path);
-    bool ok = g_mkdir_with_parents(dir, 0700) == 0 &&
+    bool ok = make_container(app) &&
               g_file_set_contents_full(path, g_variant_get_data(all), (gssize)g_variant_get_size(all),
                   G_FILE_SET_CONTENTS_CONSISTENT | G_FILE_SET_CONTENTS_DURABLE, 0600, NULL);
-    g_free(dir);
     g_free(path);
     g_variant_unref(all);
     return ok;

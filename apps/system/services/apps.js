@@ -35,7 +35,11 @@
               formFactors: m.formFactors || [],
               iconSvg: m.iconSvg || '',
               /* false for system UI (lock screen, status bar, setup, home, keyboard) */
-              launcher: m.launcher !== false
+              launcher: m.launcher !== false,
+              intents: Array.isArray(m.intents) ? m.intents : [],
+              entry: m.entry || 'index.html',
+              /* 'store': installed from the app store, served as zyl-app://<id>/ */
+              source: m.source === 'store' ? 'store' : 'image'
             };
           });
           if (typeof ZylPermissions !== 'undefined' && ZylPermissions.registerFromAppList) {

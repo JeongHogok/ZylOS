@@ -43,8 +43,8 @@ ProtectControlGroups=false
 RestrictNamespaces=true
 # Allow cgroup path for OOM killer app memory accounting
 ReadWritePaths=/sys/fs/cgroup/zylos.apps
-# App data directories
-ReadWritePaths=/data/apps /var/lib/zyl-os/wam /var/cache/zyl-os/wam
+# App data directories; /data/appdata: each app's WebKit storage in its container
+ReadWritePaths=/data/apps /data/appdata /var/lib/zyl-os/wam /var/cache/zyl-os/wam
 
 [Install]
 WantedBy=graphical.target

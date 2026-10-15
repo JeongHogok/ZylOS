@@ -55,6 +55,10 @@ int zyl_alarm_set(ZylAlarmService *svc, const ZylAlarm *alarm);
  */
 int zyl_alarm_cancel(ZylAlarmService *svc, const char *tag);
 
+/* An app was removed (org.zylos.AppStore AppRemoved): all its alarms go.
+   Returns how many. */
+int zyl_alarm_forget_app(ZylAlarmService *svc, const char *app_id);
+
 /**
  * 현재 등록된 모든 알람 목록을 반환한다.
  * *out 는 호출자가 zyl_alarm_list_free()로 해제해야 한다.

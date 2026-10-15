@@ -155,6 +155,18 @@
         return _postInternal(p, p.actions || []);
       },
 
+      /* The app was removed: nothing of it stays — active, history, badge */
+      _forgetApp: function (appId) {
+        Object.keys(_activeMap).forEach(function (k) {
+          var n = _activeMap[k];
+          if (n.appId !== appId) return;
+          _dismiss(n.id);
+          invoke('notif_cancel', { id: n.id });
+        });
+        _history = _history.filter(function (n) { return n.appId !== appId; });
+        delete _badgeCounts[appId];
+      },
+
       /**
        * Cancel (dismiss) a notification by ID.
        */

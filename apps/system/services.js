@@ -235,8 +235,24 @@ window.ZylSystemServices = (function () {
       _modules.apps = appsMod;
     }
 
+    /* An app was removed (the app store): every part of the OS drops what it kept
+       for it — each module its own (_forgetApp), the permission tables, the
+       user's revocations in settings — and the compositor closes it */
+    function forgetApp(appId) {
+      Object.keys(serviceMap).forEach(function (name) {
+        var m = serviceMap[name];
+        if (m && typeof m._forgetApp === 'function') m._forgetApp(appId);
+      });
+      if (typeof ZylPermissions !== 'undefined' && ZylPermissions.forgetApp) ZylPermissions.forgetApp(appId);
+      if (typeof ZylPermissionDialog !== 'undefined' && ZylPermissionDialog.forgetApp) ZylPermissionDialog.forgetApp(appId);
+      if (settingsMod) settingsMod._removeSetting('app_permissions', appId);
+      if (appsMod) appsMod._invalidate();
+      window.dispatchEvent(new CustomEvent('zyl:app-removed', { detail: appId }));
+    }
+
     /* Modules with cross-dependencies */
     var crossDeps = {
+      forgetApp: forgetApp,
       invoke: _invoke, SYSTEM_APPS: SYSTEM_APPS,
       settingsSvc: settingsMod,
       appsSvc: appsMod,

@@ -64,7 +64,7 @@ zyl_profile_extras = {
 zyl_services = zyl_core_services + zyl_profile_extras[zyl_profile]
 
 # Services that ship no systemd unit (static library or on-demand binary).
-zyl_services_without_unit = ['appstore', 'dbus', 'sandbox']
+zyl_services_without_unit = ['dbus', 'sandbox']
 # Unit basename differs from the service directory name.
 zyl_unit_overrides = {'crash': 'zyl-crash-handler'}
 
@@ -153,6 +153,9 @@ configure_file(
 install_data('system/timesyncd.conf', install_dir: get_option('sysconfdir') / 'systemd')
 # Settings defaults — read by zyl-settings on the device and built into the emulator
 install_data('system/settings-defaults.json', install_dir: get_option('datadir') / 'zyl-os')
+# Which store the app store uses and the key its catalog and packages are signed
+# with (empty: no store) — read by zyl-appstore and built into the emulator
+install_data('system/store.json', install_dir: get_option('sysconfdir') / 'zyl-os')
 # Service users and the /data directories units write to. Without them the
 # WAM (User=zyl-wam) and every ProtectSystem=strict unit with a /data path
 # fail before they start.

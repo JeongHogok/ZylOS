@@ -210,6 +210,33 @@ static void test_clear_all_removes_non_persistent(void)
     zyl_notification_service_destroy(svc);
 }
 
+/* ── Test: a removed app's notifications all go, persistent too ── */
+
+static void test_forget_app_removes_only_that_app(void)
+{
+    ZylNotificationService *svc = zyl_notification_service_create();
+    zyl_notification_post(svc, "com.example.gone", "general", "A", "Body",
+        NULL, ZYL_NOTIFICATION_PRIORITY_DEFAULT);
+    zyl_notification_post(svc, "com.example.gone", "general", "Urgent", "Body",
+        NULL, ZYL_NOTIFICATION_PRIORITY_URGENT);
+    zyl_notification_post(svc, "com.zylos.test", "general", "Kept", "Body",
+        NULL, ZYL_NOTIFICATION_PRIORITY_DEFAULT);
+
+    zyl_notification_forget_app(svc, "com.example.gone");
+
+    ZylNotification *list = NULL;
+    int count = 0;
+    zyl_notification_get_active(svc, &list, &count);
+    assert(count == 1);
+    assert(strcmp(list[0].title, "Kept") == 0);
+    for (int i = 0; i < count; i++)
+        zyl_notification_free(&list[i]);
+    g_free(list);
+    zyl_notification_forget_app(svc, NULL);
+    zyl_notification_forget_app(NULL, "x");
+    zyl_notification_service_destroy(svc);
+}
+
 /* ── Test: clear_all on empty is a no-op ──────────────────── */
 
 static void test_clear_all_empty(void)
@@ -367,6 +394,7 @@ int main(void)
     RUN_TEST(test_cancel_removes_notification);
     RUN_TEST(test_cancel_nonexistent_id);
     RUN_TEST(test_clear_all_removes_non_persistent);
+    RUN_TEST(test_forget_app_removes_only_that_app);
     RUN_TEST(test_clear_all_empty);
     RUN_TEST(test_channel_disabled_drops_notification);
     RUN_TEST(test_channel_importance_zero_drops);

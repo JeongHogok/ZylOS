@@ -18,8 +18,10 @@
 #include <gio/gio.h>
 #include <json-glib/json-glib.h>
 
+#ifndef ALARM_PERSIST_DIR
 #define ALARM_PERSIST_DIR  "/data/alarms"
-#define ALARM_PERSIST_FILE "/data/alarms/alarms.json"
+#endif
+#define ALARM_PERSIST_FILE ALARM_PERSIST_DIR "/alarms.json"
 
 /* ─── 내부 상수 ─── */
 #define MAX_ALARMS 256
@@ -208,6 +210,14 @@ static const GDBusInterfaceVTable alarm_vtable = {
     .method_call = handle_alarm_method,
 };
 
+static void on_app_removed(GDBusConnection *conn, const gchar *sender, const gchar *path,
+                           const gchar *iface, const gchar *signal, GVariant *params, gpointer data) {
+    (void)conn; (void)sender; (void)path; (void)iface; (void)signal;
+    const gchar *app_id = NULL;
+    g_variant_get(params, "(&s)", &app_id);
+    zyl_alarm_forget_app(data, app_id);
+}
+
 static void on_alarm_bus_acquired(GDBusConnection *conn,
                                    const gchar     *name,
                                    gpointer         data) {
@@ -231,6 +241,9 @@ static void on_alarm_bus_acquired(GDBusConnection *conn,
         &alarm_vtable,
         svc, NULL, NULL);
     g_dbus_node_info_unref(info);
+    g_dbus_connection_signal_subscribe(conn, "org.zylos.AppStore", "org.zylos.AppStore",
+        "AppRemoved", "/org/zylos/AppStore", NULL, G_DBUS_SIGNAL_FLAGS_NONE,
+        on_app_removed, svc, NULL);
     g_message("[Alarm] D-Bus registered: %s", ZYL_ALARM_DBUS_NAME);
 }
 
@@ -462,6 +475,23 @@ int zyl_alarm_cancel(ZylAlarmService *svc, const char *tag) {
     return -1; /* 알람 없음 */
 }
 
+int zyl_alarm_forget_app(ZylAlarmService *svc, const char *app_id) {
+    if (!svc || !app_id) return 0;
+    int removed = 0;
+    for (int i = svc->count - 1; i >= 0; i--) {
+        if (g_strcmp0(svc->entries[i].alarm.app_id, app_id) != 0) continue;
+        if (svc->entries[i].timer_id) g_source_remove(svc->entries[i].timer_id);
+        g_free(svc->entries[i].alarm.tag);
+        g_free(svc->entries[i].alarm.app_id);
+        int last = --svc->count;
+        if (i != last) svc->entries[i] = svc->entries[last];
+        memset(&svc->entries[last], 0, sizeof(AlarmEntry));
+        removed++;
+    }
+    if (removed) alarm_persist_save(svc);
+    return removed;
+}
+
 int zyl_alarm_list(ZylAlarmService *svc, ZylAlarm **out, int *count) {
     if (!svc || !out || !count) return -1;
 
@@ -496,6 +526,7 @@ void zyl_alarm_list_free(ZylAlarm *alarms, int count) {
     free(alarms);
 }
 
+#ifndef ZYL_TEST
 /* ─── 데몬 진입점 ─── */
 int main(int argc, char *argv[]) {
     (void)argc; (void)argv;
@@ -515,3 +546,4 @@ int main(int argc, char *argv[]) {
     zyl_alarm_service_destroy(svc);
     return 0;
 }
+#endif /* ZYL_TEST */

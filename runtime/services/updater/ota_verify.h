@@ -25,6 +25,9 @@ typedef enum {
 /* sha256_hex may be NULL or "" (the signature still decides) */
 ZylOtaVerdict zyl_ota_verify(const char *pkg_path, const char *sha256_hex,
                              const char *signature_b64, const char *pubkey_path);
+/* The same check with the public key given as PEM text (the app store's key) */
+ZylOtaVerdict zyl_ota_verify_pem(const char *pkg_path, const char *sha256_hex,
+                                 const char *signature_b64, const char *pubkey_pem);
 const char   *zyl_ota_verdict_message(ZylOtaVerdict v);
 
 #endif /* ZYL_OTA_VERIFY_H */

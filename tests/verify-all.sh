@@ -394,7 +394,8 @@ for f in glob.glob(root + '/runtime/**/*.c', recursive=True):
             d[m.group(1)] = [re.search(r"name='(\w+)'", a).group(1) for a in args
                              if "direction='in'" in a and "name='" in a
                              and not ("name='params'" in a and "type='a{sv}'" in a)
-                             and not ("name='caller'" in a and "type='s'" in a)]
+                             and not ("name='caller'" in a and "type='s'" in a)
+                             and not ("name='container'" in a and "type='s'" in a)]
 norm = lambda s: s.replace('_', '').lower()
 gaps = []
 for f in glob.glob(root + '/apps/**/*.js', recursive=True):
@@ -421,7 +422,7 @@ fi
 # Services apps call that no device route serves at all: on a device every such
 # request is refused ("unknown service"). The gap check above sees only routed
 # services, so these are counted on their own.
-UNROUTED_MAX=1
+UNROUTED_MAX=0
 UNROUTED=$(python3 - "$ROOT" <<'PYCHK'
 import re, glob, sys
 root = sys.argv[1]

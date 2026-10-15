@@ -36,6 +36,10 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(Mutex::new(AppState::new()))
+        /* Store apps as their own origin, zyl-app://<id>/, as on the device */
+        .register_uri_scheme_protocol("zyl-app", |ctx, request| {
+            commands::store::serve(ctx.app_handle(), &request)
+        })
         .invoke_handler(tauri::generate_handler![
             // Config commands
             commands::config::get_device_profiles,
@@ -71,6 +75,13 @@ fn main() {
             // Each app's private data
             commands::appdata::appdata_load,
             commands::appdata::appdata_save,
+            // Store apps on the virtual device
+            commands::store::store_config,
+            commands::store::store_download,
+            commands::store::store_unpack,
+            commands::store::store_commit,
+            commands::store::store_discard,
+            commands::store::store_remove,
             // Settings commands
             commands::settings::load_settings,
             commands::settings::save_settings,

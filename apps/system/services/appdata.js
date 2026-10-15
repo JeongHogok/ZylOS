@@ -79,7 +79,9 @@
         if (!caller) return noCaller();
         _apps[caller] = {};
         return save(caller);
-      }
+      },
+      /* The app was removed with its container: drop the copy held here */
+      _forgetApp: function (appId) { delete _apps[appId]; }
     };
   };
 })(window.ZylServiceModules = window.ZylServiceModules || {});
