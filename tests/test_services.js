@@ -1324,12 +1324,22 @@ var callTests = (function () {
     _updateSetting: function (cat, k, v) { store[cat] = store[cat] || {}; store[cat][k] = v; }
   };
   var tel = ns.telephony({ settingsSvc: settingsSvc });
-  var files = {};
-  var contacts = ns.contacts({ invoke: function (cmd, a) {
+  /* What older builds left in the user's Documents folder */
+  var files = {
+    'Documents/Contacts/c_1.json': JSON.stringify({ id: 'c_1', name: 'Ana', phone: '010', email: '' }),
+    'Documents/Messages/thread_010.json': JSON.stringify({ id: 'thread_010', number: '010', name: 'Ana', lastTime: 5,
+      messages: [{ id: 'm_4', text: 'hi', sent: false, time: 4 }, { id: 'm_5', text: 'yo', sent: true, time: 5 }] })
+  };
+  var fsInvoke = function (cmd, a) {
+    if (cmd === 'fs_read_dir') {
+      return Promise.resolve(Object.keys(files).filter(function (f) { return f.indexOf(a.path + '/') === 0; })
+        .map(function (f) { return { name: f.slice(a.path.length + 1) }; }));
+    }
     if (cmd === 'fs_read_file') return files[a.path] ? Promise.resolve(files[a.path]) : Promise.reject(new Error('missing'));
-    if (cmd === 'fs_write_file') { files[a.path] = a.content; return Promise.resolve(true); }
-    return Promise.resolve(true);
-  } });
+    return Promise.reject(new Error('no file writes expected: ' + cmd));
+  };
+  var contacts = ns.contacts({ invoke: fsInvoke, settingsSvc: settingsSvc });
+  var messaging = ns.messaging({ invoke: fsInvoke, settingsSvc: settingsSvc });
   return Promise.all([
     asyncTest('a call is logged by the service, newest first, and can be deleted', function () {
       return tel.dial({ number: '0212345678' }).then(function () { return tel.hangup(); })
@@ -1415,14 +1425,45 @@ var callTests = (function () {
       });
     }),
     asyncTest('starring a contact keeps its details; editing keeps the star', function () {
-      files['Documents/Contacts/c_1.json'] = JSON.stringify({ id: 'c_1', name: 'Ana', phone: '010', email: '' });
       return contacts.update({ id: 'c_1', starred: true }).then(function (c) {
-        assert.strictEqual(c.name, 'Ana');
+        assert.strictEqual(c.name, 'Ana');                       /* taken in from Documents */
         assert.strictEqual(c.starred, true);
         return contacts.update({ id: 'c_1', name: 'Ana Kim', phone: '011', email: 'a@k' });
       }).then(function (c) {
         assert.strictEqual(c.name, 'Ana Kim');
         assert.strictEqual(c.starred, true);
+        assert.strictEqual(JSON.parse(store.contacts.entries)[0].name, 'Ana Kim');   /* private store */
+        return Promise.all([contacts.create({ name: 'bo', phone: '012' }), contacts.create({ name: 'Cy' })]);
+      }).then(function () {
+        return Promise.all([contacts.getAll(), contacts.search({ query: 'B' }), contacts.update({ id: 'nobody' }).catch(function () { return 'refused'; })]);
+      }).then(function (r) {
+        assert.deepStrictEqual(r[0].map(function (c) { return c.name; }), ['Ana Kim', 'bo', 'Cy']);
+        assert.deepStrictEqual(r[1].map(function (c) { return c.name; }), ['bo']);
+        assert.strictEqual(r[2], 'refused');
+      });
+    }),
+    asyncTest('messages: threads newest first, a send without a modem is not sent, read and delete', function () {
+      return messaging.getThreads().then(function (t) {
+        assert.strictEqual(t.length, 1);                           /* taken in from Documents */
+        assert.deepStrictEqual([t[0].id, t[0].lastMessage, t[0].unread], ['thread_010', 'yo', 0]);
+        return Promise.all([messaging.send({ number: '+82 10-9', text: 'a' }), messaging.send({ number: '+82 10-9', text: 'b' })]);
+      }).then(function (sent) {
+        assert.strictEqual(sent[0].threadId, 'thread_82109');
+        assert.strictEqual(sent[1].status, 'failed');
+        return Promise.all([messaging.getThreads(), messaging.getMessages({ threadId: 'thread_82109' }),
+                            messaging.send({ number: '', text: 'x' }).catch(function () { return 'refused'; })]);
+      }).then(function (r) {
+        assert.deepStrictEqual(r[0].map(function (t) { return t.id; }), ['thread_82109', 'thread_010']);
+        assert.deepStrictEqual(r[1].map(function (m) { return m.text; }), ['a', 'b']);   /* neither lost */
+        assert.strictEqual(r[2], 'refused');
+        return Promise.all([messaging.markRead({ threadId: 'thread_010' }), messaging.deleteThread({ threadId: 'thread_82109' }),
+                            messaging.deleteThread({ threadId: 'thread_82109' })]);
+      }).then(function (r) {
+        assert.deepStrictEqual(r, [true, true, false]);
+        return messaging.getThreads();
+      }).then(function (t) {
+        assert.deepStrictEqual(t.map(function (x) { return x.id; }), ['thread_010']);
+        assert.strictEqual(Object.keys(JSON.parse(store.messaging.threads)).length, 1);
       });
     })
   ]);

@@ -724,6 +724,8 @@ static const ServiceRoute SERVICE_ROUTES[] = {
     {"device",       "org.zylos.Device",             "/org/zylos/Device",             "org.zylos.Device"},
     {"storage",      "org.zylos.Storage",            "/org/zylos/Storage",            "org.zylos.Storage"},
     {"fs",           "org.zylos.FileSystem",         "/org/zylos/FileSystem",         "org.zylos.FileSystem"},
+    {"contacts",     "org.zylos.Contacts",           "/org/zylos/Contacts",           "org.zylos.Contacts"},
+    {"messaging",    "org.zylos.Messaging",          "/org/zylos/Messaging",          "org.zylos.Messaging"},
     {NULL, NULL, NULL, NULL}
 };
 

@@ -231,6 +231,16 @@ test('fs-service',
   )
 )
 
+# Test: contacts (only the fields given change, search, 0600) and messages
+# (thread ids are safe file names, unread from received only, send status)
+test('contacts-messaging',
+  executable('test-contacts-messaging',
+    'test_contacts_messaging.c',
+    dependencies: [gio_dep],
+    c_args: ['-DZYL_TEST'],
+  )
+)
+
 # Test: device app scan — a user app must not replace a system app by reusing its id
 test('manifest-scan',
   executable('test-manifest-scan',

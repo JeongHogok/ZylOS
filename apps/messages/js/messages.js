@@ -1,8 +1,9 @@
 // ──────────────────────────────────────────────────────────
 // [Clean Architecture] Presentation Layer - Page
 //
-// 역할: 메시지 앱 — 대화목록(검색/삭제), 채팅(읽음표시), 새 메시지
-// 수행범위: 스레드 목록, 메시지 송수신, 연락처 선택, 시간 포맷, 검색, 삭제, 읽음 표시
+// 역할: 메시지 앱 — 대화목록(검색/삭제), 채팅(보낸 결과 표시), 새 메시지
+// 수행범위: 스레드 목록, 메시지 송수신, 연락처 선택·이름 표시, 시간 포맷, 검색,
+//          삭제, 읽음 처리. 받은 메시지는 messaging 서비스의 MessageReceived 이벤트
 // 의존방향: shared/bridge.js → postMessage IPC (messaging, contacts)
 // SOLID: SRP — 메시지 관련 UI만 담당, OCP — 스레드/메시지 확장 가능
 //
@@ -54,12 +55,6 @@
         return;
       }
 
-      /* Incoming message notification */
-      if (msg.type === 'messaging.received' && msg.data) {
-        handleIncomingMessage(msg.data);
-        return;
-      }
-
     } catch (err) { /* ignore parse errors */ }
   });
 
@@ -103,6 +98,7 @@
   var currentThreadNumber = '';
   var currentThreadName = '';
   var allThreads = [];  /* cached for search filtering */
+  var allContacts = []; /* names for numbers; the recipient picker */
   var deleteTargetThreadId = null;
 
   /* ═══════════════════════════════════════════════════════════
@@ -141,16 +137,27 @@
   }
 
   onServiceResponse('messaging', 'getThreads', function (data) {
-    if (!data || !Array.isArray(data.threads) || data.threads.length === 0) {
-      allThreads = [];
-      threadList.innerHTML = '';
-      threadsEmpty.classList.remove('hidden');
-      return;
-    }
-    threadsEmpty.classList.add('hidden');
-    allThreads = data.threads;
+    allThreads = Array.isArray(data) ? data : [];
+    threadsEmpty.classList.toggle('hidden', allThreads.length > 0);
     filterAndRenderThreads();
   });
+
+  /* The contact saved with this number. shortcut: the last 7 digits decide, as
+     Android does, so +82 10-… and 010-… match; collisions between two contacts
+     sharing them pick the first — compare by country rules if that shows up */
+  function contactName(number) {
+    var want = (number || '').replace(/[^0-9]/g, '').slice(-7);
+    if (!want) return '';
+    for (var i = 0; i < allContacts.length; i++) {
+      var have = (allContacts[i].phone || '').replace(/[^0-9]/g, '').slice(-7);
+      if (have === want) return allContacts[i].name || '';
+    }
+    return '';
+  }
+
+  function threadName(t) {
+    return contactName(t.number) || t.number || '';
+  }
 
   function avatarColor(name) {
     var code = 0;
@@ -165,7 +172,7 @@
       filtered = [];
       for (var f = 0; f < allThreads.length; f++) {
         var t = allThreads[f];
-        var searchable = ((t.name || '') + ' ' + (t.number || '') + ' ' + (t.lastMessage || '')).toLowerCase();
+        var searchable = (threadName(t) + ' ' + (t.number || '') + ' ' + (t.lastMessage || '')).toLowerCase();
         if (searchable.indexOf(query) !== -1) {
           filtered.push(t);
         }
@@ -185,24 +192,25 @@
     var html = '';
     for (var i = 0; i < threads.length; i++) {
       var t = threads[i];
-      var initial = (t.name || t.number || '?').charAt(0).toUpperCase();
-      var timeStr = formatRelativeTime(t.lastTimestamp);
+      var name = threadName(t);
+      var initial = (name || '?').charAt(0).toUpperCase();
+      var timeStr = formatRelativeTime(t.lastTime);
       var unreadClass = t.unread ? ' unread' : '';
-      var colorClass = avatarColor(t.name || t.number || '');
-      var readIcon = t.unread ? '' : '<span class="thread-read-check" title="' + escapeAttr(zylI18n.t('messages.read') || 'Read') + '">&#10003;</span>';
+      var colorClass = avatarColor(name);
+      var readIcon = t.unread ? '' : '<span class="thread-read-check" title="' + escapeAttr(zylI18n.t('messages.read')) + '">&#10003;</span>';
       html += '<div class="thread-item' + unreadClass + '" ' +
         'data-thread-id="' + escapeAttr(t.id || '') + '" ' +
         'data-number="' + escapeAttr(t.number || '') + '" ' +
-        'data-name="' + escapeAttr(t.name || t.number || '') + '">' +
+        'data-name="' + escapeAttr(name) + '">' +
         '<div class="thread-avatar ' + colorClass + '">' + escapeHtml(initial) + '</div>' +
         '<div class="thread-info">' +
-          '<div class="thread-name">' + escapeHtml(t.name || t.number || '') + '</div>' +
+          '<div class="thread-name">' + escapeHtml(name) + '</div>' +
           '<div class="thread-preview">' + readIcon + escapeHtml(t.lastMessage || '') + '</div>' +
         '</div>' +
         '<div class="thread-meta">' +
           '<div class="thread-time">' + escapeHtml(timeStr) + '</div>' +
           (t.unread ? '<div class="thread-unread-dot"></div>' : '') +
-          '<button class="thread-delete-btn" data-delete-id="' + escapeAttr(t.id || '') + '" aria-label="Delete">&times;</button>' +
+          '<button class="thread-delete-btn" data-delete-id="' + escapeAttr(t.id || '') + '" aria-label="' + escapeAttr(zylI18n.t('messages.delete')) + '">&times;</button>' +
         '</div>' +
       '</div>';
     }
@@ -288,66 +296,51 @@
   }
 
   onServiceResponse('messaging', 'getMessages', function (data) {
-    if (!data || !Array.isArray(data.messages)) {
-      chatMessages.innerHTML = '';
-      return;
-    }
-    renderMessages(data.messages);
+    renderMessages(Array.isArray(data) ? data : []);
   });
+
+  /* What the modem said about a sent message: sent, or not sent */
+  function statusHtml(m) {
+    if (!m.sent || !m.status) return '';
+    var failed = m.status === 'failed';
+    return '<span class="' + (failed ? 'bubble-failed' : 'bubble-sent') + '">' +
+      escapeHtml(zylI18n.t(failed ? 'messages.not_sent' : 'messages.sent')) + '</span>';
+  }
+
+  function bubbleHtml(m) {
+    return '<div class="bubble ' + (m.sent ? 'sent' : 'received') + '">' +
+      escapeHtml(m.text || '') +
+      '<div class="bubble-time">' + escapeHtml(formatMessageTime(m.time)) + statusHtml(m) + '</div>' +
+    '</div>';
+  }
 
   function renderMessages(messages) {
     var html = '';
-    for (var i = 0; i < messages.length; i++) {
-      var m = messages[i];
-      var bubbleClass = m.sent ? 'sent' : 'received';
-      var timeStr = formatMessageTime(m.timestamp);
-      var readStatus = '';
-      if (m.sent) {
-        readStatus = m.read
-          ? '<span class="bubble-read">' + escapeHtml(zylI18n.t('messages.read') || 'Read') + '</span>'
-          : '<span class="bubble-delivered">' + escapeHtml(zylI18n.t('messages.delivered') || 'Delivered') + '</span>';
-      }
-      html += '<div class="bubble ' + bubbleClass + '">' +
-        escapeHtml(m.text || '') +
-        '<div class="bubble-time">' + escapeHtml(timeStr) + readStatus + '</div>' +
-      '</div>';
-    }
+    for (var i = 0; i < messages.length; i++) html += bubbleHtml(messages[i]);
     chatMessages.innerHTML = html;
     chatMessages.scrollTop = chatMessages.scrollHeight;
   }
 
-  function appendBubble(text, isSent) {
-    var div = document.createElement('div');
-    div.className = 'bubble ' + (isSent ? 'sent' : 'received');
-
-    var textNode = document.createTextNode(text);
-    div.appendChild(textNode);
-
-    var timeDiv = document.createElement('div');
-    timeDiv.className = 'bubble-time';
-    timeDiv.textContent = formatMessageTime(Date.now());
-    if (isSent) {
-      var deliveredSpan = document.createElement('span');
-      deliveredSpan.className = 'bubble-delivered';
-      deliveredSpan.textContent = zylI18n.t('messages.delivered') || 'Delivered';
-      timeDiv.appendChild(deliveredSpan);
-    }
-    div.appendChild(timeDiv);
-
-    chatMessages.appendChild(div);
+  function appendBubble(m) {
+    chatMessages.insertAdjacentHTML('beforeend', bubbleHtml(m));
     chatMessages.scrollTop = chatMessages.scrollHeight;
   }
 
-  /* Send message */
+  /* Send message: shown at once, then redrawn with what the service recorded */
   function sendMessage() {
     var text = chatInput.value.trim();
     if (!text) return;
-    requestService('messaging', 'send', {
-      number: currentThreadNumber,
-      threadId: currentThreadId,
-      text: text
+    var number = currentThreadNumber;
+    appendBubble({ text: text, sent: true, time: Date.now() });
+    ZylBridge.requestService('messaging', 'send', { number: number, text: text }).then(function (m) {
+      if (currentView !== 'chat' || number !== currentThreadNumber) return;
+      if (m && m.threadId) currentThreadId = m.threadId;
+      loadMessages();
+    }, function () {
+      if (currentView !== 'chat' || number !== currentThreadNumber) return;
+      var last = chatMessages.lastElementChild;
+      if (last) last.outerHTML = bubbleHtml({ text: text, sent: true, time: Date.now(), status: 'failed' });
     });
-    appendBubble(text, true);
     chatInput.value = '';
     btnSend.classList.remove('active');
   }
@@ -378,9 +371,10 @@
      ═══════════════════════════════════════════════════════════ */
 
   function handleIncomingMessage(data) {
+    if (!data) return;
     /* If currently viewing this thread, append the bubble */
     if (currentView === 'chat' && data.threadId === currentThreadId) {
-      appendBubble(data.text || '', false);
+      appendBubble({ text: data.text, sent: false, time: data.time });
       /* Auto mark as read since user is viewing */
       requestService('messaging', 'markRead', { threadId: currentThreadId });
     } else {
@@ -391,6 +385,8 @@
     }
   }
 
+  ZylBridge.onServiceEvent('messaging', 'MessageReceived', handleIncomingMessage);
+
   /* ═══════════════════════════════════════════════════════════
      New Message
      ═══════════════════════════════════════════════════════════ */
@@ -398,8 +394,8 @@
   btnNewMessage.addEventListener('click', function () {
     showView('new');
     newRecipientInput.value = '';
-    newContactList.innerHTML = '';
-    loadNewContacts();
+    renderNewContacts(allContacts);
+    loadContacts();
     newRecipientInput.focus();
   });
 
@@ -407,16 +403,14 @@
     showView('threads');
   });
 
-  function loadNewContacts() {
+  function loadContacts() {
     requestService('contacts', 'getAll', {});
   }
 
   onServiceResponse('contacts', 'getAll', function (data) {
-    if (!data || !Array.isArray(data.contacts)) {
-      newContactList.innerHTML = '';
-      return;
-    }
-    renderNewContacts(data.contacts);
+    allContacts = Array.isArray(data) ? data : [];
+    renderNewContacts(allContacts);
+    filterAndRenderThreads();
   });
 
   function renderNewContacts(contacts) {
@@ -424,7 +418,7 @@
     for (var i = 0; i < contacts.length; i++) {
       var c = contacts[i];
       var initial = (c.name || '?').charAt(0).toUpperCase();
-      var phone = c.phone || c.number || '';
+      var phone = c.phone || '';
       var cColor = avatarColor(c.name || phone);
       html += '<div class="new-contact-item" data-number="' + escapeAttr(phone) + '" data-name="' + escapeAttr(c.name || phone) + '">' +
         '<div class="new-contact-avatar ' + cColor + '">' + escapeHtml(initial) + '</div>' +
@@ -474,7 +468,7 @@
   function startNewThread(number, name) {
     currentThreadNumber = number;
     currentThreadName = name || number;
-    currentThreadId = null; /* Service will assign an ID */
+    currentThreadId = null; /* the service answers the first send with it */
     chatContactName.textContent = currentThreadName;
     chatMessages.innerHTML = '';
     showView('chat');
@@ -535,6 +529,7 @@
      Init — load thread list
      ═══════════════════════════════════════════════════════════ */
 
+  loadContacts();
   loadThreads();
 
 })();

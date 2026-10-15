@@ -231,8 +231,8 @@ body {
 .bubble.sent .bubble-time { justify-content: flex-end; }
 .bubble.received .bubble-time { justify-content: flex-start; }
 
-.bubble-read { color: #60a5fa; font-size: 10px; }
-.bubble-delivered { color: rgba(255,255,255,0.4); font-size: 10px; }
+.bubble-sent { color: rgba(255,255,255,0.4); font-size: 10px; }
+.bubble-failed { color: #f87171; font-size: 10px; }
 
 /* ── Chat Input Bar ── */
 #chat-input-bar {
