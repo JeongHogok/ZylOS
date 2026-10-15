@@ -304,6 +304,7 @@ main, .sub-page {
 /* Why a control is off: the hardware is not on this device */
 .setting-note { font-size: 12px; opacity: 0.6; }
 .toggle input:disabled + .toggle-slider { opacity: 0.35; cursor: default; }
+.scan-btn:disabled, .wifi-join-input:disabled { opacity: 0.35; cursor: default; }
 
 /* Wi-Fi: joining a secured network */
 .wifi-join-input {

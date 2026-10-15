@@ -154,13 +154,15 @@ test('updater',
   workdir: meson.project_source_root(),
 )
 
-# Test: Wi-Fi network list from nmcli (escapes, hidden networks, one row per network)
+# Test: Wi-Fi HAL over nmcli (list parsing, Wi-Fi/AP presence, IPv6-shared
+# hotspot) and the service's hotspot name/passphrase rules
 test('wifi',
   executable('test-wifi',
     'test_wifi.c',
     '../runtime/services/wifi/captive_portal.c',
-    include_directories: include_directories('../runtime/services/wifi'),
+    include_directories: include_directories('../runtime/services/wifi', '../runtime/hal'),
     dependencies: [gio_dep],
+    c_args: ['-DZYL_TEST'],
   )
 )
 
@@ -191,6 +193,16 @@ test('hal-vibrator',
     'test_hal_vibrator.c',
     include_directories: include_directories('../runtime/hal'),
     dependencies: [gio_dep, dependency('threads')],
+  )
+)
+
+# Test: Bluetooth HAL against a fake BlueZ on a private bus (adapter discovery,
+# device list, power, pairing path, no adapter)
+test('hal-bt',
+  executable('test-hal-bt',
+    'test_hal_bt.c',
+    include_directories: include_directories('../runtime/hal'),
+    dependencies: [gio_dep],
   )
 )
 

@@ -95,6 +95,7 @@ fn main() {
             commands::emulated_services::wifi_connect,
             commands::emulated_services::wifi_disconnect,
             commands::emulated_services::wifi_get_state,
+            commands::emulated_services::wifi_set_enabled,
             // Bluetooth HAL
             commands::emulated_services::get_bluetooth_devices,
             commands::emulated_services::bt_set_enabled,

@@ -386,6 +386,9 @@
           <span class="toggle-slider"></span>
         </label>
       </div>
+      <div class="setting-item no-tap hidden" id="no-wifi">
+        <span class="setting-label setting-note" data-i18n="settings.no_wifi">This device has no Wi-Fi</span>
+      </div>
     </div>
     <div id="wifi-off-msg" class="settings-group hidden">
       <div class="setting-item no-tap">
@@ -414,6 +417,30 @@
         <div id="wifi-join-msg" class="wifi-join-msg" role="status" aria-live="polite"></div>
       </div>
     </div>
+    <!-- 핫스팟: Wi-Fi 장치가 AP 모드를 지원할 때만 켤 수 있다 -->
+    <div class="settings-group">
+      <div class="setting-item no-tap">
+        <span class="setting-label" data-i18n="settings.hotspot">Hotspot</span>
+        <label class="toggle">
+          <input type="checkbox" id="hotspot-toggle" data-i18n-aria-label="settings.hotspot" aria-label="Hotspot">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="setting-item no-tap hidden" id="no-hotspot">
+        <span class="setting-label setting-note" data-i18n="settings.hotspot_unsupported">This device's Wi-Fi cannot be a hotspot</span>
+      </div>
+      <div class="setting-item no-tap">
+        <input type="text" id="hotspot-ssid" class="wifi-join-input" autocomplete="off" maxlength="32"
+               data-i18n-placeholder="settings.hotspot_ssid" data-i18n-aria-label="settings.hotspot_ssid">
+      </div>
+      <div class="setting-item no-tap">
+        <input type="text" id="hotspot-pass" class="wifi-join-input" autocomplete="off" maxlength="63"
+               data-i18n-placeholder="settings.hotspot_password" data-i18n-aria-label="settings.hotspot_password">
+      </div>
+      <div class="wifi-join-actions">
+        <div id="hotspot-msg" class="wifi-join-msg" role="status" aria-live="polite"></div>
+      </div>
+    </div>
   </div>
 
   <!-- 블루투스 서브 페이지 -->
@@ -425,6 +452,9 @@
           <input type="checkbox" id="bt-toggle" checked aria-label="Bluetooth">
           <span class="toggle-slider"></span>
         </label>
+      </div>
+      <div class="setting-item no-tap hidden" id="no-bluetooth">
+        <span class="setting-label setting-note" data-i18n="settings.no_bluetooth">This device has no Bluetooth</span>
       </div>
     </div>
     <div id="bt-off-msg" class="settings-group hidden">

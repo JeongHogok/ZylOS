@@ -124,7 +124,19 @@
     if (wifiChosen) joinNetwork(wifiChosen, wifiPass.value);
   });
 
-  requestNetworks();
+  /* No Wi-Fi on this device: say so; the step is then only Skip */
+  ZylBridge.requestService('wifi', 'getCapabilities').then(function (caps) {
+    if (caps && caps.present === false) {
+      var list = document.getElementById('wifi-list');
+      list.innerHTML = '';
+      var el = document.createElement('div');
+      el.className = 'oobe-option';
+      el.textContent = t('oobe.no_wifi');
+      list.appendChild(el);
+      return;
+    }
+    requestNetworks();
+  }, requestNetworks);
 
   window.addEventListener('message', function (e) {
     if (e.source !== window.parent && e.source !== window) return;

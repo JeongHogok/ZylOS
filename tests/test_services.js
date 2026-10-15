@@ -1367,6 +1367,26 @@ var callTests = (function () {
         assert.strictEqual(buzzed, 1);
       });
     }),
+    asyncTest('radios are switched through their services; the emulator has no hotspot', function () {
+      var calls = [];
+      var invoke = function (cmd, a) {
+        calls.push(cmd + (a ? ' ' + JSON.stringify(a) : ''));
+        if (cmd === 'wifi_set_enabled' || cmd === 'bt_set_enabled') return Promise.resolve({ enabled: a.enabled });
+        if (cmd === 'wifi_get_state') return Promise.resolve({ enabled: true, connected: true, currentSsid: 'Home' });
+        return Promise.resolve(null);
+      };
+      var wifi = ns.wifi({ invoke: invoke });
+      var bt = ns.bluetooth({ invoke: invoke });
+      return Promise.all([wifi.setEnabled({ enabled: false }), bt.setEnabled({ enabled: true }), wifi.getState(),
+                          wifi.getCapabilities(), wifi.setHotspot({ enabled: true, ssid: 'x', passphrase: 'yyyyyyyy' })])
+        .then(function (r) {
+          assert.deepStrictEqual(r.slice(0, 3), [true, true, { enabled: true, connected: true, ssid: 'Home' }]);
+          assert.deepStrictEqual(r[3], { present: true, hotspot: false });
+          assert.strictEqual(r[4].ok, false);
+          assert.strictEqual(r[4].reason, 'unsupported');
+          assert.ok(calls.indexOf('wifi_set_enabled {"enabled":false}') !== -1);
+        });
+    }),
     asyncTest('wifi.connect answers true or false, like the device', function () {
       var wifi = ns.wifi({ invoke: function (cmd, a) {
         return Promise.resolve(cmd === 'wifi_connect' ? { success: a.password === 'secret88' } : null);

@@ -20,84 +20,70 @@
 #include <stdint.h>
 
 /* ═══════════════════════════════════════════════════════
-   WiFi HAL
-   실기기: wpa_supplicant D-Bus API → nl80211
-   에뮬레이터: navigator.connection + NetworkInformation API
+   Wi-Fi HAL — 무선 연결과 핫스팟
+   실기기: NetworkManager (nmcli). NM 이 wpa_supplicant 를 관리하므로 직접 다루지 않는다
+   에뮬레이터: 가상 AP, 핫스팟 없음
    ═══════════════════════════════════════════════════════ */
 
 typedef struct {
     char    ssid[64];
-    char    bssid[18];        /* MAC address */
-    int     signal_dbm;       /* -100 ~ 0 */
-    int     signal_percent;   /* 0 ~ 100 */
-    char    security[16];     /* "Open", "WPA2", "WPA3", "WEP" */
+    char    security[32];     /* "WPA2", "WPA2 WPA3", "Open" */
+    char    bssid[24];
+    int     signal_dbm;       /* -100 ~ -30 */
     bool    connected;
-    int     frequency_mhz;    /* 2412, 5180, etc. */
 } ZylWifiNetwork;
 
 typedef struct {
-    bool    enabled;
-    bool    connected;
-    char    current_ssid[64];
-    char    ip_address[46];   /* IPv4 or IPv6 */
-    char    mac_address[18];
-    int     link_speed_mbps;
-} ZylWifiState;
+    bool    active;
+    char    ssid[64];
+    char    passphrase[64];
+} ZylHotspotState;
 
 typedef struct {
-    /* 드라이버 구현이 채워야 하는 함수 포인터 */
-    int   (*init)(void);
-    void  (*shutdown)(void);
-
-    int   (*set_enabled)(bool enabled);
-    int   (*get_state)(ZylWifiState *out);
-
-    /* 스캔: 결과 배열과 개수를 반환. 호출자가 해제. */
-    int   (*scan)(ZylWifiNetwork **out_list, int *out_count);
-
-    int   (*connect)(const char *ssid, const char *password);
-    int   (*disconnect)(void);
-
-    /* 현재 연결의 실시간 신호 강도 */
-    int   (*get_signal_strength)(int *out_percent);
+    bool  (*present)(void);                        /* a Wi-Fi device exists */
+    bool  (*get_enabled)(void);
+    bool  (*set_enabled)(bool on);
+    bool  (*scan)(void);
+    /* One entry per network (strongest access point), hidden ones left out.
+       Returns the count, -1 when the list cannot be read */
+    int   (*list_networks)(ZylWifiNetwork *out, int max);
+    bool  (*connect)(const char *ssid, const char *passphrase);
+    bool  (*disconnect)(void);
+    /* Hotspot: the Wi-Fi device can be an access point */
+    bool  (*hotspot_supported)(void);
+    /* Shares the uplink over IPv4 and IPv6 */
+    bool  (*hotspot_start)(const char *ssid, const char *passphrase);
+    bool  (*hotspot_stop)(void);
+    bool  (*hotspot_get)(ZylHotspotState *out);
 } ZylWifiHal;
 
 /* ═══════════════════════════════════════════════════════
    Bluetooth HAL
-   실기기: BlueZ D-Bus API
-   에뮬레이터: Web Bluetooth API (navigator.bluetooth)
+   실기기: BlueZ (system bus, org.bluez Adapter1/Device1)
+   에뮬레이터: 가상 기기
    ═══════════════════════════════════════════════════════ */
 
 typedef struct {
-    char    name[64];
-    char    address[18];      /* MAC */
-    char    type[16];         /* "audio", "input", "phone", "computer" */
+    char    name[64];         /* the address when the device sends none */
+    char    address[18];
+    char    type[32];         /* BlueZ Icon: "audio-headphones", "phone", ... */
     bool    paired;
     bool    connected;
-    int     battery_percent;  /* -1 if unknown */
+    int     rssi;             /* dBm, 0 when unknown */
 } ZylBtDevice;
 
 typedef struct {
-    bool    enabled;
-    char    device_name[64];  /* 이 기기의 BT 이름 */
-    bool    discoverable;
-} ZylBtState;
-
-typedef struct {
-    int   (*init)(void);
-    void  (*shutdown)(void);
-
-    int   (*set_enabled)(bool enabled);
-    int   (*get_state)(ZylBtState *out);
-
-    int   (*scan)(ZylBtDevice **out_list, int *out_count);
-
-    int   (*pair)(const char *address);
-    int   (*unpair)(const char *address);
-    int   (*connect_device)(const char *address);
-    int   (*disconnect_device)(const char *address);
-
-    int   (*get_paired_devices)(ZylBtDevice **out_list, int *out_count);
+    bool  (*present)(void);                        /* an adapter exists */
+    bool  (*get_enabled)(void);                    /* powered */
+    bool  (*set_enabled)(bool on);
+    bool  (*start_scan)(void);
+    bool  (*stop_scan)(void);
+    /* Known and discovered devices; returns the count, -1 when unreadable */
+    int   (*list_devices)(ZylBtDevice *out, int max);
+    bool  (*pair)(const char *address);
+    bool  (*connect)(const char *address);
+    bool  (*disconnect)(const char *address);
+    bool  (*remove)(const char *address);
 } ZylBtHal;
 
 /* ═══════════════════════════════════════════════════════
@@ -232,8 +218,8 @@ typedef struct {
 const ZylBootHal     *zyl_hal_boot(void);
 const ZylAudioHal    *zyl_hal_audio(void);
 const ZylVibratorHal *zyl_hal_vibrator(void);
-ZylWifiHal           *zyl_hal_wifi(void);
-ZylBtHal             *zyl_hal_bt(void);
+const ZylWifiHal     *zyl_hal_wifi(void);
+const ZylBtHal       *zyl_hal_bt(void);
 ZylDisplayHal        *zyl_hal_display(void);
 ZylBatteryHal        *zyl_hal_battery(void);
 ZylStorageHal        *zyl_hal_storage(void);

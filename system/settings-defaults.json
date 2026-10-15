@@ -1,10 +1,4 @@
 {
-  "wifi": {
-    "enabled": true
-  },
-  "bluetooth": {
-    "enabled": true
-  },
   "display": {
     "brightness": 80,
     "darkMode": true,

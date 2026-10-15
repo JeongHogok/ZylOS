@@ -47,13 +47,9 @@
     });
   }
 
-  /* ─── Bluetooth State ─── */
-  function applyBluetoothState(data) {
-    var toggle = document.getElementById('bt-toggle');
-    if (toggle) toggle.checked = data.enabled;
-    updateBtUI(data.enabled);
-    updateMainMenuBt(data);
-  }
+  /* ─── Bluetooth State — the adapter is the bluetooth service's, not a setting ─── */
+  var btToggle = document.getElementById('bt-toggle');
+  var btScanBtn = document.getElementById('bt-scan-btn');
 
   function updateBtUI(enabled) {
     var devicesList = document.getElementById('bt-devices-list');
@@ -62,19 +58,28 @@
     if (offMsg) offMsg.classList.toggle('hidden', enabled);
   }
 
-  function updateMainMenuBt(data) {
+  function updateMainMenuBt(st) {
     var el = document.getElementById('bt-status');
-    if (el) el.textContent = data.enabled ? core.t('settings.on') : core.t('settings.off');
+    if (el) el.textContent = core.t(!st ? 'settings.unavailable' : st.enabled ? 'settings.on' : 'settings.off');
   }
 
-  /* ─── Bluetooth Toggle ─── */
-  var btToggle = document.getElementById('bt-toggle');
+  function refreshState() {
+    core.requestService('bluetooth', 'getState').then(function (st) {
+      if (!st) return;
+      if (btToggle) btToggle.checked = !!st.enabled;
+      updateBtUI(!!st.enabled);
+      updateMainMenuBt(st);
+    }, function () {});
+  }
+
   if (btToggle) {
     btToggle.addEventListener('change', function () {
       var enabled = btToggle.checked;
       updateBtUI(enabled);
-      core.updateSetting('bluetooth', 'enabled', enabled).catch(function () {
-        /* Revert toggle on failure */
+      core.requestService('bluetooth', 'setEnabled', { enabled: enabled }).then(function (ok) {
+        if (!ok) throw new Error('not applied');
+        refreshState();
+      }).catch(function () {
         btToggle.checked = !enabled;
         updateBtUI(!enabled);
         if (typeof ZylToast !== 'undefined') ZylToast.error(core.t('settings.bt_toggle_error'));
@@ -83,7 +88,6 @@
   }
 
   /* ─── Scan Button ─── */
-  var btScanBtn = document.getElementById('bt-scan-btn');
   if (btScanBtn) {
     btScanBtn.addEventListener('click', function () {
       btScanBtn.classList.add('scanning');
@@ -99,12 +103,17 @@
     });
   }
 
+  /* No adapter on this device: the controls stay, disabled */
+  core.getCapabilities('bluetooth').then(function (caps) {
+    if (caps.present) { refreshState(); return; }
+    core.disableFor(btToggle, 'no-bluetooth');
+    core.disableFor(btScanBtn, null);
+    updateBtUI(false);
+    updateMainMenuBt(null);
+  });
+
   /* ─── Register with core ─── */
   core.handlers.bluetooth = {
-    onSettingsGet: applyBluetoothState,
-    onSettingsUpdated: function (data) {
-      updateMainMenuBt(data);
-    },
     onServiceResponse: function (method, data) {
       if (method === 'getDevices' && data) renderBtDevices(data);
     }

@@ -368,8 +368,6 @@
   requestServiceFire('storage', 'getFormatted');
 
   /* Request settings state for all categories */
-  requestServiceFire('settings', 'get', { category: 'wifi' });
-  requestServiceFire('settings', 'get', { category: 'bluetooth' });
   requestServiceFire('settings', 'get', { category: 'display' });
   requestServiceFire('settings', 'get', { category: 'sound' });
   requestServiceFire('settings', 'get', { category: 'security' });

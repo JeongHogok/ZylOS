@@ -28,13 +28,6 @@
    내부 유틸리티
    ────────────────────────────────────────────────────────── */
 
-/* -100 ~ 0 dBm → 0 ~ 100% 선형 변환 */
-static int dbm_to_percent(int dbm) {
-    if (dbm >= -50)  return 100;
-    if (dbm <= -100) return 0;
-    return 2 * (dbm + 100);
-}
-
 /* base_dbm ± 5dBm 무작위 지터 */
 static int dbm_jitter(int base_dbm) {
     return base_dbm + (rand() % 11) - 5;
@@ -63,112 +56,64 @@ static const EmuAp k_wifi_aps[EMU_WIFI_AP_COUNT] = {
     { "IoT-Network",     "AA:BB:CC:DD:EE:05", -80, "WPA2", 2452 },
 };
 
-static bool g_wifi_enabled        = true;
-static bool g_wifi_connected       = false;
-static int  g_wifi_connected_idx   = -1;       /* k_wifi_aps 인덱스, -1=미연결 */
-static char g_wifi_ip[46]          = "";
-static char g_wifi_mac[18]         = "00:11:22:33:44:55";
-static char g_wifi_ssid[64]        = "";
+static bool g_wifi_enabled      = true;
+static int  g_wifi_connected_idx = -1;       /* k_wifi_aps 인덱스, -1=미연결 */
 
-static int wifi_init(void) {
-    srand((unsigned)time(NULL));
-    return 0;
+static bool emu_wifi_present(void) { return true; }
+static bool emu_wifi_get_enabled(void) { return g_wifi_enabled; }
+static bool emu_wifi_set_enabled(bool on) {
+    g_wifi_enabled = on;
+    if (!on) g_wifi_connected_idx = -1;
+    return true;
+}
+static bool emu_wifi_scan(void) { return g_wifi_enabled; }
+
+static int emu_wifi_list_networks(ZylWifiNetwork *out, int max) {
+    if (!g_wifi_enabled) return 0;
+    int n = 0;
+    for (int i = 0; i < EMU_WIFI_AP_COUNT && n < max; i++, n++) {
+        memset(&out[n], 0, sizeof(out[n]));
+        snprintf(out[n].ssid, sizeof(out[n].ssid), "%s", k_wifi_aps[i].ssid);
+        snprintf(out[n].bssid, sizeof(out[n].bssid), "%s", k_wifi_aps[i].bssid);
+        snprintf(out[n].security, sizeof(out[n].security), "%s", k_wifi_aps[i].security);
+        out[n].signal_dbm = dbm_jitter(k_wifi_aps[i].base_dbm);
+        out[n].connected  = g_wifi_connected_idx == i;
+    }
+    return n;
 }
 
-static void wifi_shutdown(void) {
-    g_wifi_connected     = false;
-    g_wifi_connected_idx = -1;
-    g_wifi_ssid[0]       = '\0';
-    g_wifi_ip[0]         = '\0';
-}
-
-static int wifi_set_enabled(bool enabled) {
-    g_wifi_enabled = enabled;
-    if (!enabled) wifi_shutdown();
-    return 0;
-}
-
-static int wifi_get_state(ZylWifiState *out) {
-    if (!out) return -1;
-    out->enabled       = g_wifi_enabled;
-    out->connected     = g_wifi_connected;
-    out->link_speed_mbps = g_wifi_connected ? 150 : 0;
-    strncpy(out->current_ssid, g_wifi_ssid,   sizeof(out->current_ssid)   - 1);
-    strncpy(out->ip_address,   g_wifi_ip,     sizeof(out->ip_address)     - 1);
-    strncpy(out->mac_address,  g_wifi_mac,    sizeof(out->mac_address)    - 1);
-    out->current_ssid[sizeof(out->current_ssid)   - 1] = '\0';
-    out->ip_address  [sizeof(out->ip_address)     - 1] = '\0';
-    out->mac_address [sizeof(out->mac_address)    - 1] = '\0';
-    return 0;
-}
-
-static int wifi_scan(ZylWifiNetwork **out_list, int *out_count) {
-    if (!out_list || !out_count) return -1;
-    ZylWifiNetwork *list = malloc(sizeof(ZylWifiNetwork) * EMU_WIFI_AP_COUNT);
-    if (!list) return -1;
+static bool emu_wifi_connect(const char *ssid, const char *passphrase) {
+    if (!ssid || !g_wifi_enabled) return false;
     for (int i = 0; i < EMU_WIFI_AP_COUNT; i++) {
-        strncpy(list[i].ssid,     k_wifi_aps[i].ssid,     sizeof(list[i].ssid)     - 1);
-        strncpy(list[i].bssid,    k_wifi_aps[i].bssid,    sizeof(list[i].bssid)    - 1);
-        strncpy(list[i].security, k_wifi_aps[i].security, sizeof(list[i].security) - 1);
-        list[i].ssid    [sizeof(list[i].ssid)     - 1] = '\0';
-        list[i].bssid   [sizeof(list[i].bssid)    - 1] = '\0';
-        list[i].security[sizeof(list[i].security) - 1] = '\0';
-        list[i].signal_dbm     = dbm_jitter(k_wifi_aps[i].base_dbm);
-        list[i].signal_percent = dbm_to_percent(list[i].signal_dbm);
-        list[i].frequency_mhz  = k_wifi_aps[i].freq_mhz;
-        list[i].connected      = (g_wifi_connected && g_wifi_connected_idx == i);
+        if (strcmp(k_wifi_aps[i].ssid, ssid) != 0) continue;
+        bool open = strcmp(k_wifi_aps[i].security, "Open") == 0;
+        if (!open && (!passphrase || strlen(passphrase) < 8)) return false;
+        g_wifi_connected_idx = i;
+        return true;
     }
-    *out_list  = list;
-    *out_count = EMU_WIFI_AP_COUNT;
-    return 0;
+    return false;
 }
 
-static int wifi_connect(const char *ssid, const char *password) {
-    if (!ssid || !g_wifi_enabled) return -1;
-    for (int i = 0; i < EMU_WIFI_AP_COUNT; i++) {
-        if (strcmp(k_wifi_aps[i].ssid, ssid) == 0) {
-            bool is_open = (strcmp(k_wifi_aps[i].security, "Open") == 0);
-            if (!is_open && (!password || password[0] == '\0')) return -1;
-            g_wifi_connected     = true;
-            g_wifi_connected_idx = i;
-            strncpy(g_wifi_ssid, ssid,          sizeof(g_wifi_ssid) - 1);
-            strncpy(g_wifi_ip,   "192.168.1.100", sizeof(g_wifi_ip)  - 1);
-            g_wifi_ssid[sizeof(g_wifi_ssid) - 1] = '\0';
-            g_wifi_ip  [sizeof(g_wifi_ip)   - 1] = '\0';
-            return 0;
-        }
-    }
-    return -1; /* SSID 없음 */
-}
+static bool emu_wifi_disconnect(void) { g_wifi_connected_idx = -1; return true; }
 
-static int wifi_disconnect(void) {
-    g_wifi_connected     = false;
-    g_wifi_connected_idx = -1;
-    g_wifi_ssid[0]       = '\0';
-    g_wifi_ip[0]         = '\0';
-    return 0;
-}
+/* 가상 무선 장치는 AP 모드를 갖지 않는다 */
+static bool emu_wifi_hotspot_supported(void) { return false; }
+static bool emu_wifi_hotspot_start(const char *s, const char *p) { (void)s; (void)p; return false; }
+static bool emu_wifi_hotspot_stop(void) { return false; }
+static bool emu_wifi_hotspot_get(ZylHotspotState *out) { memset(out, 0, sizeof(*out)); return true; }
 
-static int wifi_get_signal_strength(int *out_percent) {
-    if (!out_percent) return -1;
-    if (!g_wifi_connected || g_wifi_connected_idx < 0) {
-        *out_percent = 0;
-        return -1;
-    }
-    int dbm = dbm_jitter(k_wifi_aps[g_wifi_connected_idx].base_dbm);
-    *out_percent = dbm_to_percent(dbm);
-    return 0;
-}
-
-static ZylWifiHal g_wifi_hal = {
-    .init               = wifi_init,
-    .shutdown           = wifi_shutdown,
-    .set_enabled        = wifi_set_enabled,
-    .get_state          = wifi_get_state,
-    .scan               = wifi_scan,
-    .connect            = wifi_connect,
-    .disconnect         = wifi_disconnect,
-    .get_signal_strength = wifi_get_signal_strength,
+static const ZylWifiHal g_wifi_hal = {
+    .present           = emu_wifi_present,
+    .get_enabled       = emu_wifi_get_enabled,
+    .set_enabled       = emu_wifi_set_enabled,
+    .scan              = emu_wifi_scan,
+    .list_networks     = emu_wifi_list_networks,
+    .connect           = emu_wifi_connect,
+    .disconnect        = emu_wifi_disconnect,
+    .hotspot_supported = emu_wifi_hotspot_supported,
+    .hotspot_start     = emu_wifi_hotspot_start,
+    .hotspot_stop      = emu_wifi_hotspot_stop,
+    .hotspot_get       = emu_wifi_hotspot_get,
 };
 
 
@@ -194,129 +139,75 @@ static EmuBtDevice g_bt_devices[EMU_BT_DEV_COUNT] = {
     { "Smart Speaker", "11:22:33:44:55:03", "audio", false, false, -1 },
 };
 
-static bool g_bt_enabled      = true;
-static bool g_bt_discoverable = false;
-
-static int bt_init(void) { return 0; }
-
-static void bt_shutdown(void) {
-    for (int i = 0; i < EMU_BT_DEV_COUNT; i++)
-        g_bt_devices[i].connected = false;
-}
-
-static int bt_set_enabled(bool enabled) {
-    g_bt_enabled = enabled;
-    if (!enabled) {
-        g_bt_discoverable = false;
-        bt_shutdown();
-    }
-    return 0;
-}
-
-static int bt_get_state(ZylBtState *out) {
-    if (!out) return -1;
-    out->enabled      = g_bt_enabled;
-    out->discoverable = g_bt_discoverable;
-    strncpy(out->device_name, "ZylOS Device", sizeof(out->device_name) - 1);
-    out->device_name[sizeof(out->device_name) - 1] = '\0';
-    return 0;
-}
-
-static int bt_scan(ZylBtDevice **out_list, int *out_count) {
-    if (!out_list || !out_count) return -1;
-    ZylBtDevice *list = malloc(sizeof(ZylBtDevice) * EMU_BT_DEV_COUNT);
-    if (!list) return -1;
-    for (int i = 0; i < EMU_BT_DEV_COUNT; i++) {
-        strncpy(list[i].name,    g_bt_devices[i].name,    sizeof(list[i].name)    - 1);
-        strncpy(list[i].address, g_bt_devices[i].address, sizeof(list[i].address) - 1);
-        strncpy(list[i].type,    g_bt_devices[i].type,    sizeof(list[i].type)    - 1);
-        list[i].name   [sizeof(list[i].name)    - 1] = '\0';
-        list[i].address[sizeof(list[i].address) - 1] = '\0';
-        list[i].type   [sizeof(list[i].type)    - 1] = '\0';
-        list[i].paired          = g_bt_devices[i].paired;
-        list[i].connected       = g_bt_devices[i].connected;
-        list[i].battery_percent = g_bt_devices[i].battery_percent;
-    }
-    *out_list  = list;
-    *out_count = EMU_BT_DEV_COUNT;
-    return 0;
-}
+static bool g_bt_enabled = true;
 
 static int bt_find_device(const char *address) {
     if (!address) return -1;
-    for (int i = 0; i < EMU_BT_DEV_COUNT; i++) {
+    for (int i = 0; i < EMU_BT_DEV_COUNT; i++)
         if (strcmp(g_bt_devices[i].address, address) == 0) return i;
-    }
     return -1;
 }
 
-static int bt_pair(const char *address) {
-    int idx = bt_find_device(address);
-    if (idx < 0) return -1;
-    g_bt_devices[idx].paired = true;
-    return 0;
+static bool emu_bt_present(void) { return true; }
+static bool emu_bt_get_enabled(void) { return g_bt_enabled; }
+static bool emu_bt_set_enabled(bool on) {
+    g_bt_enabled = on;
+    if (!on) for (int i = 0; i < EMU_BT_DEV_COUNT; i++) g_bt_devices[i].connected = false;
+    return true;
 }
+static bool emu_bt_start_scan(void) { return g_bt_enabled; }
+static bool emu_bt_stop_scan(void) { return true; }
 
-static int bt_unpair(const char *address) {
-    int idx = bt_find_device(address);
-    if (idx < 0) return -1;
-    g_bt_devices[idx].paired    = false;
-    g_bt_devices[idx].connected = false;
-    return 0;
-}
-
-static int bt_connect_device(const char *address) {
-    int idx = bt_find_device(address);
-    if (idx < 0 || !g_bt_devices[idx].paired) return -1;
-    g_bt_devices[idx].connected = true;
-    return 0;
-}
-
-static int bt_disconnect_device(const char *address) {
-    int idx = bt_find_device(address);
-    if (idx < 0) return -1;
-    g_bt_devices[idx].connected = false;
-    return 0;
-}
-
-static int bt_get_paired_devices(ZylBtDevice **out_list, int *out_count) {
-    if (!out_list || !out_count) return -1;
-    int count = 0;
-    for (int i = 0; i < EMU_BT_DEV_COUNT; i++)
-        if (g_bt_devices[i].paired) count++;
-
-    ZylBtDevice *list = malloc(sizeof(ZylBtDevice) * (count > 0 ? count : 1));
-    if (!list) return -1;
-    int j = 0;
-    for (int i = 0; i < EMU_BT_DEV_COUNT; i++) {
-        if (!g_bt_devices[i].paired) continue;
-        strncpy(list[j].name,    g_bt_devices[i].name,    sizeof(list[j].name)    - 1);
-        strncpy(list[j].address, g_bt_devices[i].address, sizeof(list[j].address) - 1);
-        strncpy(list[j].type,    g_bt_devices[i].type,    sizeof(list[j].type)    - 1);
-        list[j].name   [sizeof(list[j].name)    - 1] = '\0';
-        list[j].address[sizeof(list[j].address) - 1] = '\0';
-        list[j].type   [sizeof(list[j].type)    - 1] = '\0';
-        list[j].paired          = g_bt_devices[i].paired;
-        list[j].connected       = g_bt_devices[i].connected;
-        list[j].battery_percent = g_bt_devices[i].battery_percent;
-        j++;
+static int emu_bt_list_devices(ZylBtDevice *out, int max) {
+    if (!g_bt_enabled) return 0;
+    int n = 0;
+    for (int i = 0; i < EMU_BT_DEV_COUNT && n < max; i++, n++) {
+        memset(&out[n], 0, sizeof(out[n]));
+        snprintf(out[n].name, sizeof(out[n].name), "%s", g_bt_devices[i].name);
+        snprintf(out[n].address, sizeof(out[n].address), "%s", g_bt_devices[i].address);
+        snprintf(out[n].type, sizeof(out[n].type), "%s", g_bt_devices[i].type);
+        out[n].paired    = g_bt_devices[i].paired;
+        out[n].connected = g_bt_devices[i].connected;
     }
-    *out_list  = list;
-    *out_count = count;
-    return 0;
+    return n;
 }
 
-static ZylBtHal g_bt_hal = {
-    .init               = bt_init,
-    .shutdown           = bt_shutdown,
-    .set_enabled        = bt_set_enabled,
-    .get_state          = bt_get_state,
-    .scan               = bt_scan,
-    .pair               = bt_pair,
-    .unpair             = bt_unpair,
-    .connect_device     = bt_connect_device,
-    .disconnect_device  = bt_disconnect_device,
-    .get_paired_devices = bt_get_paired_devices,
+static bool emu_bt_pair(const char *address) {
+    int i = bt_find_device(address);
+    if (i < 0 || !g_bt_enabled) return false;
+    g_bt_devices[i].paired = true;
+    return true;
+}
+static bool emu_bt_connect(const char *address) {
+    int i = bt_find_device(address);
+    if (i < 0 || !g_bt_enabled || !g_bt_devices[i].paired) return false;
+    g_bt_devices[i].connected = true;
+    return true;
+}
+static bool emu_bt_disconnect(const char *address) {
+    int i = bt_find_device(address);
+    if (i < 0) return false;
+    g_bt_devices[i].connected = false;
+    return true;
+}
+static bool emu_bt_remove(const char *address) {
+    int i = bt_find_device(address);
+    if (i < 0) return false;
+    g_bt_devices[i].paired = g_bt_devices[i].connected = false;
+    return true;
+}
+
+static const ZylBtHal g_bt_hal = {
+    .present      = emu_bt_present,
+    .get_enabled  = emu_bt_get_enabled,
+    .set_enabled  = emu_bt_set_enabled,
+    .start_scan   = emu_bt_start_scan,
+    .stop_scan    = emu_bt_stop_scan,
+    .list_devices = emu_bt_list_devices,
+    .pair         = emu_bt_pair,
+    .connect      = emu_bt_connect,
+    .disconnect   = emu_bt_disconnect,
+    .remove       = emu_bt_remove,
 };
 
 
@@ -570,8 +461,8 @@ static ZylStorageHal g_storage_hal = {
 
 const ZylAudioHal    *zyl_hal_audio(void) { return &g_audio_hal; }
 const ZylVibratorHal *zyl_hal_vibrator(void) { return &g_vibrator_hal; }
-ZylWifiHal    *zyl_hal_wifi(void)    { return &g_wifi_hal; }
-ZylBtHal      *zyl_hal_bt(void)      { return &g_bt_hal; }
+const ZylWifiHal *zyl_hal_wifi(void) { return &g_wifi_hal; }
+const ZylBtHal *zyl_hal_bt(void) { return &g_bt_hal; }
 ZylDisplayHal *zyl_hal_display(void) { return &g_display_hal; }
 ZylBatteryHal *zyl_hal_battery(void) { return &g_battery_hal; }
 ZylStorageHal *zyl_hal_storage(void) { return &g_storage_hal; }

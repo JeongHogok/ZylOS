@@ -2,8 +2,9 @@
 // [Clean Architecture] Presentation Layer - WiFi Domain Module
 //
 // 역할: 설정 앱 WiFi 도메인 — WiFi 토글, 네트워크 목록, 스캔, 연결
-// 수행범위: WiFi 상태 렌더링, 네트워크 목록 표시(이름은 텍스트로만), 스캔 버튼,
-//          네트워크를 눌러 연결(보안 네트워크는 암호 입력)
+// 수행범위: 무선 켜고 끄기(wifi 서비스), 네트워크 목록(이름은 텍스트로만), 스캔,
+//          네트워크를 눌러 연결(보안 네트워크는 암호 입력), 핫스팟, 이 기기에 없는
+//          Wi-Fi·AP 모드는 컨트롤을 두고 비활성
 // 의존방향: ZylSettingsCore (settings.js)
 // SOLID: SRP — WiFi 설정 UI만 담당
 //
@@ -104,13 +105,9 @@
     });
   }
 
-  /* ─── WiFi State ─── */
-  function applyWifiState(data) {
-    var toggle = document.getElementById('wifi-toggle');
-    if (toggle) toggle.checked = data.enabled;
-    updateWifiUI(data.enabled);
-    updateMainMenuWifi(data);
-  }
+  /* ─── WiFi State — the radio is the wifi service's, not a setting ─── */
+  var wifiToggle = document.getElementById('wifi-toggle');
+  var wifiScanBtn = document.getElementById('wifi-scan-btn');
 
   function updateWifiUI(enabled) {
     var networksList = document.getElementById('wifi-networks-list');
@@ -120,19 +117,33 @@
     if (!enabled) joinBox.classList.add('hidden');
   }
 
-  function updateMainMenuWifi(data) {
+  function updateMainMenuWifi(st) {
     var el = document.getElementById('wifi-status');
-    if (el) el.textContent = data.enabled ? core.t('settings.connected') : core.t('settings.off');
+    if (!el) return;
+    if (!st) el.textContent = core.t('settings.unavailable');
+    else if (st.connected && st.ssid) el.textContent = st.ssid;
+    else el.textContent = core.t(st.enabled ? 'settings.on' : 'settings.off');
   }
 
-  /* ─── WiFi Toggle ─── */
-  var wifiToggle = document.getElementById('wifi-toggle');
+  function applyWifiState(st) {
+    if (wifiToggle) wifiToggle.checked = !!st.enabled;
+    updateWifiUI(!!st.enabled);
+    updateMainMenuWifi(st);
+  }
+
+  function refreshState() {
+    core.requestService('wifi', 'getState').then(function (st) { if (st) applyWifiState(st); }, function () {});
+  }
+
   if (wifiToggle) {
     wifiToggle.addEventListener('change', function () {
       var enabled = wifiToggle.checked;
       updateWifiUI(enabled);
-      core.updateSetting('wifi', 'enabled', enabled).catch(function () {
-        /* Revert toggle on failure */
+      core.requestService('wifi', 'setEnabled', { enabled: enabled }).then(function (ok) {
+        if (!ok) throw new Error('not applied');
+        refreshState();
+        if (enabled) refreshNetworks();
+      }).catch(function () {
         wifiToggle.checked = !enabled;
         updateWifiUI(!enabled);
         if (typeof ZylToast !== 'undefined') ZylToast.error(core.t('settings.wifi_toggle_error'));
@@ -141,7 +152,6 @@
   }
 
   /* ─── Scan Button ─── */
-  var wifiScanBtn = document.getElementById('wifi-scan-btn');
   if (wifiScanBtn) {
     wifiScanBtn.addEventListener('click', function () {
       wifiScanBtn.classList.add('scanning');
@@ -155,12 +165,51 @@
     });
   }
 
+  /* ─── Hotspot ─── */
+  var hsToggle = document.getElementById('hotspot-toggle');
+  var hsSsid = document.getElementById('hotspot-ssid');
+  var hsPass = document.getElementById('hotspot-pass');
+  var hsMsg = document.getElementById('hotspot-msg');
+  var HOTSPOT_REASONS = {
+    passphrase: 'settings.hotspot_passphrase_rule', ssid: 'settings.hotspot_ssid_rule',
+    unsupported: 'settings.hotspot_unsupported', failed: 'settings.hotspot_failed'
+  };
+
+  function showHotspot(st) {
+    if (!st) return;
+    hsToggle.checked = !!st.active;
+    if (st.ssid) hsSsid.value = st.ssid;
+    if (st.passphrase) hsPass.value = st.passphrase;
+    hsMsg.textContent = st.ok === false ? core.t(HOTSPOT_REASONS[st.reason] || 'settings.hotspot_failed') : '';
+  }
+
+  hsToggle.addEventListener('change', function () {
+    var on = hsToggle.checked;
+    hsMsg.textContent = '';
+    core.requestService('wifi', 'setHotspot', { enabled: on, ssid: hsSsid.value, passphrase: hsPass.value })
+      .then(showHotspot, function () { showHotspot({ ok: false, reason: 'failed', active: false }); });
+  });
+
+  /* ─── What this device has: a missing radio or AP mode leaves the controls, disabled ─── */
+  core.getCapabilities('wifi').then(function (caps) {
+    if (!caps.present) {
+      core.disableFor(wifiToggle, 'no-wifi');
+      core.disableFor(wifiScanBtn, null);
+      updateWifiUI(false);
+      updateMainMenuWifi(null);
+    } else {
+      refreshState();
+    }
+    if (!caps.hotspot) {
+      core.disableFor(hsToggle, 'no-hotspot');
+      hsSsid.disabled = hsPass.disabled = true;
+    } else {
+      core.requestService('wifi', 'getHotspot').then(showHotspot, function () {});
+    }
+  });
+
   /* ─── Register with core ─── */
   core.handlers.wifi = {
-    onSettingsGet: applyWifiState,
-    onSettingsUpdated: function (data) {
-      updateMainMenuWifi(data);
-    },
     onServiceResponse: function (method, data) {
       if (method === 'getNetworks' && data) renderWifiNetworks(data);
     }
