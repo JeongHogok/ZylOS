@@ -44,12 +44,17 @@ KERNEL="${ZYL_KERNEL:-vmlinuz}"
 DTB="${ZYL_DTB:-system/dts/bpi-f3-zyl.dtb}"
 INITRAMFS="${ZYL_INITRAMFS:-initramfs.cpio.gz}"
 
-# Partitions per slot — board/bpi-f3/README.md, u-boot-env.txt
+# Partitions per slot — the board declares them, this script does not
+LAYOUT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/board/bpi-f3/partitions.conf"
+[ -f "$LAYOUT" ] || { echo "✗ $LAYOUT not found" >&2; exit 1; }
+# shellcheck disable=SC1090
+. "$LAYOUT"
 case "$SLOT" in
-    a) ROOT_PART=2; VERITY_PART=3 ;;
-    b) ROOT_PART=4; VERITY_PART=5 ;;
+    a) ROOT_PART=$ZYL_PART_ROOT_A; VERITY_PART=$ZYL_PART_VERITY_A ;;
+    b) ROOT_PART=$ZYL_PART_ROOT_B; VERITY_PART=$ZYL_PART_VERITY_B ;;
     *) echo "✗ --slot must be a or b" >&2; exit 2 ;;
 esac
+DISK_NODE="$ZYL_DISK_NODE"
 
 if [ -z "$ROOTFS" ]; then
     echo "Usage: $0 [--slot a|b] [--key-dir DIR] <rootfs-image> [output-dir]" >&2
@@ -101,7 +106,7 @@ EOF
 
 # ── 2. Command line for this slot, inside the DTB that gets signed ──
 echo "▸ [2/4] Kernel command line → DTB /chosen/bootargs"
-CMDLINE="root=/dev/dm-0 ro dm-mod.create=\"verity,,,ro,0 $SECTORS verity 1 /dev/mmcblk0p$ROOT_PART /dev/mmcblk0p$VERITY_PART $DATA_BLOCK_SIZE $HASH_BLOCK_SIZE $DATA_BLOCKS $HASH_START sha256 $ROOT_HASH $SALT\" console=ttyS0,115200 zyl.slot=$SLOT quiet splash"
+CMDLINE="root=/dev/dm-0 ro dm-mod.create=\"verity,,,ro,0 $SECTORS verity 1 ${DISK_NODE}p$ROOT_PART ${DISK_NODE}p$VERITY_PART $DATA_BLOCK_SIZE $HASH_BLOCK_SIZE $DATA_BLOCKS $HASH_START sha256 $ROOT_HASH $SALT\" console=ttyS0,115200 zyl.slot=$SLOT quiet splash"
 printf '%s\n' "$CMDLINE" > "$OUT/cmdline-$SLOT.txt"
 cp "$DTB" "$OUT/fdt-$SLOT.dtb"
 fdtput -c "$OUT/fdt-$SLOT.dtb" /chosen 2>/dev/null || true
@@ -136,5 +141,5 @@ fi
 echo "  ✓ $OUT/fit-image-$SLOT.itb (root hash $ROOT_HASH)"
 echo ""
 echo "Flash: fit-image-$SLOT.itb → boot partition (p1),"
-echo "       rootfs → mmcblk0p$ROOT_PART, verity-hashtree-$SLOT.img → mmcblk0p$VERITY_PART"
+echo "       rootfs → ${DISK_NODE}p$ROOT_PART, verity-hashtree-$SLOT.img → ${DISK_NODE}p$VERITY_PART"
 echo "⚠ Keep $KEY_DIR/$KEY_NAME.key offline (HSM or encrypted storage). Never commit it."

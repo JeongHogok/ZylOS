@@ -33,8 +33,9 @@ sudo apt install -y \
   libpixman-1-dev libinput-dev libdrm-dev \
   libegl-dev libgles2-mesa-dev libgbm-dev \
   libgtk-4-dev libwebkitgtk-6.0-dev libjson-glib-dev \
-  libssl-dev libseccomp-dev libzip-dev libcurl4-openssl-dev \
-  u-boot-tools device-tree-compiler veritysetup
+  libssl-dev libzip-dev libcurl4-openssl-dev \
+  u-boot-tools device-tree-compiler veritysetup \
+  debootstrap fdisk e2fsprogs systemd dbus
 ```
 
 또는 자동 설치:
@@ -145,27 +146,60 @@ U-Boot bootargs에 추가:
 
 ---
 
-## 4. 루트파일시스템 준비
+## 4. 이미지 만들기
 
-### Bianbu OS 기반 (권장)
-1. [SpacemiT 공식 사이트](https://bianbu-linux.spacemit.com)에서 Bianbu OS 이미지 다운로드
-2. microSD에 플래싱:
-   ```bash
-   sudo dd if=bianbu-desktop.img of=/dev/sdX bs=4M conv=fsync status=progress
-   ```
-3. SD 카드 마운트 후 Zyl OS 파일 설치
+소스에서 **설치 가능한 디스크 이미지 한 장**이 나옵니다. 손으로 파일을 복사하는
+절차는 없습니다 — 무엇이 들어가는지는 `ninja install` 이, 어디에 들어가는지는
+`board/<id>/partitions.conf` 가, 어떤 패키지가 필요한지는 `system/packages.list`
+가 정합니다.
+
+```bash
+# 리눅스(또는 컨테이너)에서, root 로
+meson setup builddir --prefix=/usr -Dboard=bpi-f3 -Dprofile=phone
+ninja -C builddir
+sudo tools/build-image.sh --builddir builddir --out out/image
+```
+
+출력:
+
+```
+out/image/zyl-os-bpi-f3-phone.img   디스크 이미지 (GPT, 슬롯 A 기록, /data 포맷)
+out/image/rootfs-phone.img          rootfs 단독 — tools/sign-image.sh 의 입력
+```
+
+- `--prefix=/usr` 가 아니면 거부합니다 (유닛의 `ExecStart` 가 `/usr/bin` 을 가리킴)
+- 다른 아키텍처면 2단계 부트스트랩을 합니다 — `qemu-user-static` 과 binfmt 등록이 필요합니다
+- 슬롯 B·verity 는 비워 둡니다. 채우는 쪽은 `tools/sign-image.sh` 와 OTA 입니다
+- `--rootfs-only` 로 rootfs 이미지만 만들 수 있습니다 (서명·verity 작업용)
+
+### 보드 없이 검증 (QEMU)
+
+```bash
+sudo tools/run-qemu.sh --image out/image/zyl-os-emulator-phone.img \
+     --builddir builddir --check
+```
+
+`--check` 는 커널 인자로 자기점검(`zyl-selftest`)을 켜고, 그 결과를 종료 코드로
+돌려줍니다. 검증 범위: systemd 유닛 기동, 시스템 버스와 정책, 서비스 이름,
+앱 디렉터리·`/data`. **검증하지 않는 것**: U-Boot·서명 FIT·dm-verity·A/B 전환
+(부트로더 빌드와 `tools/sign-image.sh`·`tests/test_boot_env.sh` 소관), SoC 고유
+경로(GPU·모뎀·ISP). CI 의 `qemu-boot` 잡이 매 커밋 같은 일을 합니다.
+
+기기에서도 같은 자기점검을 손으로 돌릴 수 있습니다: `systemctl start zyl-selftest`.
+
+### 실행 시점 패키지
+
+이미지에 들어가는 패키지는 `system/packages.list` 한 곳에 있습니다. 줄마다
+없을 때 무엇이 깨지는지 적혀 있고, 아래 설명은 그중 눈여겨볼 것들입니다.
 
 ### 글꼴 패키지 (필수)
 
-Bianbu 기본 이미지에는 CJK·컬러 이모지 글꼴이 없습니다. 설치하지 않으면
+최소 rootfs 에는 CJK·컬러 이모지 글꼴이 없습니다. 넣지 않으면
 한국어·일본어·중국어 UI 와 이모지가 전부 두부(▯)로 표시됩니다 — 5개 언어
 번역이 있어도 보이지 않습니다.
 
-```bash
-sudo systemd-nspawn -D $ROOTFS apt-get install -y \
-  fonts-noto-core fonts-noto-mono fonts-noto-cjk fonts-noto-color-emoji
-# Arch 계열 rootfs: pacman -S noto-fonts noto-fonts-cjk noto-fonts-emoji
-```
+`system/packages.list` 의 `fonts-noto-*` 네 줄이 이것입니다
+(Arch 계열 rootfs 를 쓸 때는 `noto-fonts noto-fonts-cjk noto-fonts-emoji`).
 
 `ninja install` 이 `/etc/fonts/conf.d/50-zyl-fonts.conf` 를 설치해 기본 글꼴과
 언어별 한자 자형(한·중·일은 같은 코드포인트를 다르게 그린다)을 정합니다.
@@ -175,11 +209,7 @@ sudo systemd-nspawn -D $ROOTFS apt-get install -y \
 앱 코드가 도는 WebKitGTK 웹 프로세스는 WebKit 이 bubblewrap 으로 격리합니다. 이 두
 패키지가 없으면 샌드박스가 **조용히 꺼진 채** 앱이 정상 동작하므로 눈치채기 어렵습니다.
 
-```bash
-sudo systemd-nspawn -D $ROOTFS apt-get install -y \
-  bubblewrap xdg-dbus-proxy
-# Arch 계열 rootfs: pacman -S bubblewrap xdg-dbus-proxy
-```
+`system/packages.list` 의 `bubblewrap`·`xdg-dbus-proxy` 두 줄이 이것입니다.
 
 확인: 앱을 띄운 뒤 `ps -o args= -C WebKitWebProcess` 에 `bwrap` 이 보여야 합니다.
 
@@ -189,11 +219,8 @@ sudo systemd-nspawn -D $ROOTFS apt-get install -y \
 동작합니다. APN 은 통신사별 표를 OS 에 두지 않고 `mobile-broadband-provider-info`
 데이터베이스에서 자동으로 고릅니다 (`gsm.auto-config`).
 
-```bash
-sudo systemd-nspawn -D $ROOTFS apt-get install -y \
-  network-manager modemmanager mobile-broadband-provider-info
-# Arch 계열 rootfs: pacman -S networkmanager modemmanager mobile-broadband-provider-info
-```
+`system/packages.list` 의 `network-manager`·`modemmanager`·
+`mobile-broadband-provider-info` 세 줄이 이것입니다.
 
 | 구성요소 | 최소 버전 | 없을 때 |
 |---------|----------|--------|
@@ -201,77 +228,28 @@ sudo systemd-nspawn -D $ROOTFS apt-get install -y \
 | NetworkManager | 1.22 | APN 자동 설정 불가 |
 | NetworkManager | 1.58 | IPv6 전용망에서 IPv4 앱 불가 (464XLAT CLAT) — 이중 스택은 동작 |
 
-### 파일 설치
-```bash
-ROOTFS=/mnt/sdcard/rootfs
-
-# 바이너리 설치
-sudo cp builddir-riscv/compositor/zyl-compositor $ROOTFS/usr/bin/
-sudo cp builddir-riscv/runtime/wam/zyl-wam $ROOTFS/usr/bin/
-sudo cp builddir-riscv/runtime/services/*/zyl-* $ROOTFS/usr/bin/
-
-# 앱 설치
-sudo mkdir -p $ROOTFS/usr/share/zyl-os/apps
-sudo cp -r apps/* $ROOTFS/usr/share/zyl-os/apps/
-
-# WAM Bridge JS
-sudo mkdir -p $ROOTFS/usr/share/zyl-os/wam
-sudo cp runtime/wam/src/bridge/bridge.js $ROOTFS/usr/share/zyl-os/wam/
-
-# systemd 서비스 + 세션 타겟
-# zyl-os.target 은 -Dprofile 에 따라 빌드 디렉토리에 생성된다 (system/ 에는
-# .target.in 템플릿만 있다). 프로파일이 빌드하지 않은 서비스를 Wants= 에
-# 넣지 않으려면 반드시 생성된 파일을 쓸 것.
-sudo cp system/*.service $ROOTFS/usr/lib/systemd/system/
-sudo cp builddir/zyl-os.target $ROOTFS/usr/lib/systemd/system/
-
-# 서비스 사용자 + /data 디렉터리 — 없으면 WAM(User=zyl-wam)과 /data 를 쓰는
-# 서비스들이 기동 전에 실패한다
-sudo cp system/sysusers.d/*.conf $ROOTFS/usr/lib/sysusers.d/
-sudo cp system/tmpfiles.d/*.conf $ROOTFS/usr/lib/tmpfiles.d/
-
-# 또는 전체를 프로파일에 맞게 한 번에 설치 (권장)
-#   sudo DESTDIR=$ROOTFS ninja -C builddir install
-
-# 디바이스 트리 오버레이
-sudo cp system/dts/bpi-f3-zyl.dts $ROOTFS/boot/
-
-# Plymouth 부트 스플래시
-sudo bash system/plymouth/install.sh
-
-# 서비스 활성화
-sudo systemd-nspawn -D $ROOTFS systemctl enable zyl-os.target
-```
-
----
-
 ## 5. 파티션 레이아웃
 
-A/B OTA 와 dm-verity 를 위한 배치입니다. 부트 스크립트(`board/bpi-f3/u-boot-env.txt`),
-서명 도구(`tools/sign-image.sh`), 업데이터가 모두 이 번호를 씁니다 — 단일 출처는
-`board/bpi-f3/README.md` 의 표입니다.
+A/B OTA 와 dm-verity 를 위한 배치입니다. **단일 출처는
+`board/<id>/partitions.conf`** 이고, 이미지 빌더(`tools/build-image.sh`)·서명
+도구(`tools/sign-image.sh`)·부트 정책(`board/bpi-f3/u-boot-env.txt` 의
+`zyl_boot_part`·`zyl_data`)이 모두 그 파일을 읽습니다.
+`tests/test_boot_env.sh` 가 부트 정책과 레이아웃이 어긋나면 실패시킵니다.
 
 ```
-p1  boot       256MB   FAT   fit-image-a.itb, fit-image-b.itb (슬롯별 서명 이미지)
-p2  rootfs_a   4GB           루트파일시스템 슬롯 A (dm-verity)
-p3  verity_a   256MB         슬롯 A 해시 트리
-p4  rootfs_b   4GB           루트파일시스템 슬롯 B (dm-verity)
-p5  verity_b   256MB         슬롯 B 해시 트리
-p6  userdata   나머지  ext4  /data — 부트로더 잠금 상태가 바뀌면 지워진다
+p1  boot       256 MiB   슬롯별 서명 FIT (fit-image-a.itb, fit-image-b.itb)
+p2  rootfs_a  4096 MiB   루트파일시스템 슬롯 A (dm-verity)
+p3  verity_a   256 MiB   슬롯 A 해시 트리
+p4  rootfs_b  4096 MiB   슬롯 B (OTA 가 받는 쪽)
+p5  verity_b   256 MiB   슬롯 B 해시 트리
+p6  userdata   나머지    /data — 부트로더 잠금 상태가 바뀌면 지워진다
 ```
 
-```bash
-sudo parted /dev/mmcblk0 mklabel gpt
-sudo parted /dev/mmcblk0 mkpart boot fat32 1MiB 257MiB
-sudo parted /dev/mmcblk0 mkpart rootfs_a ext4 257MiB 4353MiB
-sudo parted /dev/mmcblk0 mkpart verity_a 4353MiB 4609MiB
-sudo parted /dev/mmcblk0 mkpart rootfs_b ext4 4609MiB 8705MiB
-sudo parted /dev/mmcblk0 mkpart verity_b 8705MiB 8961MiB
-sudo parted /dev/mmcblk0 mkpart userdata ext4 8961MiB 100%
-```
+첫 파티션 앞 4 MiB 는 부트로더 영역(FSBL·OpenSBI·U-Boot·env)으로 비워 둡니다.
+`parted` 로 손으로 나눌 필요는 없습니다 — 이미지 빌더가 이 표대로 만들고,
+만든 순서가 선언과 어긋나면 실패합니다.
 
-`/data` 는 지워진 뒤 빈 파티션이 되므로 rootfs 의 `/etc/fstab` 에서 처음 마운트할 때
-포맷되게 둡니다:
+`/data` 는 지워진 뒤 빈 파티션이 되므로 처음 마운트할 때 포맷되게 둘 수 있습니다:
 
 ```
 PARTLABEL=userdata  /data  ext4  defaults,noatime,x-systemd.makefs,x-systemd.growfs  0 2
