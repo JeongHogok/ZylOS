@@ -4,6 +4,7 @@
 // 역할: 앱스토어 — 스토어 서버의 앱 목록과 설치·업데이트·삭제
 // 수행범위: appstore.getCatalog(상태: ok·unconfigured·unreachable·untrusted),
 //           appstore.install / uninstall 결과(reason)에 맞는 안내,
+//           파일 앱이 연 앱 패키지(.zpkg, VIEW 인텐트)를 확인 후 appstore.installFile,
 //           검색 필터링, 탭 전환, 카테고리 필터, 앱 상세(개발자·요구 권한·크기),
 //           설치/업데이트 진행 상태, 앱 카드 렌더링
 // 의존방향: appstore 서비스 (ZylBridge.requestService), ZylToast, zylI18n
@@ -87,7 +88,8 @@
     unconfigured: 'store.unconfigured', unreachable: 'store.error_network',
     download_failed: 'store.error_network', untrusted: 'store.error_untrusted',
     bad_package: 'store.error_untrusted', invalid_package: 'store.error_untrusted',
-    busy: 'store.error_busy'
+    not_provisioned: 'store.error_not_provisioned', expired: 'store.error_expired',
+    revoked: 'store.error_revoked', busy: 'store.error_busy'
   };
 
   function act(method, appId, pending) {
@@ -103,6 +105,44 @@
       requestData();
     });
   }
+
+  /* ─── A package from the user's files: the Files app opens a .zpkg here
+     (app.json "intents"); installed only after the user confirms ─── */
+  function openPackage(path) {
+    detailApp = null;
+    if (detailOverlayEl) detailOverlayEl.className = '';
+    if (detailTitleEl) detailTitleEl.textContent = path.split('/').pop();
+    if (!detailContentEl) return;
+    detailContentEl.innerHTML = '';
+    var prompt = document.createElement('div');
+    prompt.className = 'detail-description-text';
+    prompt.textContent = zylI18n.t('store.install_file_prompt');
+    var area = document.createElement('div');
+    area.className = 'detail-action-area';
+    var btn = document.createElement('button');
+    btn.className = 'detail-action-btn btn-install';
+    btn.textContent = zylI18n.t('store.install');
+    btn.addEventListener('click', function () {
+      btn.disabled = true;
+      btn.textContent = zylI18n.t('store.installing');
+      ZylBridge.requestService('appstore', 'installFile', { path: path }).then(function (r) {
+        if (r && r.ok) ZylToast.success(zylI18n.t('store.installed'));
+        else ZylToast.error(zylI18n.t(REASON_KEYS[r && r.reason] || 'store.error_failed'));
+      }, function () {
+        ZylToast.error(zylI18n.t('store.error_failed'));
+      }).then(function () {
+        closeDetail();
+        requestData();
+      });
+    });
+    area.appendChild(btn);
+    detailContentEl.appendChild(prompt);
+    detailContentEl.appendChild(area);
+  }
+
+  ZylIntent.onIntent(function (intent) {
+    if (intent.action === ZylIntent.ACTION.VIEW && intent.data) openPackage(String(intent.data));
+  });
 
   /* ─── Navigation ─── */
   window.addEventListener('message', function (e) {

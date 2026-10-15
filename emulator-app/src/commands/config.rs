@@ -213,6 +213,7 @@ pub fn delete_saved_device(
         .join("images")
         .join(format!("{}.img", profile_id));
     let _ = fs::remove_file(&image_path);
+    let _ = fs::remove_file(image_path.with_extension("id"));   // its hardware ID
 
     // VFS 폴백 디렉토리 삭제
     let vfs_path = app_state.data_dir.join("vfs").join(&profile_id);

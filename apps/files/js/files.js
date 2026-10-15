@@ -581,6 +581,7 @@
     else if (videoExts.indexOf(ext) !== -1) mimeType = 'video/*';
     else if (audioExts.indexOf(ext) !== -1) mimeType = 'audio/*';
     else if (textExts.indexOf(ext) !== -1) mimeType = 'text/plain';
+    else if (ext === 'zpkg') mimeType = 'application/x-zyl-package';   /* the App Store installs it */
 
     /* Relative to the user's files, as the fs service names them */
     var filePath = (currentPath === '/' ? '' : currentPath.replace(/^\/+/, '') + '/') + file.name;

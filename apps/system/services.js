@@ -227,10 +227,16 @@ window.ZylSystemServices = (function () {
       _modules.logger = loggerMod;
     }
 
+    /* App seals: whose code may run (apps, appstore) — knows this device's ID */
+    var sealMod = ns.appSeal ? ns.appSeal({
+      invoke: _invoke,
+      deviceRef: (_modules.device && _modules.device._getRef) ? _modules.device._getRef() : {}
+    }) : null;
+
     /* Apps (needed by appstore, sandbox) */
     var appsMod = null;
     if (ns.apps) {
-      appsMod = ns.apps(deps);
+      appsMod = ns.apps({ invoke: _invoke, SYSTEM_APPS: SYSTEM_APPS, seal: sealMod });
       serviceMap.apps = appsMod;
       _modules.apps = appsMod;
     }
@@ -256,6 +262,7 @@ window.ZylSystemServices = (function () {
       invoke: _invoke, SYSTEM_APPS: SYSTEM_APPS,
       settingsSvc: settingsMod,
       appsSvc: appsMod,
+      seal: sealMod,
       deviceRef: (_modules.device && _modules.device._getRef) ? _modules.device._getRef() : {},
       logFn: loggerMod ? loggerMod._addEntry : null
     };

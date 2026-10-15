@@ -4,7 +4,8 @@
  * 역할: 기기 정보 서비스 (org.zylos.Device) — 설정 > 이 기기 정보
  * 수행범위: 모델·SoC·메모리·커널(Board HAL), OS 버전·보안 패치 수준(이미지의
  *           release — meson 이 apps/system/release.js 에서), 화면 해상도(Display
- *           HAL), 호스트 이름, 가동 시간
+ *           HAL), 호스트 이름, 가동 시간, 기기 ID(Board HAL — 개발 빌드
+ *           프로비저닝 프로필에 등록하는 값)
  * 의존방향: hal.h (Board·Display HAL), gio/gio.h (D-Bus)
  * SOLID: SRP — 기기 정보 조회만
  * ────────────────────────────────────────────────────────── */
@@ -60,6 +61,7 @@ static GVariant *info_variant(void) {
     g_variant_builder_add(&d, "{sv}", "build", g_variant_new_string(ZYL_OS_VERSION));
     g_variant_builder_add(&d, "{sv}", "resolution", g_variant_new_string(resolution));
     g_variant_builder_add(&d, "{sv}", "hostname", g_variant_new_string(host));
+    g_variant_builder_add(&d, "{sv}", "deviceId", g_variant_new_string(b.device_id));
     return g_variant_new("(a{sv})", &d);
 }
 

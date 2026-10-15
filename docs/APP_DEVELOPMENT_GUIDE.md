@@ -554,93 +554,58 @@ navigator.system.notification.create('제목', '내용');
 
 ---
 
-## 12. 패키징 및 서명
+## 12. 패키징과 서명 (봉인)
 
-### 12.1 zyl SDK로 패키징 (권장)
+기기는 **봉인(seal)된 앱만** 설치하고 실행합니다. 봉인은 패키지 안의
+`.zyl-seal/seal.json`(앱의 모든 파일과 SHA-256)과 그 서명입니다. 설치 후
+파일이 하나라도 바뀌거나 늘거나 줄면 그 앱은 실행되지 않습니다. 서명을
+건너뛰는 개발자 모드는 없습니다. 형식은 [APPSTORE_API.md](APPSTORE_API.md)를 따릅니다.
+
+- **스토어 배포 앱**: 스토어가 자기 키로 봉인합니다 (`tools/build-store.py package --key store.key`)
+- **개발 빌드**: 개발자 키로 봉인합니다. 스토어가 서명한 **개발자 인증서**와
+  **프로비저닝 프로필**(앱 id 패턴, 기기 ID, 기한)이 허락한 기기에서만 설치·실행됩니다
+
+### 12.1 개발 빌드 흐름
 
 ```bash
-# 앱 디렉토리에서
-./tools/zyl package       # .ospkg 생성 (서명 없음)
-./tools/zyl sign developer.key developer.crt   # RSA-2048 서명
-```
-
-### 12.2 수동 패키징
-
-```bash
+./tools/zyl keygen acme          # ~/.zyl/keys/acme.key(비밀), acme.pub
+# 1) acme.pub 와 테스트할 기기의 ID(설정 > 이 기기 정보 > 기기 ID)를 스토어에 보냄
+# 2) 스토어가 acme.cert.json(+.sig), myapp.profile.json(+.sig) 을 발급
 cd myapp/
-zip -r ../myapp.ospkg . -x ".*"
+../tools/zyl package --key ~/.zyl/keys/acme.key \
+    --cert ../acme.cert.json --profile ../myapp.profile.json      # → ../<id>-<version>.zpkg
+# 3) .zpkg 를 기기의 사용자 파일(예: Downloads)에 복사 → 파일 앱에서 열기 → 앱스토어가 설치
 ```
 
-### 12.3 개발자 인증서 생성
+에뮬레이터의 가상 기기도 고유 기기 ID(`EMU-…`)를 가지며 같은 규칙으로 검사합니다.
 
-```bash
-openssl genrsa -out developer.key 2048
-openssl req -new -x509 -key developer.key -out developer.crt \
-  -days 365 -subj "/CN=Your Name/O=Your Org/C=KR"
-```
+### 12.2 설치되지 않을 때
 
-### 12.4 수동 서명
-
-```bash
-# app.json SHA-256 해시 생성
-sha256sum myapp/app.json | awk '{print $1}' > manifest.hash
-
-# RSA 서명
-openssl dgst -sha256 -sign developer.key -out SIGNATURE manifest.hash
-
-# 인증서 지문 생성
-openssl rsa -in developer.key -pubout -outform DER | sha256sum | awk '{print $1}' > CERT
-
-# 서명 파일을 패키지에 추가
-cp SIGNATURE CERT myapp/
-zip -r myapp-signed.ospkg myapp/ -x ".*"
-```
-
-### 12.5 개발자 모드 (서명 우회)
-
-```
-설정 → 보안 → 개발자 모드 → 활성화
-```
+| 안내 | 이유 |
+|---|---|
+| 이 기기에서 실행하도록 허락된 개발 빌드가 아닙니다 | 프로필에 이 기기 ID나 앱 id 가 없음 (`not_provisioned`) |
+| 개발자 인증서나 프로필이 만료되었습니다 | `notAfter` 경과 (`expired`) — 스토어에서 새로 발급 |
+| 앱스토어가 이 개발자의 인증서를 폐기했습니다 | 카탈로그의 `revoked` 목록 (`revoked`) |
+| 앱스토어의 내용을 확인할 수 없어… | 봉인이 없거나 서명·파일이 맞지 않음 (`bad_package`) |
 
 ---
 
 ## 13. zyl SDK CLI
 
-`tools/zyl`은 개발자 워크플로우 전체를 지원하는 CLI입니다.
+`tools/zyl` 은 개발 빌드까지의 워크플로우를 지원합니다.
 
 ```bash
-# 새 앱 프로젝트 생성 (보일러플레이트 자동 생성)
-./tools/zyl init <app-name>
-
-# 에뮬레이터에서 개발 모드 실행
-./tools/zyl dev
-
-# app.json + 코드 구조 검증
-./tools/zyl validate
-
-# .ospkg 패키지 생성 (서명 없음)
-./tools/zyl package
-
-# RSA-2048 서명
-./tools/zyl sign <key-file> <cert-file>
-
-# 개발자 키 쌍 생성
-./tools/zyl keygen <developer-name>
-```
-
-### zyl keygen 출력
-```
-<name>.key   — RSA-2048 비밀키 (절대 배포 금지!)
-<name>.crt   — 자체 서명 인증서
-<name>.pub   — PEM 공개키
+./tools/zyl init <app-name>      # 새 앱 프로젝트 (보일러플레이트)
+./tools/zyl validate             # app.json + 코드 구조 검증
+./tools/zyl keygen [name]        # 개발자 키 쌍 (~/.zyl/keys — 앱 폴더 밖이어야 패키지에 섞이지 않음)
+./tools/zyl package --key K --cert C --profile P [out-dir]   # 개발 빌드 .zpkg
 ```
 
 ### zyl validate 검사 항목
 - `app.json` 필수 필드 존재 여부
-- `iconSvg` 필드 유효성
-- `permissions` 배열 유효성
 - `entry` 파일 존재 여부
 - ES5 호환성 기본 검사
+- i18n 5개 언어
 
 ---
 
@@ -648,11 +613,11 @@ zip -r myapp-signed.ospkg myapp/ -x ".*"
 
 ### 등록 절차
 
-1. **개발자 등록**: [developer.zyl-os.com](https://developer.zyl-os.com) 에서 계정 생성
-2. **인증서 발급**: 개발자 포털에서 공식 인증서 발급 요청
-3. **앱 제출**: 서명된 `.ospkg` 파일 업로드
-4. **심사**: 보안 + 품질 검토 (3-5 영업일)
-5. **배포**: 승인 후 앱스토어에 공개
+1. **개발자 등록**: 스토어 운영자에게 공개 키(`zyl keygen` 의 `.pub`) 제출 → 개발자 인증서 발급
+2. **개발·테스트**: 프로비저닝 프로필로 등록한 기기에서 개발 빌드 실행
+3. **앱 제출**: 앱 소스 디렉토리(또는 개발 빌드) 제출
+4. **심사**: 보안 + 품질 검토
+5. **배포**: 스토어가 자기 키로 봉인해 카탈로그에 게시
 
 ### 심사 기준
 
@@ -689,7 +654,7 @@ export WEBKIT_INSPECTOR_SERVER=0.0.0.0:8090
 
 | 문제 | 원인 | 해결 |
 |------|------|------|
-| 앱이 설치되지 않음 | 서명 없음 | `zyl sign` 또는 개발자 모드 활성화 |
+| 앱이 설치되지 않음 | 봉인·프로비저닝 | §12.2 의 안내별 이유 확인 |
 | Bridge API 작동 안함 | 일반 브라우저 | ZylBridge 폴백 확인 |
 | 권한 차단 에러 | app.json 미선언 | `permissions` 배열에 권한 추가 |
 | CSS 깨짐 | safe area 미적용 | `--safe-top`, `--safe-bottom` 사용 |

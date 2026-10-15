@@ -30,25 +30,26 @@ OpenSSL 기반 암호화, 앱 서명 시스템을 통해 보안을 제공합니�
 
 ---
 
-## 앱 패키지 서명
+## 앱 패키지 서명 (봉인)
 
-### 서명 검증 (appstore.c)
-- **RSA-2048+SHA-256** 서명 검증 (OpenSSL EVP API)
-- 개발자 인증서 신뢰 저장소 (`trust_store_path`)
-- 서명 없는 앱 설치 차단 (개발자 모드 예외)
-- **ZIP 매직 바이트 검증**: PK\x03\x04 확인
-- **경로 순회 공격 탐지**: `..` 포함 파일명 스캔, 설치 전 차단
+### 판정 (`runtime/services/appstore/app_seal.c`, 에뮬레이터는 `apps/system/services/app-seal.js`)
+- 패키지마다 `.zyl-seal/seal.json`(모든 파일의 SHA-256) + RSA-SHA256 서명
+- **공식 앱**: 스토어 키 봉인만 카탈로그로 설치
+- **개발 빌드**: 스토어가 서명한 개발자 인증서(만료·폐기)와 프로비저닝 프로필
+  (앱 id 패턴·기기 ID·만료)이 허락한 개발자 키 — 사용자 파일에서만 설치
+- 파일 집합이 봉인과 정확히 같아야 함 (추가·삭제·변경·링크 → 거부)
+- WAM 은 봉인이 맞는 사용자 앱만 등록하고, 파일을 내보낼 때마다 해시를
+  봉인과 대조해 메모리에서 제공 (검사 시점과 사용 시점이 같음)
+- 서명 우회(개발자 모드) 없음
+- 패키지 해제: 절대 경로·`..`·링크·장치 파일 거부, 개수·크기 상한
 
 ### 서명 절차
 ```bash
-# 개발자 키 생성
-./tools/zyl keygen "My Name"   # 또는
-
-# 개인 키 서명
-openssl dgst -sha256 -sign developer.key -out SIGNATURE manifest.hash
-
-# zyl SDK로 패키징
-./tools/zyl sign developer.key developer.crt
+./tools/zyl keygen acme                         # 개발자 키 (~/.zyl/keys)
+python3 -I tools/build-store.py dev-cert …      # 스토어: 개발자 인증서
+python3 -I tools/build-store.py profile …       # 스토어: 프로비저닝 프로필
+./tools/zyl package --key … --cert … --profile …  # 개발자: 개발 빌드
+python3 -I tools/build-store.py package --key store.key …   # 스토어: 공식 앱
 ```
 
 ---

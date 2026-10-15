@@ -30,6 +30,9 @@ GPtrArray *zyl_store_catalog_parse(const char *json, gssize len, const char *cat
 
 void zyl_store_app_free(gpointer app);
 
+/* Revoked developer certificates the catalog lists ("revoked": [sha256…]); NULL-terminated */
+char **zyl_store_catalog_revoked(const char *json, gssize len);
+
 /* Dotted numeric versions: <0, 0, >0 */
 int zyl_store_version_cmp(const char *a, const char *b);
 

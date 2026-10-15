@@ -2,15 +2,19 @@
 // [Clean Architecture] Domain Layer - Service Module
 //
 // Role: App store service — the store's signed catalog; install, update, remove
-// Scope: getCatalog ({ state, apps }), install / uninstall ({ ok, reason }) —
-//        the same contract and rules as runtime/services/appstore: the catalog
-//        and every package checked against the store key (RSA-SHA256 over the
-//        SHA-256, WebCrypto), invalid entries skipped, the package's app.json
-//        must be the catalog's app and version with its entry page, never a
-//        downgrade, the image's apps are not the store's. Removing an app takes
-//        its whole container and makes the OS forget it (forgetApp).
-//        Configuration: the OS image's system/store.json
-// Dependency Direction: Domain -> invoker (store_*), apps service, forgetApp
+// Scope: getCatalog ({ state, apps }), install / uninstall / installFile
+//        ({ ok, reason }) — the same contract and rules as
+//        runtime/services/appstore: the catalog and every package checked against
+//        the store key, invalid entries skipped, the package's app.json must be
+//        the catalog's app and version with its entry page, never a downgrade,
+//        the image's apps are not the store's. Every package carries its seal
+//        (app-seal.js): from the catalog the store's own only; from the user's
+//        files (installFile) also a development build provisioned for this
+//        device. The catalog's revoked developer certificates are kept
+//        (store_revoked). Removing an app takes its whole container and makes
+//        the OS forget it (forgetApp). Configuration: the OS image's system/store.json
+// Dependency Direction: Domain -> invoker (store_*, fs_read_binary), app seal,
+//        apps service, forgetApp
 // SOLID: SRP — the store flow only; files are the container's (store.rs)
 // ----------------------------------------------------------
 
@@ -23,6 +27,8 @@
   var VERSION = /^[0-9]+(\.[0-9]+)*$/;
   var HEX64 = /^[0-9a-fA-F]{64}$/;
   var B64 = /^[A-Za-z0-9+\/=]+$/;
+  /* Where a package from the user's files is unpacked before its id is known */
+  var FILE_STAGE = 'local.package';
 
   /* Names a directory, reverse-domain (as store_catalog.c) */
   function validId(id) {
@@ -46,36 +52,15 @@
     } catch (e) { return null; }
   }
 
-  function bytesOf(b64) {
-    var bin = atob(b64), out = new Uint8Array(bin.length);
-    for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-    return out;
-  }
-
-  function hex(buf) {
-    var b = new Uint8Array(buf), s = '';
-    for (var i = 0; i < b.length; i++) s += (b[i] < 16 ? '0' : '') + b[i].toString(16);
-    return s;
-  }
-
-  /* RSA-SHA256 over the SHA-256 of bytes — what tools/build-store.py signs.
-     sha: the expected digest, or null */
-  function verify(bytes, sha, signature, pem) {
-    var subtle = crypto.subtle;
-    return subtle.digest('SHA-256', bytes).then(function (digest) {
-      if (sha && hex(digest) !== sha.toLowerCase()) return false;
-      var der = bytesOf(String(pem).replace(/-----[^-]+-----/g, '').replace(/\s+/g, ''));
-      return subtle.importKey('spki', der, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify'])
-        .then(function (key) {
-          return subtle.verify('RSASSA-PKCS1-v1_5', key, bytesOf(signature), digest);
-        });
-    }).catch(function () { return false; });
+  /* The developer certificates the store revoked (their SHA-256s) */
+  function parseRevoked(root) {
+    return (Array.isArray(root.revoked) ? root.revoked : []).filter(function (h) {
+      return typeof h === 'string' && HEX64.test(h);
+    }).map(function (h) { return h.toLowerCase(); });
   }
 
   /* The valid entries, the first of an id winning; null when not a catalog */
-  function parseCatalog(text, url) {
-    var root;
-    try { root = JSON.parse(text); } catch (e) { return null; }
+  function parseCatalog(root, url) {
     if (!root || !Array.isArray(root.apps)) return null;
     var seen = {}, out = [];
     root.apps.forEach(function (a) {
@@ -109,6 +94,8 @@
 
   ns.appstore = function (deps) {
     var invoke = deps.invoke;
+    var seal = deps.seal;
+    var bytesOf = seal.bytesOf;
     var appsSvc = deps.appsSvc;
     var SYSTEM_APPS = deps.SYSTEM_APPS || [];
     var _busy = false;
@@ -130,10 +117,15 @@
         ]).then(function (r) {
           var text = new TextDecoder().decode(bytesOf(r[0]));
           var sig = new TextDecoder().decode(bytesOf(r[1])).trim();
-          return verify(bytesOf(r[0]), null, sig, cfg.publicKey).then(function (ok) {
+          return seal.verify(bytesOf(r[0]), null, sig, cfg.publicKey).then(function (ok) {
             if (!ok) return { state: 'untrusted' };       /* not signed by the store's key */
-            var apps = parseCatalog(text, cfg.url);
-            return apps ? { state: 'ok', apps: apps, cfg: cfg } : { state: 'invalid' };
+            var root = null;
+            try { root = JSON.parse(text); } catch (e) { root = null; }
+            var apps = parseCatalog(root, cfg.url);
+            if (!apps) return { state: 'invalid' };
+            /* What the store revoked stops development builds signed by it */
+            return Promise.resolve(invoke('store_revoked', { list: parseRevoked(root) })).catch(function () {})
+              .then(function () { return { state: 'ok', apps: apps, cfg: cfg }; });
           });
         }, function () { return { state: 'unreachable' }; });
       });
@@ -153,6 +145,36 @@
 
     function outcome(ok, reason) { return { ok: ok, reason: reason || '' }; }
 
+    /* The unpacked app.json, if it is a valid app with its entry page (and, when
+       given, the expected id and version); else null */
+    function unpackedManifest(u, id, version) {
+      var m;
+      try { m = JSON.parse(u.manifest); } catch (e) { m = null; }
+      var entry = (m && m.entry) || 'index.html';
+      if (!m || !validId(m.id) || typeof m.version !== 'string' || !VERSION.test(m.version) ||
+          (id && (m.id !== id || m.version !== version)) || !safeName(entry) ||
+          !u.hashes || typeof u.hashes[entry] !== 'string') return null;
+      return m;
+    }
+
+    /* Commit if the seal holds, else discard; the outcome */
+    function commitSealed(u, m, stage, storeOnly) {
+      return seal.check(u, m.id, m.version, storeOnly).then(function (why) {
+        if (why) {
+          invoke('store_discard', { appId: stage });
+          return outcome(false, why);
+        }
+        return invoke('store_commit', { appId: m.id, stage: stage }).then(function () {
+          appsSvc._invalidate();
+          return appsSvc.getInstalled().then(function () {
+            var r = outcome(true);
+            r.appId = m.id;
+            return r;
+          });
+        });
+      });
+    }
+
     function install(appId) {
       return Promise.all([catalog(), installed()]).then(function (r) {
         var c = r[0], have = r[1];
@@ -162,24 +184,44 @@
         if (have.image[a.id]) return outcome(false, 'system_app');
         if (have.store[a.id] && versionCmp(have.store[a.id], a.version) >= 0) return outcome(false, 'up_to_date');
         return invoke('store_download', { url: a.packageUrl, max: a.size }).then(function (b64) {
-          return verify(bytesOf(b64), a.sha256, a.signature, c.cfg.publicKey).then(function (ok) {
+          return seal.verify(bytesOf(b64), a.sha256, a.signature, c.cfg.publicKey).then(function (ok) {
             if (!ok) return outcome(false, 'bad_package');   /* tampered, corrupt, or not the store's */
             return invoke('store_unpack', { appId: a.id, 'package': b64 }).then(function (u) {
-              var m;
-              try { m = JSON.parse(u.manifest); } catch (e) { m = null; }
-              var entry = (m && m.entry) || 'index.html';
-              if (!m || m.id !== a.id || m.version !== a.version || !safeName(entry) ||
-                  (u.files || []).indexOf(entry) === -1) {
+              var m = unpackedManifest(u, a.id, a.version);
+              if (!m) {
                 invoke('store_discard', { appId: a.id });
                 return outcome(false, 'invalid_package');
               }
-              return invoke('store_commit', { appId: a.id }).then(function () {
-                appsSvc._invalidate();
-                return appsSvc.getInstalled().then(function () { return outcome(true); });
-              });
+              return commitSealed(u, m, a.id, true);     /* the store's own seal only */
             }, function () { return outcome(false, 'invalid_package'); });
           });
         }, function () { return outcome(false, 'download_failed'); });
+      });
+    }
+
+    /* A package from the user's files: a development build provisioned for this
+       device, or the store's own. The same version again is allowed (a developer's
+       next build), never a downgrade */
+    function installFile(path) {
+      if (typeof path !== 'string' || !safeName(path.replace(/^\/+/, ''))) {
+        return Promise.resolve(outcome(false, 'invalid_package'));
+      }
+      return Promise.all([config(), installed()]).then(function (r) {
+        if (!r[0]) return outcome(false, 'unconfigured');
+        var have = r[1];
+        return Promise.resolve(invoke('fs_read_binary', { path: path })).then(function (b64) {
+          if (typeof b64 !== 'string' || b64.length > Math.ceil(MAX_PACKAGE / 3) * 4) return null;
+          return invoke('store_unpack', { appId: FILE_STAGE, 'package': b64 });
+        }).catch(function () { return null; }).then(function (u) {
+          var m = u && unpackedManifest(u, null, null);
+          var why = !m ? 'invalid_package' : have.image[m.id] ? 'system_app'
+            : (have.store[m.id] && versionCmp(have.store[m.id], m.version) > 0) ? 'up_to_date' : '';
+          if (why) {
+            invoke('store_discard', { appId: FILE_STAGE });
+            return outcome(false, why);
+          }
+          return commitSealed(u, m, FILE_STAGE, false);
+        });
       });
     }
 
@@ -212,6 +254,9 @@
       },
       install: function (p) {
         return exclusive(function () { return install(p.appId); });
+      },
+      installFile: function (p) {
+        return exclusive(function () { return installFile(p && p.path); });
       },
       /* The app and everything it made: its container, and what the OS kept for it */
       uninstall: function (p) {

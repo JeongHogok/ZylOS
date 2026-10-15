@@ -20,11 +20,11 @@
 - **클립보드 API**: 앱 간 텍스트/mimeType 공유 (clipboard.js 서비스)
 - **앱별 i18n**: 공유 엔진(shared/i18n.js) + 앱별 번역 데이터 (ko/en/ja/zh/es)
 - **7계층 보안**: iframe sandbox + CSP + 권한 체크 + 파일 보호 + 도메인 화이트리스트 + 앱 워치독 + Verified Boot
-- **네이티브 보안**: OpenSSL AES-256-GCM 크리덴셜, RSA-2048+SHA-256 앱 서명, libseccomp BPF (3프로필), dm-verity
+- **네이티브 보안**: OpenSSL AES-256-GCM 크리덴셜, 앱 봉인(스토어·프로비저닝된 개발자 서명, 파일마다 SHA-256), libseccomp BPF (3프로필), dm-verity
 - **네이티브 에뮬레이터**: Tauri 2.x (Rust) — IPC 라우터 + 컴포지터, aes-gcm 암호화
 - **A/B OTA**: 원자적 시스템 업데이트 + RSA-2048 서명 검증 + 자동 롤백
 - **Verified Boot**: FIT 이미지 서명 + dm-verity (rootfs 무결성)
-- **zyl SDK CLI**: init/validate/package/sign/keygen 개발자 워크플로우
+- **zyl SDK CLI**: init/validate/keygen/package 개발자 워크플로우 (개발 빌드 봉인)
 - **코드 품질 보증**: verify-all.sh (11섹션 자동 검증) + pre-commit hook
 - **코드베이스 규모**: 375개 파일, ~66,300 LoC
 
@@ -49,7 +49,7 @@
 | **HAL** | C (sysfs, wpa_supplicant, BlueZ, PipeWire) | 하드웨어 추상화 (9개 구현체) |
 | **샌드박싱** | namespace + libseccomp BPF (3프로필 46규칙) + cgroup v2 | 앱 격리 |
 | **크리덴셜** | OpenSSL AES-256-GCM + PBKDF2-HMAC-SHA256 | 인증 정보 암호화 |
-| **패키징** | .ospkg (RSA-2048+SHA-256 서명, OpenSSL EVP) | 앱 배포/검증 |
+| **패키징** | .zpkg + 봉인(.zyl-seal, RSA-SHA256) — 스토어 키 또는 프로비저닝된 개발자 키 | 앱 배포/검증 |
 | **업데이트** | A/B 파티션 + RSA-2048 서명 검증 | 원자적 OTA |
 | **빌드** | Meson + Ninja, C11 | 네이티브/크로스 컴파일 |
 | **크로스 컴파일** | riscv64-linux-gnu-gcc | RISC-V 타겟 빌드 |
@@ -107,7 +107,7 @@
 |--------|------|
 | accessibility | 고대비, 폰트 스케일 |
 | apps | 설치된 앱 목록/관리 |
-| appstore | .ospkg 패키지 검증/설치 |
+| appstore | 서명된 카탈로그, .zpkg 봉인 검증/설치·삭제, 개발 빌드(프로비저닝) |
 | audio | 5개 볼륨 카테고리, 키클릭, 알림음, 진동 |
 | bluetooth | BT 디바이스 조회 (비동기) |
 | browser | URL 로딩/탐색 |
@@ -255,14 +255,11 @@ ninja -C builddir-riscv
 # app.json + 코드 검증
 ./tools/zyl validate
 
-# .ospkg 패키지 생성
-./tools/zyl package
+# 개발자 키 쌍 생성 (~/.zyl/keys) — 공개 키를 스토어에 보내 인증서·프로필 발급
+./tools/zyl keygen acme
 
-# 패키지 서명 (RSA-2048)
-./tools/zyl sign developer.key developer.crt
-
-# 개발자 키 쌍 생성
-./tools/zyl keygen "My Name"
+# 개발 빌드 .zpkg (프로필에 등록한 기기에서만 설치·실행)
+./tools/zyl package --key ~/.zyl/keys/acme.key --cert acme.cert.json --profile app.profile.json
 ```
 
 ### Verified Boot 키 생성 및 이미지 서명
@@ -302,7 +299,7 @@ ninja -C builddir-riscv
 |-----------|------|
 | openssl | AES-256-GCM, RSA-2048, SHA-256 |
 | libseccomp | seccomp BPF 샌드박스 |
-| libzip | .ospkg 패키지 압축/해제 |
+| libzip | .zpkg 패키지 해제 |
 | json-glib | JSON 파싱 |
 | glib-2.0, gio-2.0 | D-Bus IPC, 유틸리티 |
 | libcurl | HTTP 클라이언트 (OTA, 앱스토어) |
@@ -360,8 +357,8 @@ runtime/hal/                   Hardware Abstraction Layer (C, 8개)
 runtime/services/              시스템 서비스 26개 C 디렉토리 (D-Bus)
 system/                        systemd (25개 서비스), Plymouth, DTS, AppArmor, 복구
 tools/                         빌드/개발 도구
-  zyl                            SDK CLI (init/validate/package/sign/keygen)
-  sign-ospkg.sh                  앱 패키지 서명 스크립트
+  zyl                            SDK CLI (init/validate/keygen/package)
+  build-store.py                 스토어: 패키지 봉인·카탈로그 서명·개발자 인증서·프로필
   gen-boot-keys.sh               Verified Boot RSA-2048 키 생성
   sign-image.sh                  FIT 이미지 서명 + dm-verity
 tests/                         단위/통합 + verify-all.sh (11섹션 자동 검증)

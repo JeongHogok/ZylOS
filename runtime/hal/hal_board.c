@@ -61,6 +61,9 @@ static bool board_get(ZylBoardInfo *out) {
     g_free(mem);
     struct utsname u;
     if (uname(&u) == 0) g_strlcpy(out->kernel, u.release, sizeof(out->kernel));
+    char *serial = read_file(ZYL_SYSFS_ROOT "/proc/device-tree/serial-number", NULL);
+    if (serial) g_strlcpy(out->device_id, g_strstrip(serial), sizeof(out->device_id));
+    g_free(serial);
     return true;
 }
 

@@ -2,18 +2,18 @@
 # ──────────────────────────────────────────────────────────
 # [Clean Architecture] Infrastructure Layer - Developer CLI
 #
-# 역할: Zyl OS SDK CLI — 앱 생성, 빌드, 패키징, 서명, 실행
-# 수행범위: 개발자 워크플로우 전체 (init → dev → package → sign → publish)
-# 의존방향: bash, python3, openssl, zip
+# 역할: Zyl OS SDK CLI — 앱 생성, 검증, 개발자 키, 개발 빌드 패키징
+# 수행범위: init → validate → keygen(공개 키를 스토어에 제출해 인증서·프로필을
+#           받음) → package(개발자 키로 봉인한 .zpkg — 프로필의 기기에서만 실행)
+# 의존방향: bash, python3, openssl, tools/build-store.py (봉인·패키지 형식의 단일 출처)
 # SOLID: SRP — 개발자 도구 CLI만 담당
 #
 # 사용법:
-#   zyl init <app-name>       — 새 앱 프로젝트 생성
-#   zyl dev                    — 에뮬레이터에서 개발 모드 실행
-#   zyl package                — .ospkg 패키지 생성 (서명 없음)
-#   zyl sign <key> <cert>      — 패키지 서명
+#   zyl init <app-name>        — 새 앱 프로젝트 생성
 #   zyl validate               — app.json + 코드 검증
-#   zyl keygen <name>          — 개발자 키 쌍 생성
+#   zyl keygen [name]          — 개발자 키 쌍 생성 (~/.zyl/keys, 앱 폴더 밖)
+#   zyl package --key --cert --profile [out-dir]
+#                              — 개발 빌드 .zpkg (스토어가 서명한 인증서·프로필)
 # ──────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -49,6 +49,7 @@ cmd_init() {
   "entry": "index.html",
   "description": "A Zyl OS app",
   "permissions": [],
+  "formFactors": ["*"],
   "iconSvg": "<svg viewBox='0 0 24 24'><circle cx='12' cy='12' r='10' fill='#4a90d9'/></svg>"
 }
 EOF
@@ -163,7 +164,7 @@ EOF
     echo "  1. Edit $dir/app.json (permissions, icon)"
     echo "  2. Develop in $dir/js/$name.js"
     echo "  3. Run: zyl validate (from $dir/)"
-    echo "  4. Package: zyl package"
+    echo "  4. Package: zyl package --key … --cert … --profile …"
 }
 
 cmd_validate() {
@@ -252,41 +253,40 @@ cmd_package() {
         echo "✗ app.json not found. Run from app directory."
         exit 1
     fi
-
-    local app_id=$(python3 -c "import json; print(json.load(open('app.json'))['id'])")
-    local version=$(python3 -c "import json; print(json.load(open('app.json'))['version'])")
-    local output="${app_id}_${version}.ospkg"
-
-    echo "Packaging: $app_id v$version → $output"
-    zip -r -q "$output" . -x '*.ospkg' -x '.git/*' -x 'node_modules/*'
-    echo "✓ Package created: $output ($(du -h "$output" | cut -f1))"
-    echo ""
-    echo "To sign: zyl sign <key.pem> <cert.pem>"
-}
-
-cmd_sign() {
-    local key="${1:-}"
-    local cert="${2:-}"
-    if [ -z "$key" ] || [ -z "$cert" ]; then
-        echo "Usage: zyl sign <developer-key.pem> <developer-cert.pem>"
+    local key="" cert="" profile="" out=".."
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --key|--cert|--profile)
+                [ $# -ge 2 ] || { echo "✗ $1 needs a file"; exit 1; }
+                case "$1" in --key) key="$2" ;; --cert) cert="$2" ;; --profile) profile="$2" ;; esac
+                shift 2 ;;
+            *) out="$1"; shift ;;
+        esac
+    done
+    if [ -z "$key" ] || [ -z "$cert" ] || [ -z "$profile" ]; then
+        echo "Usage: zyl package --key <developer.key> --cert <developer.cert.json> --profile <app.profile.json> [out-dir]"
+        echo "  The app store signs your certificate and profile (send it your public key"
+        echo "  and the device IDs from Settings > About); the package installs only on"
+        echo "  those devices. Default out-dir: the parent directory."
         exit 1
     fi
-    "$SCRIPT_DIR/sign-ospkg.sh" "." "$key" "$cert"
+    python3 -I "$SCRIPT_DIR/build-store.py" package --key "$key" --cert "$cert" --profile "$profile" . "$out"
 }
 
 cmd_keygen() {
     local name="${1:-developer}"
-    echo "Generating RSA-2048 developer key pair: $name"
-
-    openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \
-        -out "${name}.key"
-    chmod 600 "${name}.key"
-
-    openssl req -new -x509 -key "${name}.key" -out "${name}.crt" \
-        -days 1095 -subj "/CN=$name/O=ZylOS Developer"
-
-    echo "✓ Private key: ${name}.key (KEEP SECRET)"
-    echo "✓ Certificate: ${name}.crt (submit to app store)"
+    local dir="${ZYL_KEYS:-$HOME/.zyl/keys}"
+    if [ -e "$dir/$name.key" ]; then
+        echo "✗ Already exists: $dir/$name.key"
+        exit 1
+    fi
+    # Outside any app folder: a key in one would be packaged with the app
+    mkdir -p "$dir" && chmod 700 "$dir"
+    openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$dir/$name.key" 2>/dev/null
+    chmod 600 "$dir/$name.key"
+    openssl pkey -in "$dir/$name.key" -pubout -out "$dir/$name.pub"
+    echo "✓ Private key: $dir/$name.key (KEEP SECRET)"
+    echo "✓ Public key:  $dir/$name.pub (send to the app store for your certificate)"
 }
 
 cmd_help() {
@@ -295,9 +295,9 @@ cmd_help() {
     echo "Commands:"
     echo "  zyl init <name>          Create new app project"
     echo "  zyl validate             Validate current app"
-    echo "  zyl package              Create .ospkg package"
-    echo "  zyl sign <key> <cert>    Sign package"
-    echo "  zyl keygen [name]        Generate developer keys"
+    echo "  zyl keygen [name]        Generate a developer key pair (~/.zyl/keys)"
+    echo "  zyl package --key K --cert C --profile P [out-dir]"
+    echo "                           Seal a development build (.zpkg)"
     echo "  zyl help                 Show this help"
 }
 
@@ -305,8 +305,7 @@ cmd_help() {
 case "${1:-help}" in
     init)     shift; cmd_init "$@" ;;
     validate) cmd_validate ;;
-    package)  cmd_package ;;
-    sign)     shift; cmd_sign "$@" ;;
+    package)  shift; cmd_package "$@" ;;
     keygen)   shift; cmd_keygen "$@" ;;
     help|*)   cmd_help ;;
 esac

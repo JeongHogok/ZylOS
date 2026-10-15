@@ -4,7 +4,7 @@
  * 역할: WAM(Web App Manager) 메인 서비스 — 모듈 조립 및 WebKitGTK 구현
  * 수행범위: manifest, lifecycle, bridge, D-Bus 모듈 연결, ZylWebEngine/ZylAppInterface vtable 구현
  * 의존방향: wam.h, manifest.h, lifecycle.h, bridge.h, dbus_service.h, oom.h, intent.h,
- *           app_scheme.h
+ *           app_scheme.h, app_seal.h (user apps run only as sealed), hal.h (device ID)
  * SOLID: SRP — 모듈 조립과 WebKitGTK 바인딩만 담당
  * ────────────────────────────────────────────────────────── */
 
@@ -13,6 +13,8 @@
 #include "intent/intent.h"
 #include "scheme/app_scheme.h"
 #include "../../services/appdata/container.h"
+#include "../../services/appstore/app_seal.h"
+#include "hal.h"
 
 #include <sys/stat.h>
 
@@ -257,26 +259,71 @@ static void on_webkit_bridge_message(WebKitUserContentManager *manager,
  *  cookies, cache) in its container, so nothing of it outlives the app
  * ════════════════════════════════════════════════════════════════ */
 
+/* Served from memory: what was hashed is what the app gets. A user-installed
+   app's file is served only if it is byte for byte what was sealed — code
+   changed after install never runs. The OS's own (/shared/, system apps) is
+   under dm-verity. */
 static void on_app_request(WebKitURISchemeRequest *req, gpointer user_data) {
     ZylWam *wam = user_data;
     GUri *uri = g_uri_parse(webkit_uri_scheme_request_get_uri(req), G_URI_FLAGS_NONE, NULL);
+    const char *path = uri ? g_uri_get_path(uri) : NULL;
     ZylAppManifest *m = uri && g_uri_get_host(uri)
                         ? g_hash_table_lookup(wam->manifests, g_uri_get_host(uri)) : NULL;
-    char *file = m ? zyl_app_scheme_file(m->base_path, WAM_SHARED_DIR, g_uri_get_path(uri)) : NULL;
-    GFile *f = file ? g_file_new_for_path(file) : NULL;
-    GFileInputStream *in = f ? g_file_read(f, NULL, NULL) : NULL;
-    struct stat st;
-    if (in && stat(file, &st) == 0) {
-        webkit_uri_scheme_request_finish(req, G_INPUT_STREAM(in), st.st_size, zyl_app_scheme_mime(file));
+    char *file = m ? zyl_app_scheme_file(m->base_path, WAM_SHARED_DIR, path) : NULL;
+    gchar *data = NULL;
+    gsize len = 0;
+    bool ok = file && g_file_get_contents(file, &data, &len, NULL);
+    if (ok && !m->is_system && !g_str_has_prefix(path, "/shared/")) {
+        ZylSeal *seal = g_hash_table_lookup(wam->seals, m->id);
+        ok = seal && zyl_seal_bytes_ok(seal, path + 1, data, len);
+        if (!ok) g_warning("WAM: %s%s is not as sealed — not served", m->id, path);
+    }
+    if (ok) {
+        GBytes *bytes = g_bytes_new_take(data, len);
+        GInputStream *in = g_memory_input_stream_new_from_bytes(bytes);
+        webkit_uri_scheme_request_finish(req, in, (gint64)len, zyl_app_scheme_mime(file));
+        g_object_unref(in);
+        g_bytes_unref(bytes);
     } else {
+        g_free(data);
         GError *e = g_error_new_literal(G_IO_ERROR, G_IO_ERROR_NOT_FOUND, "not found");
         webkit_uri_scheme_request_finish_error(req, e);
         g_error_free(e);
     }
-    if (in) g_object_unref(in);
-    if (f) g_object_unref(f);
     g_free(file);
     if (uri) g_uri_unref(uri);
+}
+
+/* A user-installed app runs only if its seal holds: signed by the store, or by
+   a developer the store allowed on this device, and every file as sealed */
+static ZylSeal *seal_app(const ZylAppManifest *m) {
+    char *pem = zyl_seal_store_key(WAM_STORE_CONFIG);
+    char **revoked = zyl_seal_load_revoked(WAM_REVOKED);
+    ZylBoardInfo board;
+    memset(&board, 0, sizeof(board));
+    zyl_hal_board()->get(&board);
+    ZylSeal *seal = NULL;
+    ZylSealVerdict v = zyl_seal_open(m->base_path, m->id, m->version, pem, board.device_id,
+                                     (const char *const *)revoked, g_get_real_time() / G_USEC_PER_SEC,
+                                     true, &seal);
+    if (v != ZYL_SEAL_OK) g_warning("WAM: %s refused: %s", m->id, zyl_seal_verdict_message(v));
+    g_strfreev(revoked);
+    g_free(pem);
+    return seal;
+}
+
+/* Drop every user-installed app whose seal does not hold; keep the seals */
+static void seal_user_apps(ZylWam *wam) {
+    GHashTableIter it;
+    gpointer key, value;
+    g_hash_table_iter_init(&it, wam->manifests);
+    while (g_hash_table_iter_next(&it, &key, &value)) {
+        ZylAppManifest *m = value;
+        if (m->is_system) continue;
+        ZylSeal *seal = seal_app(m);
+        if (seal) g_hash_table_replace(wam->seals, g_strdup(m->id), seal);
+        else g_hash_table_iter_remove(&it);
+    }
 }
 
 /* Secure, so apps get secure-context APIs (crypto.subtle …) as on https */
@@ -547,12 +594,15 @@ static void on_store_event(ZylWam *wam, const char *signal, GVariant *params) {
         zyl_oom_on_app_closed(g_oom, id);
     }
     g_hash_table_remove(wam->manifests, id);
+    g_hash_table_remove(wam->seals, id);
     if (strcmp(signal, "AppInstalled") == 0) {
         char *dir = zyl_container_dir(WAM_USER_DIR, id, NULL, false);
         ZylAppManifest *m = dir ? zyl_manifest_parse(dir) : NULL;
-        if (m && strcmp(m->id, id) == 0) {
+        ZylSeal *seal = m && strcmp(m->id, id) == 0 ? seal_app(m) : NULL;
+        if (seal) {
             m->is_system = FALSE;
             g_hash_table_insert(wam->manifests, g_strdup(m->id), m);
+            g_hash_table_replace(wam->seals, g_strdup(id), seal);
             g_message("WAM: installed %s", id);
         } else if (m) {
             zyl_manifest_free(m);
@@ -626,6 +676,7 @@ static void on_activate(GApplication *app, gpointer user_data) {
 
     zyl_manifest_scan_dir(wam->manifests, WAM_APP_DIR,  TRUE);
     zyl_manifest_scan_dir(wam->manifests, WAM_USER_DIR, FALSE);
+    seal_user_apps(wam);
 
     /* Auto-launch home screen */
     (void)zyl_lifecycle_launch(&wam->iface, &wam->engine, "com.zylos.home");
@@ -651,6 +702,8 @@ int main(int argc, char *argv[]) {
                                           g_free, zyl_manifest_free);
     wam.instances = g_hash_table_new_full(g_str_hash, g_str_equal,
                                           g_free, NULL);
+    wam.seals = g_hash_table_new_full(g_str_hash, g_str_equal,
+                                      g_free, (GDestroyNotify)zyl_seal_free);
 
     /* Wire up the app interface */
     wam.iface.get_manifest     = iface_get_manifest;
@@ -693,6 +746,7 @@ int main(int argc, char *argv[]) {
     zyl_bridge_cleanup();
     g_bus_unown_name(wam.dbus_owner_id);
     g_hash_table_destroy(wam.manifests);
+    g_hash_table_destroy(wam.seals);
     g_hash_table_destroy(wam.instances);
     g_object_unref(wam.app);
 

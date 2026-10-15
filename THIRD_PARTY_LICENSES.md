@@ -39,7 +39,7 @@ MIT 라이선스는 GPL-3.0과 완전 호환됩니다.
 | 라이브러리 | 라이선스 | 용도 |
 |-----------|---------|------|
 | libseccomp | LGPL 2.1 | seccomp BPF 샌드박스 |
-| libzip | BSD-3-Clause | 앱 패키지 (.ospkg) 압축 해제 |
+| libzip | BSD-3-Clause | 앱 패키지 (.zpkg) 해제 |
 | libcurl | MIT/X-style | HTTP 클라이언트 (OTA, 앱스토어) |
 | libgps (GPSD) | BSD-2-Clause | GPS 위치 서비스 |
 

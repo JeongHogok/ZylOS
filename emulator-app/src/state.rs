@@ -107,6 +107,9 @@ pub struct BootInfo {
     pub nav_mode: String,
     pub screen_width: u32,
     pub screen_height: u32,
+    /// The virtual device's own ID (a real device's chip ID): what development
+    /// provisioning profiles list
+    pub device_id: String,
 }
 
 #[derive(Debug)]

@@ -147,6 +147,11 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
   (시스템 앱이면 "", 아니면 그 앱), `app_id`(제3자 앱이면 그 앱) — 요청 값 무시
 - 스토어 패키지·카탈로그는 스토어 키 서명(패키지 전체의 SHA-256) 없이는 설치하지
   않는다 (`docs/APPSTORE_API.md`, `tools/build-store.py`)
+- 사용자 앱은 봉인(`.zyl-seal/`)이 맞을 때만 설치·등록·실행: 공식 앱은 스토어 키,
+  개발 빌드는 스토어가 서명한 인증서·프로필이 허락한 기기·앱에서만. 판정은 기기
+  `app_seal.c`, 에뮬레이터 `apps/system/services/app-seal.js` 두 곳뿐이고 규칙이
+  같아야 한다(한쪽을 바꾸면 다른 쪽과 `tests/test_app_seal.c`·`test_services.js` 도).
+  봉인을 건너뛰는 경로(개발자 모드 등)를 만들지 말 것
 
 ---
 
