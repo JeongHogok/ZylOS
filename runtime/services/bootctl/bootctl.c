@@ -7,7 +7,7 @@
  *           요청은 U-Boot 환경에 기록만 한다 — 실제 전환은 다음 부팅 때
  *           부트로더가 기기 앞의 버튼 확인을 받고 사용자 데이터를 지운 뒤에
  *           한다 (board/bpi-f3/u-boot-env.txt)
- * 의존방향: gio/gio.h (D-Bus), fw_printenv / fw_setenv (u-boot-tools)
+ * 의존방향: gio/gio.h (D-Bus), hal.h (Boot HAL — 부트로더 환경)
  * SOLID: SRP — 잠금 요청 기록만. 확인·삭제·검증 해제는 부트로더 몫
  * ────────────────────────────────────────────────────────── */
 
@@ -17,40 +17,20 @@
 #include <string.h>
 #include <stdbool.h>
 #include <gio/gio.h>
+#include "hal.h"
 
 #ifndef ZYL_CMDLINE
 #define ZYL_CMDLINE "/proc/cmdline"
 #endif
 
-/* fw_printenv -n NAME; NULL when the variable or the env itself is missing */
-static char *env_get(const char *name) {
-    const char *argv[] = { "fw_printenv", "-n", name, NULL };
-    char *out = NULL;
-    int status = -1;
-    if (!g_spawn_sync(NULL, (char **)argv, NULL,
-                      G_SPAWN_SEARCH_PATH | G_SPAWN_STDERR_TO_DEV_NULL,
-                      NULL, NULL, &out, NULL, &status, NULL) ||
-        !g_spawn_check_wait_status(status, NULL)) {
-        g_free(out);
-        return NULL;
-    }
-    return g_strstrip(out);
-}
-
-static bool env_set(const char *name, const char *value) {
-    const char *argv[] = { "fw_setenv", name, value, NULL };
-    int status = -1;
-    return g_spawn_sync(NULL, (char **)argv, NULL,
-                        G_SPAWN_SEARCH_PATH | G_SPAWN_STDOUT_TO_DEV_NULL |
-                        G_SPAWN_STDERR_TO_DEV_NULL,
-                        NULL, NULL, NULL, NULL, &status, NULL) &&
-           g_spawn_check_wait_status(status, NULL);
-}
+/* The bootloader environment, through the board's Boot HAL */
+static char *env_get(const char *name) { return zyl_hal_boot()->env_get(name); }
+static bool  env_set(const char *name, const char *value) { return zyl_hal_boot()->env_set(name, value); }
 
 static bool env_is(const char *name, const char *want) {
     char *v = env_get(name);
     bool is = v && strcmp(v, want) == 0;
-    g_free(v);
+    free(v);
     return is;
 }
 
@@ -85,7 +65,7 @@ static GVariant *state_variant(void) {
                           g_variant_new_boolean(supported && env_is("zyl_oem_unlock_allowed", "1")));
     g_variant_builder_add(&b, "{sv}", "slot", g_variant_new_string(slot));
     g_free(slot);
-    g_free(lock_seen);
+    free(lock_seen);
     return g_variant_new("(a{sv})", &b);
 }
 

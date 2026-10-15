@@ -40,7 +40,7 @@ fi
 PKG="$W/out/zylos-0.2.0.pkg"
 MAN="$W/out/zylos-0.2.0.json"
 
-# Member names are the updater's contract (zyl_updater_apply)
+# Member names are the updater's contract (ota_install.c)
 LIST=$(tar -tzf "$PKG" | sort | tr '\n' ' ')
 [ "$LIST" = "fit-image-a.itb fit-image-b.itb rootfs.img verity-hashtree-a.img verity-hashtree-b.img " ] \
   && ok "members are the ones the updater extracts" || bad "members: $LIST"

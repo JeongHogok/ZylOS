@@ -202,6 +202,32 @@ typedef struct {
 } ZylStorageHal;
 
 /* ═══════════════════════════════════════════════════════
+   Boot HAL — 부트로더 환경과 A/B 슬롯 배치
+   실기기: U-Boot 환경 (fw_printenv/fw_setenv), 파티션은 board/bpi-f3/README.md
+   에뮬레이터: 없음 — present() false, 시스템 업데이트·잠금 해제 비활성
+   ═══════════════════════════════════════════════════════ */
+
+typedef struct {
+    /* A/B boot with a bootloader environment the OS can write */
+    bool        (*present)(void);
+    /* Caller frees with free(); NULL when unset or there is no environment */
+    char       *(*env_get)(const char *name);
+    /* value NULL deletes the variable */
+    bool        (*env_set)(const char *name, const char *value);
+    /* Block devices of slot 'a' or 'b', and where its signed FIT lives */
+    const char *(*slot_rootfs)(char slot);
+    const char *(*slot_verity)(char slot);
+    const char *(*boot_dir)(void);
+} ZylBootHal;
+
+/* ═══════════════════════════════════════════════════════
+   모듈 접근자 — 보드 계약의 board_hal_backend 가 linux / emulator 구현을
+   고른다(runtime/hal/meson.build). 서비스는 쓰는 모듈의 접근자만 부른다.
+   ═══════════════════════════════════════════════════════ */
+
+const ZylBootHal *zyl_hal_boot(void);
+
+/* ═══════════════════════════════════════════════════════
    HAL Registry — 전체 HAL 모듈을 하나로 묶는 구조체
    ═══════════════════════════════════════════════════════ */
 

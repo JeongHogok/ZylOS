@@ -627,3 +627,24 @@ void zyl_hal_destroy(ZylHalRegistry *hal) {
     hal->wifi->shutdown();
     free(hal);
 }
+
+/* ──────────────────────────────────────────────────────────
+   Boot — 가상 기기에는 A/B 부트로더가 없다: 업데이트·잠금 해제 비활성
+   ────────────────────────────────────────────────────────── */
+
+static bool        emu_boot_present(void) { return false; }
+static char       *emu_boot_env_get(const char *name) { (void)name; return NULL; }
+static bool        emu_boot_env_set(const char *name, const char *value) { (void)name; (void)value; return false; }
+static const char *emu_boot_slot(char slot) { (void)slot; return ""; }
+static const char *emu_boot_dir(void) { return ""; }
+
+static const ZylBootHal g_boot_hal = {
+    .present     = emu_boot_present,
+    .env_get     = emu_boot_env_get,
+    .env_set     = emu_boot_env_set,
+    .slot_rootfs = emu_boot_slot,
+    .slot_verity = emu_boot_slot,
+    .boot_dir    = emu_boot_dir,
+};
+
+const ZylBootHal *zyl_hal_boot(void) { return &g_boot_hal; }

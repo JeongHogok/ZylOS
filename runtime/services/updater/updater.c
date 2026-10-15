@@ -2,10 +2,12 @@
 /* ──────────────────────────────────────────────────────────
  * [Clean Architecture] Application Layer - Service
  *
- * 역할: OTA 업데이트 서비스 — A/B 파티션 기반 원자적 시스템 업데이트
- * 수행범위: 업데이트 확인, 다운로드, 비활성 파티션 적용, 부트로더 플래그 변경
- * 의존방향: updater.h
- * SOLID: SRP — OTA 업데이트 프로세스만 담당
+ * 역할: OTA 업데이트 흐름 — A/B 파티션 기반 원자적 시스템 업데이트
+ * 수행범위: 업데이트 확인·다운로드, 언제 어느 슬롯에 설치하고 부트로더를 돌릴지
+ *           (시험 부팅 보호, 대기 중 설치 취소, 확정·롤백). 신뢰 판정은
+ *           ota_verify.c, 슬롯 기록은 ota_install.c, 부트로더 환경은 Boot HAL
+ * 의존방향: updater.h, ota_verify.h, ota_install.h, hal.h (Boot HAL), curl
+ * SOLID: SRP — OTA 흐름만. DIP — 부트로더·파티션은 ZylBootHal 로만
  * ────────────────────────────────────────────────────────── */
 
 #ifndef ZYL_OS_VERSION
@@ -13,6 +15,9 @@
 #endif
 
 #include "updater.h"
+#include "ota_verify.h"
+#include "ota_install.h"
+#include "hal.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,21 +31,11 @@
 #include <sys/wait.h>
 #include <sys/reboot.h>
 
-#include <openssl/evp.h>
-#include <openssl/pem.h>
-#include <openssl/err.h>
-#include <openssl/sha.h>
 
 /* ─── 내부 상수 ─── */
 /* Overridable so tests install into scratch files */
 #ifndef ZYL_STATE_DIR
 #define ZYL_STATE_DIR         "/var/lib/zyl-os"
-#endif
-#ifndef ZYL_BLOCK_DEV
-#define ZYL_BLOCK_DEV         "/dev/mmcblk0p"   /* + partition number */
-#endif
-#ifndef ZYL_BOOT_DIR
-#define ZYL_BOOT_DIR          "/boot"           /* FAT boot partition (p1) */
 #endif
 #ifndef ZYL_OTA_KEY
 #define ZYL_OTA_KEY           "/etc/zyl-os/ota-signing-key.pem"
@@ -152,61 +147,18 @@ static bool is_safe_url(const char *url) {
     return is_safe_path(url);
 }
 
-/* posix_spawn helper — system() 사용 금지 (command injection 방지).
-   out_fd >= 0 becomes the child's stdout. Bare names are looked up on PATH:
-   fw_setenv lives in /usr/bin on Debian and /usr/sbin elsewhere. */
-static int spawn_wait(const char *const argv[], int out_fd) {
+/* posix_spawn helper — system() 사용 금지 (command injection 방지) */
+static int safe_exec(const char *const argv[]) {
     pid_t pid;
     char *envp[] = {"PATH=/usr/sbin:/usr/bin:/sbin:/bin", NULL};
-    posix_spawn_file_actions_t acts;
-    posix_spawn_file_actions_init(&acts);
-    if (out_fd >= 0) posix_spawn_file_actions_adddup2(&acts, out_fd, STDOUT_FILENO);
-    int rc = posix_spawnp(&pid, argv[0], &acts, NULL, (char *const *)argv, envp);
-    posix_spawn_file_actions_destroy(&acts);
+    int rc = posix_spawn(&pid, argv[0], NULL, NULL, (char *const *)argv, envp);
     if (rc != 0) return -1;
     int status = 0;
     waitpid(pid, &status, 0);
     return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 }
 
-static int safe_exec(const char *const argv[]) { return spawn_wait(argv, -1); }
-
-/* ─── 유틸리티: JSON 값 추출 (json-glib) ─── */
 #include <json-glib/json-glib.h>
-
-/* ─── U-Boot 환경 (board/bpi-f3/u-boot-env.txt) ─── */
-/* fw_printenv -n NAME; NULL when unset or there is no U-Boot environment */
-static char *fw_get(const char *name) {
-    const char *argv[] = {"fw_printenv", "-n", name, NULL};
-    char *out = NULL;
-    int status = -1;
-    if (!g_spawn_sync(NULL, (char **)argv, NULL,
-                      G_SPAWN_SEARCH_PATH | G_SPAWN_STDERR_TO_DEV_NULL,
-                      NULL, NULL, &out, NULL, &status, NULL) ||
-        !g_spawn_check_wait_status(status, NULL)) {
-        g_free(out);
-        return NULL;
-    }
-    return g_strstrip(out);
-}
-
-/* value NULL deletes the variable */
-static bool fw_set(const char *name, const char *value) {
-    const char *argv[] = {"fw_setenv", name, value, NULL};
-    return safe_exec(argv) == 0;
-}
-
-/* One member of the package straight onto a partition or file: no scratch
-   copy of a multi-GiB image, and no path inside the archive decides where
-   anything lands. tar recognizes the gzip compression itself. */
-static bool extract_member(const char *pkg, const char *member, const char *dest, int flags) {
-    int fd = open(dest, O_WRONLY | flags, 0644);
-    if (fd < 0) return false;
-    const char *argv[] = {"/usr/bin/tar", "-xOf", pkg, member, NULL};
-    bool ok = spawn_wait(argv, fd) == 0 && fsync(fd) == 0;
-    close(fd);
-    return ok;
-}
 
 static char *json_get_string(const char *json_str, const char *key) {
     if (!json_str || !key) return NULL;
@@ -284,41 +236,6 @@ static bool validate_version(const char *ver) {
 }
 
 /* ─── 유틸리티: SHA-256 해시 계산 (OpenSSL EVP API) ─── */
-static bool compute_sha256_file(const char *path, char *out_hex, size_t hex_size) {
-    if (hex_size < 65) return false; /* need 64 hex chars + NUL */
-
-    FILE *f = fopen(path, "rb");
-    if (!f) return false;
-
-    EVP_MD_CTX *ctx = EVP_MD_CTX_new();
-    if (!ctx) { fclose(f); return false; }
-
-    bool ok = false;
-    if (EVP_DigestInit_ex(ctx, EVP_sha256(), NULL) != 1) goto done;
-
-    uint8_t buf[8192];
-    size_t n;
-    while ((n = fread(buf, 1, sizeof(buf), f)) > 0) {
-        if (EVP_DigestUpdate(ctx, buf, n) != 1) goto done;
-    }
-
-    uint8_t hash[SHA256_DIGEST_LENGTH];
-    unsigned int digest_len = 0;
-    if (EVP_DigestFinal_ex(ctx, hash, &digest_len) != 1) goto done;
-
-    /* Convert to hex string */
-    for (unsigned int i = 0; i < digest_len; i++) {
-        snprintf(out_hex + i * 2, 3, "%02x", hash[i]);
-    }
-    out_hex[digest_len * 2] = '\0';
-    ok = true;
-
-done:
-    EVP_MD_CTX_free(ctx);
-    fclose(f);
-    return ok;
-}
-
 /* ─── 유틸리티: 업데이트 타입 문자열 → 열거형 변환 ─── */
 static ZylUpdateType parse_update_type(const char *type_str) {
     if (!type_str) return ZYL_UPDATE_TYPE_FULL;
@@ -664,151 +581,38 @@ bool zyl_updater_download(ZylUpdater *u,
 /* The package is trusted only after this: its hash, and an RSA-SHA256
    signature over that hash by the OTA key the image ships with */
 static bool verify_package(ZylUpdater *u, const char *pkg_path) {
-    /* 2. SHA-256 해시 검증 */
     u->state = ZYL_UPDATE_VERIFYING;
-    report_progress(u, 0, "Verifying package integrity...");
-
-    if (u->pending->sha256_hash && strlen(u->pending->sha256_hash) > 0) {
-        char computed_hash[128] = {0};
-        if (!compute_sha256_file(pkg_path, computed_hash, sizeof(computed_hash))) {
-            fprintf(stderr, "[UPDATER] Failed to compute SHA-256\n");
-            u->state = ZYL_UPDATE_FAILED;
-            report_progress(u, 0, "Hash verification failed");
-            return false;
-        }
-
-        if (strncmp(computed_hash, u->pending->sha256_hash, 64) != 0) {
-            fprintf(stderr, "[UPDATER] SHA-256 mismatch: expected=%s got=%s\n",
-                    u->pending->sha256_hash, computed_hash);
-            u->state = ZYL_UPDATE_FAILED;
-            report_progress(u, 0, "Package integrity check failed");
-            unlink(pkg_path);
-            return false;
-        }
-
-        fprintf(stderr, "[UPDATER] SHA-256 verified: %s\n", computed_hash);
-    }
-
-    report_progress(u, 50, "Verifying signature...");
-
-    /* 3. RSA-2048+SHA-256 서명 검증 (OpenSSL EVP API) */
-    if (u->pending->signature && strlen(u->pending->signature) > 0) {
-        /* Load OTA signing public key */
-        const char *pubkey_path = ZYL_OTA_KEY;
-        FILE *key_fp = fopen(pubkey_path, "r");
-        if (!key_fp) {
-            fprintf(stderr, "[UPDATER] OTA signing key not found: %s\n",
-                    pubkey_path);
-            u->state = ZYL_UPDATE_FAILED;
-            report_progress(u, 0, "OTA signing key missing");
-            return false;
-        }
-
-        EVP_PKEY *pkey = PEM_read_PUBKEY(key_fp, NULL, NULL, NULL);
-        fclose(key_fp);
-        if (!pkey) {
-            fprintf(stderr, "[UPDATER] Failed to parse OTA signing key\n");
-            u->state = ZYL_UPDATE_FAILED;
-            report_progress(u, 0, "Invalid OTA signing key");
-            return false;
-        }
-
-        /* Decode base64 signature from manifest */
-        size_t sig_b64_len = strlen(u->pending->signature);
-        size_t sig_max = (sig_b64_len * 3) / 4 + 4;
-        uint8_t *sig_bytes = malloc(sig_max);
-        if (!sig_bytes) { EVP_PKEY_free(pkey); return false; }
-
-        EVP_ENCODE_CTX *dec_ctx = EVP_ENCODE_CTX_new();
-        int dec_len = 0, dec_final = 0;
-        EVP_DecodeInit(dec_ctx);
-        if (EVP_DecodeUpdate(dec_ctx, sig_bytes, &dec_len,
-                             (const unsigned char *)u->pending->signature,
-                             (int)sig_b64_len) < 0) {
-            fprintf(stderr, "[UPDATER] Signature base64 decode failed\n");
-            EVP_ENCODE_CTX_free(dec_ctx);
-            free(sig_bytes);
-            EVP_PKEY_free(pkey);
-            u->state = ZYL_UPDATE_FAILED;
-            return false;
-        }
-        EVP_DecodeFinal(dec_ctx, sig_bytes + dec_len, &dec_final);
-        EVP_ENCODE_CTX_free(dec_ctx);
-        size_t sig_len = (size_t)(dec_len + dec_final);
-
-        /* Compute SHA-256 hash of the downloaded package for verification */
-        uint8_t file_hash[SHA256_DIGEST_LENGTH];
-        {
-            FILE *pkg_fp = fopen(pkg_path, "rb");
-            if (!pkg_fp) {
-                free(sig_bytes); EVP_PKEY_free(pkey);
-                return false;
-            }
-            EVP_MD_CTX *hash_ctx = EVP_MD_CTX_new();
-            EVP_DigestInit_ex(hash_ctx, EVP_sha256(), NULL);
-            uint8_t hbuf[8192];
-            size_t hn;
-            while ((hn = fread(hbuf, 1, sizeof(hbuf), pkg_fp)) > 0) {
-                EVP_DigestUpdate(hash_ctx, hbuf, hn);
-            }
-            unsigned int hlen = 0;
-            EVP_DigestFinal_ex(hash_ctx, file_hash, &hlen);
-            EVP_MD_CTX_free(hash_ctx);
-            fclose(pkg_fp);
-        }
-
-        /* Verify: RSA-2048 + SHA-256 */
-        EVP_MD_CTX *vfy_ctx = EVP_MD_CTX_new();
-        bool sig_ok = false;
-        if (EVP_DigestVerifyInit(vfy_ctx, NULL, EVP_sha256(),
-                                 NULL, pkey) == 1 &&
-            EVP_DigestVerifyUpdate(vfy_ctx, file_hash,
-                                   SHA256_DIGEST_LENGTH) == 1) {
-            int rc = EVP_DigestVerifyFinal(vfy_ctx, sig_bytes, sig_len);
-            sig_ok = (rc == 1);
-        }
-        EVP_MD_CTX_free(vfy_ctx);
-        EVP_PKEY_free(pkey);
-        free(sig_bytes);
-
-        if (!sig_ok) {
-            fprintf(stderr, "[UPDATER] RSA signature verification FAILED "
-                    "— update package may be tampered\n");
-            u->state = ZYL_UPDATE_FAILED;
-            report_progress(u, 0, "Signature verification failed");
-            unlink(pkg_path);
-            return false;
-        }
-
-        fprintf(stderr, "[UPDATER] RSA-2048+SHA-256 signature verified\n");
-    } else {
-        /* No signature present — reject */
-        fprintf(stderr, "[UPDATER] Update package has no signature — "
-                "rejecting\n");
+    report_progress(u, 0, "Verifying package...");
+    ZylOtaVerdict v = zyl_ota_verify(pkg_path, u->pending->sha256_hash,
+                                     u->pending->signature, ZYL_OTA_KEY);
+    if (v != ZYL_OTA_TRUSTED) {
+        fprintf(stderr, "[UPDATER] Package rejected: %s\n", zyl_ota_verdict_message(v));
         u->state = ZYL_UPDATE_FAILED;
-        report_progress(u, 0, "Unsigned update rejected");
+        report_progress(u, 0, zyl_ota_verdict_message(v));
+        /* Corrupt or tampered: never keep it around to be installed later */
+        if (v == ZYL_OTA_HASH_MISMATCH || v == ZYL_OTA_BAD_SIGNATURE) unlink(pkg_path);
         return false;
     }
-
-    report_progress(u, 100, "Package verified");
-    fprintf(stderr, "[UPDATER] Download verified successfully\n");
+    report_progress(u, 100, zyl_ota_verdict_message(v));
     u->pkg_verified = true;
     return true;
 }
 
 bool zyl_updater_supported(const ZylUpdater *u) {
     (void)u;
-    char *slot = fw_get("zyl_active_slot");
-    bool ok = slot && access(ZYL_OTA_KEY, R_OK) == 0;
-    g_free(slot);
-    return ok;
+    return zyl_hal_boot()->present() && access(ZYL_OTA_KEY, R_OK) == 0;
 }
 
 bool zyl_updater_on_trial(const ZylUpdater *u) {
-    char *next = fw_get("zyl_next_slot");
+    char *next = zyl_hal_boot()->env_get("zyl_next_slot");
     bool trial = u && next && strcmp(next, u->active_slot) == 0;
-    g_free(next);
+    free(next);
     return trial;
+}
+
+/* ota_install's steps, inside the 5–80 % of the whole apply */
+static void install_step(int pct, const char *msg, void *data) {
+    report_progress(data, 5 + pct * 75 / 100, msg);
 }
 
 static bool apply_failed(ZylUpdater *u, const char *msg) {
@@ -846,41 +650,21 @@ bool zyl_updater_apply(ZylUpdater *u,
        slot is still on trial — never overwrite it before this boot is confirmed */
     if (zyl_updater_on_trial(u)) return apply_failed(u, "The previous update is not confirmed yet");
 
-    /* Partitions per board/bpi-f3/README.md: rootfs A p2 / B p4, verity A p3 / B p5 */
+    const ZylBootHal *boot = zyl_hal_boot();
     const char *inactive = strcmp(u->active_slot, "a") == 0 ? "b" : "a";
-    bool to_a = strcmp(inactive, "a") == 0;
-    char rootfs_dev[64], tree_dev[64], tree_name[64], fit_name[64], fit_tmp[512], fit_dst[512];
-    snprintf(rootfs_dev, sizeof(rootfs_dev), ZYL_BLOCK_DEV "%s", to_a ? "2" : "4");
-    snprintf(tree_dev, sizeof(tree_dev), ZYL_BLOCK_DEV "%s", to_a ? "3" : "5");
-    snprintf(tree_name, sizeof(tree_name), "verity-hashtree-%s.img", inactive);
-    snprintf(fit_name, sizeof(fit_name), "fit-image-%s.itb", inactive);
-    snprintf(fit_tmp, sizeof(fit_tmp), ZYL_BOOT_DIR "/.%s.new", fit_name);
-    snprintf(fit_dst, sizeof(fit_dst), ZYL_BOOT_DIR "/%s", fit_name);
-
     fprintf(stderr, "[UPDATER] Installing v%s into slot %s\n", u->pending->version, inactive);
 
     /* An earlier install still waiting for its reboot is about to be overwritten */
-    if (!fw_set("zyl_next_slot", NULL))
+    if (!boot->env_set("zyl_next_slot", NULL))
         return apply_failed(u, "Cannot write the bootloader environment");
 
-    report_progress(u, 5, "Writing system image...");
-    if (!extract_member(pkg_path, "rootfs.img", rootfs_dev, 0))
-        return apply_failed(u, "Writing the system image failed");
-    report_progress(u, 50, "Writing verity tree...");
-    if (!extract_member(pkg_path, tree_name, tree_dev, 0))
-        return apply_failed(u, "Writing the verity tree failed");
-    /* Renamed into place: U-Boot never loads a half-written FIT */
-    report_progress(u, 60, "Installing boot image...");
-    if (!extract_member(pkg_path, fit_name, fit_tmp, O_CREAT | O_TRUNC) ||
-        rename(fit_tmp, fit_dst) != 0) {
-        unlink(fit_tmp);
-        return apply_failed(u, "Installing the boot image failed");
-    }
-    sync();
+    const char *why = NULL;
+    if (!zyl_ota_install_slot(pkg_path, inactive[0], install_step, u, &why))
+        return apply_failed(u, why);
 
     /* U-Boot tries the new slot zyl_boot_limit times, then falls back */
     report_progress(u, 80, "Setting boot flags...");
-    if (!fw_set("zyl_boot_count", "0") || !fw_set("zyl_next_slot", inactive))
+    if (!boot->env_set("zyl_boot_count", "0") || !boot->env_set("zyl_next_slot", inactive))
         return apply_failed(u, "Cannot select the updated slot");
 
     char ver_path[256];
@@ -959,8 +743,9 @@ bool zyl_updater_mark_verified(ZylUpdater *u) {
 
     /* 3. The try is over: this slot becomes the one U-Boot falls back to, and
           it stops counting boots (board/bpi-f3/u-boot-env.txt rolls back after three) */
-    if (!fw_set("zyl_active_slot", u->active_slot) ||
-        !fw_set("zyl_next_slot", NULL) || !fw_set("zyl_boot_count", "0")) {
+    const ZylBootHal *boot = zyl_hal_boot();
+    if (!boot->env_set("zyl_active_slot", u->active_slot) ||
+        !boot->env_set("zyl_next_slot", NULL) || !boot->env_set("zyl_boot_count", "0")) {
         fprintf(stderr, "[UPDATER] fw_setenv could not confirm slot '%s'\n", u->active_slot);
         return false;
     }
@@ -983,7 +768,8 @@ bool zyl_updater_rollback(ZylUpdater *u) {
     const char *previous = strcmp(u->active_slot, "a") == 0 ? "b" : "a";
 
     /* Tried like an update: if it does not come up, U-Boot returns here */
-    if (!fw_set("zyl_boot_count", "0") || !fw_set("zyl_next_slot", previous)) {
+    if (!zyl_hal_boot()->env_set("zyl_boot_count", "0") ||
+        !zyl_hal_boot()->env_set("zyl_next_slot", previous)) {
         fprintf(stderr, "[UPDATER] fw_setenv could not select slot '%s'\n", previous);
         u->state = ZYL_UPDATE_FAILED;
         return false;
