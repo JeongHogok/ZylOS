@@ -345,6 +345,22 @@ var fsTests = (function () {
         assert.strictEqual(c, 'hello world');
       });
     });
+  }).then(function () {
+    return asyncTest('a third-party app works in its own container, system apps in the shared files', function () {
+      var calls = [];
+      var scoped = ns.fs({ SYSTEM_APPS: ['com.zylos.files'], invoke: function (cmd, a) {
+        calls.push([cmd, a.container]);
+        return Promise.resolve([]);
+      } });
+      return Promise.all([
+        scoped.writeFile({ path: 'Documents/a.txt', content: 'x', container: 'com.zylos.files' }, 'com.example.app'),
+        scoped.getDirectory({ path: '/' }, 'com.zylos.files'),
+        scoped.rename({ oldPath: 'a', newPath: 'b' }, 'com.example.app')
+      ]).then(function () {
+        assert.deepStrictEqual(calls, [['fs_write_file', 'com.example.app'], ['fs_read_dir', undefined],
+                                       ['fs_rename', 'com.example.app']]);   /* the request cannot pick the root */
+      });
+    });
   });
 })();
 

@@ -282,6 +282,8 @@ static const char *MARSHAL_XML =
     "<method name='Update'><arg type='a{sv}' name='params' direction='in'/></method>"
     "<method name='Copy'><arg type='s' name='caller' direction='in'/>"
     "<arg type='a{sv}' name='params' direction='in'/></method>"
+    "<method name='Read'><arg type='s' name='container' direction='in'/>"
+    "<arg type='s' name='path' direction='in'/></method>"
     "</interface></node>";
 
 /* third_party: the caller is not a system app */
@@ -437,6 +439,15 @@ static void test_args_third_party_app_id_is_the_caller(void) {
     expect_args("Post", "{\"appId\":\"com.x\",\"title\":\"t\",\"priority\":1}", "('com.x', 't', 1)");
 }
 
+static void test_args_container_is_the_app_unless_system(void) {
+    /* A system app works in the shared files; any other app in its container,
+       whatever the request says */
+    expect_args("Read", "{\"container\":\"com.x\",\"path\":\"a\"}", "('', 'a')");
+    char *got = marshal_as("Read", "{\"container\":\"\",\"path\":\"a\"}", "com.evil.app", TRUE, NULL);
+    assert(got && strcmp(got, "('com.evil.app', 'a')") == 0);
+    g_free(got);
+}
+
 static void test_args_caller_is_always_the_calling_app(void) {
     /* System apps too, and a caller in the request is ignored */
     expect_args("Copy", "{\"caller\":\"com.x\",\"text\":\"hi\"}",
@@ -545,6 +556,7 @@ int main(void)
     RUN_TEST(test_args_missing_or_wrong_type_names_the_argument);
     RUN_TEST(test_args_third_party_app_id_is_the_caller);
     RUN_TEST(test_args_caller_is_always_the_calling_app);
+    RUN_TEST(test_args_container_is_the_app_unless_system);
     RUN_TEST(test_event_reaches_only_apps_allowed_to_call_the_service);
     RUN_TEST(test_events_only_from_the_services_own_name);
     RUN_TEST(test_args_params_object_is_the_whole_request);

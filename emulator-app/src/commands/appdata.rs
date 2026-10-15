@@ -20,7 +20,7 @@ use std::sync::Mutex;
 use tauri::State;
 
 /// An app id names a directory: letters, digits, . _ - only, no "." or ".."
-fn container(app_state: &AppState, app_id: &str) -> Result<PathBuf, String> {
+pub(crate) fn container(app_state: &AppState, app_id: &str) -> Result<PathBuf, String> {
     let ok = !app_id.is_empty()
         && app_id.len() <= 128
         && app_id != "."

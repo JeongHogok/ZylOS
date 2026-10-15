@@ -12,25 +12,18 @@
 
 #include <stdbool.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <unistd.h>
 #include <gio/gio.h>
 #include <glib-unix.h>
+#include "container.h"
 
 #ifndef ZYL_APPDATA_ROOT
-#define ZYL_APPDATA_ROOT "/data/appdata"
+#define ZYL_APPDATA_ROOT ZYL_CONTAINERS
 #endif
 
 #define QUOTA_BYTES (5 * 1024 * 1024)
 #define KEY_MAX 256
 
-/* An app id names a directory: letters, digits, . _ - only, no "." or ".." */
-static bool valid_app_id(const char *id) {
-    if (!id || !*id || strlen(id) > 128 || strcmp(id, ".") == 0 || strstr(id, "..")) return false;
-    for (const char *p = id; *p; p++)
-        if (!g_ascii_isalnum(*p) && *p != '.' && *p != '_' && *p != '-') return false;
-    return true;
-}
+#define valid_app_id zyl_container_valid_id
 
 static char *store_path(const char *app) {
     return g_build_filename(ZYL_APPDATA_ROOT, app, "appdata", NULL);
@@ -64,14 +57,9 @@ static gsize used_bytes(GHashTable *t) {
     return n;
 }
 
-/* The app's container, owned like the root above it (the WAM's), so the WAM
-   can still keep the app's web storage there if this service made it first */
 static bool make_container(const char *app) {
-    char *dir = g_build_filename(ZYL_APPDATA_ROOT, app, NULL);
-    struct stat root;
-    bool ok = g_mkdir_with_parents(dir, 0700) == 0;
-    if (ok && geteuid() == 0 && stat(ZYL_APPDATA_ROOT, &root) == 0)
-        ok = chown(dir, root.st_uid, root.st_gid) == 0;
+    char *dir = zyl_container_dir(ZYL_APPDATA_ROOT, app, NULL, true);
+    bool ok = dir != NULL;
     g_free(dir);
     return ok;
 }

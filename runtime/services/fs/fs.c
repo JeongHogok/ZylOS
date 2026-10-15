@@ -22,9 +22,13 @@
 #include <gio/gio.h>
 #include <glib/gstdio.h>
 #include <glib-unix.h>
+#include "../appdata/container.h"
 
 #ifndef ZYL_FILES_ROOT
 #define ZYL_FILES_ROOT "/data/users/0/files"
+#endif
+#ifndef ZYL_CONTAINERS_ROOT
+#define ZYL_CONTAINERS_ROOT ZYL_CONTAINERS
 #endif
 #define MAX_READ (64 * 1024 * 1024)
 
@@ -39,9 +43,9 @@ static bool protected_path(const char *rel) {
     return p;
 }
 
-static bool inside_root(const char *real) {
+static bool inside_root(const char *base, const char *real) {
     char root[PATH_MAX];
-    if (!realpath(ZYL_FILES_ROOT, root)) return false;
+    if (!realpath(base, root)) return false;
     size_t n = strlen(root);
     return strncmp(real, root, n) == 0 && (real[n] == '\0' || real[n] == '/');
 }
@@ -49,16 +53,16 @@ static bool inside_root(const char *real) {
 /* The absolute path for an app's relative one, or NULL when it may not be
    touched. What does not exist yet (a new file, new folders) is judged by its
    nearest existing ancestor: the rest of the path has no ".." to climb with */
-static char *resolve(const char *rel) {
-    if (!rel || strstr(rel, "..")) return NULL;
+static char *resolve(const char *base, const char *rel) {
+    if (!base || !rel || strstr(rel, "..")) return NULL;
     while (*rel == '/') rel++;
     if (protected_path(rel)) return NULL;
-    char *full = g_build_filename(ZYL_FILES_ROOT, rel, NULL);
+    char *full = g_build_filename(base, rel, NULL);
     char *probe = g_strdup(full);
     char real[PATH_MAX];
     bool ok = false;
     for (;;) {
-        if (realpath(probe, real)) { ok = inside_root(real); break; }
+        if (realpath(probe, real)) { ok = inside_root(base, real); break; }
         if (errno != ENOENT) break;
         char *up = g_path_get_dirname(probe);
         bool top = strcmp(up, probe) == 0;
@@ -98,10 +102,10 @@ static gint by_folder_then_name(gconstpointer a, gconstpointer b) {
 }
 
 /* Same fields as the emulator: { name, is_dir, size, modified (epoch s), file_type } */
-static GVariant *list_dir(const char *rel) {
+static GVariant *list_dir(const char *base, const char *rel) {
     GVariantBuilder list;
     g_variant_builder_init(&list, G_VARIANT_TYPE("aa{sv}"));
-    char *dir = resolve(rel);
+    char *dir = resolve(base, rel);
     GDir *d = dir ? g_dir_open(dir, 0, NULL) : NULL;
     GArray *entries = g_array_new(FALSE, TRUE, sizeof(Entry));
     const char *name;
@@ -136,8 +140,8 @@ static GVariant *list_dir(const char *rel) {
     return g_variant_builder_end(&list);
 }
 
-static char *read_file(const char *rel, gsize *len) {
-    char *path = resolve(rel), *data = NULL;
+static char *read_file(const char *base, const char *rel, gsize *len) {
+    char *path = resolve(base, rel), *data = NULL;
     struct stat st;
     if (path && stat(path, &st) == 0 && S_ISREG(st.st_mode) && st.st_size <= MAX_READ)
         g_file_get_contents(path, &data, len, NULL);
@@ -145,8 +149,8 @@ static char *read_file(const char *rel, gsize *len) {
     return data;
 }
 
-static bool write_file(const char *rel, const char *content, const char *encoding) {
-    char *path = resolve(rel);
+static bool write_file(const char *base, const char *rel, const char *content, const char *encoding) {
+    char *path = resolve(base, rel);
     if (!path) return false;
     guchar *bytes = NULL;
     gsize len = strlen(content);
@@ -178,29 +182,36 @@ static bool remove_tree(const char *path) {
     return g_unlink(path) == 0;
 }
 
-static bool remove_path(const char *rel) {
-    char *path = resolve(rel);
+static bool remove_path(const char *base, const char *rel) {
+    char *path = resolve(base, rel);
     char root[PATH_MAX], real[PATH_MAX];
     /* Never the root itself */
-    bool ok = path && realpath(path, real) && realpath(ZYL_FILES_ROOT, root) &&
+    bool ok = path && realpath(path, real) && realpath(base, root) &&
               strcmp(real, root) != 0 && remove_tree(path);
     g_free(path);
     return ok;
 }
 
-static bool rename_path(const char *from, const char *to) {
-    char *a = resolve(from), *b = resolve(to);
+static bool rename_path(const char *base, const char *from, const char *to) {
+    char *a = resolve(base, from), *b = resolve(base, to);
     bool ok = a && b && g_rename(a, b) == 0;
     g_free(a);
     g_free(b);
     return ok;
 }
 
-static bool make_dir(const char *rel) {
-    char *path = resolve(rel);
+static bool make_dir(const char *base, const char *rel) {
+    char *path = resolve(base, rel);
     bool ok = path && g_mkdir_with_parents(path, 0700) == 0;
     g_free(path);
     return ok;
+}
+
+/* Where a request's paths live: the user's files for system apps (container
+   ""), else the app's own container — the bridge names it, never the app. */
+static char *root_for(const char *container) {
+    if (!container || !*container) return g_strdup(ZYL_FILES_ROOT);
+    return zyl_container_dir(ZYL_CONTAINERS_ROOT, container, "files", true);
 }
 
 /* The folders apps expect (camera → Pictures, notes → Documents, music → Music) */
@@ -219,33 +230,41 @@ static const char *fs_xml =
     "<node>"
     "  <interface name='org.zylos.FileSystem'>"
     "    <method name='GetDirectory'>"
+    "      <arg type='s' name='container' direction='in'/>"
     "      <arg type='s' name='path' direction='in'/>"
     "      <arg type='aa{sv}' name='entries' direction='out'/>"
     "    </method>"
     "    <method name='GetAllData'>"
+    "      <arg type='s' name='container' direction='in'/>"
     "      <arg type='a{sv}' name='data' direction='out'/>"
     "    </method>"
     "    <method name='GetFileContent'>"
+    "      <arg type='s' name='container' direction='in'/>"
     "      <arg type='s' name='path' direction='in'/>"
     "      <arg type='s' name='content' direction='out'/>"
     "    </method>"
     "    <method name='ReadBinary'>"
+    "      <arg type='s' name='container' direction='in'/>"
     "      <arg type='s' name='path' direction='in'/>"
     "      <arg type='s' name='base64' direction='out'/>"
     "    </method>"
     "    <method name='WriteFile'>"
+    "      <arg type='s' name='container' direction='in'/>"
     "      <arg type='a{sv}' name='params' direction='in'/>"
     "      <arg type='b' name='written' direction='out'/>"
     "    </method>"
     "    <method name='Mkdir'>"
+    "      <arg type='s' name='container' direction='in'/>"
     "      <arg type='s' name='path' direction='in'/>"
     "      <arg type='b' name='made' direction='out'/>"
     "    </method>"
     "    <method name='Remove'>"
+    "      <arg type='s' name='container' direction='in'/>"
     "      <arg type='s' name='path' direction='in'/>"
     "      <arg type='b' name='removed' direction='out'/>"
     "    </method>"
     "    <method name='Rename'>"
+    "      <arg type='s' name='container' direction='in'/>"
     "      <arg type='s' name='old_path' direction='in'/>"
     "      <arg type='s' name='new_path' direction='in'/>"
     "      <arg type='b' name='renamed' direction='out'/>"
@@ -260,16 +279,20 @@ static void fail(GDBusMethodInvocation *inv, const char *what) {
 static void handle(GDBusConnection *c, const gchar *sender, const gchar *path, const gchar *iface,
                    const gchar *method, GVariant *params, GDBusMethodInvocation *inv, gpointer data) {
     (void)c; (void)sender; (void)path; (void)iface; (void)data;
-    const gchar *p = NULL;
-    if (g_variant_is_of_type(params, G_VARIANT_TYPE("(s)"))) g_variant_get(params, "(&s)", &p);
+    /* First argument of every method: whose files (the bridge's container) */
+    const gchar *container = NULL, *p = NULL;
+    g_variant_get_child(params, 0, "&s", &container);
+    if (g_str_has_prefix(g_variant_get_type_string(params), "(ss")) g_variant_get_child(params, 1, "&s", &p);
+    char *root = root_for(container);
+    if (!root) { fail(inv, "no container"); return; }
 
     if (g_strcmp0(method, "GetDirectory") == 0) {
-        g_dbus_method_invocation_return_value(inv, g_variant_new("(@aa{sv})", list_dir(p)));
+        g_dbus_method_invocation_return_value(inv, g_variant_new("(@aa{sv})", list_dir(root, p)));
     } else if (g_strcmp0(method, "GetAllData") == 0) {
         /* The emulator's shape: { tree: { "/": entries }, unixTree: {}, fileContents: {} } */
         GVariantBuilder tree, d;
         g_variant_builder_init(&tree, G_VARIANT_TYPE("a{sv}"));
-        g_variant_builder_add(&tree, "{sv}", "/", list_dir("/"));
+        g_variant_builder_add(&tree, "{sv}", "/", list_dir(root, "/"));
         g_variant_builder_init(&d, G_VARIANT_TYPE("a{sv}"));
         g_variant_builder_add(&d, "{sv}", "tree", g_variant_builder_end(&tree));
         g_variant_builder_add(&d, "{sv}", "unixTree", g_variant_new_array(G_VARIANT_TYPE("{sv}"), NULL, 0));
@@ -277,32 +300,35 @@ static void handle(GDBusConnection *c, const gchar *sender, const gchar *path, c
         g_dbus_method_invocation_return_value(inv, g_variant_new("(a{sv})", &d));
     } else if (g_strcmp0(method, "GetFileContent") == 0 || g_strcmp0(method, "ReadBinary") == 0) {
         gsize len = 0;
-        char *bytes = read_file(p, &len);
-        if (!bytes) { fail(inv, "cannot read"); return; }
+        char *bytes = read_file(root, p, &len);
         bool text = g_strcmp0(method, "GetFileContent") == 0;
-        if (text && !g_utf8_validate(bytes, (gssize)len, NULL)) { g_free(bytes); fail(inv, "not text"); return; }
-        char *out = text ? bytes : g_base64_encode((const guchar *)bytes, len);
-        g_dbus_method_invocation_return_value(inv, g_variant_new("(s)", out));
-        if (!text) g_free(out);
+        if (!bytes) fail(inv, "cannot read");
+        else if (text && !g_utf8_validate(bytes, (gssize)len, NULL)) fail(inv, "not text");
+        else {
+            char *out = text ? bytes : g_base64_encode((const guchar *)bytes, len);
+            g_dbus_method_invocation_return_value(inv, g_variant_new("(s)", out));
+            if (!text) g_free(out);
+        }
         g_free(bytes);
     } else if (g_strcmp0(method, "WriteFile") == 0) {
-        GVariant *d = g_variant_get_child_value(params, 0);
+        GVariant *d = g_variant_get_child_value(params, 1);
         const gchar *wp = NULL, *content = NULL, *encoding = NULL;
         g_variant_lookup(d, "path", "&s", &wp);
         g_variant_lookup(d, "content", "&s", &content);
         g_variant_lookup(d, "encoding", "&s", &encoding);
-        bool ok = wp && content && write_file(wp, content, encoding);
+        bool ok = wp && content && write_file(root, wp, content, encoding);
         g_variant_unref(d);
         g_dbus_method_invocation_return_value(inv, g_variant_new("(b)", ok));
     } else if (g_strcmp0(method, "Mkdir") == 0) {
-        g_dbus_method_invocation_return_value(inv, g_variant_new("(b)", make_dir(p)));
+        g_dbus_method_invocation_return_value(inv, g_variant_new("(b)", make_dir(root, p)));
     } else if (g_strcmp0(method, "Remove") == 0) {
-        g_dbus_method_invocation_return_value(inv, g_variant_new("(b)", remove_path(p)));
+        g_dbus_method_invocation_return_value(inv, g_variant_new("(b)", remove_path(root, p)));
     } else if (g_strcmp0(method, "Rename") == 0) {
         const gchar *from = NULL, *to = NULL;
-        g_variant_get(params, "(&s&s)", &from, &to);
-        g_dbus_method_invocation_return_value(inv, g_variant_new("(b)", rename_path(from, to)));
+        g_variant_get(params, "(&s&s&s)", &container, &from, &to);
+        g_dbus_method_invocation_return_value(inv, g_variant_new("(b)", rename_path(root, from, to)));
     }
+    g_free(root);
 }
 
 static const GDBusInterfaceVTable vtable = { .method_call = handle };

@@ -78,6 +78,19 @@ fn safe_path(mount_point: &Path, rel_path: &str) -> Result<PathBuf, String> {
     Ok(full)
 }
 
+/// Where an app's paths live: a third-party app's own container (the OS names
+/// it — apps/system/services/fs.js), else the user's shared files
+fn files_root(app_state: &AppState, container: Option<String>) -> Result<PathBuf, String> {
+    match container {
+        Some(id) => {
+            let dir = crate::commands::appdata::container(app_state, &id)?.join("files");
+            fs::create_dir_all(&dir).map_err(|e| format!("Create error: {}", e))?;
+            Ok(dir)
+        }
+        None => app_state.mount_point.clone().ok_or_else(|| "No filesystem mounted".to_string()),
+    }
+}
+
 /// 파일 확장자로 타입 추정
 fn detect_file_type(name: &str) -> String {
     let ext = name
@@ -101,13 +114,12 @@ fn detect_file_type(name: &str) -> String {
 #[tauri::command]
 pub fn fs_read_dir(
     path: String,
+    container: Option<String>,
     state: State<'_, Mutex<AppState>>,
 ) -> Result<Vec<FileEntry>, String> {
     let app_state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
-    let mount_point = app_state
-        .mount_point
-        .as_ref()
-        .ok_or("No filesystem mounted")?;
+    let root = files_root(&app_state, container)?;
+    let mount_point = &root;
 
     let full_path = safe_path(mount_point, &path)?;
 
@@ -165,13 +177,12 @@ pub fn fs_read_dir(
 #[tauri::command]
 pub fn fs_read_file(
     path: String,
+    container: Option<String>,
     state: State<'_, Mutex<AppState>>,
 ) -> Result<String, String> {
     let app_state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
-    let mount_point = app_state
-        .mount_point
-        .as_ref()
-        .ok_or("No filesystem mounted")?;
+    let root = files_root(&app_state, container)?;
+    let mount_point = &root;
 
     let full_path = safe_path(mount_point, &path)?;
     fs::read_to_string(&full_path).map_err(|e| format!("Read error: {}", e))
@@ -181,13 +192,12 @@ pub fn fs_read_file(
 #[tauri::command]
 pub fn fs_read_binary(
     path: String,
+    container: Option<String>,
     state: State<'_, Mutex<AppState>>,
 ) -> Result<String, String> {
     let app_state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
-    let mount_point = app_state
-        .mount_point
-        .as_ref()
-        .ok_or("No filesystem mounted")?;
+    let root = files_root(&app_state, container)?;
+    let mount_point = &root;
 
     let full_path = safe_path(mount_point, &path)?;
     let bytes = fs::read(&full_path).map_err(|e| format!("Read error: {}", e))?;
@@ -219,13 +229,12 @@ pub fn fs_write_file(
     path: String,
     content: String,
     encoding: Option<String>,
+    container: Option<String>,
     state: State<'_, Mutex<AppState>>,
 ) -> Result<(), String> {
     let app_state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
-    let mount_point = app_state
-        .mount_point
-        .as_ref()
-        .ok_or("No filesystem mounted")?;
+    let root = files_root(&app_state, container)?;
+    let mount_point = &root;
 
     let full_path = safe_path(mount_point, &path)?;
 
@@ -233,7 +242,7 @@ pub fn fs_write_file(
        when using VFS fallback directory instead of real disk image) */
     if let Some(config) = &app_state.config {
         let config_total = (config.storage_gb as u64) * 1024 * 1024 * 1024;
-        let used = dir_size(mount_point);
+        let used = app_state.mount_point.as_deref().map(dir_size).unwrap_or(0);
         let write_size = content.len() as u64;
         if used + write_size > config_total {
             return Err(format!(
@@ -283,13 +292,12 @@ fn base64_decode(input: &str) -> Vec<u8> {
 #[tauri::command]
 pub fn fs_mkdir(
     path: String,
+    container: Option<String>,
     state: State<'_, Mutex<AppState>>,
 ) -> Result<(), String> {
     let app_state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
-    let mount_point = app_state
-        .mount_point
-        .as_ref()
-        .ok_or("No filesystem mounted")?;
+    let root = files_root(&app_state, container)?;
+    let mount_point = &root;
 
     let full_path = safe_path(mount_point, &path)?;
     fs::create_dir_all(&full_path).map_err(|e| format!("Mkdir error: {}", e))
@@ -299,13 +307,12 @@ pub fn fs_mkdir(
 #[tauri::command]
 pub fn fs_remove(
     path: String,
+    container: Option<String>,
     state: State<'_, Mutex<AppState>>,
 ) -> Result<(), String> {
     let app_state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
-    let mount_point = app_state
-        .mount_point
-        .as_ref()
-        .ok_or("No filesystem mounted")?;
+    let root = files_root(&app_state, container)?;
+    let mount_point = &root;
 
     let full_path = safe_path(mount_point, &path)?;
 
@@ -321,13 +328,12 @@ pub fn fs_remove(
 pub fn fs_rename(
     old_path: String,
     new_path: String,
+    container: Option<String>,
     state: State<'_, Mutex<AppState>>,
 ) -> Result<(), String> {
     let app_state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
-    let mount_point = app_state
-        .mount_point
-        .as_ref()
-        .ok_or("No filesystem mounted")?;
+    let root = files_root(&app_state, container)?;
+    let mount_point = &root;
 
     let old_full = safe_path(mount_point, &old_path)?;
     let new_full = safe_path(mount_point, &new_path)?;

@@ -2,8 +2,11 @@
 // [Clean Architecture] Domain Layer - Service Module
 //
 // Role: FileSystem service — mounted disk image I/O
-// Scope: readDir, readFile, writeFile, mkdir, remove, rename
-// Dependency Direction: Domain -> invoker abstraction (injected)
+// Scope: readDir, readFile, writeFile, mkdir, remove, rename. A third-party
+//        app's paths are its own container's (iOS-like: it never sees the
+//        user's shared folders, and its files go with it); system apps use the
+//        shared files (same rule as runtime/services/fs, the bridge's container)
+// Dependency Direction: Domain -> invoker abstraction (injected), SYSTEM_APPS
 // SOLID: SRP — FS operations only, DIP — depends on invoke abstraction
 // ----------------------------------------------------------
 
@@ -11,74 +14,58 @@
   'use strict';
 
   ns.fs = function (deps) {
-    var invoke = deps.invoke;
+    var SYSTEM_APPS = deps.SYSTEM_APPS || [];
 
-    function getDirectory(path) {
-      return invoke('fs_read_dir', { path: path || '/' }).then(function (entries) {
-        if (!entries || typeof ZylSecurity === 'undefined') return entries;
-        return entries.filter(function (e) {
-          return !ZylSecurity.isHiddenFromListing(e.name);
-        });
-      }).catch(function () { return []; });
+    /* A file command in the caller's root: a third-party app's container */
+    function fsCall(caller, cmd, args) {
+      if (caller && SYSTEM_APPS.indexOf(caller) === -1) args.container = caller;
+      return deps.invoke(cmd, args);
     }
 
-    function getUnixDirectory(path) {
-      var p = invoke('fs_read_dir', { path: path || '/' });
-      if (p && typeof p.then === 'function') {
-        return p.then(function (entries) {
-          return (entries || []).filter(function (e) {
-            return typeof ZylSecurity === 'undefined' || !ZylSecurity.isHiddenFromListing(e.name);
-          }).map(function (e) {
-            return (e.is_dir ? 'drwxr-xr-x' : '-rw-r--r--') +
-              '  user user  ' + (e.size || 0) + '  ' + e.name;
-          }).join('\n');
-        }).catch(function () { return ''; });
-      }
-      return null;
-    }
-
-    function getFileContent(path) {
-      return invoke('fs_read_file', { path: path || '' });
-    }
-
-    function getAllData() {
-      return invoke('fs_read_dir', { path: '/' }).then(function (entries) {
-        var filtered = (entries || []).filter(function (e) {
-          return typeof ZylSecurity === 'undefined' || !ZylSecurity.isHiddenFromListing(e.name);
-        });
-        return { tree: { '/': filtered }, unixTree: {}, fileContents: {} };
-      }).catch(function () {
-        return { tree: { '/': [] }, unixTree: {}, fileContents: {} };
+    function visible(entries) {
+      return (entries || []).filter(function (e) {
+        return typeof ZylSecurity === 'undefined' || !ZylSecurity.isHiddenFromListing(e.name);
       });
     }
 
-    /* encoding 'base64': binary content (a photo); otherwise text as given */
-    function writeFile(params) {
-      return invoke('fs_write_file', { path: params.path, content: params.content, encoding: params.encoding || null });
-    }
-
-    function mkdirFn(params) {
-      return invoke('fs_mkdir', { path: params.path });
-    }
-
-    function remove(params) {
-      return invoke('fs_remove', { path: params.path });
-    }
-
-    function rename(params) {
-      return invoke('fs_rename', { old_path: params.oldPath, new_path: params.newPath });
-    }
-
     return {
-      getDirectory:     function (p) { return getDirectory(p.path); },
-      getUnixDirectory: function (p) { return getUnixDirectory(p.path); },
-      getFileContent:   function (p) { return getFileContent(p.path); },
-      readBinary:       function (p) { return invoke('fs_read_binary', { path: p.path }); },
-      getAllData:        function ()  { return getAllData(); },
-      writeFile:        function (p) { return writeFile(p); },
-      mkdir:            function (p) { return mkdirFn(p); },
-      remove:           function (p) { return remove(p); },
-      rename:           function (p) { return rename(p); }
+      getDirectory: function (p, caller) {
+        return fsCall(caller, 'fs_read_dir', { path: p.path || '/' }).then(visible)
+          .catch(function () { return []; });
+      },
+      getUnixDirectory: function (p, caller) {
+        return fsCall(caller, 'fs_read_dir', { path: p.path || '/' }).then(function (entries) {
+          return visible(entries).map(function (e) {
+            return (e.is_dir ? 'drwxr-xr-x' : '-rw-r--r--') + '  user user  ' + (e.size || 0) + '  ' + e.name;
+          }).join('\n');
+        }).catch(function () { return ''; });
+      },
+      getFileContent: function (p, caller) {
+        return fsCall(caller, 'fs_read_file', { path: p.path || '' });
+      },
+      readBinary: function (p, caller) {
+        return fsCall(caller, 'fs_read_binary', { path: p.path });
+      },
+      getAllData: function (p, caller) {
+        return fsCall(caller, 'fs_read_dir', { path: '/' }).then(function (entries) {
+          return { tree: { '/': visible(entries) }, unixTree: {}, fileContents: {} };
+        }).catch(function () {
+          return { tree: { '/': [] }, unixTree: {}, fileContents: {} };
+        });
+      },
+      /* encoding 'base64': binary content (a photo); otherwise text as given */
+      writeFile: function (p, caller) {
+        return fsCall(caller, 'fs_write_file', { path: p.path, content: p.content, encoding: p.encoding || null });
+      },
+      mkdir: function (p, caller) {
+        return fsCall(caller, 'fs_mkdir', { path: p.path });
+      },
+      remove: function (p, caller) {
+        return fsCall(caller, 'fs_remove', { path: p.path });
+      },
+      rename: function (p, caller) {
+        return fsCall(caller, 'fs_rename', { old_path: p.oldPath, new_path: p.newPath });
+      }
     };
   };
 })(window.ZylServiceModules = window.ZylServiceModules || {});
