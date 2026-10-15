@@ -88,6 +88,9 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 - 앱이 스스로를 시스템앱으로 선언하는 것을 신뢰하지 않음
 - `settings.json`, `.credentials/`, `.system/`은 보호 경로
 - 서비스 권한 체크는 OS 레이어에서만 수행
+- 부트 정책은 `board/bpi-f3/u-boot-env.txt` 단일 출처(`tests/test_boot_env.sh`),
+  부트로더는 `tools/build-bootloader.sh` 로만 빌드·서명. 저장소·USB·파일이 부팅을
+  바꾸는 경로를 되살리지 말 것. eFuse 굽기는 기본 off(`--burn-rotpk` 일 때만)
 
 ### 9. Intent 시스템 경계 규칙
 

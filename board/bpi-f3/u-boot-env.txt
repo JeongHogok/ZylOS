@@ -4,16 +4,21 @@
 # 역할: U-Boot 기본 환경 — Verified Boot, A/B 시도 부팅·롤백, 부트로더 잠금
 # 수행범위: 슬롯 선택(업데이터가 지정한 슬롯을 3회까지 시도 후 롤백),
 #           잠금 상태 전환(설정에서 허용 + 기기 앞의 버튼 확인 + 사용자
-#           데이터 삭제), 잠금 해제 시 서명 검증 해제와 경고
+#           데이터 삭제), 잠금 해제 시 서명 검증 해제와 경고, 부팅 영역
+#           (eMMC boot0: FSBL) 전원 주기 쓰기 보호, 기기 ID(칩 ID → serial#),
+#           잠긴 기기는 부팅 실패 시 셸 대신 재시작, 빌드가 고른 경우에만
+#           eFuse 에 루트 공개키 해시 굽기(zyl_rotpk)
 # 의존방향: U-Boot FIT 서명 검증, runtime/services/updater (zyl_next_slot,
 #           zyl_active_slot, zyl_boot_count), runtime/services/bootctl
-#           (zyl_unlocked, zyl_oem_unlock_allowed). 이 파일이 단일 출처이며
+#           (zyl_unlocked, zyl_oem_unlock_allowed), board/bpi-f3/bootloader
+#           (zyl_serial, zyl_rotpk). 이 파일이 단일 출처이며
 #           tests/test_boot_env.sh 가 결정 로직을 실행해 검증한다
 #
-# Production U-Boot must take this as its built-in default environment and
-# accept from storage only the runtime variables below
-# (CONFIG_ENV_WRITEABLE_LIST): otherwise anyone able to write the env could
-# replace bootcmd and the verification it enforces. See docs/INSTALLATION_INFORMATION.md
+# tools/build-bootloader.sh builds it into U-Boot as the default environment
+# and lets storage set only the "Runtime state" variables below
+# (CONFIG_ENV_WRITEABLE_LIST, generated from that section): otherwise anyone
+# able to write the env could replace bootcmd and the verification it
+# enforces. See docs/INSTALLATION_INFORMATION.md
 # ──────────────────────────────────────────────────────────
 
 # ── Runtime state (writable from storage; written by the OS) ──
@@ -33,6 +38,10 @@ zyl_oem_unlock_allowed=0
 
 # ── Board constants ──
 zyl_mmc=0
+# The eMMC (U-Boot's numbering): its boot0 holds the FSBL the Boot ROM loads
+zyl_emmc=2
+# 1 only in a bootloader built with tools/build-bootloader.sh --burn-rotpk
+zyl_rotpk_burn=0
 zyl_boot_part=1
 zyl_data=6
 zyl_boot_limit=3
@@ -99,12 +108,29 @@ zyl_pick_slot=\
     saveenv; \
   fi
 
+# ── eFuse: fuse the Root of Trust public key hash, once, on a locked device,
+#    only in a build that chose to (zyl_rotpk checks that boot0 holds the FSBL
+#    that build signed). Irreversible: docs/INSTALLATION_INFORMATION.md ──
+zyl_fuse=\
+  if test "${zyl_rotpk_burn}" = "1" && test "${zyl_unlocked}" != "1"; then \
+    zyl_rotpk burn; \
+  fi
+
+# ── Nothing after the bootloader can rewrite the FSBL: eMMC boot partitions
+#    are write-protected until the next power-on (the OS cannot undo it) ──
+zyl_protect_boot=\
+  if mmc dev ${zyl_emmc}; then mmc wp; fi
+
 # The slot's own signed FIT carries its kernel command line (its rootfs, its
 # verity root hash, zyl.slot); bootargs is never set here, so nothing in the
-# environment can change what a locked device verifies.
+# environment can change what a locked device verifies. The device ID the OS
+# reads (serial-number) is the chip's, set here from eFuse (zyl_serial).
 bootcmd=\
   run zyl_check_lock; \
   run zyl_pick_slot; \
+  run zyl_fuse; \
+  zyl_serial; \
+  run zyl_protect_boot; \
   if test "${zyl_unlocked}" = "1"; then \
     echo "ZylOS: WARNING - the bootloader is unlocked. The software on this device is not verified."; \
     setenv verify no; \
@@ -117,5 +143,10 @@ bootcmd=\
   if test -n "${zyl_next_slot}"; then \
     setenv zyl_boot_count ${zyl_boot_limit}; \
     saveenv; \
+    reset; \
+  fi; \
+  if test "${zyl_unlocked}" != "1"; then \
+    echo "ZylOS: no verified system booted - restarting"; \
+    sleep 5; \
     reset; \
   fi

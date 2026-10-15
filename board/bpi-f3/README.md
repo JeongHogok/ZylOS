@@ -81,6 +81,28 @@ This table is the single source for partition numbers: `u-boot-env.txt`
 `zyl.slot`) and the updater all follow it. Owner unlock and image installation
 (GPLv3 §6): `docs/INSTALLATION_INFORMATION.md`.
 
+## Bootloader
+
+`tools/build-bootloader.sh` builds the pinned vendor U-Boot and OpenSBI with
+`board/bpi-f3/bootloader` (patch + config fragment), signs them and checks the
+result; `docs/SECURITY.md` has the chain, `docs/INSTALLATION_INFORMATION.md`
+the eFuse option.
+
+| File | Where (eMMC) |
+|---|---|
+| `bootinfo_emmc.bin`, `FSBL.bin` | boot0, at 0 and 0x200 — U-Boot write-protects boot0 until power-off before the OS starts, so only fastboot (FEL) can replace them |
+| (DDR training data) | user area, raw at 64 KiB — U-Boot writes it |
+| `u-boot-env-default.bin` | user area, raw at 384 KiB (`env`, 64 KiB) — only the boot policy's runtime state is read back |
+| `fw_dynamic.itb` | GPT partition named `opensbi` (448 KiB, 384 KiB) |
+| `u-boot.itb` | GPT partition named `uboot` (832 KiB, 2 MiB) |
+
+The SPL finds `opensbi` and `uboot` by name, so their GPT entries come after
+p1–p6 above (p7 `env`, p8 `opensbi`, p9 `uboot`) while lying in the first
+4 MiB, before p1: the OS partition numbers do not change. On an SD card the
+FSBL is raw at 128 KiB and `bootinfo_sd.bin` takes the first 80 bytes of
+sector 0. Flash with fastboot as in the vendor's guide (`fastboot stage FSBL.bin`,
+`continue`, `stage u-boot.itb`, `continue`, then `fastboot flash` per partition).
+
 ## Build Verification
 
 ```bash

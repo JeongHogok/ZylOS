@@ -364,6 +364,8 @@ CSS에 `zoom: var(...)` 를 쓰면 조용히 1이 된다. `zoom` 은 vw/vh 를 �
 - 키 파생: PBKDF2-HMAC-SHA256, 100,000 iterations
 
 ### Verified Boot
+- 부트로더: `tools/build-bootloader.sh` — FSBL(루트 키) → OpenSBI·U-Boot FIT → OS FIT,
+  부트 정책 내장, eMMC 부트 영역 쓰기 보호, eFuse 굽기는 빌드 선택 (docs/SECURITY.md)
 - 부트 키 생성: `tools/gen-boot-keys.sh` (RSA-2048)
 - FIT 이미지 서명 + dm-verity: `tools/sign-image.sh`
 - dm-verity: rootfs 블록 단위 해시 트리, 변조 감지 시 패닉 또는 읽기 전용 마운트
