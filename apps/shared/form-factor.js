@@ -4,8 +4,10 @@
 // Role: Form-factor policy — resolves the active device class and the
 //       UI/input model every app must adapt to
 // Scope: Profile table (phone/tablet/tv/auto/watch/desktop/appliance/pda),
-//        runtime detection, explicit override, CSS class + variable application,
-//        per-app availability check
+//        the device's declared class (its image's build profile, from the WAM)
+//        or detection from its hardware, CSS class + variable application,
+//        per-app availability check. Not a user setting: the hardware is what
+//        the manufacturer built, so its class cannot be changed from the UI
 // Dependency Direction: Shared -> none (pure policy; DOM write is the only effect)
 // SOLID: SRP — form-factor policy only, no layout and no input handling
 //        OCP — new form factors are added to PROFILES without touching consumers
@@ -17,8 +19,6 @@
 
 window.ZylFormFactor = (function () {
   'use strict';
-
-  var STORAGE_KEY = 'zyl.formFactor.override';
 
   /* ═══════════════════════════════════════════════════════════
      Profile table — the single source of truth for device classes.
@@ -67,11 +67,11 @@ window.ZylFormFactor = (function () {
   var _active = null;
 
   /* ═══ Detection ═══════════════════════════════════════════
-     Resolution order: container-reported input hardware (?zylInput=) first,
-     then geometry + pointer capability. On a shipped device the build profile
-     (meson -Dprofile) or provisioning is authoritative; the user override
-     below outranks everything. Detection exists so the emulator and
-     unprovisioned boards still render correctly.
+     Resolution order: the class the device declares (its image's build
+     profile, meson -Dprofile — what the manufacturer built), else detection:
+     container-reported input hardware (?zylInput=) first, then geometry +
+     pointer capability. Detection is for the emulator (which reports its
+     emulated hardware, never a class) and boards without a profile.
 
      Note: Zyl OS maps device pixels to layout pixels 1:1 — a 1080x2400
      panel reports innerWidth 1080 — so size alone cannot separate a
@@ -79,9 +79,9 @@ window.ZylFormFactor = (function () {
      16:9 or taller, tablets are 16:10 or squarer.
 
      shortcut: aspect cannot separate a 16:9 phone from a 1920x1080
-     landscape touch panel (both 1.78) — such a panel needs the override.
-     Same for auto, appliance and pda, which have no geometric signature.
-     Set the override from OOBE or a board provisioning step.
+     landscape touch panel (both 1.78), and auto, appliance and pda have no
+     geometric signature — a device like that is built with its profile,
+     which it then declares.
      ═══════════════════════════════════════════════════════════ */
   var TABLET_MAX_ASPECT = 1.75;  /* just under 16:9 (1.778) */
   var TABLET_MIN_SHORT_SIDE = 600;
@@ -154,36 +154,19 @@ window.ZylFormFactor = (function () {
     return DEFAULT_PROFILE;
   }
 
-  /* ═══ Override — persisted device class for undetectable devices ═══ */
-  function getOverride() {
-    try {
-      var v = window.localStorage.getItem(STORAGE_KEY);
-      return (v && PROFILES[v]) ? v : null;
-    } catch (e) {
-      return null; /* storage unavailable (private mode / no quota) — detection only */
-    }
-  }
-
-  function setOverride(id) {
-    if (!PROFILES[id]) return false;
-    try {
-      window.localStorage.setItem(STORAGE_KEY, id);
-    } catch (e) {
-      return false;
-    }
-    return true;
-  }
-
-  function clearOverride() {
-    try {
-      window.localStorage.removeItem(STORAGE_KEY);
-    } catch (e) { /* nothing to clear if storage is unavailable */ }
+  /* ═══ Declared — the device's own class ═══════════════════
+     The WAM sets window.__zylFormFactor before any app script runs, from the
+     build profile the image was made with (runtime/wam). null when the
+     runtime does not declare one (the emulator, a board without a profile). */
+  function declared() {
+    var id = window.__zylFormFactor;
+    return (typeof id === 'string' && PROFILES[id]) ? id : null;
   }
 
   /* ═══ Resolution + application ═══════════════════════════ */
   function resolve() {
     if (_active) return _active;
-    var id = getOverride() || detect();
+    var id = declared() || detect();
     _active = PROFILES[id] || PROFILES[DEFAULT_PROFILE];
     return _active;
   }
@@ -237,7 +220,7 @@ window.ZylFormFactor = (function () {
   }
 
   /**
-   * Re-resolve after an override change and re-apply.
+   * Re-resolve (the hardware input changed — setHardwareInput) and re-apply.
    * @returns {Object} the newly active profile
    */
   function reload(target) {
@@ -265,9 +248,7 @@ window.ZylFormFactor = (function () {
     getAllIds: getAllIds,
     apply: apply,
     reload: reload,
-    getOverride: getOverride,
-    setOverride: setOverride,
-    clearOverride: clearOverride,
+    declared: declared,
     supportsApp: supportsApp
   };
 })();

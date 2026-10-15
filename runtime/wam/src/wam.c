@@ -357,6 +357,16 @@ static GtkWidget *webkit_create_webview(ZylWebEngine   *self,
     /* Inject JS bridge from external file */
     zyl_bridge_inject(WAM_BRIDGE_JS, webview, manifest);
 
+    /* The device class is the hardware's: the image's build profile, declared
+       before any app script runs (apps/shared/form-factor.js reads it) */
+    WebKitUserScript *ff_script = webkit_user_script_new(
+        "window.__zylFormFactor='" ZYL_FORM_FACTOR "';",
+        WEBKIT_USER_CONTENT_INJECT_ALL_FRAMES,
+        WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START,
+        NULL, NULL);
+    webkit_user_content_manager_add_script(ucm, ff_script);
+    webkit_user_script_unref(ff_script);
+
     /* H10: Content Security Policy injection via user script */
     const char *csp_script =
         "var meta = document.createElement('meta');"

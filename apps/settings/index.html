@@ -108,18 +108,6 @@
         <svg class="chevron" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
       </div>
 
-      <!-- 기기 유형 (폼팩터) — 커스텀 단말 프로비저닝 경로 -->
-      <div class="setting-item" data-page="device-class" role="button" tabindex="0">
-        <div class="setting-icon icon-indigo">
-          <svg viewBox="0 0 24 24"><path d="M4 6h18V4H4c-1.1 0-2 .9-2 2v11H0v3h14v-3H4V6zm19 2h-6c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h6c.55 0 1-.45 1-1V9c0-.55-.45-1-1-1zm-1 9h-4v-7h4v7z"/></svg>
-        </div>
-        <div class="setting-text">
-          <span class="setting-label" data-i18n="settings.device_class">Device Type</span>
-          <span class="setting-value" id="current-device-class"></span>
-        </div>
-        <svg class="chevron" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
-      </div>
-
       <!-- 개인정보 보호 — 동의 철회는 동의만큼 쉬워야 한다 (GDPR Art. 7(3)) -->
       <div class="setting-item" data-page="privacy" role="button" tabindex="0">
         <div class="setting-icon icon-emerald">
@@ -268,11 +256,6 @@
         <svg class="check-icon hidden" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
       </div>
     </div>
-  </div>
-
-  <!-- 기기 유형 서브 페이지 — 목록은 ZylFormFactor 에서 생성 -->
-  <div id="page-device-class" class="sub-page hidden">
-    <div class="settings-group" id="device-class-list"></div>
   </div>
 
   <!-- 개인정보 보호 서브 페이지 -->

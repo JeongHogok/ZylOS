@@ -27,6 +27,10 @@ gio = dependency('gio-2.0')
 
 wam_deps = [gtk4, webkitgtk, json_glib, gio]
 
+# The device class this image is built for (meson -Dprofile, the board allows
+# it): the WAM declares it to every app — hardware, not a user setting
+wam_c_args += ['-DZYL_FORM_FACTOR="' + zyl_profile + '"']
+
 wam_sources = files(
   'src/wam.c',
   'src/manifest/manifest.c',

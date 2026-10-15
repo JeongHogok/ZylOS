@@ -114,6 +114,10 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 
 ### 11. 폼팩터 — 1 OS × N 프로파일
 
+- 폼팩터는 하드웨어다 — 제조사가 빌드한 프로파일(`-Dprofile`)이지 사용자 설정이
+  아니다. 기기는 WAM 이 빌드 프로파일을 선언하고(`window.__zylFormFactor`),
+  에뮬레이터는 하드웨어(입력·화면)만 알리며 OS 가 판정한다. 설정 등 UI 에서
+  기기 유형을 바꾸는 경로를 만들지 말 것
 - 새 앱의 `app.json` 에는 `formFactors` 선언 필수 (`["*"]` = 범용).
   유효 ID는 `apps/shared/form-factor.js` 의 `PROFILES` 가 유일한 권위이며
   `tests/test_manifests.sh` 가 검증한다
