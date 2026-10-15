@@ -64,7 +64,6 @@ int main(int argc, char *argv[])
     struct zyl_server server = {0};
     server.config              = zyl_config_defaults();
     server.home_screen_visible = true;
-    server.split_ratio_pct     = 50;   /* Bug fix: 0-init → clamp(0,5,95)=5%; must be 50 */
     server.gesture_signal_fn   = NULL; /* Coordinator: wire D-Bus sender here */
     wl_list_init(&server.views);
     wl_list_init(&server.outputs);

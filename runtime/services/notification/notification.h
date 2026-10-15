@@ -166,7 +166,6 @@ void zyl_notification_channel_set_enabled(ZylNotificationService *service,
 /* ── Resource Cleanup ─────────────────────────────────────── */
 
 void zyl_notification_free(ZylNotification *notif);
-void zyl_notification_channel_free(ZylNotificationChannel *channel);
 
 #ifdef __cplusplus
 }

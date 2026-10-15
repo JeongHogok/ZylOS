@@ -16,8 +16,14 @@ wayland_protos = dependency('wayland-protocols')
 xkbcommon = dependency('xkbcommon')
 pixman = dependency('pixman-1')
 
-# Wayland scanner
+# wlroots' xdg-shell headers include the protocol's server header: generated
+# here from wayland-protocols, not expected in the system include path
 wayland_scanner = find_program('wayland-scanner')
+xdg_shell_protocol_h = custom_target('xdg-shell-protocol.h',
+  input: wayland_protos.get_variable('pkgdatadir') / 'stable/xdg-shell/xdg-shell.xml',
+  output: 'xdg-shell-protocol.h',
+  command: [wayland_scanner, 'server-header', '@INPUT@', '@OUTPUT@'],
+)
 
 compositor_deps = [
   wlroots,
@@ -39,7 +45,7 @@ compositor_inc = include_directories(
 )
 
 executable('zyl-compositor',
-  compositor_sources,
+  compositor_sources, xdg_shell_protocol_h,
   include_directories: compositor_inc,
   dependencies: compositor_deps,
   c_args: ['-DWLR_USE_UNSTABLE', '-D_POSIX_C_SOURCE=200809L', '-Wno-error'],

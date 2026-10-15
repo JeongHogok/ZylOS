@@ -117,11 +117,6 @@ ZylUpdateState zyl_updater_get_state(const ZylUpdater *updater);
 /* 파티션 정보 조회 */
 ZylPartitionInfo *zyl_updater_get_partition_info(const ZylUpdater *updater);
 
-/* 자동 업데이트 스케줄 설정 */
-void zyl_updater_set_auto_check(ZylUpdater *updater,
-                                 bool enabled,
-                                 int interval_hours);
-
 /* 매니페스트 해제 */
 void zyl_update_manifest_free(ZylUpdateManifest *manifest);
 

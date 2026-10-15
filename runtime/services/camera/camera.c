@@ -443,40 +443,6 @@ int zyl_camera_capture(ZylCameraService *cam, const char *output_path) {
     return ret;
 }
 
-int zyl_camera_get_supported_resolutions(ZylCameraService *cam,
-                                          ZylCameraConfig **out,
-                                          int *count) {
-    if (!cam || cam->fd < 0 || !out || !count) return -1;
-
-    int cap = 16, n = 0;
-    ZylCameraConfig *list = calloc(cap, sizeof(ZylCameraConfig));
-    if (!list) return -1;
-
-    struct v4l2_frmsizeenum frmsize = {0};
-    frmsize.pixel_format = V4L2_PIX_FMT_YUYV;
-
-    while (xioctl(cam->fd, VIDIOC_ENUM_FRAMESIZES, &frmsize) == 0) {
-        if (n >= cap) {
-            cap *= 2;
-            ZylCameraConfig *tmp = realloc(list, cap * sizeof(ZylCameraConfig));
-            if (!tmp) break;
-            list = tmp;
-        }
-        if (frmsize.type == V4L2_FRMSIZE_TYPE_DISCRETE) {
-            list[n].width  = frmsize.discrete.width;
-            list[n].height = frmsize.discrete.height;
-            list[n].format = ZYL_CAMERA_FMT_YUYV;
-            list[n].fps    = 30;
-            n++;
-        }
-        frmsize.index++;
-    }
-
-    *out = list;
-    *count = n;
-    return 0;
-}
-
 bool zyl_camera_is_open(const ZylCameraService *cam) {
     return cam && cam->fd >= 0;
 }

@@ -74,8 +74,6 @@ void zyl_logger_install_crash_handler(ZylLoggerService *svc);
 
 /* -- Cleanup ------------------------------------------------ */
 
-void zyl_crash_report_free(ZylCrashReport *report);
-
 #ifdef __cplusplus
 }
 #endif

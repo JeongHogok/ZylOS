@@ -44,29 +44,12 @@ typedef struct {
     char phone_number[20];       /* 자기 전화번호 */
 } ZylTelephonyState;
 
-/* ─── 통화 상태 콜백 ─── */
-typedef void (*zyl_call_state_fn)(ZylCallState old_state,
-                                   ZylCallState new_state,
-                                   const char *number,
-                                   void *user_data);
-
-/* ─── SMS 수신 콜백 ─── */
-typedef void (*zyl_sms_received_fn)(const char *sender,
-                                     const char *body,
-                                     uint64_t timestamp_ms,
-                                     void *user_data);
-
 /* ─── 서비스 인터페이스 ─── */
 typedef struct ZylTelephonyService ZylTelephonyService;
 
 /* 서비스 생성/해제 */
 ZylTelephonyService *zyl_telephony_create(void);
 void                 zyl_telephony_destroy(ZylTelephonyService *svc);
-
-/* 상태 조회 */
-int  zyl_telephony_get_state(const ZylTelephonyService *svc,
-                              ZylTelephonyState *out);
-ZylCallState zyl_telephony_get_call_state(const ZylTelephonyService *svc);
 
 /* 통화 제어 */
 int  zyl_telephony_dial(ZylTelephonyService *svc, const char *number);
@@ -78,12 +61,6 @@ int  zyl_telephony_send_dtmf(ZylTelephonyService *svc, const char *digits);
 /* SMS 발송 */
 int  zyl_telephony_send_sms(ZylTelephonyService *svc,
                              const char *number, const char *body);
-
-/* 콜백 등록 */
-void zyl_telephony_on_call_state(ZylTelephonyService *svc,
-                                  zyl_call_state_fn cb, void *data);
-void zyl_telephony_on_sms_received(ZylTelephonyService *svc,
-                                    zyl_sms_received_fn cb, void *data);
 
 /* D-Bus 상수 */
 #define ZYL_TELEPHONY_DBUS_NAME "org.zylos.Telephony"

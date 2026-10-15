@@ -25,23 +25,6 @@
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_shell.h>
 
-/* ─── Split-screen mode ─── */
-enum zyl_split_mode {
-    ZYL_SPLIT_NONE,         /* Full-screen (default)          */
-    ZYL_SPLIT_HORIZONTAL,   /* Two panes side by side (left | right)   */
-    ZYL_SPLIT_VERTICAL      /* Two panes top and bottom (top / bottom) */
-};
-
-/* ─── PiP (Picture-in-Picture) configuration ─── */
-struct zyl_pip_config {
-    bool                    active;        /* true = PiP layer is visible           */
-    struct zyl_view        *pip_view;      /* The view rendered in the PiP window   */
-    int                     x;             /* PiP window origin X (px from left)    */
-    int                     y;             /* PiP window origin Y (px from top)     */
-    int                     width;         /* PiP window width  (px)                */
-    int                     height;        /* PiP window height (px)                */
-    struct wlr_scene_tree  *pip_scene_tree;/* Dedicated scene sub-tree for PiP      */
-};
 
 /* ─── Gesture direction identifiers ─── */
 enum gesture_direction {
@@ -182,12 +165,6 @@ struct zyl_server {
     int   screen_width;
     int   screen_height;
 
-    /* Split-screen state */
-    enum zyl_split_mode  split_mode;
-    struct zyl_view     *split_primary;     /* Primary pane view            */
-    struct zyl_view     *split_secondary;   /* Secondary pane view          */
-    int                  split_ratio_pct;   /* Primary pane share 0-100; default 50 */
-
     /* Gesture → IPC signal dispatch (narrow stub interface).
      *
      * Coordinator follow-up required:
@@ -201,9 +178,6 @@ struct zyl_server {
     void (*gesture_signal_fn)(struct zyl_server *server,
                               const char *signal_name,
                               const char *detail);
-
-    /* PiP (Picture-in-Picture) */
-    struct zyl_pip_config pip;
 
     /* Notification panel overlay */
     struct wlr_scene_rect *notif_overlay;

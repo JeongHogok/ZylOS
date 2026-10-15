@@ -35,22 +35,15 @@ typedef struct ZylDisplayService ZylDisplayService;
 ZylDisplayService *zyl_display_create(void);
 void               zyl_display_destroy(ZylDisplayService *svc);
 
-/* Mode management */
-int  zyl_display_get_modes(ZylDisplayService *svc,
-                           ZylDisplayMode **out, int *count);
 int  zyl_display_set_mode(ZylDisplayService *svc,
                           int width, int height, int hz);
-int  zyl_display_get_current_mode(ZylDisplayService *svc,
-                                  ZylDisplayMode *out);
 
 /* DPI scaling */
 int   zyl_display_set_scale(ZylDisplayService *svc, float scale);
-float zyl_display_get_scale(const ZylDisplayService *svc);
 
 /* Rotation */
 int         zyl_display_set_rotation(ZylDisplayService *svc,
                                      ZylRotation rot);
-ZylRotation zyl_display_get_rotation(const ZylDisplayService *svc);
 int         zyl_display_set_auto_rotate(ZylDisplayService *svc,
                                         bool enabled);
 

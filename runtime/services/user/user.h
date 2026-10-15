@@ -45,16 +45,9 @@ void            zyl_user_destroy(ZylUserService *svc);
 int  zyl_user_add(ZylUserService *svc, const char *name, ZylUserType type,
                    uint32_t *out_uid);
 int  zyl_user_remove(ZylUserService *svc, uint32_t uid);
-int  zyl_user_get_profile(ZylUserService *svc, uint32_t uid, ZylUserProfile *out);
-int  zyl_user_list(ZylUserService *svc, ZylUserProfile **out, int *count);
 
 /* 사용자 전환 */
 int  zyl_user_switch(ZylUserService *svc, uint32_t uid);
-uint32_t zyl_user_get_current(const ZylUserService *svc);
-
-/* 데이터 격리: 사용자별 앱 데이터 경로 */
-int  zyl_user_get_app_data_path(const ZylUserService *svc, uint32_t uid,
-                                 const char *app_id, char *out, size_t out_len);
 
 #define ZYL_USER_DBUS_NAME "org.zylos.UserManager"
 #define ZYL_USER_DBUS_PATH "/org/zylos/UserManager"

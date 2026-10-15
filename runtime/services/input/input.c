@@ -551,22 +551,6 @@ ZylKeyboardState zyl_input_get_keyboard_state(const ZylInputService *svc)
 
 /* == Public API -- Multi-touch ============================== */
 
-int zyl_input_get_touch_points(ZylInputService *svc, ZylTouchPoint *out, int max)
-{
-    if (!svc || !out || max <= 0) return 0;
-
-    int count = 0;
-    int limit = (max < ZYL_MAX_TOUCH_POINTS) ? max : ZYL_MAX_TOUCH_POINTS;
-
-    for (int i = 0; i < ZYL_MAX_TOUCH_POINTS && count < limit; i++) {
-        if (svc->touch_points[i].active) {
-            out[count] = svc->touch_points[i];
-            count++;
-        }
-    }
-    return count;
-}
-
 /* == Public API -- Hardware Keys ============================ */
 
 void zyl_input_on_hardware_key(ZylInputService *svc, ZylHardwareKey key)

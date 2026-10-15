@@ -354,18 +354,6 @@ void zyl_location_stop_updates(ZylLocationService *svc) {
     g_message("[Location] Updates stopped");
 }
 
-int zyl_location_get_last_known(const ZylLocationService *svc,
-                                 ZylLocation *out) {
-    if (!svc || !out) return -1;
-
-    pthread_mutex_lock((pthread_mutex_t *)&svc->lock);
-    *out = svc->last_known;
-    bool valid = svc->has_fix;
-    pthread_mutex_unlock((pthread_mutex_t *)&svc->lock);
-
-    return valid ? 0 : -1;
-}
-
 /* ─── 지오펜스 공개 API ─── */
 
 int zyl_location_add_geofence(ZylLocationService *svc,

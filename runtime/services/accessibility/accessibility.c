@@ -245,39 +245,6 @@ void zyl_accessibility_service_destroy(ZylAccessibilityService *svc)
     free(svc);
 }
 
-void zyl_accessibility_set_high_contrast(ZylAccessibilityService *svc,
-                                         bool enabled)
-{
-    if (!svc) {
-        return;
-    }
-    svc->state.high_contrast = enabled;
-    emit_state_changed(svc);
-}
-
-bool zyl_accessibility_set_font_scale(ZylAccessibilityService *svc,
-                                      double scale)
-{
-    if (!svc) {
-        return false;
-    }
-    if (scale < ZYL_FONT_SCALE_MIN || scale > ZYL_FONT_SCALE_MAX) {
-        return false;
-    }
-    svc->state.font_scale = scale;
-    emit_state_changed(svc);
-    return true;
-}
-
-ZylAccessibilityState zyl_accessibility_get_state(
-    const ZylAccessibilityService *svc)
-{
-    if (!svc) {
-        return (ZylAccessibilityState){false, 1.0, false};
-    }
-    return svc->state;
-}
-
 /* -- main() ------------------------------------------------- */
 
 int main(int argc, char *argv[])

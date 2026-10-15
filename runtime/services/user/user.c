@@ -252,24 +252,6 @@ int zyl_user_remove(ZylUserService *svc, uint32_t uid) {
     return -1;
 }
 
-int zyl_user_get_profile(ZylUserService *svc, uint32_t uid, ZylUserProfile *out) {
-    if (!svc || !out) return -1;
-    for (int i = 0; i < svc->user_count; i++) {
-        if (svc->users[i].uid == uid) {
-            *out = svc->users[i];
-            return 0;
-        }
-    }
-    return -1;
-}
-
-int zyl_user_list(ZylUserService *svc, ZylUserProfile **out, int *count) {
-    if (!svc || !out || !count) return -1;
-    *out = svc->users;
-    *count = svc->user_count;
-    return 0;
-}
-
 int zyl_user_switch(ZylUserService *svc, uint32_t uid) {
     if (!svc) return -1;
 
@@ -300,17 +282,6 @@ int zyl_user_switch(ZylUserService *svc, uint32_t uid) {
     }
 
     g_message("[User] Switched: %u → %u", old_uid, uid);
-    return 0;
-}
-
-uint32_t zyl_user_get_current(const ZylUserService *svc) {
-    return svc ? svc->current_uid : 0;
-}
-
-int zyl_user_get_app_data_path(const ZylUserService *svc, uint32_t uid,
-                                const char *app_id, char *out, size_t out_len) {
-    if (!svc || !app_id || !out || out_len == 0) return -1;
-    snprintf(out, out_len, "%s/%u/apps/%s", ZYL_USER_DATA_ROOT, uid, app_id);
     return 0;
 }
 

@@ -45,14 +45,7 @@ void                     zyl_accessibility_service_destroy(ZylAccessibilityServi
 
 /* -- Setters ------------------------------------------------ */
 
-void zyl_accessibility_set_high_contrast(ZylAccessibilityService *svc,
-                                         bool enabled);
-bool zyl_accessibility_set_font_scale(ZylAccessibilityService *svc,
-                                      double scale);
-
 /* -- Getters ------------------------------------------------ */
-
-ZylAccessibilityState zyl_accessibility_get_state(const ZylAccessibilityService *svc);
 
 #ifdef __cplusplus
 }

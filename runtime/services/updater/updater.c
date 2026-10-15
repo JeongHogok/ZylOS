@@ -810,13 +810,6 @@ ZylPartitionInfo *zyl_updater_get_partition_info(const ZylUpdater *u) {
     return info;
 }
 
-void zyl_updater_set_auto_check(ZylUpdater *u, bool enabled,
-                                 int interval_hours) {
-    if (!u) return;
-    u->auto_check_enabled = enabled;
-    u->auto_check_interval_h = interval_hours > 0 ? interval_hours : 24;
-}
-
 void zyl_update_manifest_free(ZylUpdateManifest *m) {
     if (!m) return;
     free(m->version);

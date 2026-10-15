@@ -24,10 +24,6 @@ void transition_state(ZylPowerService *svc, ZylPowerState new_state) {
 
     g_message("[Power] %d → %d", old, new_state);
 
-    if (svc->state_cb) {
-        svc->state_cb(old, new_state, svc->state_cb_data);
-    }
-
     /* D-Bus 시그널: StateChanged */
     if (svc->dbus) {
         g_dbus_connection_emit_signal(svc->dbus, NULL,
@@ -131,8 +127,4 @@ int zyl_power_set_brightness(ZylPowerService *svc, int percent) {
     /* Dimmed or off, the new level shows when the screen is next woken */
     if (svc->state == ZYL_POWER_STATE_ACTIVE) apply_brightness(svc, svc->brightness);
     return 0;
-}
-
-int zyl_power_get_brightness(const ZylPowerService *svc) {
-    return svc ? svc->brightness : -1;
 }

@@ -49,10 +49,6 @@ int  zyl_location_request_updates(ZylLocationService *svc,
 /* 업데이트 중지 */
 void zyl_location_stop_updates(ZylLocationService *svc);
 
-/* 마지막으로 알려진 위치 조회 */
-int  zyl_location_get_last_known(const ZylLocationService *svc,
-                                  ZylLocation *out);
-
 /* ─── 지오펜스 ─── */
 
 /**

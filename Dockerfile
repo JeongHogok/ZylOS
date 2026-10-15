@@ -35,11 +35,6 @@ RUN pacman-key --init && \
     meson setup build --prefix=/usr -Dexamples=false -Dxwayland=disabled -Dwerror=false && \
     ninja -C build && ninja -C build install && \
     ldconfig && \
-    # Generate xdg-shell protocol header
-    PROTO_DIR=$(pkg-config --variable=pkgdatadir wayland-protocols) && \
-    wayland-scanner server-header \
-      "$PROTO_DIR/stable/xdg-shell/xdg-shell.xml" \
-      /usr/include/xdg-shell-protocol.h && \
     # Cleanup
     rm -rf /tmp/wlroots && \
     pacman -Scc --noconfirm

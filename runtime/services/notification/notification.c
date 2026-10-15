@@ -1026,15 +1026,6 @@ ZylDndState zyl_notification_get_dnd(ZylNotificationService *service)
     return service->dnd;
 }
 
-void zyl_notification_channel_free(ZylNotificationChannel *channel)
-{
-    if (!channel) return;
-    g_free(channel->id);
-    g_free(channel->name);
-    channel->id   = NULL;
-    channel->name = NULL;
-}
-
 /* ══════════════════════════════════════════════════════════════
  * Entry Point
  * ══════════════════════════════════════════════════════════════ */
