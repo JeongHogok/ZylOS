@@ -49,6 +49,15 @@ window.ZylPermissionDialog = (function () {
    * Clear permanent denial for an app + permission.
    * Called from Settings when user manually re-enables a permission.
    */
+  /* An app was removed: its denials and counts go with it */
+  function forgetApp(appId) {
+    [_permanentDenials, _denialCounts].forEach(function (map) {
+      Object.keys(map).forEach(function (k) {
+        if (k.indexOf(appId + ':') === 0) delete map[k];
+      });
+    });
+  }
+
   function clearPermanentDenial(appId, permission) {
     delete _permanentDenials[appId + ':' + permission];
     delete _denialCounts[appId + ':' + permission];
@@ -288,6 +297,7 @@ window.ZylPermissionDialog = (function () {
   }
 
   return {
+    forgetApp: forgetApp,
     requestPermission: requestPermission,
     checkAndRequest: checkAndRequest,
     isPermanentlyDenied: isPermanentlyDenied,

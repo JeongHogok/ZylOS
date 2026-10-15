@@ -221,23 +221,26 @@ pub fn delete_saved_device(
     Ok(())
 }
 
-/// 설치된 앱 목록 조회 (apps/ 디렉토리의 app.json 파싱)
-#[tauri::command]
-pub fn list_installed_apps() -> Result<Vec<serde_json::Value>, String> {
-    // 번들된 앱 디렉토리에서 app.json 스캔
+/// Where the OS image's apps are: the bundle, or ui/apps in dev mode
+pub(crate) fn bundled_app_dirs() -> Vec<std::path::PathBuf> {
     let apps_dir = std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|d| d.to_path_buf()))
         .map(|d| d.join("../Resources/apps"))
         .unwrap_or_else(|| std::path::PathBuf::from("apps"));
-
-    // dev 모드 폴백: ui/apps/ 디렉토리
-    let search_dirs = vec![
-        apps_dir.clone(),
+    vec![
+        apps_dir,
         std::path::PathBuf::from("ui/apps"),
         std::path::PathBuf::from("assets/apps"),
-    ];
+    ]
+}
 
+/// 설치된 앱 목록 조회 (apps/ 디렉토리의 app.json 파싱) + 가상 기기에 스토어로 설치한 앱
+#[tauri::command]
+pub fn list_installed_apps(
+    state: tauri::State<'_, std::sync::Mutex<crate::state::AppState>>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let search_dirs = bundled_app_dirs();
     let mut apps = Vec::new();
 
     for base in &search_dirs {
@@ -271,6 +274,11 @@ pub fn list_installed_apps() -> Result<Vec<serde_json::Value>, String> {
             }
         }
         /* Continue scanning all directories — merge results, dedup by app id */
+    }
+
+    /* Store apps after the image's: an image app's id is never taken over */
+    if let Ok(app_state) = state.lock() {
+        apps.extend(crate::commands::store::installed_store_apps(&app_state));
     }
 
     /* Deduplicate by app id — first occurrence wins */

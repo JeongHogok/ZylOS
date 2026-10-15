@@ -20,13 +20,18 @@ window.ZylAppRegistry = (function () {
 
   var _apps = {}; // appId -> {name, path, system, icon, color, permissions, formFactors, iconSvg, launcher, intents}
 
-  /* ═══ Registration ═══ */
+  /* ═══ Registration: the installed apps, all of them — a removed app goes ═══ */
   function register(appList) {
+    _apps = {};
     (appList || []).forEach(function (app) {
       var appName = (app.id || '').split('.').pop();
       _apps[app.id] = {
         name: app.name || appName,
-        path: 'apps/' + appName + '/index.html',
+        /* A store app is its own origin, as on the device (zyl-app://<id>/) */
+        path: app.source === 'store'
+          ? 'zyl-app://' + app.id + '/' + (app.entry || 'index.html')
+          : 'apps/' + appName + '/index.html',
+        origin: app.source === 'store' ? 'zyl-app://' + app.id : '',
         system: app.system || false,
         icon: app.icon || appName,
         color: app.color || 'icon-blue',
@@ -42,6 +47,8 @@ window.ZylAppRegistry = (function () {
   /* ═══ Lookup ═══ */
   function getApp(appId) { return _apps[appId] || null; }
   function getPath(appId) { var a = _apps[appId]; return a ? a.path : null; }
+  /* '' for the image's apps (the system page's own origin) */
+  function getOrigin(appId) { var a = _apps[appId]; return a ? a.origin : ''; }
   function getAllIds() { return Object.keys(_apps); }
 
   /* ═══ OS Policy ═══ */
@@ -56,6 +63,7 @@ window.ZylAppRegistry = (function () {
     register: register,
     getApp: getApp,
     getPath: getPath,
+    getOrigin: getOrigin,
     getAllIds: getAllIds,
     isExcludedFromRecents: isExcludedFromRecents
   };

@@ -45,6 +45,7 @@
   var dockApps = [];                 /* home.dock — the OS default until the user changes it */
   var defaultApps = [];
   var gridOrder = []; // saved order of grid app IDs
+  var installedIds = null;           /* every installed app: removed ones leave the dock and grid */
   var appListReceived = false;
   var dockSettingsLoaded = false;
 
@@ -84,6 +85,16 @@
       });
     }
     return grid;
+  }
+
+  /* An app removed from the store (or anywhere) does not stay in the saved
+     dock and grid order once both are known */
+  function pruneRemoved() {
+    if (!installedIds || !dockSettingsLoaded) return;
+    var dock = dockApps.filter(function (id) { return installedIds[id]; });
+    var grid = gridOrder.filter(function (id) { return installedIds[id]; });
+    if (dock.length !== dockApps.length) { dockApps = dock; saveDockSettings(); }
+    if (grid.length !== gridOrder.length) { gridOrder = grid; saveGridSettings(); }
   }
 
   function updateGridOrder() {
@@ -182,6 +193,8 @@
       /* App list response */
       if (msg.type === 'service.response' && msg.service === 'apps' && msg.method === 'getInstalled' && msg.data) {
         appListReceived = true;
+        installedIds = {};
+        msg.data.forEach(function (app) { installedIds[app.id] = true; });
         defaultApps = msg.data.filter(function (app) {
           /* System UI is not launched from here */
           if (app.launcher === false) return false;
@@ -190,6 +203,7 @@
               !ZylFormFactor.supportsApp(app.formFactors)) return false;
           return true;
         });
+        pruneRemoved();
         renderDock();
         renderAppGrid(getSortedGridApps());
       }
@@ -209,6 +223,7 @@
           }
         }
         dockSettingsLoaded = true;
+        pruneRemoved();
         if (appListReceived) {
           renderDock();
           renderAppGrid(getSortedGridApps());

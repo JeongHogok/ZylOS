@@ -97,7 +97,12 @@ pub fn save_settings(
             .entry(&category)
             .or_insert_with(|| serde_json::json!({}));
         if let Some(cat_obj) = cat.as_object_mut() {
-            cat_obj.insert(key.clone(), value.clone());
+            // null removes the key (an uninstalled app's entries go, not stay as null)
+            if value.is_null() {
+                cat_obj.remove(&key);
+            } else {
+                cat_obj.insert(key.clone(), value.clone());
+            }
         }
     }
 

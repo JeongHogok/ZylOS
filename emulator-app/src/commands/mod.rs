@@ -19,3 +19,4 @@ pub mod network;
 pub mod os_image;
 pub mod resource;
 pub mod settings;
+pub mod store;

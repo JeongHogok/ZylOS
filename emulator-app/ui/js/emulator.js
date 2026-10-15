@@ -244,6 +244,11 @@
     updateRunningApps();
   }
 
+  /* The OS removed an app (its app store): close it and forget its instance */
+  window.addEventListener('zyl:app-removed', function (e) {
+    if (e.detail) closeApp(e.detail);
+  });
+
   /**
    * Force-stop an app — kills its iframe, clears watchdog state,
    * and releases all resources. Used for misbehaving / hung apps.
@@ -767,6 +772,13 @@
     ? window.location.origin
     : '*';
 
+  /* The displayed app's origin: a store app is its own (zyl-app://<id>), the
+     image's apps share this page's */
+  function frameOrigin() {
+    var o = _displayedApp ? ZylAppRegistry.getOrigin(_displayedApp) : '';
+    return o || _ipcOrigin;
+  }
+
   /* The OS decided who handles an intent; the container launches and delivers */
   function runIntent(d) {
     if (!d) return;
@@ -779,7 +791,7 @@
     try {
       appFrame.contentWindow.postMessage(
         JSON.stringify({ type: type, data: data }),
-        _ipcOrigin
+        frameOrigin()
       );
     } catch(e) { /* iframe may be cross-origin or detached */ }
   }
@@ -895,9 +907,9 @@
       });
       try {
         if (source) {
-          source.postMessage(camResponse, _ipcOrigin);
+          source.postMessage(camResponse, source === window ? _ipcOrigin : frameOrigin());
         } else if (appFrame && appFrame.contentWindow) {
-          appFrame.contentWindow.postMessage(camResponse, _ipcOrigin);
+          appFrame.contentWindow.postMessage(camResponse, frameOrigin());
         }
       } catch (err) { /* iframe not ready */ }
       return;
@@ -922,9 +934,9 @@
       });
       try {
         if (source) {
-          source.postMessage(response, _ipcOrigin);
+          source.postMessage(response, source === window ? _ipcOrigin : frameOrigin());
         } else if (appFrame && appFrame.contentWindow) {
-          appFrame.contentWindow.postMessage(response, _ipcOrigin);
+          appFrame.contentWindow.postMessage(response, frameOrigin());
         }
       } catch (err) { /* iframe not ready */ }
     }

@@ -1564,6 +1564,109 @@ var callTests = (function () {
 })();
 
 /* ═══════════════════════════════════════════════════════
+   App store (emulator contract of runtime/services/appstore): a store signed
+   the way tools/build-store.py signs — RSA-SHA256 over the SHA-256
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ App store');
+
+var storeTests = (function () {
+  var nodeCrypto = require('crypto');
+  var keys = nodeCrypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+  var pub = keys.publicKey.export({ type: 'spki', format: 'pem' });
+  function sha(buf) { return nodeCrypto.createHash('sha256').update(buf).digest(); }
+  function sign(buf) { return nodeCrypto.sign('sha256', sha(buf), keys.privateKey).toString('base64'); }
+  var pkg = Buffer.from('a zip, as far as the OS is concerned');
+
+  function store(opts) {
+    opts = opts || {};
+    var entry = { id: 'com.example.hello', name: 'Hello', version: '2.0.0', package: 'hello.zpkg',
+                  size: pkg.length, sha256: sha(pkg).toString('hex'), signature: sign(pkg), permissions: ['network'] };
+    var cat = Buffer.from(JSON.stringify({ apps: [entry,
+      { id: 'com.zylos.settings', name: 'S', version: '9', package: 's', size: 1, sha256: entry.sha256, signature: 'c2ln' },
+      { id: '../evil', name: 'E', version: '1', package: 'e', size: 1, sha256: entry.sha256, signature: 'c2ln' }] }));
+    var calls = [], files = {
+      'https://store.example/v1/catalog.json': opts.catalog || cat,
+      'https://store.example/v1/catalog.json.sig': Buffer.from(sign(cat) + '\n'),
+      'https://store.example/v1/hello.zpkg': opts.pkg || pkg
+    };
+    var installedApps = [{ id: 'com.zylos.settings', source: 'image', version: '1' }].concat(opts.installed || []);
+    var forgotten = [];
+    var svc = ns.appstore({
+      SYSTEM_APPS: ['com.zylos.settings'],
+      forgetApp: function (id) { forgotten.push(id); },
+      appsSvc: { getInstalled: function () { return Promise.resolve(installedApps); }, _invalidate: function () {} },
+      invoke: function (cmd, a) {
+        calls.push(cmd);
+        if (cmd === 'store_config') {
+          return Promise.resolve(JSON.stringify(opts.unconfigured ? { url: '', publicKey: '' }
+            : { url: 'https://store.example/v1/catalog.json', publicKey: pub }));
+        }
+        if (cmd === 'store_download') {
+          return files[a.url] ? Promise.resolve(files[a.url].toString('base64')) : Promise.reject(new Error('404'));
+        }
+        if (cmd === 'store_unpack') {
+          return Promise.resolve({ manifest: JSON.stringify(opts.manifest || { id: 'com.example.hello', version: '2.0.0' }),
+                                   files: ['app.json', 'index.html'] });
+        }
+        return Promise.resolve(true);
+      }
+    });
+    return { svc: svc, calls: calls, forgotten: forgotten };
+  }
+
+  return Promise.all([
+    asyncTest('catalog: verified, invalid and image apps left out, installed state shown', function () {
+      var s = store({ installed: [{ id: 'com.example.hello', source: 'store', version: '1.0.0' }] });
+      return s.svc.getCatalog().then(function (c) {
+        assert.strictEqual(c.state, 'ok');
+        assert.deepStrictEqual(c.apps.map(function (a) { return a.id; }), ['com.example.hello']);
+        assert.deepStrictEqual([c.apps[0].installed, c.apps[0].installedVersion, c.apps[0].update], [true, '1.0.0', true]);
+        assert.deepStrictEqual(c.apps[0].permissions, ['network']);
+      });
+    }),
+    asyncTest('catalog: none configured, or not signed by the store', function () {
+      return Promise.all([store({ unconfigured: true }).svc.getCatalog(),
+                          store({ catalog: Buffer.from('{"apps":[]}') }).svc.getCatalog()]).then(function (r) {
+        assert.strictEqual(r[0].state, 'unconfigured');
+        assert.strictEqual(r[1].state, 'untrusted');
+      });
+    }),
+    asyncTest('install: a verified package is committed; a tampered one never unpacked', function () {
+      var good = store(), bad = store({ pkg: Buffer.from('changed after signing') });
+      return Promise.all([good.svc.install({ appId: 'com.example.hello' }),
+                          bad.svc.install({ appId: 'com.example.hello' })]).then(function (r) {
+        assert.deepStrictEqual(r[0], { ok: true, reason: '' });
+        assert.ok(good.calls.indexOf('store_commit') !== -1);
+        assert.deepStrictEqual(r[1], { ok: false, reason: 'bad_package' });
+        assert.strictEqual(bad.calls.indexOf('store_unpack'), -1);
+      });
+    }),
+    asyncTest('install: not the catalog\'s version, a system app, already current', function () {
+      var wrong = store({ manifest: { id: 'com.example.hello', version: '1.0.0' } });
+      var current = store({ installed: [{ id: 'com.example.hello', source: 'store', version: '2.0.0' }] });
+      return Promise.all([wrong.svc.install({ appId: 'com.example.hello' }),
+                          store().svc.install({ appId: 'com.zylos.settings' }),
+                          current.svc.install({ appId: 'com.example.hello' })]).then(function (r) {
+        assert.strictEqual(r[0].reason, 'invalid_package');
+        assert.ok(wrong.calls.indexOf('store_discard') !== -1 && wrong.calls.indexOf('store_commit') === -1);
+        assert.strictEqual(r[1].reason, 'system_app');        /* listed by the store, still the image's */
+        assert.strictEqual(r[2].reason, 'up_to_date');
+      });
+    }),
+    asyncTest('uninstall: the container goes and the OS forgets the app; system apps stay', function () {
+      var s = store({ installed: [{ id: 'com.example.hello', source: 'store', version: '2.0.0' }] });
+      return Promise.all([s.svc.uninstall({ appId: 'com.example.hello' }),
+                          s.svc.uninstall({ appId: 'com.zylos.settings' })]).then(function (r) {
+        assert.deepStrictEqual(r[0], { ok: true, reason: '' });
+        assert.ok(s.calls.indexOf('store_remove') !== -1);
+        assert.deepStrictEqual(s.forgotten, ['com.example.hello']);
+        assert.ok(r[1].reason === 'system_app' || r[1].reason === 'busy');
+      });
+    })
+  ]);
+})();
+
+/* ═══════════════════════════════════════════════════════
    Compositor instance-state store (emulator-app/ui/js/app-state.js)
    ═══════════════════════════════════════════════════════ */
 console.log('\n■ ZylAppStateStore');
@@ -1776,7 +1879,7 @@ console.log('\n■ zylI18n time');
    Wait for all async tests and report
    ═══════════════════════════════════════════════════════ */
 Promise.all([settingsTests, displayTests, inputTests, sensorsTests,
-             usbTests, powerTests, audioTests, fsTests, updaterTests, telemetryTests, callTests,
+             usbTests, powerTests, audioTests, fsTests, updaterTests, telemetryTests, callTests, storeTests,
              netstatsTests, alertTests, lockTests, deviceBridgeTests, appStateTests])
   .then(function () {
     console.log('\n════════════════════════');

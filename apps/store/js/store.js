@@ -1,12 +1,12 @@
 // ──────────────────────────────────────────────────────────
 // [Clean Architecture] Presentation Layer - Page
 //
-// 역할: 앱스토어 — 설치 가능한 앱 목록 조회 및 설치/제거 관리
-// 수행범위: appstore.getAvailable, apps.getInstalled 서비스 조회,
-//           appstore.install / appstore.uninstall 서비스 호출,
-//           검색 필터링, 탭 전환, 카테고리 필터, 앱 상세 보기,
+// 역할: 앱스토어 — 스토어 서버의 앱 목록과 설치·업데이트·삭제
+// 수행범위: appstore.getCatalog(상태: ok·unconfigured·unreachable·untrusted),
+//           appstore.install / uninstall 결과(reason)에 맞는 안내,
+//           검색 필터링, 탭 전환, 카테고리 필터, 앱 상세(개발자·요구 권한·크기),
 //           설치/업데이트 진행 상태, 앱 카드 렌더링
-// 의존방향: appstore / apps 서비스 (postMessage IPC), ZylBridge (bridge.js)
+// 의존방향: appstore 서비스 (ZylBridge.requestService), ZylToast, zylI18n
 // SOLID: SRP — 앱스토어 UI 렌더링과 사용자 인터랙션만 담당
 //
 // 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
@@ -30,16 +30,16 @@
   var detailTitleEl = document.getElementById('detail-title');
 
   /* ─── State ─── */
-  var availableApps = [];       // from appstore.getAvailable
-  var installedSet = {};        // id -> true, from apps.getInstalled
-  var installedVersions = {};   // id -> version string, from apps.getInstalled
+  var availableApps = [];       // from appstore.getCatalog
+  var storeState = 'ok';        // ok | unconfigured | unreachable | untrusted | invalid
+  var installedSet = {};        // id -> true, installed store apps
+  var installedVersions = {};   // id -> installed version
   var activeTab = 'all';        // 'all' | 'installed'
   var searchQuery = '';
   var activeCategory = '';      // '' means all categories
   var categories = [];          // unique category strings from app data
   var pendingActions = {};      // appId -> 'installing' | 'uninstalling' | 'updating'
   var detailApp = null;         // currently viewed app in detail, or null
-  var dataReady = { available: false, installed: false };
 
   /* ─── XSS protection ─── */
   function escapeHtml(str) {
@@ -48,102 +48,83 @@
     return div.innerHTML;
   }
 
-  /* ─── IPC helpers ─── */
-  function sendRequest(service, method, data) {
-    var msg = {
-      type: 'service.request',
-      service: service,
-      method: method
-    };
-    if (data !== undefined) {
-      msg.data = data;
-    }
-    ZylBridge.sendToSystem(msg);
-  }
-
+  /* ─── Data: the store's catalog (installed state included) ─── */
   function requestData() {
-    dataReady.available = false;
-    dataReady.installed = false;
     showLoading(true);
-    sendRequest('appstore', 'getAvailable');
-    sendRequest('apps', 'getInstalled');
+    ZylBridge.requestService('appstore', 'getCatalog', {}).then(function (c) {
+      storeState = (c && c.state) || 'invalid';
+      availableApps = (c && Array.isArray(c.apps)) ? c.apps : [];
+    }, function () {
+      storeState = 'unreachable';
+      availableApps = [];
+    }).then(function () {
+      installedSet = {};
+      installedVersions = {};
+      availableApps.forEach(function (a) {
+        if (a.installed) {
+          installedSet[a.id] = true;
+          installedVersions[a.id] = a.installedVersion;
+        }
+      });
+      showLoading(false);
+      extractCategories();
+      renderCategoryBar();
+      render();
+      if (detailApp) {
+        var updated = findAppById(detailApp.id);
+        if (updated) {
+          detailApp = updated;
+          renderDetailContent(updated);
+        } else {
+          closeDetail();
+        }
+      }
+    });
   }
 
-  /* ─── Message handler ─── */
+  /* What the user is told when an action did not complete (reason → message) */
+  var REASON_KEYS = {
+    unconfigured: 'store.unconfigured', unreachable: 'store.error_network',
+    download_failed: 'store.error_network', untrusted: 'store.error_untrusted',
+    bad_package: 'store.error_untrusted', invalid_package: 'store.error_untrusted',
+    busy: 'store.error_busy'
+  };
+
+  function act(method, appId, pending) {
+    pendingActions[appId] = pending;
+    render();
+    refreshDetailIfOpen(appId);
+    ZylBridge.requestService('appstore', method, { appId: appId }).then(function (r) {
+      if (!r || !r.ok) ZylToast.error(zylI18n.t(REASON_KEYS[r && r.reason] || 'store.error_failed'));
+    }, function () {
+      ZylToast.error(zylI18n.t('store.error_network'));
+    }).then(function () {
+      delete pendingActions[appId];
+      requestData();
+    });
+  }
+
+  /* ─── Navigation ─── */
   window.addEventListener('message', function (e) {
     if (e.source !== window.parent) return;
     var msg;
     try {
       msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
     } catch (err) {
-      // Malformed message, ignore
       return;
     }
-    if (!msg) return;
-
-    /* Navigation back handling */
-    if (msg.type === 'navigation.back') {
+    if (msg && msg.type === 'navigation.back') {
       if (detailApp) {
         closeDetail();
         return;
       }
       ZylBridge.sendToSystem({ type: 'navigation.exit' });
-      return;
-    }
-
-    if (msg.type !== 'service.response') return;
-
-    if (msg.service === 'appstore' && msg.method === 'getAvailable' && msg.data) {
-      availableApps = Array.isArray(msg.data) ? msg.data : [];
-      dataReady.available = true;
-      extractCategories();
-      onDataLoaded();
-    }
-
-    if (msg.service === 'apps' && msg.method === 'getInstalled' && msg.data) {
-      var list = Array.isArray(msg.data) ? msg.data : [];
-      installedSet = {};
-      installedVersions = {};
-      for (var i = 0; i < list.length; i++) {
-        var item = list[i];
-        var id = item.id || item;
-        installedSet[id] = true;
-        if (item.version) {
-          installedVersions[id] = item.version;
-        }
-      }
-      dataReady.installed = true;
-      onDataLoaded();
-    }
-
-    // Handle install/uninstall responses
-    if (msg.service === 'appstore' && (msg.method === 'install' || msg.method === 'uninstall')) {
-      // Clear pending state for the relevant app
-      if (msg.data && msg.data.appId) {
-        delete pendingActions[msg.data.appId];
-      } else {
-        // If no appId in response, clear all pending
-        pendingActions = {};
-      }
-      requestData();
     }
   });
 
-  function onDataLoaded() {
-    if (dataReady.available && dataReady.installed) {
-      showLoading(false);
-      renderCategoryBar();
-      render();
-      // Update detail view if open
-      if (detailApp) {
-        var updated = findAppById(detailApp.id);
-        if (updated) {
-          detailApp = updated;
-          renderDetailContent(updated);
-        }
-      }
-    }
-  }
+  /* Another app installed or removed (device: the store's signal) */
+  ZylBridge.onServiceEvent('appstore', 'AppInstalled', function () { requestData(); });
+  ZylBridge.onServiceEvent('appstore', 'AppRemoved', function () { requestData(); });
 
   /* ─── Categories ─── */
   function extractCategories() {
@@ -203,18 +184,20 @@
     }
   }
 
+  /* Nothing to list: say why — no store set up, unreachable, not verifiable */
+  var EMPTY_KEYS = { unconfigured: 'store.unconfigured', unreachable: 'store.error_network',
+                     untrusted: 'store.error_untrusted', invalid: 'store.error_untrusted' };
+
   function showEmpty(show) {
-    if (emptyStateEl) {
-      emptyStateEl.className = show ? '' : 'hidden';
-    }
+    if (!emptyStateEl) return;
+    emptyStateEl.className = show ? '' : 'hidden';
+    var text = emptyStateEl.querySelector('.empty-text');
+    if (text) text.textContent = zylI18n.t(EMPTY_KEYS[storeState] || 'store.empty');
   }
 
   /* ─── Update detection ─── */
   function hasUpdate(app) {
-    if (!installedSet[app.id]) return false;
-    var installedVer = installedVersions[app.id];
-    if (!installedVer || !app.version) return false;
-    return installedVer !== app.version;
+    return !!app.update;
   }
 
   /* ─── Find app by id ─── */
@@ -380,10 +363,7 @@
         btnEl.addEventListener('click', (function (appId) {
           return function (e) {
             e.stopPropagation();
-            pendingActions[appId] = 'updating';
-            render();
-            refreshDetailIfOpen(appId);
-            sendRequest('appstore', 'install', { appId: appId });
+            act('install', appId, 'updating');
           };
         })(app.id));
       } else if (isSystem) {
@@ -398,10 +378,7 @@
         btnEl.addEventListener('click', (function (appId) {
           return function (e) {
             e.stopPropagation();
-            pendingActions[appId] = 'uninstalling';
-            render();
-            refreshDetailIfOpen(appId);
-            sendRequest('appstore', 'uninstall', { appId: appId });
+            act('uninstall', appId, 'uninstalling');
           };
         })(app.id));
       }
@@ -412,10 +389,7 @@
       btnEl.addEventListener('click', (function (appId) {
         return function (e) {
           e.stopPropagation();
-          pendingActions[appId] = 'installing';
-          render();
-          refreshDetailIfOpen(appId);
-          sendRequest('appstore', 'install', { appId: appId });
+          act('install', appId, 'installing');
         };
       })(app.id));
     }
@@ -492,7 +466,17 @@
     }
     // Size row
     if (app.size) {
-      metaDiv.appendChild(createMetaRow(zylI18n.t('store.size'), app.size));
+      metaDiv.appendChild(createMetaRow(zylI18n.t('store.size'), zylI18n.formatBytes(app.size)));
+    }
+    if (app.developer) {
+      metaDiv.appendChild(createMetaRow(zylI18n.t('store.developer'), app.developer));
+    }
+    /* What the app asks for — known before installing */
+    if (app.permissions && app.permissions.length) {
+      metaDiv.appendChild(createMetaRow(zylI18n.t('store.permissions'), app.permissions.map(function (p) {
+        var key = 'permission.' + p, name = zylI18n.t(key);
+        return name !== key ? name : p;
+      }).join(', ')));
     }
 
     if (metaDiv.childNodes.length > 0) {
@@ -540,10 +524,7 @@
         btnEl.textContent = zylI18n.t('store.update');
         btnEl.addEventListener('click', (function (appId) {
           return function () {
-            pendingActions[appId] = 'updating';
-            render();
-            renderDetailContent(findAppById(appId) || app);
-            sendRequest('appstore', 'install', { appId: appId });
+            act('install', appId, 'updating');
           };
         })(app.id));
       } else if (isSystem) {
@@ -555,10 +536,7 @@
         btnEl.textContent = zylI18n.t('store.uninstall');
         btnEl.addEventListener('click', (function (appId) {
           return function () {
-            pendingActions[appId] = 'uninstalling';
-            render();
-            renderDetailContent(findAppById(appId) || app);
-            sendRequest('appstore', 'uninstall', { appId: appId });
+            act('uninstall', appId, 'uninstalling');
           };
         })(app.id));
       }
@@ -567,10 +545,7 @@
       btnEl.textContent = zylI18n.t('store.install');
       btnEl.addEventListener('click', (function (appId) {
         return function () {
-          pendingActions[appId] = 'installing';
-          render();
-          renderDetailContent(findAppById(appId) || app);
-          sendRequest('appstore', 'install', { appId: appId });
+          act('install', appId, 'installing');
         };
       })(app.id));
     }
