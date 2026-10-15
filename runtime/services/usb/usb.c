@@ -307,16 +307,6 @@ int zyl_usb_set_mode(ZylUsbService *svc, ZylUsbMode mode) {
     return ret;
 }
 
-ZylUsbMode zyl_usb_get_mode(const ZylUsbService *svc) {
-    if (!svc) return ZYL_USB_MODE_NONE;
-    return svc->current_mode;
-}
-
-bool zyl_usb_is_connected(const ZylUsbService *svc) {
-    if (!svc) return false;
-    return svc->connected;
-}
-
 /* ════════════════════════════════════════════════════════════════
  *  D-Bus introspection XML
  * ════════════════════════════════════════════════════════════════ */

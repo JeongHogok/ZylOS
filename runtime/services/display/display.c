@@ -364,14 +364,6 @@ void zyl_display_destroy(ZylDisplayService *svc) {
     free(svc);
 }
 
-int zyl_display_get_modes(ZylDisplayService *svc,
-                          ZylDisplayMode **out, int *count) {
-    if (!svc || !out || !count) return -1;
-    *out   = svc->modes;
-    *count = svc->mode_count;
-    return 0;
-}
-
 int zyl_display_set_mode(ZylDisplayService *svc,
                          int width, int height, int hz) {
     if (!svc) return -1;
@@ -404,13 +396,6 @@ int zyl_display_set_mode(ZylDisplayService *svc,
     return -1;
 }
 
-int zyl_display_get_current_mode(ZylDisplayService *svc,
-                                 ZylDisplayMode *out) {
-    if (!svc || !out) return -1;
-    *out = svc->current_mode;
-    return 0;
-}
-
 int zyl_display_set_scale(ZylDisplayService *svc, float scale) {
     if (!svc) return -1;
     if (scale < 0.5f || scale > 4.0f) {
@@ -420,11 +405,6 @@ int zyl_display_set_scale(ZylDisplayService *svc, float scale) {
     svc->scale = scale;
     g_message("[Display] Scale set: %.2f", scale);
     return 0;
-}
-
-float zyl_display_get_scale(const ZylDisplayService *svc) {
-    if (!svc) return 1.0f;
-    return svc->scale;
 }
 
 int zyl_display_set_rotation(ZylDisplayService *svc, ZylRotation rot) {
@@ -443,11 +423,6 @@ int zyl_display_set_rotation(ZylDisplayService *svc, ZylRotation rot) {
 
     svc->rotation = rot;
     return apply_rotation(svc, rot);
-}
-
-ZylRotation zyl_display_get_rotation(const ZylDisplayService *svc) {
-    if (!svc) return ZYL_ROTATION_0;
-    return svc->rotation;
 }
 
 int zyl_display_set_auto_rotate(ZylDisplayService *svc, bool enabled) {

@@ -2,7 +2,7 @@
 // [Clean Architecture] Application Layer - UseCase
 //
 // 역할: 프리부팅 디바이스 설정 관리 Tauri 커맨드
-// 수행범위: 디바이스 프로필 목록, 리소스 옵션, 설정 검증/저장
+// 수행범위: 디바이스 프로필 목록, 호스트 리소스, 설정 검증/저장, 저장된 기기
 // 의존방향: state (DeviceConfig, DeviceProfile, SavedDevice)
 // SOLID: SRP — 설정 관리만 담당, ISP — 최소 인터페이스 노출
 //
@@ -37,28 +37,6 @@ pub fn get_device_profiles() -> Vec<DeviceProfile> {
             Vec::new()
         }
     }
-}
-
-/// 저장공간 옵션 반환
-#[tauri::command]
-pub fn get_storage_options() -> Vec<serde_json::Value> {
-    vec![
-        serde_json::json!({"value": 4, "label": "4 GB", "description": "Minimum"}),
-        serde_json::json!({"value": 8, "label": "8 GB", "description": "Standard"}),
-        serde_json::json!({"value": 16, "label": "16 GB", "description": "Recommended"}),
-        serde_json::json!({"value": 32, "label": "32 GB", "description": "Large"}),
-    ]
-}
-
-/// RAM 옵션 반환
-#[tauri::command]
-pub fn get_ram_options() -> Vec<serde_json::Value> {
-    vec![
-        serde_json::json!({"value": 512, "label": "512 MB", "description": "Minimum (testing)"}),
-        serde_json::json!({"value": 1024, "label": "1 GB", "description": "Default"}),
-        serde_json::json!({"value": 2048, "label": "2 GB", "description": "Recommended"}),
-        serde_json::json!({"value": 4096, "label": "4 GB", "description": "High performance"}),
-    ]
 }
 
 /// 호스트 시스템의 가용 리소스 조회

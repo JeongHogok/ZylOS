@@ -21,15 +21,6 @@ use state::AppState;
 use std::sync::Mutex;
 use tauri::Manager;
 
-/// 플랫폼 정보 조회
-#[tauri::command]
-fn get_platform_info() -> serde_json::Value {
-    serde_json::json!({
-        "platform": platform::platform_name(),
-        "arch": std::env::consts::ARCH,
-    })
-}
-
 fn main() {
     env_logger::init();
 
@@ -43,20 +34,12 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             // Config commands
             commands::config::get_device_profiles,
-            commands::config::get_storage_options,
-            commands::config::get_ram_options,
             commands::config::get_host_resources,
-            commands::config::validate_config,
             commands::config::save_config,
             commands::config::get_saved_devices,
             commands::config::delete_saved_device,
-            // Resource commands
-            commands::resource::reserve_resources,
-            commands::resource::release_resources,
             // Boot commands
             commands::boot::boot_device,
-            commands::boot::shutdown_device,
-            commands::boot::get_boot_status,
             // Filesystem commands
             commands::filesystem::fs_read_dir,
             commands::filesystem::fs_read_file,
@@ -69,8 +52,6 @@ fn main() {
             // OS image commands
             commands::os_image::list_os_images,
             commands::os_image::scan_os_images_dir,
-            commands::os_image::create_os_image,
-            commands::os_image::delete_os_image,
             commands::os_image::get_os_images_dir,
             // Each app's private data
             commands::appdata::appdata_load,
@@ -92,12 +73,7 @@ fn main() {
             // App registry
             commands::config::list_installed_apps,
             // Emulated system services
-            commands::emulated_services::notif_post,
-            commands::emulated_services::notif_cancel,
-            commands::emulated_services::notif_get_active,
-            commands::emulated_services::notif_clear_all,
             commands::emulated_services::power_get_state,
-            commands::emulated_services::power_set_brightness,
             commands::emulated_services::location_get_last_known,
             commands::emulated_services::user_get_current,
             commands::emulated_services::user_list,
@@ -118,48 +94,8 @@ fn main() {
             commands::emulated_services::bt_connect,
             commands::emulated_services::bt_disconnect,
             commands::emulated_services::bt_get_state,
-            // Audio HAL
-            commands::emulated_services::audio_get_state,
-            commands::emulated_services::audio_set_volume,
-            commands::emulated_services::audio_set_vibration,
-            commands::emulated_services::audio_set_silent,
-            // Display HAL
-            commands::emulated_services::display_get_state,
-            commands::emulated_services::display_set_brightness,
-            commands::emulated_services::display_set_dark_mode,
-            commands::emulated_services::display_set_font_size,
-            commands::emulated_services::display_set_screen_timeout,
             // Battery HAL
             commands::emulated_services::get_battery_state,
-            // Storage HAL
-            commands::emulated_services::get_storage_state,
-            // Camera HAL
-            commands::emulated_services::camera_get_capabilities,
-            commands::emulated_services::camera_capture,
-            commands::emulated_services::camera_start_preview,
-            commands::emulated_services::camera_stop_preview,
-            // Sensors HAL
-            commands::emulated_services::sensors_get_available,
-            commands::emulated_services::sensors_start,
-            commands::emulated_services::sensors_stop,
-            commands::emulated_services::sensors_get_reading,
-            // Telephony HAL
-            commands::emulated_services::telephony_get_state,
-            commands::emulated_services::telephony_dial,
-            commands::emulated_services::telephony_hangup,
-            commands::emulated_services::telephony_send_sms,
-            commands::emulated_services::telephony_get_sms_list,
-            // NFC HAL
-            commands::emulated_services::nfc_get_state,
-            commands::emulated_services::nfc_start_scan,
-            commands::emulated_services::nfc_stop_scan,
-            commands::emulated_services::nfc_get_last_tag,
-            // Alarm HAL
-            commands::emulated_services::alarm_set,
-            commands::emulated_services::alarm_cancel,
-            commands::emulated_services::alarm_get_all,
-            // HAL commands
-            get_platform_info,
         ])
         .setup(|_app| {
             log::info!("Zyl OS Emulator started");

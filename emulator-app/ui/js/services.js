@@ -51,12 +51,7 @@ var ZylServices = (function () {
      =============================================================== */
   return {
     handleRequest: handleRequest,
-    tauriInvoke: tauriInvoke,
-    get device() { return typeof ZylSystemServices !== 'undefined' ? ZylSystemServices.device : null; },
     get storage() { return typeof ZylSystemServices !== 'undefined' ? ZylSystemServices.storage : null; },
-    get settings() { return typeof ZylSystemServices !== 'undefined' ? ZylSystemServices.settings : null; },
-    get apps() { return typeof ZylSystemServices !== 'undefined' ? ZylSystemServices.apps : null; },
-    get fs() { return typeof ZylSystemServices !== 'undefined' ? ZylSystemServices.fs : null; },
     get applyDisplayProfile() { return typeof ZylSystemServices !== 'undefined' ? ZylSystemServices.applyDisplayProfile : function () {}; }
   };
 })();

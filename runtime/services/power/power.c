@@ -263,12 +263,6 @@ void zyl_power_destroy(ZylPowerService *svc) {
     g_free(svc);
 }
 
-/* ─── 공개 API: 상태 조회 ─── */
-
-ZylPowerState zyl_power_get_state(const ZylPowerService *svc) {
-    return svc ? svc->state : ZYL_POWER_STATE_ACTIVE;
-}
-
 /* ─── 공개 API: 서스펜드 ─── */
 
 int zyl_power_request_suspend(ZylPowerService *svc) {
@@ -294,9 +288,6 @@ int zyl_power_request_suspend(ZylPowerService *svc) {
 
     /* 리쥼 후 여기로 돌아옴 */
     transition_state(svc, ZYL_POWER_STATE_ACTIVE);
-    if (svc->wake_cb) {
-        svc->wake_cb(ZYL_WAKE_POWER_BUTTON, svc->wake_cb_data);
-    }
     return 0;
 }
 
@@ -322,35 +313,6 @@ int zyl_power_request_reboot(ZylPowerService *svc) {
     sync();
     logind_call("Reboot");
     return 0;
-}
-
-/* ─── 공개 API: 설정 ─── */
-
-int zyl_power_set_config(ZylPowerService *svc, const ZylPowerConfig *cfg) {
-    if (!svc || !cfg) return -1;
-    svc->config = *cfg;
-    reset_idle_timers(svc);
-    return 0;
-}
-
-void zyl_power_get_config(const ZylPowerService *svc, ZylPowerConfig *out) {
-    if (!svc || !out) return;
-    *out = svc->config;
-}
-
-/* ─── 공개 API: 콜백 등록 ─── */
-
-void zyl_power_on_state_change(ZylPowerService *svc,
-                                zyl_power_state_fn cb, void *data) {
-    if (!svc) return;
-    svc->state_cb = cb;
-    svc->state_cb_data = data;
-}
-
-void zyl_power_on_wake(ZylPowerService *svc, zyl_wake_fn cb, void *data) {
-    if (!svc) return;
-    svc->wake_cb = cb;
-    svc->wake_cb_data = data;
 }
 
 /* ─── 데몬 진입점 ─── */

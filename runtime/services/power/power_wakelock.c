@@ -98,8 +98,3 @@ void zyl_power_release_wakelock(ZylPowerService *svc, const char *tag) {
         }
     }
 }
-
-/* ─── 웨이크락 수 조회 ─── */
-int zyl_power_get_wakelock_count(const ZylPowerService *svc) {
-    return svc ? svc->wakelock_count : 0;
-}

@@ -42,13 +42,6 @@
   var pendingActions = {};      // appId -> 'installing' | 'uninstalling' | 'updating'
   var detailApp = null;         // currently viewed app in detail, or null
 
-  /* ─── XSS protection ─── */
-  function escapeHtml(str) {
-    var div = document.createElement('div');
-    div.appendChild(document.createTextNode(str || ''));
-    return div.innerHTML;
-  }
-
   /* ─── Data: the store's catalog (installed state included) ─── */
   function requestData() {
     showLoading(true);

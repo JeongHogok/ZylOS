@@ -10,17 +10,14 @@
   if (typeof zylI18n === 'undefined') return;
 
   zylI18n.addTranslations('ko', {
-    'weather.title': '\uB0A0\uC528',
     'weather.humidity': '\uC2B5\uB3C4',
     'weather.wind': '\uBC14\uB78C',
     'weather.pressure': '\uAE30\uC555',
     'weather.forecast': '\uC608\uBCF4',
     'weather.loading': '\uBD88\uB7EC\uC624\uB294 \uC911...',
     'weather.location_unavailable': '\uC704\uCE58\uB97C \uC0AC\uC6A9\uD560 \uC218 \uC5C6\uC74C',
-    'weather.error': '\uB0A0\uC528 \uC815\uBCF4\uB97C \uC0AC\uC6A9\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4',
     'weather.network_error': '\uB124\uD2B8\uC6CC\uD06C \uC624\uB958',
     'weather.data_unavailable': '\uB0A0\uC528 \uB370\uC774\uD130\uB97C \uC0AC\uC6A9\uD560 \uC218 \uC5C6\uC74C',
-    'weather.refresh': '\uC0C8\uB85C\uACE0\uCE68',
     'weather.hourly': '\uC2DC\uAC04\uBCC4 \uC608\uBCF4',
     'weather.now': '\uD604\uC7AC',
     'weather.feels_like': '\uCCB4\uAC10',
@@ -47,21 +44,17 @@
     'weather.manage_cities': '\uB3C4\uC2DC \uAD00\uB9AC',
     'weather.search_city': '\uB3C4\uC2DC \uAC80\uC0C9...',
     'weather.current_location': '\uD604\uC7AC \uC704\uCE58',
-    'weather.add_city': '\uB3C4\uC2DC \uCD94\uAC00'
   });
 
   zylI18n.addTranslations('en', {
-    'weather.title': 'Weather',
     'weather.humidity': 'Humidity',
     'weather.wind': 'Wind',
     'weather.pressure': 'Pressure',
     'weather.forecast': 'Forecast',
     'weather.loading': 'Loading...',
     'weather.location_unavailable': 'Location unavailable',
-    'weather.error': 'Weather unavailable',
     'weather.network_error': 'Network error',
     'weather.data_unavailable': 'Weather data unavailable',
-    'weather.refresh': 'Refresh',
     'weather.hourly': 'Hourly',
     'weather.now': 'Now',
     'weather.feels_like': 'Feels like',
@@ -88,21 +81,17 @@
     'weather.manage_cities': 'Manage Cities',
     'weather.search_city': 'Search city...',
     'weather.current_location': 'Current Location',
-    'weather.add_city': 'Add City'
   });
 
   zylI18n.addTranslations('ja', {
-    'weather.title': '\u5929\u6C17',
     'weather.humidity': '\u6E7F\u5EA6',
     'weather.wind': '\u98A8\u901F',
     'weather.pressure': '\u6C17\u5727',
     'weather.forecast': '\u4E88\u5831',
     'weather.loading': '\u8AAD\u307F\u8FBC\u307F\u4E2D...',
     'weather.location_unavailable': '\u4F4D\u7F6E\u60C5\u5831\u306A\u3057',
-    'weather.error': '\u5929\u6C17\u60C5\u5831\u3092\u53D6\u5F97\u3067\u304D\u307E\u305B\u3093',
     'weather.network_error': '\u30CD\u30C3\u30C8\u30EF\u30FC\u30AF\u30A8\u30E9\u30FC',
     'weather.data_unavailable': '\u5929\u6C17\u30C7\u30FC\u30BF\u3092\u53D6\u5F97\u3067\u304D\u307E\u305B\u3093',
-    'weather.refresh': '\u66F4\u65B0',
     'weather.hourly': '\u6642\u9593\u5225',
     'weather.now': '\u73FE\u5728',
     'weather.feels_like': '\u4F53\u611F',
@@ -129,21 +118,17 @@
     'weather.manage_cities': '\u90FD\u5E02\u7BA1\u7406',
     'weather.search_city': '\u90FD\u5E02\u3092\u691C\u7D22...',
     'weather.current_location': '\u73FE\u5728\u5730',
-    'weather.add_city': '\u90FD\u5E02\u3092\u8FFD\u52A0'
   });
 
   zylI18n.addTranslations('zh', {
-    'weather.title': '\u5929\u6C14',
     'weather.humidity': '\u6E7F\u5EA6',
     'weather.wind': '\u98CE\u901F',
     'weather.pressure': '\u6C14\u538B',
     'weather.forecast': '\u9884\u62A5',
     'weather.loading': '\u52A0\u8F7D\u4E2D...',
     'weather.location_unavailable': '\u65E0\u6CD5\u83B7\u53D6\u4F4D\u7F6E',
-    'weather.error': '\u65E0\u6CD5\u83B7\u53D6\u5929\u6C14\u4FE1\u606F',
     'weather.network_error': '\u7F51\u7EDC\u9519\u8BEF',
     'weather.data_unavailable': '\u65E0\u6CD5\u83B7\u53D6\u5929\u6C14\u6570\u636E',
-    'weather.refresh': '\u5237\u65B0',
     'weather.hourly': '\u9010\u5C0F\u65F6',
     'weather.now': '\u73B0\u5728',
     'weather.feels_like': '\u4F53\u611F',
@@ -170,21 +155,17 @@
     'weather.manage_cities': '\u57CE\u5E02\u7BA1\u7406',
     'weather.search_city': '\u641C\u7D22\u57CE\u5E02...',
     'weather.current_location': '\u5F53\u524D\u4F4D\u7F6E',
-    'weather.add_city': '\u6DFB\u52A0\u57CE\u5E02'
   });
 
   zylI18n.addTranslations('es', {
-    'weather.title': 'Clima',
     'weather.humidity': 'Humedad',
     'weather.wind': 'Viento',
     'weather.pressure': 'Presi\u00F3n',
     'weather.forecast': 'Pron\u00F3stico',
     'weather.loading': 'Cargando...',
     'weather.location_unavailable': 'Ubicaci\u00F3n no disponible',
-    'weather.error': 'Clima no disponible',
     'weather.network_error': 'Error de red',
     'weather.data_unavailable': 'Datos meteorol\u00F3gicos no disponibles',
-    'weather.refresh': 'Actualizar',
     'weather.hourly': 'Por hora',
     'weather.now': 'Ahora',
     'weather.feels_like': 'Sensaci\u00F3n',
@@ -211,6 +192,5 @@
     'weather.manage_cities': 'Gestionar ciudades',
     'weather.search_city': 'Buscar ciudad...',
     'weather.current_location': 'Ubicaci\u00F3n actual',
-    'weather.add_city': 'Agregar ciudad'
   });
 })();

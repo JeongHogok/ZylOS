@@ -33,13 +33,6 @@
         return fsCall(caller, 'fs_read_dir', { path: p.path || '/' }).then(visible)
           .catch(function () { return []; });
       },
-      getUnixDirectory: function (p, caller) {
-        return fsCall(caller, 'fs_read_dir', { path: p.path || '/' }).then(function (entries) {
-          return visible(entries).map(function (e) {
-            return (e.is_dir ? 'drwxr-xr-x' : '-rw-r--r--') + '  user user  ' + (e.size || 0) + '  ' + e.name;
-          }).join('\n');
-        }).catch(function () { return ''; });
-      },
       getFileContent: function (p, caller) {
         return fsCall(caller, 'fs_read_file', { path: p.path || '' });
       },

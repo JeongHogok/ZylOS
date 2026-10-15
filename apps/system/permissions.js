@@ -150,20 +150,6 @@ window.ZylPermissions = (function () {
   }
 
   /**
-   * Set user overrides — permissions explicitly revoked by user.
-   * Format: { appId: ['camera', 'storage'], ... }
-   */
-  function setUserOverrides(overrides) {
-    if (!overrides) { _userOverrides = {}; return; }
-    /* Filter out any overrides targeting system apps — immutable */
-    var safe = {};
-    Object.keys(overrides).forEach(function (appId) {
-      if (!_systemLocked[appId]) safe[appId] = overrides[appId];
-    });
-    _userOverrides = safe;
-  }
-
-  /**
    * Set override for a single app.
    * revokedPermissions: array of permission strings that are DENIED.
    * SECURITY: system apps CANNOT have permissions revoked.
@@ -238,7 +224,6 @@ window.ZylPermissions = (function () {
     registerApp: registerApp,
     registerFromAppList: registerFromAppList,
     forgetApp: forgetApp,
-    setUserOverrides: setUserOverrides,
     setAppOverride: setAppOverride,
     getEffectivePermissions: getEffectivePermissions,
     getDeclaredPermissions: getDeclaredPermissions,

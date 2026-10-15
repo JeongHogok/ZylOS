@@ -1,7 +1,7 @@
 // ──────────────────────────────────────────────────────────
 // [Clean Architecture] Application Layer - UseCase
 //
-// 역할: 디바이스 부팅/셧다운 오케스트레이션 Tauri 커맨드
+// 역할: 디바이스 부팅 오케스트레이션 Tauri 커맨드 (종료 정리는 main.rs 의 창 닫힘)
 // 수행범위: OS 이미지 마운트 + 리소스 예약 → 부팅 상태 전환 → BootInfo 반환
 // 의존방향: commands/resource, state, resource/disk_image
 // SOLID: SRP — 부팅 라이프사이클만 담당
@@ -92,25 +92,6 @@ fn mount_os_image(img_path: &str) -> Result<String, String> {
         log::info!("OS image mounted at: {}", mount_point);
         Ok(mount_point)
     }
-}
-
-/// OS 이미지 언마운트
-fn unmount_os_image(mount_point: &str) {
-    #[cfg(target_os = "macos")]
-    {
-        let _ = Command::new("hdiutil")
-            .args(["detach", mount_point])
-            .output();
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        let _ = Command::new("udisksctl")
-            .args(["unmount", "-p", mount_point])
-            .output();
-    }
-
-    log::info!("OS image unmounted: {}", mount_point);
 }
 
 /* 앱 배포는 scripts/deploy-apps.sh (dev) 또는 빌드 스크립트 (prod)에서 수행.
@@ -211,42 +192,4 @@ pub async fn boot_device(
         screen_height: config.screen_height,
         device_id,
     })
-}
-
-/// 디바이스 셧다운: OS 이미지 언마운트 + 리소스 해제 → 상태 초기화
-#[tauri::command]
-pub async fn shutdown_device(state: State<'_, Mutex<AppState>>) -> Result<(), String> {
-    // 1. OS 이미지 언마운트
-    {
-        let mut app_state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
-        if let Some(mp) = app_state.os_image_mount.take() {
-            unmount_os_image(&mp.to_string_lossy());
-        }
-    }
-
-    // 2. 데이터 리소스 해제
-    resource::release_resources(state.clone()).await?;
-
-    // 4. 상태 초기화
-    {
-        let mut app_state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
-        app_state.booted = false;
-    }
-
-    log::info!("Device shut down");
-    Ok(())
-}
-
-/// 현재 부팅 상태 조회
-#[tauri::command]
-pub fn get_boot_status(state: State<'_, Mutex<AppState>>) -> Result<serde_json::Value, String> {
-    let app_state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
-
-    Ok(serde_json::json!({
-        "booted": app_state.booted,
-        "resource_reserved": app_state.resource_reserved,
-        "has_config": app_state.config.is_some(),
-        "mount_point": app_state.mount_point.as_ref().map(|p| p.to_string_lossy().to_string()),
-        "os_image_mount": app_state.os_image_mount.as_ref().map(|p| p.to_string_lossy().to_string()),
-    }))
 }

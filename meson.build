@@ -32,7 +32,7 @@ subdir('board')   # defines board_id / board_soc / board_arch / board_hal_backen
 # ─── Form-factor profile → C service set ───────────────────
 # Every profile needs these: display, input, power, security, logging, OTA.
 zyl_core_services = [
-  'dbus', 'logger', 'display', 'input', 'power', 'sandbox', 'crash',
+  'logger', 'display', 'input', 'power', 'sandbox', 'crash',
   'credential', 'user', 'accessibility', 'notification', 'updater', 'telemetry',
   'netstats', 'bootctl', 'settings', 'lock', 'device', 'storage', 'fs', 'clipboard', 'network', 'appdata',
 ]
@@ -64,7 +64,7 @@ zyl_profile_extras = {
 zyl_services = zyl_core_services + zyl_profile_extras[zyl_profile]
 
 # Services that ship no systemd unit (static library or on-demand binary).
-zyl_services_without_unit = ['dbus', 'sandbox']
+zyl_services_without_unit = ['sandbox']
 # Unit basename differs from the service directory name.
 zyl_unit_overrides = {'crash': 'zyl-crash-handler'}
 

@@ -64,12 +64,6 @@ int zyl_bridge_register_handler(const char       *type,
                                 gpointer          data);
 
 /*
- * Unregister a previously registered handler.
- * Returns 0 on success, -1 if type was not registered.
- */
-int zyl_bridge_unregister_handler(const char *type);
-
-/*
  * Load bridge.js, substitute app-specific tokens, and inject into the webview.
  * Returns TRUE on success.
  */

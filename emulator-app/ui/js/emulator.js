@@ -249,33 +249,6 @@
     if (e.detail) closeApp(e.detail);
   });
 
-  /**
-   * Force-stop an app — kills its iframe, clears watchdog state,
-   * and releases all resources. Used for misbehaving / hung apps.
-   */
-  function forceStopApp(appId) {
-    if (!appId) return;
-    /* Block further service calls from this app */
-    if (typeof ZylSystemServices !== 'undefined' && ZylSystemServices.watchdog) {
-      ZylSystemServices.watchdog.block(appId);
-    }
-    /* Destroy the app iframe if it's the current app */
-    var appFrame = document.getElementById('app-frame');
-    if (appFrame && state.currentApp === appId) {
-      appFrame.src = 'about:blank';
-      _displayedApp = null;     /* a hung app is not asked for its state */
-    }
-    /* Remove from running apps */
-    closeApp(appId);
-    /* Unblock after a brief delay (allows relaunch) */
-    setTimeout(function () {
-      if (typeof ZylSystemServices !== 'undefined' && ZylSystemServices.watchdog) {
-        ZylSystemServices.watchdog.unblock(appId);
-      }
-    }, 1000);
-    syslog('ForceStop: ' + appId, 'sys');
-  }
-
   /* 잠금 검사를 거치는 네비게이션 */
   /* OOBE blocks all navigation — user must complete setup */
   function isInOobe() {
@@ -1332,11 +1305,6 @@
 
     /* 에뮬레이터 화면 표시 */
     if (emulatorScreen) emulatorScreen.classList.remove('hidden');
-
-    /* HAL에 프로필 적용 */
-    if (HAL && HAL.deviceInfo && HAL.deviceInfo.applyProfile) {
-      HAL.deviceInfo.applyProfile(config);
-    }
 
     /* 리소스 정보 표시 */
     if (bootInfo) {

@@ -45,10 +45,6 @@ struct ZylPowerService {
     guint suspend_timer_id;
 
     /* 콜백 */
-    zyl_power_state_fn state_cb;
-    void *state_cb_data;
-    zyl_wake_fn wake_cb;
-    void *wake_cb_data;
 
     /* D-Bus */
     GDBusConnection *dbus;

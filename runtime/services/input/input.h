@@ -67,8 +67,6 @@ ZylKeyboardState zyl_input_get_keyboard_state(const ZylInputService *svc);
 
 /* -- Multi-touch -------------------------------------------- */
 
-int  zyl_input_get_touch_points(ZylInputService *svc, ZylTouchPoint *out, int max);
-
 /* -- Hardware Keys ------------------------------------------ */
 
 void zyl_input_on_hardware_key(ZylInputService *svc, ZylHardwareKey key);

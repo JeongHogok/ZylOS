@@ -9,7 +9,7 @@
  * 예시 빌드:
  * clang -g -O1 -fsanitize=fuzzer,address \
  *   -DZYL_USE_WEBKIT2GTK \
- *   -Itests/fuzz/include -I. \
+ *   -Itests/include -I. \
  *   tests/fuzz/fuzz_json_dispatch.c \
  *   $(pkg-config --cflags --libs glib-2.0 gio-2.0 json-glib-1.0) \
  *   -o fuzz_json_dispatch
@@ -20,7 +20,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "include/mock_webkit.h"
+#include "../include/mock_webkit.h"
 #include "../../runtime/wam/src/bridge/bridge.h"
 
 static void fuzz_handler(const char *type,

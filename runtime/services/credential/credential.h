@@ -55,14 +55,6 @@ int zyl_credential_lookup(ZylCredentialStore *store,
 int zyl_credential_delete(ZylCredentialStore *store,
                            const char *service, const char *account);
 
-/* 서비스에 속한 모든 자격 증명 목록 */
-int zyl_credential_list(ZylCredentialStore *store,
-                         const char *service,
-                         ZylCredentialInfo **out, int *count);
-
-/* 자격 증명 정보 해제 */
-void zyl_credential_info_free(ZylCredentialInfo *info, int count);
-
 /* 마스터 키 설정 (기기 잠금 PIN에서 파생) */
 int zyl_credential_set_master_key(ZylCredentialStore *store,
                                    const void *key, size_t key_len);

@@ -52,10 +52,6 @@ struct ZylTelephonyService {
     bool modem_found;
 
     /* 콜백 */
-    zyl_call_state_fn call_cb;
-    void *call_cb_data;
-    zyl_sms_received_fn sms_cb;
-    void *sms_cb_data;
 
     /* D-Bus */
     GDBusConnection *system_bus;     /* ModemManager는 system bus */
@@ -139,11 +135,6 @@ static void transition_call_state(ZylTelephonyService *svc,
 
     g_message("[Telephony] Call: %d -> %d (%s)", old, new_state,
               number ? number : "");
-
-    if (svc->call_cb) {
-        svc->call_cb(old, new_state, svc->active_call_number,
-                     svc->call_cb_data);
-    }
 
     /* D-Bus 시그널 */
     if (svc->session_bus) {
@@ -401,11 +392,6 @@ static void on_mm_sms_added(GDBusConnection *conn,
     const char *body = text_v ? g_variant_get_string(text_v, NULL) : "";
 
     g_message("[Telephony] SMS received from %s: %.40s...", from, body);
-
-    /* 콜백 */
-    if (svc->sms_cb) {
-        svc->sms_cb(from, body, now_ms(), svc->sms_cb_data);
-    }
 
     /* D-Bus 시그널 */
     if (svc->session_bus) {
@@ -886,17 +872,6 @@ void zyl_telephony_destroy(ZylTelephonyService *svc) {
     g_free(svc);
 }
 
-int zyl_telephony_get_state(const ZylTelephonyService *svc,
-                             ZylTelephonyState *out) {
-    if (!svc || !out) return -1;
-    *out = svc->state;
-    return 0;
-}
-
-ZylCallState zyl_telephony_get_call_state(const ZylTelephonyService *svc) {
-    return svc ? svc->call_state : ZYL_CALL_STATE_IDLE;
-}
-
 int zyl_telephony_dial(ZylTelephonyService *svc, const char *number) {
     if (!svc || !number) return -1;
     if (!svc->modem_found || !svc->system_bus) {
@@ -1114,20 +1089,6 @@ int zyl_telephony_send_sms(ZylTelephonyService *svc,
 
     g_message("[Telephony] SMS sent successfully");
     return 0;
-}
-
-void zyl_telephony_on_call_state(ZylTelephonyService *svc,
-                                  zyl_call_state_fn cb, void *data) {
-    if (!svc) return;
-    svc->call_cb = cb;
-    svc->call_cb_data = data;
-}
-
-void zyl_telephony_on_sms_received(ZylTelephonyService *svc,
-                                    zyl_sms_received_fn cb, void *data) {
-    if (!svc) return;
-    svc->sms_cb = cb;
-    svc->sms_cb_data = data;
 }
 
 /* ─── main(): 독립 데몬 실행 ─── */

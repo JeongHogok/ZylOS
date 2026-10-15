@@ -103,12 +103,6 @@ int zyl_bridge_register_handler(const char       *type,
     return 0;
 }
 
-int zyl_bridge_unregister_handler(const char *type)
-{
-    if (!type || !handler_registry) return -1;
-    return g_hash_table_remove(handler_registry, type) ? 0 : -1;
-}
-
 /* == Load and inject the JS bridge ========================== */
 
 gboolean zyl_bridge_inject(const char      *bridge_js_path,

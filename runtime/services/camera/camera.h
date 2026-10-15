@@ -61,10 +61,6 @@ void zyl_camera_stop_preview(ZylCameraService *cam);
 int  zyl_camera_capture(ZylCameraService *cam,
                          const char *output_path);
 
-int  zyl_camera_get_supported_resolutions(ZylCameraService *cam,
-                                           ZylCameraConfig **out,
-                                           int *count);
-
 bool zyl_camera_is_open(const ZylCameraService *cam);
 
 #define ZYL_CAMERA_DBUS_NAME "org.zylos.CameraService"

@@ -572,16 +572,6 @@ void zyl_logger_service_destroy(ZylLoggerService *svc)
     free(svc);
 }
 
-void zyl_crash_report_free(ZylCrashReport *report)
-{
-    if (!report) {
-        return;
-    }
-    free(report->process_name);
-    free(report->backtrace);
-    free(report->core_path);
-}
-
 /* -- main() ------------------------------------------------- */
 
 int main(int argc, char *argv[])

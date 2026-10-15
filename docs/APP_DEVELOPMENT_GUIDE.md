@@ -215,16 +215,7 @@ navigator.system.wifi.scan().then(function(networks) {
 });
 ```
 
-### 4.5 로컬 스토리지
-
-```javascript
-navigator.system.storage.set('key', 'value');
-navigator.system.storage.get('key').then(function(val) {
-  console.log(val);
-});
-```
-
-### 4.6 Bridge 미지원 환경 (브라우저 테스트)
+### 4.5 Bridge 미지원 환경 (브라우저 테스트)
 
 ```javascript
 // ZylBridge가 없는 환경에서는 콘솔 폴백 자동 제공

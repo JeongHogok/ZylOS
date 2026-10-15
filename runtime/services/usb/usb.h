@@ -34,8 +34,6 @@ void           zyl_usb_destroy(ZylUsbService *svc);
 
 /* 모드 설정/조회 */
 int        zyl_usb_set_mode(ZylUsbService *svc, ZylUsbMode mode);
-ZylUsbMode zyl_usb_get_mode(const ZylUsbService *svc);
-bool       zyl_usb_is_connected(const ZylUsbService *svc);
 
 /* D-Bus 상수 */
 #define ZYL_USB_DBUS_NAME "org.zylos.UsbManager"

@@ -17,9 +17,6 @@ window.ZylSandbox = (function () {
   /* iframe sandbox flags — applied to every app iframe by the compositor */
   var SANDBOX_FLAGS = 'allow-scripts allow-same-origin allow-popups allow-forms';
 
-  /* Default Permissions Policy — all hardware access denied */
-  var DEFAULT_POLICY = "camera 'none'; microphone 'none'; geolocation 'none'";
-
   /* Permission → Permissions Policy feature mapping */
   var FEATURE_MAP = {
     'camera':     'camera',
@@ -67,9 +64,7 @@ window.ZylSandbox = (function () {
 
   return {
     SANDBOX_FLAGS: SANDBOX_FLAGS,
-    DEFAULT_POLICY: DEFAULT_POLICY,
     getPolicy: getPolicy,
-    isAllowedDomain: isAllowedDomain,
-    ALLOWED_DOMAINS: ALLOWED_DOMAINS
+    isAllowedDomain: isAllowedDomain
   };
 })();
