@@ -160,8 +160,6 @@
           <div id="recents-empty" data-emu-i18n="recents.empty">No running apps</div>
         </div>
 
-        <!-- Virtual Keyboard (OS keyboard app, mounted by compositor) -->
-        <div id="keyboard-container" class="zyl-keyboard"></div>
 
         <div id="nav-softkeys" class="nav-bar hidden" role="navigation" aria-label="Navigation">
           <button class="nav-sk-btn" id="sk-back" aria-label="Back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg></button>
@@ -207,17 +205,14 @@
     </div>
   </div>
 
-  <!-- OS font stacks for the keyboard (OS UI hosted in this document).
-       Defines variables only — the emulator chrome keeps its own fonts. -->
-  <link rel="stylesheet" href="apps/shared/fonts.css">
-  <link rel="stylesheet" href="apps/keyboard/css/keyboard.css">
   <script src="js/emu-i18n.js"></script>
   <script src="js/hal-browser.js"></script>
   <script src="js/hal-tauri.js"></script>
   <!-- OS System Framework (loaded from OS image) -->
-  <!-- OS form-factor policy. responsive.css is deliberately NOT loaded here:
-       it would scale the emulator chrome. Applied scoped to the keyboard
-       container, which is OS UI hosted in this document. -->
+  <!-- OS form-factor policy, used by the app registry to filter apps per
+       profile. responsive.css is deliberately NOT loaded: it would scale the
+       emulator chrome. The on-screen keyboard is OS UI inside each app page
+       (apps/keyboard/js/inpage.js), not hosted here. -->
   <script src="apps/shared/form-factor.js"></script>
   <script src="apps/system/sandbox.js"></script>
   <script src="apps/system/security.js"></script>
@@ -259,13 +254,10 @@
   <script src="apps/system/services/telemetry.js"></script>
   <script src="apps/system/services/netstats.js"></script>
   <script src="apps/system/services/bootctl.js"></script>
+  <script src="apps/system/services/lock.js"></script>
   <script src="apps/system/services/audio.js"></script>
   <!-- Service Router (assembles modules) -->
   <script src="apps/system/services.js"></script>
-  <script src="apps/keyboard/js/hangul.js"></script>
-  <script src="apps/keyboard/js/ime.js"></script>
-  <script src="apps/keyboard/js/prediction.js"></script>
-  <script src="apps/keyboard/js/keyboard.js"></script>
   <script src="apps/shared/touch-scroll.js"></script>
   <!-- Emulator IPC Router -->
   <script src="js/services.js"></script>

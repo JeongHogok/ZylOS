@@ -299,26 +299,35 @@ mkenvimage -s 0x20000 -o uboot.env board/bpi-f3/u-boot-env.txt
 
 ## 8. OTA 업데이트
 
-### 서버 설정
+### 패키지 만들기
 ```bash
-# 업데이트 서버 URL 설정
-echo "https://update.zyl-os.com/v1" > /etc/zyl-os/update-server
-
-# 수동 업데이트 확인
-zyl-updater --check
+# 두 슬롯(a·b)용 verity 트리와 서명 FIT 를 만들고 rootfs 와 함께 묶어 서명
+./tools/build-ota.sh --url https://update.example.com/zylos-0.2.0.pkg 0.2.0 rootfs.img build/ota
+#   build/ota/zylos-0.2.0.pkg   ← tar.gz: rootfs.img, verity-hashtree-{a,b}.img, fit-image-{a,b}.itb
+#   build/ota/zylos-0.2.0.json  ← 서버가 /check 에 돌려줄 응답 (sha256·size·signature 포함)
 ```
+패키지는 부트 서명 키(`board/bpi-f3/keys/zylos-boot-key.key`)로 서명합니다.
+기기는 그 공개키를 `/etc/zyl-os/ota-signing-key.pem` 으로 가져야 하며, 빌드 때
+`meson setup ... -Dota_public_key=board/bpi-f3/keys/zylos-boot-key.pub` 로 넣습니다.
+공개키가 없으면 기기는 업데이트를 받지 않습니다.
 
-### 업데이트 흐름
-1. `zyl-updater --check` → 서버에서 매니페스트 확인
-2. `zyl-updater --download` → 비활성 슬롯에 다운로드
-3. **SHA-256 해시 무결성 검증**
-4. **RSA-2048+SHA-256 서명 검증** (OpenSSL EVP)
-5. 비활성 파티션에 적용
-6. dm-verity 해시 트리 재생성
-7. U-Boot 플래그 변경
-8. 재부팅 → 새 슬롯에서 부팅 → Verified Boot 검증
-9. 헬스체크 통과 시 슬롯 확정
-10. 실패 시 자동 롤백 (부팅 3회 실패 감지)
+### 서버
+```bash
+echo "https://update.example.com/v1" > /etc/zyl-os/update-server
+```
+업데이터는 `GET <서버>/check?version=<현재>&arch=riscv64&slot=<a|b>` 를 보내고,
+새 버전이 있으면 `zylos-<버전>.json` 내용을, 없으면 `{"available": false}` 를 받습니다.
+
+### 업데이트 흐름 (`zyl-updater`, 설정 > 소프트웨어 업데이트)
+1. 확인 → 서버 응답(매니페스트)
+2. 다운로드 → SHA-256 확인 → RSA-SHA256 서명 확인 (서명 없는 패키지 거부)
+3. 비활성 슬롯에만 기록: rootfs → verity 트리 → FIT (FIT 는 임시 이름으로 쓰고 교체)
+4. 모든 기록 후에만 U-Boot 에 새 슬롯 지정 (`zyl_next_slot`, `zyl_boot_count=0`)
+5. 재시작 → U-Boot 가 새 슬롯의 FIT 서명을 확인하고 부팅 → dm-verity 가 rootfs 확인
+6. 부팅 60초 뒤 컴포지터·WAM 이 정상이면 슬롯 확정, 아니면 재시작
+7. 새 슬롯이 3번 안에 확정되지 않으면 U-Boot 가 이전 슬롯으로 돌아감
+
+전체 이미지만 설치합니다 (delta·앱만·커널만 패키지는 dm-verity rootfs 와 맞출 수 없어 거부).
 
 ---
 

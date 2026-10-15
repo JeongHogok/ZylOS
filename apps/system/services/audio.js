@@ -15,7 +15,7 @@
 
     var audioState = {
       mediaVolume: 70, notifVolume: 80, alarmVolume: 90,
-      ringtoneVolume: 80, systemVolume: 50, vibration: true, silentMode: false
+      ringtoneVolume: 80, systemVolume: 50, silentMode: false
     };
 
     /* Load from settings if available */
@@ -31,7 +31,6 @@
       if (s.alarmVolume !== undefined) audioState.alarmVolume = clampVolume(s.alarmVolume);
       if (s.ringtoneVolume !== undefined) audioState.ringtoneVolume = clampVolume(s.ringtoneVolume);
       if (s.systemVolume !== undefined) audioState.systemVolume = clampVolume(s.systemVolume);
-      if (s.vibration !== undefined) audioState.vibration = !!s.vibration;
       if (s.silentMode !== undefined) audioState.silentMode = !!s.silentMode;
     }
 
@@ -39,7 +38,8 @@
     var _audioCtx = null;
     function getAudioCtx() {
       if (_audioCtx && _audioCtx.state !== 'closed') return _audioCtx;
-      _audioCtx = getAudioCtx();
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      _audioCtx = Ctx ? new Ctx() : null;
       return _audioCtx;
     }
 
@@ -75,7 +75,6 @@
           alarmVolume: audioState.alarmVolume,
           ringtoneVolume: audioState.ringtoneVolume,
           systemVolume: audioState.systemVolume,
-          vibration: audioState.vibration,
           silentMode: audioState.silentMode
         });
       },
@@ -85,12 +84,8 @@
         settingsSvc._updateSetting('sound', 'silentMode', audioState.silentMode);
         return Promise.resolve(audioState.silentMode);
       },
-      getVibration: function () { return Promise.resolve(audioState.vibration); },
-      setVibration: function (p) {
-        audioState.vibration = !!p.enabled;
-        settingsSvc._updateSetting('sound', 'vibration', audioState.vibration);
-        return Promise.resolve(audioState.vibration);
-      },
+      /* Call uplink mute — the emulator carries no call audio */
+      setMicMute: function () { return Promise.resolve(false); },
       playNotificationSound: function () {
         if (audioState.silentMode) return Promise.resolve(false);
         try {
@@ -164,11 +159,14 @@
         } catch (e) { /* Web Audio unavailable */ }
         return Promise.resolve(true);
       },
+      /* Whether to vibrate is a setting (Settings > Sound writes sound.vibration):
+         read when needed, so a change applies at once with no second copy */
       vibrate: function (p) {
-        if (!audioState.vibration) return Promise.resolve(false);
-        var pattern = p.pattern || [200];
-        if (navigator.vibrate) navigator.vibrate(pattern);
-        return Promise.resolve(true);
+        return Promise.resolve(settingsSvc._getSetting('sound')).then(function (s) {
+          if (s && s.vibration === false) return false;
+          if (navigator.vibrate) navigator.vibrate((p && p.pattern) || [200]);
+          return true;
+        });
       }
     };
   };

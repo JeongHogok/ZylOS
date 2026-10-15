@@ -70,7 +70,13 @@
 
     return {
       get:    function (p) { return getSetting(p.category); },
-      update: function (p) { return updateSetting(p.category, p.key, p.value); },
+      update: function (p) {
+        /* The PIN lives in the lock service as a hash, never in settings */
+        if (p.category === 'security' && p.key === 'pin') {
+          return Promise.reject(new Error('the PIN belongs to the lock service'));
+        }
+        return updateSetting(p.category, p.key, p.value);
+      },
       _loadFromBackend: _loadFromBackend,
       _getSetting: getSetting,
       _updateSetting: updateSetting,

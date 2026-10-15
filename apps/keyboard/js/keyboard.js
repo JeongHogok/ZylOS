@@ -7,7 +7,7 @@
 //          키 입력 콜백 전달, Shift/Symbol 토글, 언어 순환,
 //          키 높이 설정, 터치 사운드/진동 피드백,
 //          예측 변환 후보 바 렌더링 (ZylPrediction 모듈 연동)
-// 의존방향: 에뮬레이터가 window.ZylKeyboard.init() 호출,
+// 의존방향: js/inpage.js 가 앱 문서 안에서 window.ZylKeyboard.init() 호출,
 //           window.ZylPrediction (prediction.js, optional), ZylIme (ime.js, optional)
 // SOLID: SRP — 키보드 UI 렌더링과 입력 콜백 전달만 담당
 //        OCP — LAYOUTS 객체에 언어 추가로 확장 가능

@@ -7,7 +7,8 @@
  *           OS 시그널 EmergencyAlert, 재전송 무시, 여러 조각 메시지 완료 시점
  *           처리, 모뎀 사본 삭제, GetEmergencyAlerts / AcknowledgeEmergencyAlert.
  *           모바일 데이터 — IPv4v6 + CLAT 연결 생성(구버전 NM 폴백),
- *           GetMobileData / SetMobileData (자동 연결·로밍)
+ *           GetMobileData / SetMobileData (자동 연결·로밍).
+ *           통화 — 수신 번호, 통화 기록(부재중·수신·발신, 재시작 후 유지, 삭제), DTMF
  * 의존방향: runtime/services/telephony/telephony.c (main 이름 변경), cbs.c,
  *           gio, dbus-daemon (없으면 SKIP)
  * SOLID: SRP — 모뎀 ↔ 텔레포니 D-Bus 계약 검증만 담당
@@ -21,6 +22,7 @@
 #include <glib/gstdio.h>
 
 #define ZYL_ALERTS_FILE "/tmp/zyl-telephony-cbs-test/alerts"
+#define ZYL_CALLLOG_FILE "/tmp/zyl-telephony-cbs-test/calllog"
 #define FAKE_NM_DIR     "/tmp/zyl-telephony-cbs-test/nm"
 #define main telephony_main
 #include "../runtime/services/telephony/telephony.c"
@@ -29,6 +31,7 @@
 #define MM_ROOT  "/org/freedesktop/ModemManager1"
 #define MODEM    MM_ROOT "/Modem/0"
 #define CBM      MM_ROOT "/CBM/1"
+#define CALL     MM_ROOT "/Call/1"
 
 static const char *FAKE_MM_XML =
     "<node>"
@@ -48,6 +51,17 @@ static const char *FAKE_MM_XML =
     "  <property name='MessageCode' type='u' access='read'/>"
     "  <property name='Update' type='u' access='read'/>"
     "</interface>"
+    "<interface name='org.freedesktop.ModemManager1.Modem.Voice'>"
+    "  <method name='ListCalls'><arg type='ao' direction='out'/></method>"
+    "  <method name='CreateCall'><arg type='a{sv}' direction='in'/><arg type='o' direction='out'/></method>"
+    "  <method name='HangupAll'/>"
+    "</interface>"
+    "<interface name='org.freedesktop.ModemManager1.Call'>"
+    "  <method name='Start'/><method name='Accept'/><method name='Hangup'/>"
+    "  <method name='SendDtmf'><arg name='dtmf' type='s' direction='in'/></method>"
+    "  <property name='Number' type='s' access='read'/>"
+    "  <signal name='StateChanged'><arg type='i'/><arg type='i'/><arg type='u'/></signal>"
+    "</interface>"
     "</node>";
 
 /* The fake modem answers from its own thread: the daemon makes blocking
@@ -57,6 +71,9 @@ static gint     g_deletes;
 static gint     g_cbm_state = 2;   /* RECEIVED */
 static int      g_alerts;
 static char    *g_last_category;
+static gpointer g_dtmf;            /* what SendDtmf received */
+static int      g_call_signals;
+static char    *g_call_state, *g_call_number;
 
 static void mm_call(GDBusConnection *c, const gchar *sender, const gchar *path,
                     const gchar *iface, const gchar *method, GVariant *params,
@@ -78,6 +95,20 @@ static void mm_call(GDBusConnection *c, const gchar *sender, const gchar *path,
     } else if (strcmp(method, "Delete") == 0) {
         g_atomic_int_inc(&g_deletes);
         g_dbus_method_invocation_return_value(inv, NULL);
+    } else if (strcmp(method, "ListCalls") == 0) {
+        const gchar *paths[] = { CALL };
+        g_dbus_method_invocation_return_value(inv, g_variant_new("(@ao)",
+            g_variant_new_objv(paths, 1)));
+    } else if (strcmp(method, "CreateCall") == 0) {
+        g_dbus_method_invocation_return_value(inv, g_variant_new("(o)", CALL));
+    } else if (strcmp(method, "SendDtmf") == 0) {
+        const gchar *d = NULL;
+        g_variant_get(params, "(&s)", &d);
+        g_free(g_atomic_pointer_exchange(&g_dtmf, g_strdup(d)));
+        g_dbus_method_invocation_return_value(inv, NULL);
+    } else if (strcmp(method, "HangupAll") == 0 || strcmp(method, "Start") == 0 ||
+               strcmp(method, "Accept") == 0 || strcmp(method, "Hangup") == 0) {
+        g_dbus_method_invocation_return_value(inv, NULL);
     } else {
         g_dbus_method_invocation_return_error(inv, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_METHOD, "no");
     }
@@ -91,6 +122,27 @@ static GVariant *cbm_prop(GDBusConnection *c, const gchar *sender, const gchar *
     if (strcmp(prop, "Channel") == 0) return g_variant_new_uint32(4370);
     if (strcmp(prop, "MessageCode") == 0) return g_variant_new_uint32(5);
     return g_variant_new_uint32(0);   /* Update */
+}
+
+static GVariant *call_prop(GDBusConnection *c, const gchar *sender, const gchar *path,
+                           const gchar *iface, const gchar *prop, GError **err, gpointer data) {
+    (void)c; (void)sender; (void)path; (void)iface; (void)prop; (void)err; (void)data;
+    return g_variant_new_string("01012345678");   /* Number */
+}
+
+static void on_call_state(GDBusConnection *c, const gchar *sender, const gchar *path,
+                          const gchar *iface, const gchar *sig, GVariant *params, gpointer data) {
+    (void)c; (void)sender; (void)path; (void)iface; (void)sig; (void)data;
+    g_free(g_call_state);
+    g_free(g_call_number);
+    g_variant_get(params, "(&sss)", NULL, &g_call_state, &g_call_number);
+    g_call_signals++;
+}
+
+/* MM_CALL_STATE: 1 dialing, 3 ringing in, 4 active, 7 terminated */
+static void emit_call(GDBusConnection *mm, int from, int to) {
+    g_dbus_connection_emit_signal(mm, NULL, CALL, "org.freedesktop.ModemManager1.Call",
+        "StateChanged", g_variant_new("(iiu)", from, to, 0), NULL);
 }
 
 static void on_alert(GDBusConnection *c, const gchar *sender, const gchar *path,
@@ -188,10 +240,13 @@ static gpointer fake_mm_thread(gpointer ready) {
     GDBusNodeInfo *info = g_dbus_node_info_new_for_xml(FAKE_MM_XML, NULL);
     static const GDBusInterfaceVTable calls = { mm_call, NULL, NULL, {0} };
     static const GDBusInterfaceVTable props = { NULL, cbm_prop, NULL, {0} };
+    static const GDBusInterfaceVTable call = { mm_call, call_prop, NULL, {0} };
     g_dbus_connection_register_object(g_mm, MM_ROOT, info->interfaces[0], &calls, NULL, NULL, NULL);
     g_dbus_connection_register_object(g_mm, MODEM, info->interfaces[1], &calls, NULL, NULL, NULL);
     g_dbus_connection_register_object(g_mm, MODEM, info->interfaces[2], &calls, NULL, NULL, NULL);
     g_dbus_connection_register_object(g_mm, CBM, info->interfaces[3], &props, NULL, NULL, NULL);
+    g_dbus_connection_register_object(g_mm, MODEM, info->interfaces[4], &calls, NULL, NULL, NULL);
+    g_dbus_connection_register_object(g_mm, CALL, info->interfaces[5], &call, NULL, NULL, NULL);
     GVariant *r = g_dbus_connection_call_sync(g_mm, "org.freedesktop.DBus", "/org/freedesktop/DBus",
         "org.freedesktop.DBus", "RequestName", g_variant_new("(su)", "org.freedesktop.ModemManager1", 0),
         NULL, G_DBUS_CALL_FLAGS_NONE, -1, NULL, NULL);
@@ -227,6 +282,8 @@ int main(void) {
     GDBusConnection *os = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, NULL);
     g_dbus_connection_signal_subscribe(os, NULL, ZYL_TELEPHONY_DBUS_NAME, "EmergencyAlert",
         NULL, NULL, G_DBUS_SIGNAL_FLAGS_NONE, on_alert, NULL, NULL);
+    g_dbus_connection_signal_subscribe(os, NULL, ZYL_TELEPHONY_DBUS_NAME, "CallStateChanged",
+        NULL, NULL, G_DBUS_SIGNAL_FLAGS_NONE, on_call_state, NULL, NULL);
 
     ZylTelephonyService *svc = zyl_telephony_create();
     assert(svc && svc->modem_found);
@@ -264,6 +321,13 @@ int main(void) {
     g_variant_unref(first);
     g_variant_unref(arr);
     g_variant_unref(list);
+    /* Call state uses the emulator's names, not enum numbers */
+    GVariant *call = call_os(os, "GetCallState", NULL, "(a{sv})");
+    GVariant *cd = g_variant_get_child_value(call, 0);
+    const gchar *state = NULL;
+    assert(g_variant_lookup(cd, "state", "&s", &state) && strcmp(state, "IDLE") == 0);
+    g_variant_unref(cd);
+    g_variant_unref(call);
     printf("PASS\n");
 
     printf("  %-56s ", "a multi-page message is handled once complete");
@@ -330,6 +394,73 @@ int main(void) {
     assert(read_mobile_data(&e2, &r2) && !e2 && r2);
     printf("PASS\n");
 
+    printf("  %-56s ", "an incoming call shows its number; unanswered is missed");
+    emit_call(mm, 0, 3);
+    assert(wait_for(&g_call_signals, 1));
+    assert(strcmp(g_call_state, "RINGING") == 0 && strcmp(g_call_number, "01012345678") == 0);
+    emit_call(mm, 3, 7);
+    assert(wait_for(&g_call_signals, 2) && strcmp(g_call_state, "IDLE") == 0);
+    assert(svc->calllog->len == 1);
+    CallLogEntry *missed = &g_array_index(svc->calllog, CallLogEntry, 0);
+    assert(strcmp(missed->type, "missed") == 0 && strcmp(missed->number, "01012345678") == 0);
+    assert(missed->duration == 0);
+    printf("PASS\n");
+
+    printf("  %-56s ", "answered and dialled calls are logged; DTMF reaches the call");
+    emit_call(mm, 0, 3);
+    emit_call(mm, 3, 4);
+    assert(wait_for(&g_call_signals, 4) && strcmp(g_call_state, "ACTIVE") == 0);
+    GVariant *dt = call_os(os, "SendDTMF", g_variant_new("(s)", "5"), "(b)");
+    gboolean sent = FALSE;
+    g_variant_get(dt, "(b)", &sent);
+    assert(sent && g_strcmp0(g_atomic_pointer_get(&g_dtmf), "5") == 0);
+    g_variant_unref(dt);
+    dt = call_os(os, "SendDTMF", g_variant_new("(s)", "5;rm"), "(b)");
+    g_variant_get(dt, "(b)", &sent);
+    assert(!sent);                      /* only keypad characters */
+    g_variant_unref(dt);
+    emit_call(mm, 4, 7);
+    assert(wait_for(&g_call_signals, 5));
+    assert(zyl_telephony_dial(svc, "0212345678") == 0);
+    emit_call(mm, 1, 4);
+    emit_call(mm, 4, 7);
+    assert(wait_for(&g_call_signals, 8));
+    GVariant *logv = call_os(os, "GetCallLog", NULL, "(aa{sv})");
+    GVariant *entries = g_variant_get_child_value(logv, 0);
+    assert(g_variant_n_children(entries) == 3);
+    const char *want[][2] = { {"outgoing", "0212345678"}, {"incoming", "01012345678"}, {"missed", "01012345678"} };
+    guint64 missed_id = 0;
+    for (int i = 0; i < 3; i++) {       /* newest first */
+        GVariant *e = g_variant_get_child_value(entries, (gsize)i);
+        const gchar *type = NULL, *num = NULL;
+        assert(g_variant_lookup(e, "type", "&s", &type) && strcmp(type, want[i][0]) == 0);
+        assert(g_variant_lookup(e, "number", "&s", &num) && strcmp(num, want[i][1]) == 0);
+        if (i == 2) assert(g_variant_lookup(e, "id", "t", &missed_id));
+        g_variant_unref(e);
+    }
+    g_variant_unref(entries);
+    g_variant_unref(logv);
+    printf("PASS\n");
+
+    printf("  %-56s ", "the call log survives a restart; entries can be deleted");
+    ZylTelephonyService probe = {0};
+    calllog_load(&probe);
+    assert(probe.calllog->len == 3);
+    g_array_free(probe.calllog, TRUE);
+    GVariant *del = call_os(os, "DeleteCallLog", g_variant_new("(t)", missed_id), "(b)");
+    gboolean gone = FALSE;
+    g_variant_get(del, "(b)", &gone);
+    assert(gone && svc->calllog->len == 2);
+    g_variant_unref(del);
+    del = call_os(os, "DeleteCallLog", g_variant_new("(t)", missed_id), "(b)");
+    g_variant_get(del, "(b)", &gone);
+    assert(!gone);
+    g_variant_unref(del);
+    calllog_load(&probe);
+    assert(probe.calllog->len == 2);
+    g_array_free(probe.calllog, TRUE);
+    printf("PASS\n");
+
     zyl_telephony_destroy(svc);
     g_object_unref(os);
     g_main_loop_quit(g_mm_loop);
@@ -337,6 +468,6 @@ int main(void) {
     g_object_unref(mm);
     g_test_dbus_down(bus);
     g_object_unref(bus);
-    printf("\nResults: 7/7 passed\n");
+    printf("\nResults: 10/10 passed\n");
     return 0;
 }

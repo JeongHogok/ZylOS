@@ -75,7 +75,7 @@ var moduleFiles = [
   'notification.js', 'power.js', 'display.js', 'input.js', 'sensors.js',
   'location.js', 'telephony.js', 'contacts.js', 'messaging.js', 'usb.js',
   'user.js', 'credential.js', 'appstore.js', 'updater.js', 'sandbox.js',
-  'logger.js', 'accessibility.js', 'audio.js', 'telemetry.js', 'netstats.js', 'bootctl.js'
+  'logger.js', 'accessibility.js', 'audio.js', 'telemetry.js', 'netstats.js', 'bootctl.js', 'lock.js'
 ];
 
 /* Provide window.addEventListener stub before loading modules */
@@ -337,10 +337,14 @@ console.log('\n■ Updater Service');
 var updaterTests = (function () {
   var upd = ns.updater({ deviceRef: { osVersion: '0.1.0' } });
 
-  return asyncTest('checkForUpdate returns current version', function () {
-    return upd.checkForUpdate().then(function (r) {
-      assert.strictEqual(r.available, false);
-      assert.strictEqual(r.currentVersion, '0.1.0');
+  /* The device daemon's answer shape; the emulator cannot install updates */
+  return asyncTest('updater reports the running version and that it cannot install here', function () {
+    return Promise.all([upd.getState(), upd.check(), upd.install()]).then(function (rs) {
+      rs.forEach(function (r) {
+        assert.strictEqual(r.state, 'unsupported');
+        assert.strictEqual(r.version, '0.1.0');
+        assert.strictEqual(r.available, '');
+      });
     });
   });
 })();
@@ -753,6 +757,158 @@ console.log('\n■ ZylIme');
 })();
 
 /* ═══════════════════════════════════════════════════════
+   Screen lock credential (JS lock service, contract of runtime/services/lock)
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ lock service');
+
+var lockTests = (function () {
+  function make(store) {
+    store = store || {};
+    var settingsSvc = {
+      _getSetting: function (cat) { return Promise.resolve(store[cat] || null); },
+      _updateSetting: function (cat, k, v) { store[cat] = store[cat] || {}; store[cat][k] = v; }
+    };
+    return { svc: ns.lock({ settingsSvc: settingsSvc }), store: store };
+  }
+  function fail(svc, n) {
+    var p = Promise.resolve();
+    for (var i = 0; i < n; i++) p = p.then(function () { return svc.verifyPin({ pin: '0000' }); });
+    return p;
+  }
+
+  return Promise.all([
+    asyncTest('no PIN: verify passes, the PIN is never stored in plain text', function () {
+      var t = make();
+      return t.svc.verifyPin({ pin: '' }).then(function (r) {
+        assert.strictEqual(r.ok, true);
+        assert.strictEqual(r.hasPin, false);
+        return t.svc.setPin({ current: '', pin: '4821' });
+      }).then(function (r) {
+        assert.strictEqual(r.ok, true);
+        assert.ok(JSON.stringify(t.store).indexOf('4821') === -1);
+        assert.ok(/^pbkdf2-sha256\$/.test(t.store.lock.hash));
+        return t.svc.verifyPin({ pin: '4821' });
+      }).then(function (r) { assert.strictEqual(r.ok, true); });
+    }),
+    asyncTest('five failures make the user wait, even for the right PIN', function () {
+      var t = make();
+      return t.svc.setPin({ current: '', pin: '4821' }).then(function () {
+        return fail(t.svc, 5);
+      }).then(function () {
+        return t.svc.verifyPin({ pin: '4821' });
+      }).then(function (r) {
+        assert.strictEqual(r.ok, false);
+        assert.strictEqual(r.reason, 'locked_out');
+        assert.ok(r.retryAfterMs > 25000 && r.retryAfterMs <= 30000);
+      });
+    }),
+    asyncTest('changing or removing needs the current PIN; format is checked', function () {
+      var t = make();
+      return t.svc.setPin({ current: '', pin: '12a4' }).then(function (r) {
+        assert.strictEqual(r.reason, 'format');
+        return t.svc.setPin({ current: '', pin: '4821' });
+      }).then(function () {
+        return t.svc.setPin({ current: '1111', pin: '' });
+      }).then(function (r) {
+        assert.strictEqual(r.reason, 'wrong_pin');
+        return t.svc.setPin({ current: '4821', pin: '' });
+      }).then(function (r) {
+        assert.strictEqual(r.ok, true);
+        assert.strictEqual(r.hasPin, false);
+      });
+    }),
+    asyncTest('a plain-text PIN left by older builds is hashed and erased', function () {
+      var t = make({ security: { pin: '2580' } });
+      return t.svc.getState().then(function (r) {
+        assert.strictEqual(r.hasPin, true);
+        assert.strictEqual(t.store.security.pin, '');
+        return t.svc.verifyPin({ pin: '2580' });
+      }).then(function (r) { assert.strictEqual(r.ok, true); });
+    })
+  ]);
+})();
+
+/* ═══════════════════════════════════════════════════════
+   apps/shared/bridge.js on the device (WAM / WebKitGTK)
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ ZylBridge on the device');
+
+var deviceBridgeTests = (function () {
+  var vm = require('vm');
+  /* A page as the WAM builds it: messageHandlers.bridge plus the injected
+     navigator.system, and window.postMessage delivering to listeners */
+  function devicePage() {
+    var sent = [], listeners = [];
+    var win = {
+      webkit: { messageHandlers: { bridge: { postMessage: function (j) { sent.push(JSON.parse(j)); } } } },
+      navigator: { system: { app: { id: 'com.zylos.settings' } } },
+      addEventListener: function (t, fn) { if (t === 'message') listeners.push(fn); },
+      postMessage: function (data) {
+        setTimeout(function () { listeners.forEach(function (fn) { fn({ data: data, source: win }); }); }, 0);
+      },
+      setTimeout: setTimeout, clearTimeout: clearTimeout
+    };
+    win.window = win; win.parent = win;
+    var ctx = { window: win, navigator: win.navigator, document: { addEventListener: function () {} },
+                console: console, setTimeout: setTimeout, clearTimeout: clearTimeout, JSON: JSON, Promise: Promise };
+    vm.createContext(ctx);
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'apps', 'shared', 'bridge.js'), 'utf8'), ctx);
+    return { win: win, sent: sent, B: win.ZylBridge || ctx.ZylBridge, listeners: listeners };
+  }
+
+  return Promise.all([
+    asyncTest('device messages go to the WAM, not the injected navigator.system', function () {
+      var p = devicePage();
+      assert.strictEqual(p.B.getIpcMode(), 'webkit');
+      p.B.sendToSystem({ type: 'navigation.handled' });
+      assert.strictEqual(p.sent.length, 1);
+      return Promise.resolve();
+    }),
+    asyncTest('a service request gets its answer through the native callback', function () {
+      var p = devicePage();
+      var pr = p.B.requestService('settings', 'get', { category: 'display' });
+      var msg = p.sent[0];
+      assert.ok(msg.callbackId >= 1000000, 'callbackId set, clear of navigator.system ids');
+      p.win['_zylCb_' + msg.callbackId]({ brightness: 35 });   /* what bridge.c evaluates */
+      return pr.then(function (d) { assert.deepStrictEqual(d, { brightness: 35 }); });
+    }),
+    asyncTest('a native error answer rejects', function () {
+      var p = devicePage();
+      var pr = p.B.requestService('settings', 'get', { category: 'x' });
+      p.win['_zylCb_' + p.sent[0].callbackId]({ error: true, message: 'Permission denied' });
+      return pr.then(function () { throw new Error('resolved'); },
+                     function (e) { assert.strictEqual(e.message, 'Permission denied'); });
+    }),
+    asyncTest('service events reach their listeners with the signal arguments', function () {
+      var p = devicePage();
+      var got = new Promise(function (resolve) {
+        p.B.onServiceEvent('telephony', 'CallStateChanged', resolve);
+      });
+      p.B.onServiceEvent('telephony', 'SmsReceived', function () { throw new Error('wrong listener'); });
+      p.win.postMessage(JSON.stringify({ type: 'service.event', service: 'telephony',
+        event: 'CallStateChanged', data: ['IDLE', 'RINGING', '0101234'] }), '*');
+      return got.then(function (d) { assert.deepStrictEqual(d, ['IDLE', 'RINGING', '0101234']); });
+    }),
+    asyncTest('fire-and-forget callers get the service.response the emulator sends', function () {
+      var p = devicePage();
+      var got = new Promise(function (resolve) {
+        p.listeners.push(function (e) {
+          var m = JSON.parse(e.data);
+          if (m.type === 'service.response') resolve(m);
+        });
+      });
+      p.B.requestServiceFire('settings', 'get', { category: 'wifi' });
+      p.win['_zylCb_' + p.sent[0].callbackId]({ enabled: true });
+      return got.then(function (m) {
+        assert.strictEqual(m.service, 'settings');
+        assert.deepStrictEqual(m.params, { category: 'wifi' });
+        assert.deepStrictEqual(m.data, { enabled: true });
+      });
+    })
+  ]);
+})();
+
+/* ═══════════════════════════════════════════════════════
    Hangul 2-beolsik composition automaton
    ═══════════════════════════════════════════════════════ */
 console.log('\n■ ZylHangul');
@@ -1138,6 +1294,95 @@ var alertTests = (function () {
 })();
 
 /* ═══════════════════════════════════════════════════════
+   Call log and favorites (JS telephony/contacts, emulator contract of
+   telephony.c GetCallLog/DeleteCallLog and contacts.starred)
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ call log / favorites');
+
+var callTests = (function () {
+  var store = {};
+  var settingsSvc = {
+    _getSetting: function (cat) { return Promise.resolve(store[cat] || null); },
+    _updateSetting: function (cat, k, v) { store[cat] = store[cat] || {}; store[cat][k] = v; }
+  };
+  var tel = ns.telephony({ settingsSvc: settingsSvc });
+  var files = {};
+  var contacts = ns.contacts({ invoke: function (cmd, a) {
+    if (cmd === 'fs_read_file') return files[a.path] ? Promise.resolve(files[a.path]) : Promise.reject(new Error('missing'));
+    if (cmd === 'fs_write_file') { files[a.path] = a.content; return Promise.resolve(true); }
+    return Promise.resolve(true);
+  } });
+  return Promise.all([
+    asyncTest('a call is logged by the service, newest first, and can be deleted', function () {
+      return tel.dial({ number: '0212345678' }).then(function () { return tel.hangup(); })
+        .then(function () { return tel.dial({ number: '01011112222' }); })
+        .then(function () { return tel.hangup(); })
+        .then(function () { return tel.getCallLog(); })
+        .then(function (log) {
+          assert.strictEqual(log.length, 2);
+          assert.strictEqual(log[0].number, '01011112222');
+          assert.strictEqual(log[0].type, 'outgoing');
+          assert.ok(log[0].id > log[1].id && typeof log[0].time === 'number');
+          return tel.deleteCallLog({ id: log[1].id }).then(function (ok) {
+            assert.strictEqual(ok, true);
+            return tel.deleteCallLog({ id: log[1].id });
+          });
+        })
+        .then(function (again) {
+          assert.strictEqual(again, false);
+          return tel.getCallLog();
+        })
+        .then(function (log) { assert.strictEqual(log.length, 1); });
+    }),
+    asyncTest('no modem: nothing invented, no tones sent', function () {
+      return Promise.all([tel.getState(), tel.sendDTMF({ digit: '5' })]).then(function (r) {
+        assert.strictEqual(r[0].simPresent, false);
+        assert.strictEqual(r[0].operator, '');
+        assert.strictEqual(r[1], false);
+        assert.strictEqual(typeof tel.addCallLog, 'undefined');   /* apps cannot write the log */
+      });
+    }),
+    asyncTest('vibration follows the sound setting at the moment it is asked', function () {
+      var sound = { vibration: false };
+      var buzzed = 0;
+      var nav = global.navigator.vibrate;
+      global.navigator.vibrate = function () { buzzed++; };
+      var audio = ns.audio({ settingsSvc: { _getSetting: function () { return Promise.resolve(sound); },
+                                            _updateSetting: function () {} } });
+      return audio.vibrate({}).then(function (r) {
+        assert.strictEqual(r, false);
+        sound.vibration = true;                 /* toggled in Settings */
+        return audio.vibrate({ pattern: [50] });
+      }).then(function (r) {
+        global.navigator.vibrate = nav;
+        assert.strictEqual(r, true);
+        assert.strictEqual(buzzed, 1);
+      });
+    }),
+    asyncTest('wifi.connect answers true or false, like the device', function () {
+      var wifi = ns.wifi({ invoke: function (cmd, a) {
+        return Promise.resolve(cmd === 'wifi_connect' ? { success: a.password === 'secret88' } : null);
+      } });
+      return Promise.all([wifi.connect({ ssid: 'Home', passphrase: 'secret88' }),
+                          wifi.connect({ ssid: 'Home', passphrase: 'wrong' })]).then(function (r) {
+        assert.deepStrictEqual(r, [true, false]);
+      });
+    }),
+    asyncTest('starring a contact keeps its details; editing keeps the star', function () {
+      files['Documents/Contacts/c_1.json'] = JSON.stringify({ id: 'c_1', name: 'Ana', phone: '010', email: '' });
+      return contacts.update({ id: 'c_1', starred: true }).then(function (c) {
+        assert.strictEqual(c.name, 'Ana');
+        assert.strictEqual(c.starred, true);
+        return contacts.update({ id: 'c_1', name: 'Ana Kim', phone: '011', email: 'a@k' });
+      }).then(function (c) {
+        assert.strictEqual(c.name, 'Ana Kim');
+        assert.strictEqual(c.starred, true);
+      });
+    })
+  ]);
+})();
+
+/* ═══════════════════════════════════════════════════════
    Compositor instance-state store (emulator-app/ui/js/app-state.js)
    ═══════════════════════════════════════════════════════ */
 console.log('\n■ ZylAppStateStore');
@@ -1350,8 +1595,8 @@ console.log('\n■ zylI18n time');
    Wait for all async tests and report
    ═══════════════════════════════════════════════════════ */
 Promise.all([settingsTests, displayTests, inputTests, sensorsTests,
-             usbTests, powerTests, audioTests, fsTests, updaterTests, telemetryTests,
-             netstatsTests, alertTests, appStateTests])
+             usbTests, powerTests, audioTests, fsTests, updaterTests, telemetryTests, callTests,
+             netstatsTests, alertTests, lockTests, deviceBridgeTests, appStateTests])
   .then(function () {
     console.log('\n════════════════════════');
     console.log('Total: ' + total + '  Passed: ' + passed + '  Failed: ' + failed);

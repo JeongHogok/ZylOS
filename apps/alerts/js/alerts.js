@@ -179,12 +179,14 @@
     var msg;
     try { msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch (err) { return; }
     if (!msg) return;
-    if (msg.type === 'emergency.alert') refresh();   /* the WAM: a new one arrived */
     if (msg.type === 'navigation.back') {
       /* An alert on screen is dismissed with its button, not by backing out */
       ZylBridge.sendToSystem({ type: showing ? 'navigation.handled' : 'navigation.exit' });
     }
   });
+
+  /* A new alert while this app is open (the WAM opens it for one otherwise) */
+  ZylBridge.onServiceEvent('telephony', 'EmergencyAlert', refresh);
 
   zylI18n.onLocaleChange(function () {
     zylI18n.applyTranslations();

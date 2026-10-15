@@ -57,7 +57,6 @@
   if (vibrationToggle) {
     vibrationToggle.addEventListener('change', function () {
       core.updateSetting('sound', 'vibration', vibrationToggle.checked);
-      core.requestService('audio', 'setVibration', { enabled: vibrationToggle.checked });
     });
   }
 

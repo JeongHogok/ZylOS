@@ -50,6 +50,10 @@ window.ZylPermissions = (function () {
     'netstats':     ['system'],
     /* Bootloader lock: only Settings may ask — an unlock erases the device */
     'bootctl':      ['system'],
+    /* Screen lock PIN: lock screen, Settings and setup only */
+    'lock':         ['system'],
+    /* Installs and restarts into a new OS: Settings only */
+    'updater':      ['system'],
     /* Services with no special permission required */
     'device':        [],
     'storage':       [],
@@ -60,7 +64,6 @@ window.ZylPermissions = (function () {
     'sensors':       [],
     'usb':           [],
     'user':          [],
-    'updater':       [],
     'sandbox':       [],
     'logger':        [],
     'accessibility': [],

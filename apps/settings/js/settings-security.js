@@ -2,7 +2,7 @@
 // [Clean Architecture] Presentation Layer - Security Domain Module
 //
 // 역할: 설정 앱 보안 도메인 — 화면잠금, PIN 변경/제거, 지문인식
-// 수행범위: 보안 설정 상태 렌더링, PIN 다이얼로그, 지문 토글
+// 수행범위: 보안 설정 상태 렌더링, PIN 다이얼로그 (설정·검증은 lock 서비스), 지문 토글
 // 의존방향: ZylSettingsCore (settings.js), ZylBridge (bridge.js)
 // SOLID: SRP — 보안 설정 UI만 담당
 //
@@ -18,10 +18,45 @@
 
   /* ─── Apply Security State ─── */
   function applySecurityState(data) {
-    var lockVal = document.getElementById('lock-type-value');
     var fpToggle = document.getElementById('fingerprint-toggle');
-    if (lockVal) lockVal.textContent = data.lockType;
-    if (fpToggle) fpToggle.checked = data.fingerprint;
+    if (fpToggle) fpToggle.checked = !!(data && data.fingerprint);
+  }
+
+  /* The lock service holds the PIN; Settings only asks and shows the answer */
+  function showLockType(hasPin) {
+    var lockVal = document.getElementById('lock-type-value');
+    if (lockVal) lockVal.textContent = core.t(hasPin ? 'settings.lock_pin' : 'settings.swipe');
+  }
+  function refreshLockType() {
+    ZylBridge.requestService('lock', 'getState').then(function (r) {
+      showLockType(!!(r && r.hasPin));
+    }, function () { /* leave the label as it is */ });
+  }
+  refreshLockType();
+
+  /* Turns a lock service refusal into the message the user sees */
+  function lockMessage(r) {
+    if (r && r.reason === 'locked_out') {
+      return core.t('settings.pin_locked_out', { s: Math.ceil((r.retryAfterMs || 0) / 1000) });
+    }
+    if (r && r.reason === 'format') return core.t('settings.pin_format');
+    return core.t('settings.wrong_pin');
+  }
+
+  function showPinMessage(text, color) {
+    var msgEl = document.getElementById('pin-change-msg');
+    if (msgEl) { msgEl.textContent = text; msgEl.style.color = color; }
+  }
+
+  function finishPinDialog() {
+    var curInput = document.getElementById('current-pin-input');
+    var newInput = document.getElementById('new-pin-input');
+    if (curInput) curInput.value = '';
+    if (newInput) newInput.value = '';
+    setTimeout(function () {
+      if (pinDialog) pinDialog.classList.add('hidden');
+      showPinMessage('', '');
+    }, PIN_DIALOG_HIDE_DELAY);
   }
 
   /* ─── Lock Type Item → toggle PIN change dialog ─── */
@@ -50,39 +85,20 @@
     pinChangeBtn.addEventListener('click', function () {
       var curInput = document.getElementById('current-pin-input');
       var newInput = document.getElementById('new-pin-input');
-      var msgEl = document.getElementById('pin-change-msg');
-      var currentPin = curInput ? curInput.value : '';
       var newPin = newInput ? newInput.value : '';
-
-      /* Validate */
-      var storedPin = core.settingsCache.security ? core.settingsCache.security.pin : '0000';
-      if (currentPin !== storedPin) {
-        if (msgEl) { msgEl.textContent = core.t('settings.wrong_pin'); msgEl.style.color = '#ef4444'; }
+      /* The pad and lock screen take four digits */
+      if (!/^\d{4}$/.test(newPin)) {
+        showPinMessage(core.t('settings.pin_format'), '#ef4444');
         return;
       }
-      if (newPin.length !== 4 || !/^\d{4}$/.test(newPin)) {
-        if (msgEl) { msgEl.textContent = core.t('settings.pin_format') || 'PIN must be 4 digits'; msgEl.style.color = '#ef4444'; }
-        return;
-      }
-
-      core.updateSetting('security', 'pin', newPin);
-      if (core.settingsCache.security) core.settingsCache.security.pin = newPin;
-
-      /* Broadcast to lockscreen via parent */
-      ZylBridge.sendToSystem({
-        type: 'settings.pinChanged',
-        data: { pin: newPin }
-      });
-
-      if (msgEl) { msgEl.textContent = core.t('settings.pin_changed') || 'PIN changed'; msgEl.style.color = '#22c55e'; }
-      if (curInput) curInput.value = '';
-      if (newInput) newInput.value = '';
-
-      /* Auto-hide dialog after success */
-      setTimeout(function () {
-        if (pinDialog) pinDialog.classList.add('hidden');
-        if (msgEl) msgEl.textContent = '';
-      }, PIN_DIALOG_HIDE_DELAY);
+      ZylBridge.requestService('lock', 'setPin', {
+        current: curInput ? curInput.value : '', pin: newPin
+      }).then(function (r) {
+        if (!r || r.ok !== true) { showPinMessage(lockMessage(r), '#ef4444'); return; }
+        showPinMessage(core.t('settings.pin_changed'), '#22c55e');
+        showLockType(true);
+        finishPinDialog();
+      }, function () { showPinMessage(lockMessage(null), '#ef4444'); });
     });
   }
 
@@ -91,38 +107,20 @@
   if (pinRemoveBtn) {
     pinRemoveBtn.addEventListener('click', function () {
       var curInput = document.getElementById('current-pin-input');
-      var msgEl = document.getElementById('pin-change-msg');
-      var currentPin = curInput ? curInput.value : '';
-      var storedPin = core.settingsCache.security ? core.settingsCache.security.pin : '';
-
-      /* Must verify current PIN to remove */
-      if (!storedPin) {
-        if (msgEl) { msgEl.textContent = core.t('settings.no_pin_set'); msgEl.style.color = '#f59e0b'; }
-        return;
-      }
-      if (currentPin !== storedPin) {
-        if (msgEl) { msgEl.textContent = core.t('settings.wrong_pin'); msgEl.style.color = '#ef4444'; }
-        return;
-      }
-
-      /* Remove PIN — set to empty string */
-      core.updateSetting('security', 'pin', '');
-      if (core.settingsCache.security) core.settingsCache.security.pin = '';
-
-      ZylBridge.sendToSystem({
-        type: 'settings.pinChanged',
-        data: { pin: '' }
-      });
-
-      if (msgEl) { msgEl.textContent = core.t('settings.pin_removed') || 'PIN removed'; msgEl.style.color = '#22c55e'; }
-      if (curInput) curInput.value = '';
-      var lockVal = document.getElementById('lock-type-value');
-      if (lockVal) lockVal.textContent = core.t('settings.swipe');
-
-      setTimeout(function () {
-        if (pinDialog) pinDialog.classList.add('hidden');
-        if (msgEl) msgEl.textContent = '';
-      }, PIN_DIALOG_HIDE_DELAY);
+      ZylBridge.requestService('lock', 'getState').then(function (st) {
+        if (!st || !st.hasPin) {
+          showPinMessage(core.t('settings.no_pin_set'), '#f59e0b');
+          return null;
+        }
+        return ZylBridge.requestService('lock', 'setPin', {
+          current: curInput ? curInput.value : '', pin: ''
+        }).then(function (r) {
+          if (!r || r.ok !== true) { showPinMessage(lockMessage(r), '#ef4444'); return; }
+          showPinMessage(core.t('settings.pin_removed'), '#22c55e');
+          showLockType(false);
+          finishPinDialog();
+        });
+      }).then(null, function () { showPinMessage(lockMessage(null), '#ef4444'); });
     });
   }
 

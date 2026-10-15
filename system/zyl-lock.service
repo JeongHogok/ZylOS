@@ -1,0 +1,27 @@
+[Unit]
+Description=Zyl OS Lock Credential Service (screen lock PIN)
+After=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/zyl-lock
+Restart=on-failure
+RestartSec=10
+StartLimitBurst=5
+StartLimitIntervalSec=120
+TimeoutStopSec=5
+
+# Holds only the PIN hash and failure count in /data/lock
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/data/lock
+ProtectHome=read-only
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+
+[Install]
+WantedBy=zyl-os.target

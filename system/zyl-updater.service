@@ -1,0 +1,27 @@
+[Unit]
+Description=Zyl OS Updater (A/B system updates, boot confirmation)
+After=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/zyl-updater
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=5
+
+# Writes the inactive slot's partitions (/dev), its FIT on the boot partition
+# and the U-Boot environment (fw_setenv: lock in /run/lock)
+NoNewPrivileges=true
+ProtectSystem=strict
+CacheDirectory=zyl-os
+StateDirectory=zyl-os
+ReadWritePaths=-/boot /run/lock
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+
+[Install]
+WantedBy=zyl-os.target

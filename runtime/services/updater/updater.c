@@ -20,6 +20,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <time.h>
 #include <spawn.h>
 #include <sys/wait.h>
@@ -31,15 +32,23 @@
 #include <openssl/sha.h>
 
 /* ─── 내부 상수 ─── */
-#define BOOTCTL_PATH          "/usr/sbin/bootctl"
-#define SLOT_METADATA_PATH    "/var/lib/zyl-os/slot-metadata"
+/* Overridable so tests install into scratch files */
+#ifndef ZYL_STATE_DIR
+#define ZYL_STATE_DIR         "/var/lib/zyl-os"
+#endif
+#ifndef ZYL_BLOCK_DEV
+#define ZYL_BLOCK_DEV         "/dev/mmcblk0p"   /* + partition number */
+#endif
+#ifndef ZYL_BOOT_DIR
+#define ZYL_BOOT_DIR          "/boot"           /* FAT boot partition (p1) */
+#endif
+#ifndef ZYL_OTA_KEY
+#define ZYL_OTA_KEY           "/etc/zyl-os/ota-signing-key.pem"
+#endif
+#define SLOT_METADATA_PATH    ZYL_STATE_DIR "/slot-metadata"
 #define UPDATE_CACHE_DEFAULT  "/var/cache/zyl-os/updates"
 #define CURRENT_VERSION_FILE  "/etc/zyl-os/version"
-#define VERIFY_FLAG_FILE      "/var/lib/zyl-os/slot-verified"
-#define ZYL_STATE_DIR         "/var/lib/zyl-os"
-#define NEXT_SLOT_FILE        "/var/lib/zyl-os/next-slot"
-#define APP_UPDATE_TMP_DIR    "/tmp/zyl-app-update"
-#define SYSTEM_APPS_DIR       "/usr/share/zyl-os/apps/"
+#define VERIFY_FLAG_FILE      ZYL_STATE_DIR "/slot-verified"
 
 /* ─── 업데이터 내부 구조체 ─── */
 struct ZylUpdater {
@@ -59,6 +68,8 @@ struct ZylUpdater {
     /* 진행률 */
     zyl_update_progress_fn progress_cb;
     void *progress_data;
+
+    bool pkg_verified;          /* update.pkg passed the hash and signature check */
 };
 
 /* ─── 유틸리티 ─── */
@@ -141,39 +152,61 @@ static bool is_safe_url(const char *url) {
     return is_safe_path(url);
 }
 
-/* posix_spawn helper — system() 사용 금지 (command injection 방지) */
-static int safe_exec(const char *const argv[]) {
+/* posix_spawn helper — system() 사용 금지 (command injection 방지).
+   out_fd >= 0 becomes the child's stdout. Bare names are looked up on PATH:
+   fw_setenv lives in /usr/bin on Debian and /usr/sbin elsewhere. */
+static int spawn_wait(const char *const argv[], int out_fd) {
     pid_t pid;
     char *envp[] = {"PATH=/usr/sbin:/usr/bin:/sbin:/bin", NULL};
-    int rc = posix_spawn(&pid, argv[0], NULL, NULL, (char *const *)argv, envp);
+    posix_spawn_file_actions_t acts;
+    posix_spawn_file_actions_init(&acts);
+    if (out_fd >= 0) posix_spawn_file_actions_adddup2(&acts, out_fd, STDOUT_FILENO);
+    int rc = posix_spawnp(&pid, argv[0], &acts, NULL, (char *const *)argv, envp);
+    posix_spawn_file_actions_destroy(&acts);
     if (rc != 0) return -1;
     int status = 0;
     waitpid(pid, &status, 0);
     return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 }
 
-/* ─── 유틸리티: 파일 내용 전체 읽기 ─── */
-static char *read_file_contents(const char *path, size_t *out_len) {
-    FILE *f = fopen(path, "r");
-    if (!f) return NULL;
-
-    fseek(f, 0, SEEK_END);
-    long len = ftell(f);
-    if (len <= 0) { fclose(f); return NULL; }
-    fseek(f, 0, SEEK_SET);
-
-    char *buf = malloc((size_t)len + 1);
-    if (!buf) { fclose(f); return NULL; }
-
-    size_t rd = fread(buf, 1, (size_t)len, f);
-    buf[rd] = '\0';
-    fclose(f);
-    if (out_len) *out_len = rd;
-    return buf;
-}
+static int safe_exec(const char *const argv[]) { return spawn_wait(argv, -1); }
 
 /* ─── 유틸리티: JSON 값 추출 (json-glib) ─── */
 #include <json-glib/json-glib.h>
+
+/* ─── U-Boot 환경 (board/bpi-f3/u-boot-env.txt) ─── */
+/* fw_printenv -n NAME; NULL when unset or there is no U-Boot environment */
+static char *fw_get(const char *name) {
+    const char *argv[] = {"fw_printenv", "-n", name, NULL};
+    char *out = NULL;
+    int status = -1;
+    if (!g_spawn_sync(NULL, (char **)argv, NULL,
+                      G_SPAWN_SEARCH_PATH | G_SPAWN_STDERR_TO_DEV_NULL,
+                      NULL, NULL, &out, NULL, &status, NULL) ||
+        !g_spawn_check_wait_status(status, NULL)) {
+        g_free(out);
+        return NULL;
+    }
+    return g_strstrip(out);
+}
+
+/* value NULL deletes the variable */
+static bool fw_set(const char *name, const char *value) {
+    const char *argv[] = {"fw_setenv", name, value, NULL};
+    return safe_exec(argv) == 0;
+}
+
+/* One member of the package straight onto a partition or file: no scratch
+   copy of a multi-GiB image, and no path inside the archive decides where
+   anything lands. tar recognizes the gzip compression itself. */
+static bool extract_member(const char *pkg, const char *member, const char *dest, int flags) {
+    int fd = open(dest, O_WRONLY | flags, 0644);
+    if (fd < 0) return false;
+    const char *argv[] = {"/usr/bin/tar", "-xOf", pkg, member, NULL};
+    bool ok = spawn_wait(argv, fd) == 0 && fsync(fd) == 0;
+    close(fd);
+    return ok;
+}
 
 static char *json_get_string(const char *json_str, const char *key) {
     if (!json_str || !key) return NULL;
@@ -494,6 +527,7 @@ ZylUpdateState zyl_updater_check(ZylUpdater *u,
     /* 이전 pending 해제 후 새 매니페스트 저장 */
     if (u->pending) zyl_update_manifest_free(u->pending);
     u->pending = manifest;
+    u->pkg_verified = false;
 
     u->state = ZYL_UPDATE_AVAILABLE;
     report_progress(u, 100, "Update available");
@@ -520,6 +554,8 @@ ZylUpdateState zyl_updater_check(ZylUpdater *u,
     return u->state;
 }
 
+static bool verify_package(ZylUpdater *u, const char *pkg_path);
+
 bool zyl_updater_download(ZylUpdater *u,
                            zyl_update_progress_fn callback,
                            void *user_data) {
@@ -528,6 +564,7 @@ bool zyl_updater_download(ZylUpdater *u,
     u->progress_cb = callback;
     u->progress_data = user_data;
     u->state = ZYL_UPDATE_DOWNLOADING;
+    u->pkg_verified = false;
 
     /* 1. 다운로드 대상 경로 설정 */
     char pkg_path[512];
@@ -621,7 +658,12 @@ bool zyl_updater_download(ZylUpdater *u,
     }
 
     report_progress(u, 100, "Download complete");
+    return verify_package(u, pkg_path);
+}
 
+/* The package is trusted only after this: its hash, and an RSA-SHA256
+   signature over that hash by the OTA key the image ships with */
+static bool verify_package(ZylUpdater *u, const char *pkg_path) {
     /* 2. SHA-256 해시 검증 */
     u->state = ZYL_UPDATE_VERIFYING;
     report_progress(u, 0, "Verifying package integrity...");
@@ -652,7 +694,7 @@ bool zyl_updater_download(ZylUpdater *u,
     /* 3. RSA-2048+SHA-256 서명 검증 (OpenSSL EVP API) */
     if (u->pending->signature && strlen(u->pending->signature) > 0) {
         /* Load OTA signing public key */
-        const char *pubkey_path = "/etc/zyl-os/ota-signing-key.pem";
+        const char *pubkey_path = ZYL_OTA_KEY;
         FILE *key_fp = fopen(pubkey_path, "r");
         if (!key_fp) {
             fprintf(stderr, "[UPDATER] OTA signing key not found: %s\n",
@@ -750,10 +792,37 @@ bool zyl_updater_download(ZylUpdater *u,
 
     report_progress(u, 100, "Package verified");
     fprintf(stderr, "[UPDATER] Download verified successfully\n");
-
+    u->pkg_verified = true;
     return true;
 }
 
+bool zyl_updater_supported(const ZylUpdater *u) {
+    (void)u;
+    char *slot = fw_get("zyl_active_slot");
+    bool ok = slot && access(ZYL_OTA_KEY, R_OK) == 0;
+    g_free(slot);
+    return ok;
+}
+
+bool zyl_updater_on_trial(const ZylUpdater *u) {
+    char *next = fw_get("zyl_next_slot");
+    bool trial = u && next && strcmp(next, u->active_slot) == 0;
+    g_free(next);
+    return trial;
+}
+
+static bool apply_failed(ZylUpdater *u, const char *msg) {
+    fprintf(stderr, "[UPDATER] %s\n", msg);
+    u->state = ZYL_UPDATE_FAILED;
+    report_progress(u, 0, msg);
+    return false;
+}
+
+/* A slot boots only when its rootfs, its verity tree and its signed FIT
+   (which carries that tree's root hash) all match, so a package (tools/
+   build-ota.sh) carries all of them for both slots: rootfs.img,
+   verity-hashtree-{a,b}.img, fit-image-{a,b}.itb. Only the inactive slot is
+   written, and U-Boot is pointed at it only after every write landed. */
 bool zyl_updater_apply(ZylUpdater *u,
                         zyl_update_progress_fn callback,
                         void *user_data) {
@@ -763,188 +832,68 @@ bool zyl_updater_apply(ZylUpdater *u,
     u->progress_data = user_data;
     u->state = ZYL_UPDATE_APPLYING;
 
-    /* 1. 비활성 슬롯 결정 */
-    const char *inactive = strcmp(u->active_slot, "a") == 0 ? "b" : "a";
-    /* 파티션 번호 매핑: slot a → 파티션 2, slot b → 파티션 4 */
-    /* rootfs partitions per board/bpi-f3/README.md: p2 = A, p4 = B. p3 is
-       slot A's verity tree — writing slot B there destroyed the running slot.
-       shortcut: a full update writes the rootfs only; the slot's verity tree
-       (p3/p5) and signed fit-image-<slot>.itb must ship in the package too
-       before OTA can produce a slot that verifies. */
-    const char *inactive_part = strcmp(inactive, "a") == 0 ? "2" : "4";
-    const char *active_part   = strcmp(u->active_slot, "a") == 0 ? "2" : "4";
-
     char pkg_path[512];
     snprintf(pkg_path, sizeof(pkg_path), "%s/update.pkg", u->cache_dir);
+    if (!u->pkg_verified) return apply_failed(u, "Update package is not verified");
+    if (!is_safe_path(pkg_path)) return apply_failed(u, "Unsafe package path");
+    /* shortcut: full images only — a delta via bspatch holds a whole
+       partition in RAM, and apps or a kernel alone cannot match a dm-verity
+       rootfs; add a block-level delta format when download size matters */
+    if (u->pending->type != ZYL_UPDATE_TYPE_FULL)
+        return apply_failed(u, "Only full system images can be installed");
 
-    report_progress(u, 5, "Preparing inactive partition...");
+    /* The slot to write is the one U-Boot falls back to while the running
+       slot is still on trial — never overwrite it before this boot is confirmed */
+    if (zyl_updater_on_trial(u)) return apply_failed(u, "The previous update is not confirmed yet");
 
-    fprintf(stderr, "[UPDATER] Applying %s update to slot %s\n",
-            u->pending->type == ZYL_UPDATE_TYPE_FULL  ? "FULL" :
-            u->pending->type == ZYL_UPDATE_TYPE_DELTA ? "DELTA" :
-            u->pending->type == ZYL_UPDATE_TYPE_APPS_ONLY ? "APPS_ONLY" :
-            "KERNEL",
-            inactive);
+    /* Partitions per board/bpi-f3/README.md: rootfs A p2 / B p4, verity A p3 / B p5 */
+    const char *inactive = strcmp(u->active_slot, "a") == 0 ? "b" : "a";
+    bool to_a = strcmp(inactive, "a") == 0;
+    char rootfs_dev[64], tree_dev[64], tree_name[64], fit_name[64], fit_tmp[512], fit_dst[512];
+    snprintf(rootfs_dev, sizeof(rootfs_dev), ZYL_BLOCK_DEV "%s", to_a ? "2" : "4");
+    snprintf(tree_dev, sizeof(tree_dev), ZYL_BLOCK_DEV "%s", to_a ? "3" : "5");
+    snprintf(tree_name, sizeof(tree_name), "verity-hashtree-%s.img", inactive);
+    snprintf(fit_name, sizeof(fit_name), "fit-image-%s.itb", inactive);
+    snprintf(fit_tmp, sizeof(fit_tmp), ZYL_BOOT_DIR "/.%s.new", fit_name);
+    snprintf(fit_dst, sizeof(fit_dst), ZYL_BOOT_DIR "/%s", fit_name);
 
-    /* 2. 업데이트 유형별 적용 */
-    int ret = 0;
+    fprintf(stderr, "[UPDATER] Installing v%s into slot %s\n", u->pending->version, inactive);
 
-    switch (u->pending->type) {
-    case ZYL_UPDATE_TYPE_FULL: {
-        /* 비활성 파티션에 전체 이미지 기록 (dd) */
-        report_progress(u, 10, "Writing full image to partition...");
-        if (!is_safe_path(pkg_path)) {
-            fprintf(stderr, "[UPDATER] Unsafe pkg_path rejected\n");
-            u->state = ZYL_UPDATE_FAILED;
-            return false;
-        }
-        const char *dd_argv[] = {"/bin/dd", NULL, NULL, "bs=4M", "conv=fsync", NULL};
-        char dd_if[512], dd_of[128];
-        snprintf(dd_if, sizeof(dd_if), "if=%s", pkg_path);
-        snprintf(dd_of, sizeof(dd_of), "of=/dev/mmcblk0p%s", inactive_part);
-        dd_argv[1] = dd_if; dd_argv[2] = dd_of;
-        ret = safe_exec(dd_argv);
-        if (ret != 0) {
-            fprintf(stderr, "[UPDATER] dd failed (exit %d)\n", ret);
-            u->state = ZYL_UPDATE_FAILED;
-            report_progress(u, 0, "Failed to write image to partition");
-            return false;
-        }
-        report_progress(u, 60, "Image written successfully");
-        break;
+    /* An earlier install still waiting for its reboot is about to be overwritten */
+    if (!fw_set("zyl_next_slot", NULL))
+        return apply_failed(u, "Cannot write the bootloader environment");
+
+    report_progress(u, 5, "Writing system image...");
+    if (!extract_member(pkg_path, "rootfs.img", rootfs_dev, 0))
+        return apply_failed(u, "Writing the system image failed");
+    report_progress(u, 50, "Writing verity tree...");
+    if (!extract_member(pkg_path, tree_name, tree_dev, 0))
+        return apply_failed(u, "Writing the verity tree failed");
+    /* Renamed into place: U-Boot never loads a half-written FIT */
+    report_progress(u, 60, "Installing boot image...");
+    if (!extract_member(pkg_path, fit_name, fit_tmp, O_CREAT | O_TRUNC) ||
+        rename(fit_tmp, fit_dst) != 0) {
+        unlink(fit_tmp);
+        return apply_failed(u, "Installing the boot image failed");
     }
+    sync();
 
-    case ZYL_UPDATE_TYPE_DELTA: {
-        /* bspatch로 델타 패치 적용 */
-        report_progress(u, 10, "Applying delta patch...");
-        if (!is_safe_path(pkg_path)) {
-            fprintf(stderr, "[UPDATER] Unsafe pkg_path rejected\n");
-            u->state = ZYL_UPDATE_FAILED;
-            return false;
-        }
-        char bsp_src[64], bsp_dst[64];
-        snprintf(bsp_src, sizeof(bsp_src), "/dev/mmcblk0p%s", active_part);
-        snprintf(bsp_dst, sizeof(bsp_dst), "/dev/mmcblk0p%s", inactive_part);
-        const char *bsp_argv[] = {"/usr/bin/bspatch", bsp_src, bsp_dst, pkg_path, NULL};
-        ret = safe_exec(bsp_argv);
-        if (ret != 0) {
-            fprintf(stderr, "[UPDATER] bspatch failed (exit %d)\n", ret);
-            u->state = ZYL_UPDATE_FAILED;
-            report_progress(u, 0, "Failed to apply delta patch");
-            return false;
-        }
-        report_progress(u, 60, "Delta patch applied");
-        break;
-    }
+    /* U-Boot tries the new slot zyl_boot_limit times, then falls back */
+    report_progress(u, 80, "Setting boot flags...");
+    if (!fw_set("zyl_boot_count", "0") || !fw_set("zyl_next_slot", inactive))
+        return apply_failed(u, "Cannot select the updated slot");
 
-    case ZYL_UPDATE_TYPE_APPS_ONLY: {
-        /* 시스템 앱만 추출 및 업데이트 */
-        report_progress(u, 10, "Extracting app updates...");
-        if (!is_safe_path(pkg_path)) {
-            fprintf(stderr, "[UPDATER] Unsafe pkg_path rejected\n");
-            u->state = ZYL_UPDATE_FAILED;
-            return false;
-        }
-        const char *mkdir_argv[] = {"/bin/mkdir", "-p", APP_UPDATE_TMP_DIR, NULL};
-        ret = safe_exec(mkdir_argv);
-        if (ret == 0) {
-            const char *unzip_argv[] = {"/usr/bin/unzip", "-o", "-q", pkg_path, "-d", APP_UPDATE_TMP_DIR, NULL};
-            ret = safe_exec(unzip_argv);
-        }
-        if (ret == 0) {
-            const char *cp_argv[] = {"/bin/cp", "-a", APP_UPDATE_TMP_DIR "/apps/.", SYSTEM_APPS_DIR, NULL};
-            ret = safe_exec(cp_argv);
-        }
-        /* Cleanup regardless */
-        const char *rm_argv[] = {"/bin/rm", "-rf", APP_UPDATE_TMP_DIR, NULL};
-        safe_exec(rm_argv);
-        if (ret != 0) {
-            fprintf(stderr, "[UPDATER] App update extraction failed\n");
-            u->state = ZYL_UPDATE_FAILED;
-            report_progress(u, 0, "Failed to extract app updates");
-            return false;
-        }
-        report_progress(u, 60, "Apps updated");
-        break;
-    }
-
-    case ZYL_UPDATE_TYPE_KERNEL: {
-        /* 커널 이미지 교체 */
-        report_progress(u, 10, "Updating kernel image...");
-        if (!is_safe_path(pkg_path)) {
-            fprintf(stderr, "[UPDATER] Unsafe pkg_path rejected\n");
-            u->state = ZYL_UPDATE_FAILED;
-            return false;
-        }
-        char kern_dst[128];
-        snprintf(kern_dst, sizeof(kern_dst), "/boot/Image.%s", inactive);
-        const char *cp_argv[] = {"/bin/cp", pkg_path, kern_dst, NULL};
-        ret = safe_exec(cp_argv);
-        if (ret == 0) {
-            const char *sync_argv[] = {"/bin/sync", NULL};
-            ret = safe_exec(sync_argv);
-        }
-        if (ret != 0) {
-            fprintf(stderr, "[UPDATER] Kernel copy failed\n");
-            u->state = ZYL_UPDATE_FAILED;
-            report_progress(u, 0, "Failed to copy kernel image");
-            return false;
-        }
-        report_progress(u, 60, "Kernel image updated");
-        break;
-    }
-    }
-
-    /* 3. U-Boot 환경변수 설정 via fw_setenv */
-    report_progress(u, 70, "Setting boot flags...");
-
-    {
-        const char *fwse_slot[] = {"/usr/sbin/fw_setenv", "zyl_next_slot", inactive, NULL};
-        ret = safe_exec(fwse_slot);
-        if (ret != 0) {
-            fprintf(stderr, "[UPDATER] fw_setenv zyl_next_slot failed (exit %d), using file fallback\n", ret);
-        }
-    }
-
-    {
-        const char *fwse_verified[] = {"/usr/sbin/fw_setenv", "zyl_slot_verified", "0", NULL};
-        ret = safe_exec(fwse_verified);
-        if (ret != 0) {
-            fprintf(stderr, "[UPDATER] fw_setenv zyl_slot_verified failed (exit %d)\n", ret);
-        }
-    }
-
-    {
-        const char *fwse_bootcnt[] = {"/usr/sbin/fw_setenv", "zyl_boot_count", "0", NULL};
-        ret = safe_exec(fwse_bootcnt);
-        if (ret != 0) {
-            fprintf(stderr, "[UPDATER] fw_setenv zyl_boot_count failed (exit %d)\n", ret);
-        }
-    }
-
-    /* 파일 기반 폴백 (fw_setenv가 없는 환경용) */
-    char flag_path[256];
-    snprintf(flag_path, sizeof(flag_path), "%s", NEXT_SLOT_FILE);
-    mkdir_p(ZYL_STATE_DIR);
-    write_file_string(flag_path, inactive);
-
-    report_progress(u, 85, "Saving version metadata...");
-
-    /* 4. 버전 메타데이터 기록 */
     char ver_path[256];
-    snprintf(ver_path, sizeof(ver_path),
-             ZYL_STATE_DIR "/slot-%s-version", inactive);
+    snprintf(ver_path, sizeof(ver_path), ZYL_STATE_DIR "/slot-%s-version", inactive);
+    mkdir_p(ZYL_STATE_DIR);
     write_file_string(ver_path, u->pending->version);
-
-    /* 다운로드 캐시 정리 */
     unlink(pkg_path);
+    u->pkg_verified = false;
 
     report_progress(u, 100, "Update applied. Reboot to activate.");
     u->state = ZYL_UPDATE_PENDING_REBOOT;
-
-    fprintf(stderr, "[UPDATER] Update applied to slot %s (v%s). "
-            "Reboot required.\n", inactive, u->pending->version);
-
+    fprintf(stderr, "[UPDATER] Update applied to slot %s (v%s). Reboot required.\n",
+            inactive, u->pending->version);
     return true;
 }
 
@@ -1008,32 +957,15 @@ bool zyl_updater_mark_verified(ZylUpdater *u) {
     }
     fprintf(stderr, "[UPDATER] Health: zyl-wam OK\n");
 
-    /* 3. fw_setenv으로 슬롯 검증 완료 마킹 */
-    {
-        const char *fwse_ver[] = {"/usr/sbin/fw_setenv", "zyl_slot_verified", "1", NULL};
-        ret = safe_exec(fwse_ver);
-        if (ret != 0) {
-            fprintf(stderr, "[UPDATER] fw_setenv zyl_slot_verified failed (exit %d)\n", ret);
-        }
+    /* 3. The try is over: this slot becomes the one U-Boot falls back to, and
+          it stops counting boots (board/bpi-f3/u-boot-env.txt rolls back after three) */
+    if (!fw_set("zyl_active_slot", u->active_slot) ||
+        !fw_set("zyl_next_slot", NULL) || !fw_set("zyl_boot_count", "0")) {
+        fprintf(stderr, "[UPDATER] fw_setenv could not confirm slot '%s'\n", u->active_slot);
+        return false;
     }
 
-    {
-        const char *fwse_slot[] = {"/usr/sbin/fw_setenv", "zyl_active_slot", u->active_slot, NULL};
-        ret = safe_exec(fwse_slot);
-        if (ret != 0) {
-            fprintf(stderr, "[UPDATER] fw_setenv zyl_active_slot failed (exit %d)\n", ret);
-        }
-    }
-    /* The try is over: U-Boot (board/bpi-f3/u-boot-env.txt) would otherwise
-       keep counting boots of this slot and roll it back after three */
-    {
-        const char *fwse_next[] = {"/usr/sbin/fw_setenv", "zyl_next_slot", NULL};
-        const char *fwse_count[] = {"/usr/sbin/fw_setenv", "zyl_boot_count", "0", NULL};
-        if (safe_exec(fwse_next) != 0 || safe_exec(fwse_count) != 0)
-            fprintf(stderr, "[UPDATER] fw_setenv could not end the boot try\n");
-    }
-
-    /* 파일 기반 폴백 */
+    /* Read back by zyl_updater_get_partition_info */
     mkdir_p(ZYL_STATE_DIR);
     write_file_string(VERIFY_FLAG_FILE, "1");
     write_file_string(SLOT_METADATA_PATH, u->active_slot);
@@ -1050,16 +982,12 @@ bool zyl_updater_rollback(ZylUpdater *u) {
 
     const char *previous = strcmp(u->active_slot, "a") == 0 ? "b" : "a";
 
-    /* fw_setenv으로 부트로더에 이전 슬롯 지정 */
-    const char *fwse_argv[] = {"/usr/sbin/fw_setenv", "zyl_next_slot", previous, NULL};
-    int ret = safe_exec(fwse_argv);
-    if (ret != 0) {
-        fprintf(stderr, "[UPDATER] fw_setenv zyl_next_slot failed (exit %d), using file fallback\n", ret);
+    /* Tried like an update: if it does not come up, U-Boot returns here */
+    if (!fw_set("zyl_boot_count", "0") || !fw_set("zyl_next_slot", previous)) {
+        fprintf(stderr, "[UPDATER] fw_setenv could not select slot '%s'\n", previous);
+        u->state = ZYL_UPDATE_FAILED;
+        return false;
     }
-
-    /* 파일 기반 폴백 */
-    mkdir_p(ZYL_STATE_DIR);
-    write_file_string(NEXT_SLOT_FILE, previous);
 
     fprintf(stderr, "[UPDATER] Rollback to slot '%s' scheduled. "
             "Reboot required.\n", previous);
@@ -1084,7 +1012,7 @@ ZylPartitionInfo *zyl_updater_get_partition_info(const ZylUpdater *u) {
     /* 비활성 슬롯 버전 */
     char ver_path[256];
     snprintf(ver_path, sizeof(ver_path),
-             "/var/lib/zyl-os/slot-%s-version", info->inactive_slot);
+             ZYL_STATE_DIR "/slot-%s-version", info->inactive_slot);
     info->inactive_version = read_file_string(ver_path);
     if (!info->inactive_version) info->inactive_version = strdup("(empty)");
 

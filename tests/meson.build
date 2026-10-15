@@ -119,6 +119,47 @@ test('bootctl',
   workdir: meson.project_source_root(),
 )
 
+# Test: settings persistence (defaults + user layer, corrupt file kept,
+# JSON ↔ D-Bus value round trip, the shipped defaults file)
+test('settings',
+  executable('test-settings',
+    'test_settings.c',
+    dependencies: [gio_dep, json_glib_dep],
+    c_args: ['-DZYL_TEST'],
+  ),
+  workdir: meson.project_source_root(),
+)
+
+# Test: screen lock credential (hash-only storage, failure waits that survive
+# a restart, current PIN to change/remove)
+test('lock',
+  executable('test-lock',
+    'test_lock.c',
+    dependencies: [gio_dep, dependency('openssl', version: '>=1.1.1')],
+    c_args: ['-DZYL_TEST'],
+  )
+)
+
+# Test: OTA install — signed package only, inactive slot's rootfs/verity/FIT
+# only, U-Boot pointed at it after every write (fake partitions and fw_*env)
+test('updater',
+  executable('test-updater',
+    'test_updater.c',
+    dependencies: [gio_dep, json_glib_dep, dependency('openssl', version: '>=1.1.1')],
+  ),
+  workdir: meson.project_source_root(),
+)
+
+# Test: Wi-Fi network list from nmcli (escapes, hidden networks, one row per network)
+test('wifi',
+  executable('test-wifi',
+    'test_wifi.c',
+    '../runtime/services/wifi/captive_portal.c',
+    include_directories: include_directories('../runtime/services/wifi'),
+    dependencies: [gio_dep],
+  )
+)
+
 # Test: device app scan — a user app must not replace a system app by reusing its id
 test('manifest-scan',
   executable('test-manifest-scan',

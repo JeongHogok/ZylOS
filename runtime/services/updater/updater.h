@@ -99,6 +99,12 @@ bool zyl_updater_apply(ZylUpdater *updater,
 /* 재부팅하여 업데이트 완료 */
 bool zyl_updater_reboot_to_update(ZylUpdater *updater);
 
+/* 이 기기가 업데이트를 설치할 수 있는지 — OTA 공개키와 U-Boot 환경이 있을 때 */
+bool zyl_updater_supported(const ZylUpdater *updater);
+
+/* 지금 부팅이 아직 확정되지 않은 업데이트 시험 부팅인지 (zyl_next_slot == 현재 슬롯) */
+bool zyl_updater_on_trial(const ZylUpdater *updater);
+
 /* 현재 슬롯을 검증 완료로 마킹 (성공적 부팅 후) */
 bool zyl_updater_mark_verified(ZylUpdater *updater);
 

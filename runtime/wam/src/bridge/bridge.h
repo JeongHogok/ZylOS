@@ -102,4 +102,22 @@ int zyl_bridge_respond(WebKitWebView *webview,
 void zyl_bridge_reply_error(const ZylBridgeReplyCtx *ctx,
                              const char              *message);
 
+/*
+ * Service events: D-Bus signals of the routed OS services, delivered to apps.
+ * The WAM subscribes once; for each signal it asks, per running app, for the
+ * script that delivers it — NULL when that app may not call the service.
+ */
+typedef void (*ZylBridgeEventFn)(const char *service, const char *signal,
+                                 GVariant *params, gpointer user_data);
+
+/* Subscribes to every routed service's signals, each only from that
+ * service's own bus name, so no other process can fake them. */
+void zyl_bridge_subscribe_service_events(GDBusConnection *bus,
+                                         ZylBridgeEventFn fn, gpointer user_data);
+
+/* window.postMessage of {type:"service.event", service, event, data}, or NULL */
+char *zyl_bridge_service_event_script(const ZylAppManifest *manifest,
+                                      const char *service, const char *signal,
+                                      GVariant *params);
+
 #endif /* ZYL_WAM_BRIDGE_H */

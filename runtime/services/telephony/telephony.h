@@ -72,6 +72,8 @@ ZylCallState zyl_telephony_get_call_state(const ZylTelephonyService *svc);
 int  zyl_telephony_dial(ZylTelephonyService *svc, const char *number);
 int  zyl_telephony_answer(ZylTelephonyService *svc);
 int  zyl_telephony_hangup(ZylTelephonyService *svc);
+/* 통화 중 DTMF 톤 (0-9 * # A-D, 최대 32자) — 0 성공 */
+int  zyl_telephony_send_dtmf(ZylTelephonyService *svc, const char *digits);
 
 /* SMS 발송 */
 int  zyl_telephony_send_sms(ZylTelephonyService *svc,

@@ -118,34 +118,10 @@ pub fn save_settings(
         .unwrap_or(serde_json::json!({})))
 }
 
-/// 기본 설정
+/// 기본 설정 — the OS image's defaults (system/settings-defaults.json) — the device's
+/// settings daemon reads the same file, so the two cannot drift
+const OS_DEFAULTS: &str = include_str!("../../../system/settings-defaults.json");
+
 fn default_settings() -> serde_json::Value {
-    serde_json::json!({
-        "wifi": { "enabled": true },
-        "bluetooth": { "enabled": true },
-        "display": {
-            "brightness": 80,
-            "darkMode": true,
-            "autoBrightness": true,
-            "fontSize": "medium"
-        },
-        "sound": {
-            "mediaVolume": 70,
-            "notifVolume": 80,
-            "alarmVolume": 90,
-            "systemVolume": 50,
-            "ringtoneVolume": 80,
-            "vibration": true,
-            "silentMode": false
-        },
-        "security": {
-            "lockType": "swipe",
-            "pin": "",
-            "fingerprint": false
-        },
-        "wallpaper": {
-            "current": "default",
-            "options": ["default", "blue", "purple", "dark", "sunset"]
-        }
-    })
+    serde_json::from_str(OS_DEFAULTS).expect("system/settings-defaults.json is valid JSON")
 }

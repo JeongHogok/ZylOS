@@ -424,9 +424,9 @@ systemd 서비스 유닛: 25개 (system/*.service)
 
 ## OTA 업데이트
 
-- A/B 파티션 기반 원자적 업데이트
-- 비활성 파티션에 적용 → 부트로더 플래그 전환
-- **RSA-2048+SHA-256 서명 검증** (OpenSSL EVP API) — 중간자 공격 방지
+- A/B 파티션 기반 원자적 업데이트 — `zyl-updater` (org.zylos.Updater), 설정 > 소프트웨어 업데이트
+- 패키지(`tools/build-ota.sh`): rootfs + 슬롯별 verity 트리·서명 FIT. 비활성 슬롯에만 기록한 뒤 부트로더 플래그 전환
+- **RSA-2048+SHA-256 서명 검증** (OpenSSL EVP API) — 서명 없는 패키지 거부
 - SHA-256 해시 무결성 검증
-- 부팅 3회 실패 시 자동 롤백
-- 업데이트 유형: FULL, DELTA, APPS_ONLY, KERNEL
+- 부팅 후 상태 점검 통과 시 슬롯 확정, 3회 안에 확정되지 않으면 U-Boot 가 이전 슬롯으로 롤백
+- 전체 이미지만 설치 (dm-verity rootfs 와 맞출 수 없는 delta·앱만·커널만은 거부)

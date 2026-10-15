@@ -2,8 +2,9 @@
 /* ──────────────────────────────────────────────────────────
  * [Clean Architecture] Application Layer - Service
  *
- * 역할: PipeWire 오디오 서비스 — 볼륨 제어, 톤 재생
- * 수행범위: PipeWire 세션 연결, 볼륨 get/set, sine 톤 생성
+ * 역할: PipeWire 오디오 서비스 — 볼륨 제어, 마이크 음소거, 톤 재생
+ * 수행범위: PipeWire 세션 연결, 스트림별 볼륨 get/set(이름: media·notif·alarm·
+ *           ringtone·system), 마이크 음소거(통화 중 음소거), sine 톤 생성
  * 의존방향: audio.h, gio/gio.h, pipewire/pipewire.h
  * SOLID: SRP — 오디오 관리만 담당
  * ────────────────────────────────────────────────────────── */
@@ -86,15 +87,24 @@ static int pw_get_volume(void) {
     return vol;
 }
 
-static void pw_set_mute(bool mute) {
+/* target: @DEFAULT_AUDIO_SINK@ (speaker) or @DEFAULT_AUDIO_SOURCE@ (microphone) */
+static bool pw_set_mute(const char *target, bool mute) {
     pid_t pid;
-    char *argv[] = {"wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", mute ? "1" : "0", NULL};
+    char *argv[] = {"wpctl", "set-mute", (char *)target, mute ? "1" : "0", NULL};
     char *envp[] = {"PATH=/usr/bin:/bin", NULL};
     int rc = posix_spawn(&pid, "/usr/bin/wpctl", NULL, NULL, argv, envp);
-    if (rc == 0) {
-        int status;
-        waitpid(pid, &status, 0);
-    }
+    int status = -1;
+    if (rc == 0) waitpid(pid, &status, 0);
+    return rc == 0 && WIFEXITED(status) && WEXITSTATUS(status) == 0;
+}
+
+/* Stream names apps use (apps/system/services/audio.js), in ZylAudioStream order */
+static const char *const STREAM_NAMES[] = {"media", "notif", "alarm", "ringtone", "system"};
+
+static int stream_from_name(const char *name) {
+    for (int i = 0; i < (int)G_N_ELEMENTS(STREAM_NAMES); i++)
+        if (g_strcmp0(name, STREAM_NAMES[i]) == 0) return i;
+    return -1;
 }
 
 /* ─── Tone generation via PipeWire (pw-play fallback) ─── */
@@ -148,12 +158,17 @@ static const char *audio_introspection_xml =
     "<node>"
     "  <interface name='" ZYL_AUDIO_DBUS_NAME "'>"
     "    <method name='GetVolume'>"
-    "      <arg type='i' name='stream' direction='in'/>"
+    "      <arg type='s' name='stream' direction='in'/>"
     "      <arg type='i' name='volume' direction='out'/>"
     "    </method>"
     "    <method name='SetVolume'>"
-    "      <arg type='i' name='stream' direction='in'/>"
-    "      <arg type='i' name='percent' direction='in'/>"
+    "      <arg type='s' name='stream' direction='in'/>"
+    "      <arg type='i' name='value' direction='in'/>"
+    "      <arg type='a{sv}' name='result' direction='out'/>"
+    "    </method>"
+    "    <method name='SetMicMute'>"
+    "      <arg type='b' name='muted' direction='in'/>"
+    "      <arg type='b' name='applied' direction='out'/>"
     "    </method>"
     "    <method name='GetMute'>"
     "      <arg type='b' name='muted' direction='out'/>"
@@ -165,6 +180,7 @@ static const char *audio_introspection_xml =
     "      <arg type='i' name='freq_hz' direction='in'/>"
     "      <arg type='i' name='duration_ms' direction='in'/>"
     "    </method>"
+    "    <method name='PlayKeyClick'/>"
     "  </interface>"
     "</node>";
 
@@ -175,16 +191,35 @@ static void handle_audio_method(GDBusConnection *conn, const gchar *sender,
     ZylAudioService *svc = data;
     (void)conn; (void)sender; (void)path; (void)iface;
 
-    if (g_strcmp0(method, "GetVolume") == 0) {
-        gint32 stream;
-        g_variant_get(params, "(i)", &stream);
-        int vol = zyl_audio_get_volume(svc, (ZylAudioStream)stream);
-        g_dbus_method_invocation_return_value(inv, g_variant_new("(i)", vol));
-    } else if (g_strcmp0(method, "SetVolume") == 0) {
-        gint32 stream, percent;
-        g_variant_get(params, "(ii)", &stream, &percent);
-        zyl_audio_set_volume(svc, (ZylAudioStream)stream, percent);
-        g_dbus_method_invocation_return_value(inv, NULL);
+    if (g_strcmp0(method, "GetVolume") == 0 || g_strcmp0(method, "SetVolume") == 0) {
+        const gchar *name = NULL;
+        gint32 value = 0;
+        if (g_strcmp0(method, "GetVolume") == 0) g_variant_get(params, "(&s)", &name);
+        else g_variant_get(params, "(&si)", &name, &value);
+        int stream = stream_from_name(name);
+        if (stream < 0) {
+            g_dbus_method_invocation_return_error(inv, G_DBUS_ERROR,
+                G_DBUS_ERROR_INVALID_ARGS, "Unknown stream: %s", name);
+            return;
+        }
+        if (g_strcmp0(method, "GetVolume") == 0) {
+            g_dbus_method_invocation_return_value(inv, g_variant_new("(i)",
+                zyl_audio_get_volume(svc, (ZylAudioStream)stream)));
+            return;
+        }
+        /* Same answer as the emulator's audio service: { stream, value } */
+        GVariantBuilder d;
+        g_variant_builder_init(&d, G_VARIANT_TYPE("a{sv}"));
+        g_variant_builder_add(&d, "{sv}", "stream", g_variant_new_string(name));
+        g_variant_builder_add(&d, "{sv}", "value", g_variant_new_int32(
+            zyl_audio_set_volume(svc, (ZylAudioStream)stream, value)));
+        g_dbus_method_invocation_return_value(inv, g_variant_new("(a{sv})", &d));
+    } else if (g_strcmp0(method, "SetMicMute") == 0) {
+        /* The phone's mute: the uplink of a call is the default microphone */
+        gboolean muted = FALSE;
+        g_variant_get(params, "(b)", &muted);
+        g_dbus_method_invocation_return_value(inv, g_variant_new("(b)",
+            pw_set_mute("@DEFAULT_AUDIO_SOURCE@", muted)));
     } else if (g_strcmp0(method, "GetMute") == 0) {
         g_dbus_method_invocation_return_value(inv,
             g_variant_new("(b)", zyl_audio_get_mute(svc)));
@@ -197,6 +232,11 @@ static void handle_audio_method(GDBusConnection *conn, const gchar *sender,
         gint32 freq, dur;
         g_variant_get(params, "(ii)", &freq, &dur);
         zyl_audio_play_tone(svc, freq, dur);
+        g_dbus_method_invocation_return_value(inv, NULL);
+    } else if (g_strcmp0(method, "PlayKeyClick") == 0) {
+        /* Keyboard feedback stays quiet in silent mode, unlike PlayTone
+           (emergency alerts must sound regardless) */
+        if (!zyl_audio_get_mute(svc)) zyl_audio_play_tone(svc, 800, 30);
         g_dbus_method_invocation_return_value(inv, NULL);
     }
 }
@@ -272,7 +312,7 @@ bool zyl_audio_get_mute(ZylAudioService *svc) {
 void zyl_audio_set_mute(ZylAudioService *svc, bool muted) {
     if (!svc) return;
     svc->muted = muted;
-    pw_set_mute(muted);
+    pw_set_mute("@DEFAULT_AUDIO_SINK@", muted);
     g_message("[Audio] Mute: %s", muted ? "ON" : "OFF");
 }
 

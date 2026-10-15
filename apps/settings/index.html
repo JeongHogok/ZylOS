@@ -222,6 +222,16 @@
         <svg class="chevron" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
       </div>
 
+      <div class="setting-item" data-page="update" role="button" tabindex="0">
+        <div class="setting-icon icon-blue">
+          <svg viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46A7.93 7.93 0 0020 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74A7.93 7.93 0 004 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+        </div>
+        <div class="setting-text">
+          <span class="setting-label" data-i18n="settings.software_update">Software Update</span>
+        </div>
+        <svg class="chevron" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+      </div>
+
       <div class="setting-item" data-page="about" role="button" tabindex="0">
         <div class="setting-icon icon-emerald">
           <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
@@ -341,6 +351,22 @@
     </div>
   </div>
 
+  <!-- 소프트웨어 업데이트 서브 페이지 — 상태는 updater 서비스가 알려준다 -->
+  <div id="page-update" class="sub-page hidden">
+    <div class="settings-group">
+      <div class="setting-item no-tap">
+        <span class="setting-label" data-i18n="settings.os_version">OS Version</span>
+        <span class="setting-value" id="update-version"></span>
+      </div>
+      <div class="setting-item no-tap">
+        <span class="setting-label" id="update-status" role="status" aria-live="polite"></span>
+      </div>
+    </div>
+    <div class="settings-group">
+      <button id="update-action" class="scan-btn hidden"></button>
+    </div>
+  </div>
+
   <!-- 기기 정보 서브 페이지 -->
   <div id="page-about" class="sub-page hidden">
     <div class="settings-group" id="about-info-list">
@@ -372,6 +398,20 @@
     <div class="settings-group" id="wifi-networks-list">
       <div class="setting-item no-tap">
         <span class="setting-label" style="opacity:0.5">Loading...</span>
+      </div>
+    </div>
+    <!-- 보안 네트워크 연결: 고른 네트워크의 암호 -->
+    <div id="wifi-join" class="settings-group hidden">
+      <div class="setting-item no-tap">
+        <span class="setting-label" id="wifi-join-ssid"></span>
+      </div>
+      <div class="setting-item no-tap">
+        <input type="password" id="wifi-join-pass" class="wifi-join-input" autocomplete="off"
+               data-i18n-placeholder="settings.wifi_password" data-i18n-aria-label="settings.wifi_password">
+      </div>
+      <div class="wifi-join-actions">
+        <button id="wifi-join-btn" class="scan-btn" data-i18n="settings.wifi_connect">Connect</button>
+        <div id="wifi-join-msg" class="wifi-join-msg" role="status" aria-live="polite"></div>
       </div>
     </div>
   </div>
@@ -635,5 +675,6 @@
   <script src="js/settings-wallpaper.js"></script>
   <script src="js/settings-keyboard.js"></script>
   <script src="js/settings-apps.js"></script>
+  <script src="js/settings-update.js"></script>
 </body>
 </html>

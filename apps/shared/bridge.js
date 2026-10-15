@@ -26,11 +26,11 @@ var ZylBridge = (function () {
      Determines whether we're running in:
      - 'iframe'  : Tauri emulator (app inside iframe, postMessage to parent)
      - 'webkit'  : Real device WAM (WebKitGTK messageHandlers → D-Bus)
-     - 'native'  : Real device with navigator.system bridge
      - 'standalone' : Plain browser (no parent, no bridge — fallback)
+     The WAM also injects navigator.system, but that object has no transport
+     of its own: checking it first sent every device message nowhere.
      ═══════════════════════════════════════════════════════════ */
   var IPC_MODE = (function () {
-    if (window.navigator && window.navigator.system) return 'native';
     if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.bridge) return 'webkit';
     if (window.parent && window.parent !== window) return 'iframe';
     return 'standalone';
@@ -49,16 +49,23 @@ var ZylBridge = (function () {
     }
     var json = JSON.stringify(payload);
     switch (IPC_MODE) {
-      case 'native':
-        /* Real device: navigator.system bridge */
-        try {
-          if (window.navigator.system.postMessage) {
-            window.navigator.system.postMessage(json);
-          }
-        } catch (e) { log('native IPC error:', e); }
-        break;
       case 'webkit':
-        /* Real device WAM: WebKit messageHandlers → D-Bus */
+        /* Real device WAM: WebKit messageHandlers → D-Bus. bridge.c answers
+           only a message carrying a callbackId, by calling window._zylCb_<id>.
+           The answer is re-posted as the service.response the emulator sends,
+           so promise callers and response listeners work the same on both. */
+        if (payload && payload.type === 'service.request') {
+          var cbId = _nextCallbackId++;
+          payload.callbackId = cbId;
+          json = JSON.stringify(payload);
+          window['_zylCb_' + cbId] = function (data) {
+            delete window['_zylCb_' + cbId];
+            window.postMessage(JSON.stringify({
+              type: 'service.response', service: payload.service, method: payload.method,
+              params: payload.params || {}, requestId: payload.requestId || null, data: data
+            }), '*');
+          };
+        }
         try {
           window.webkit.messageHandlers.bridge.postMessage(json);
         } catch (e) { log('webkit IPC error:', e); }
@@ -93,6 +100,19 @@ var ZylBridge = (function () {
 
   /* ─── Request-Response Matching ─── */
   var _nextRequestId = 1;
+  var _eventListeners = {}; /* 'service.Event' → [fn(data)] */
+
+  /**
+   * Listen for an OS service event, e.g. onServiceEvent('telephony',
+   * 'CallStateChanged', fn). data is the signal's arguments in order.
+   */
+  function onServiceEvent(service, event, fn) {
+    var key = service + '.' + event;
+    (_eventListeners[key] = _eventListeners[key] || []).push(fn);
+  }
+
+  /* Above the WAM-injected navigator.system's own _zylCb_ counter, which starts at 1 */
+  var _nextCallbackId = 1000000;
   var _pendingRequests = {}; /* requestId → { resolve, reject, timer } */
   var REQUEST_TIMEOUT_MS = 15000;
 
@@ -147,7 +167,7 @@ var ZylBridge = (function () {
 
   /**
    * Get current IPC mode for diagnostics.
-   * @returns {string} 'native' | 'webkit' | 'iframe' | 'standalone'
+   * @returns {string} 'webkit' | 'iframe' | 'standalone'
    */
   function getIpcMode() { return IPC_MODE; }
 
@@ -345,15 +365,57 @@ var ZylBridge = (function () {
      plain tap with no typing in between sends nothing. */
   var _keyboardEditActive = false;
 
-  function onAppTouch() {
+  function onAppTouch(e) {
     if (!_keyboardEditActive) return;
+    /* A key on the keyboard is typing, not a touch on the app */
+    if (window.ZylKeyboardHost && window.ZylKeyboardHost.owns(e.target)) return;
     _keyboardEditActive = false;
-    sendToSystem({ type: 'input.commitComposition' });
+    if (window.ZylKeyboard) window.ZylKeyboard.commitComposition();
+  }
+
+  /* ─── On-screen keyboard ───
+     The OS keyboard (apps/keyboard/js/inpage.js) is loaded into this page on
+     the first text focus, on the device and in the emulator alike. Not where
+     the device has a real keyboard. */
+  var KB_NOT_TEXT = ['checkbox', 'radio', 'range', 'file', 'color', 'hidden',
+                     'button', 'submit', 'reset', 'image'];
+  var _kbHostSrc = (function () {
+    var src = typeof document !== 'undefined' && document.currentScript && document.currentScript.src || '';
+    return /shared\/bridge\.js(\?.*)?$/.test(src) ? src.replace(/shared\/bridge\.js(\?.*)?$/, 'keyboard/js/inpage.js') : '';
+  })();
+
+  function isTextField(el) {
+    if (!el) return false;
+    if (el.tagName === 'TEXTAREA') return true;
+    return el.tagName === 'INPUT' && KB_NOT_TEXT.indexOf((el.type || 'text').toLowerCase()) === -1;
+  }
+
+  function withKeyboardHost(fn) {
+    if (window.ZylKeyboardHost) return fn(window.ZylKeyboardHost);
+    var s = document.createElement('script');
+    s.src = _kbHostSrc;
+    s.onload = function () { if (window.ZylKeyboardHost) fn(window.ZylKeyboardHost); };
+    document.head.appendChild(s);
+  }
+
+  function wantsOnScreenKeyboard() {
+    var p = (typeof ZylFormFactor !== 'undefined' && ZylFormFactor.getProfile) ? ZylFormFactor.getProfile() : null;
+    return !(p && p.inputModel === 'mouse-keyboard');
   }
 
   if (typeof document !== 'undefined' && document.addEventListener) {
     document.addEventListener('mousedown', onAppTouch, true);
     document.addEventListener('touchstart', onAppTouch, true);
+    if (_kbHostSrc) {
+      document.addEventListener('focusin', function (e) {
+        if (isTextField(e.target) && wantsOnScreenKeyboard()) withKeyboardHost(function (h) { h.show(); });
+      }, true);
+      document.addEventListener('focusout', function () {
+        setTimeout(function () {
+          if (!isTextField(document.activeElement) && window.ZylKeyboardHost) window.ZylKeyboardHost.hide();
+        }, 0);
+      }, true);
+    }
   }
 
   window.addEventListener('message', function (event) {
@@ -364,6 +426,15 @@ var ZylBridge = (function () {
       msg = event.data;
     } else {
       return;
+    }
+
+    /* ─── Service events: an OS service's signal, delivered by the WAM only
+       to apps allowed to call that service ─── */
+    if (msg.type === 'service.event') {
+      var fns = _eventListeners[msg.service + '.' + msg.event] || [];
+      for (var i = 0; i < fns.length; i++) {
+        try { fns[i](msg.data); } catch (e) { log('service event listener error:', e); }
+      }
     }
 
     /* ─── Service response matching (requestId → pending Promise) ─── */
@@ -451,7 +522,7 @@ var ZylBridge = (function () {
         } catch (e) { /* input type without selection support — value is set */ }
         _keyboardEditActive = true;
         field.dispatchEvent(new Event('input', { bubbles: true }));
-        if (usedFallback) sendToSystem({ type: 'input.compositionFallback' });
+        if (usedFallback && window.ZylKeyboard) window.ZylKeyboard.adoptFallback();
       }
     }
 
@@ -494,6 +565,7 @@ var ZylBridge = (function () {
     onSaveState: onSaveState,
     onRestoreState: onRestoreState,
     requestServiceFire: requestServiceFire,
+    onServiceEvent: onServiceEvent,
     launch: launch,
     closeApp: closeApp,
     setLocale: setLocale,

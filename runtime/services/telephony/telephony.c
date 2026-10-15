@@ -1,8 +1,9 @@
 /* ──────────────────────────────────────────────────────────
  * [Clean Architecture] Application Layer - Service
  *
- * 역할: 전화 서비스 — ModemManager 연동, 음성통화, SMS, 재난문자, 모바일 데이터
- * 수행범위: ModemManager D-Bus 프록시, 모뎀 열거, SIM/신호 상태, 통화 제어,
+ * 역할: 전화 서비스 — ModemManager 연동, 음성통화, 통화 기록, SMS, 재난문자, 모바일 데이터
+ * 수행범위: ModemManager D-Bus 프록시, 모뎀 열거, SIM/신호 상태, 통화 제어·DTMF,
+ *           통화 기록(통화 상태 전이에서 직접 기록 — 부재중 포함, 앱이 쓰지 않음),
  *           Cell Broadcast 채널 설정·수신 (분류·기록은 cbs.c),
  *           NetworkManager 모바일 데이터 연결 (APN 자동, IPv4v6, CLAT, 로밍)
  * 의존방향: telephony.h, gio/gio.h, ModemManager D-Bus API
@@ -27,9 +28,22 @@
 #ifndef ZYL_ALERTS_FILE
 #define ZYL_ALERTS_FILE "/data/alerts/history"
 #endif
+#ifndef ZYL_CALLLOG_FILE
+#define ZYL_CALLLOG_FILE "/data/telephony/calllog"
+#endif
+#define CALLLOG_MAX 500
+#define MM_CALL_IFACE   "org.freedesktop.ModemManager1.Call"
 
 /* ─── 내부 구조체 ─── */
 #define MAX_MODEMS 4  /* Support up to 4 modems / SIM slots */
+
+typedef struct {
+    guint64 id;
+    gint64  time_ms;             /* when the call began */
+    guint32 duration;            /* seconds talking; 0 when never answered */
+    char    type[12];            /* outgoing, incoming, missed */
+    char    number[32];
+} CallLogEntry;
 
 struct ZylTelephonyService {
     /* 현재 상태 */
@@ -59,6 +73,11 @@ struct ZylTelephonyService {
     guint mm_cbm_props_sub;          /* 여러 조각 CBM 의 수신 완료 */
 
     ZylCbsStore *cbs;                /* 재난문자 기록 */
+
+    /* The call in progress, for the log */
+    bool call_incoming;
+    uint64_t call_start_ms, call_answered_ms;
+    GArray *calllog;                 /* CallLogEntry, oldest first */
 };
 
 /* ─── 현재 시각 밀리초 ─── */
@@ -66,6 +85,117 @@ static uint64_t now_ms(void) {
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
     return (uint64_t)ts.tv_sec * 1000ULL + (uint64_t)ts.tv_nsec / 1000000ULL;
+}
+
+/* Same names as apps/system/services/telephony.js uses — one vocabulary for
+   the emulator and the device, in replies and in CallStateChanged */
+static const char *call_state_name(ZylCallState s) {
+    switch (s) {
+    case ZYL_CALL_STATE_RINGING: return "RINGING";
+    case ZYL_CALL_STATE_ACTIVE:  return "ACTIVE";
+    case ZYL_CALL_STATE_HELD:    return "HELD";
+    case ZYL_CALL_STATE_DIALING: return "DIALING";
+    default:                     return "IDLE";
+    }
+}
+
+/* ─── 통화 기록 ─── */
+static void calllog_load(ZylTelephonyService *svc) {
+    svc->calllog = g_array_new(FALSE, TRUE, sizeof(CallLogEntry));
+    GKeyFile *kf = g_key_file_new();
+    if (g_key_file_load_from_file(kf, ZYL_CALLLOG_FILE, G_KEY_FILE_NONE, NULL)) {
+        gsize n = 0;
+        char **groups = g_key_file_get_groups(kf, &n);
+        for (gsize i = 0; i < n; i++) {
+            CallLogEntry e = {0};
+            e.id = g_key_file_get_uint64(kf, groups[i], "id", NULL);
+            e.time_ms = g_key_file_get_int64(kf, groups[i], "time", NULL);
+            e.duration = (guint32)g_key_file_get_uint64(kf, groups[i], "duration", NULL);
+            char *type = g_key_file_get_string(kf, groups[i], "type", NULL);
+            char *number = g_key_file_get_string(kf, groups[i], "number", NULL);
+            g_strlcpy(e.type, type ? type : "", sizeof(e.type));
+            g_strlcpy(e.number, number ? number : "", sizeof(e.number));
+            g_free(type);
+            g_free(number);
+            g_array_append_val(svc->calllog, e);
+        }
+        g_strfreev(groups);
+    }
+    g_key_file_free(kf);
+}
+
+static void calllog_save(const ZylTelephonyService *svc) {
+    GKeyFile *kf = g_key_file_new();
+    for (guint i = 0; i < svc->calllog->len; i++) {
+        const CallLogEntry *e = &g_array_index(svc->calllog, CallLogEntry, i);
+        char group[48];
+        snprintf(group, sizeof(group), "call-%" G_GUINT64_FORMAT, e->id);
+        g_key_file_set_uint64(kf, group, "id", e->id);
+        g_key_file_set_int64(kf, group, "time", e->time_ms);
+        g_key_file_set_uint64(kf, group, "duration", e->duration);
+        g_key_file_set_string(kf, group, "type", e->type);
+        g_key_file_set_string(kf, group, "number", e->number);
+    }
+    gsize len = 0;
+    char *data = g_key_file_to_data(kf, &len, NULL);
+    char *dir = g_path_get_dirname(ZYL_CALLLOG_FILE);
+    g_mkdir_with_parents(dir, 0700);
+    GError *err = NULL;
+    if (!g_file_set_contents_full(ZYL_CALLLOG_FILE, data, (gssize)len,
+            G_FILE_SET_CONTENTS_CONSISTENT, 0600, &err)) {
+        g_warning("[Telephony] cannot save the call log: %s", err->message);
+        g_clear_error(&err);
+    }
+    g_free(dir);
+    g_free(data);
+    g_key_file_free(kf);
+}
+
+/* A call has ended: what it was follows from the states it went through */
+static void calllog_record(ZylTelephonyService *svc) {
+    uint64_t now = now_ms();
+    CallLogEntry e = {0};
+    e.id = svc->call_start_ms;
+    if (svc->calllog->len) {
+        guint64 last = g_array_index(svc->calllog, CallLogEntry, svc->calllog->len - 1).id;
+        if (e.id <= last) e.id = last + 1;
+    }
+    e.time_ms = (gint64)svc->call_start_ms;
+    e.duration = svc->call_answered_ms ? (guint32)((now - svc->call_answered_ms) / 1000) : 0;
+    g_strlcpy(e.type, !svc->call_incoming ? "outgoing" : svc->call_answered_ms ? "incoming" : "missed",
+              sizeof(e.type));
+    g_strlcpy(e.number, svc->active_call_number, sizeof(e.number));
+    g_array_append_val(svc->calllog, e);
+    if (svc->calllog->len > CALLLOG_MAX) g_array_remove_index(svc->calllog, 0);
+    calllog_save(svc);
+}
+
+static GVariant *calllog_variant(const ZylTelephonyService *svc) {
+    GVariantBuilder list;
+    g_variant_builder_init(&list, G_VARIANT_TYPE("aa{sv}"));
+    for (guint i = svc->calllog->len; i-- > 0;) {     /* newest first */
+        const CallLogEntry *e = &g_array_index(svc->calllog, CallLogEntry, i);
+        GVariantBuilder d;
+        g_variant_builder_init(&d, G_VARIANT_TYPE("a{sv}"));
+        g_variant_builder_add(&d, "{sv}", "id", g_variant_new_uint64(e->id));
+        g_variant_builder_add(&d, "{sv}", "time", g_variant_new_int64(e->time_ms));
+        g_variant_builder_add(&d, "{sv}", "duration", g_variant_new_uint32(e->duration));
+        g_variant_builder_add(&d, "{sv}", "type", g_variant_new_string(e->type));
+        g_variant_builder_add(&d, "{sv}", "number", g_variant_new_string(e->number));
+        g_variant_builder_add_value(&list, g_variant_builder_end(&d));
+    }
+    return g_variant_new("(aa{sv})", &list);
+}
+
+static bool calllog_delete(ZylTelephonyService *svc, guint64 id) {
+    for (guint i = 0; i < svc->calllog->len; i++) {
+        if (g_array_index(svc->calllog, CallLogEntry, i).id == id) {
+            g_array_remove_index(svc->calllog, i);
+            calllog_save(svc);
+            return true;
+        }
+    }
+    return false;
 }
 
 /* ─── 통화 상태 전환 ─── */
@@ -79,7 +209,17 @@ static void transition_call_state(ZylTelephonyService *svc,
     if (number) {
         snprintf(svc->active_call_number, sizeof(svc->active_call_number),
                  "%s", number);
+    } else if (old == ZYL_CALL_STATE_IDLE) {
+        svc->active_call_number[0] = '\0';   /* never the previous call's number */
     }
+    if (old == ZYL_CALL_STATE_IDLE) {
+        svc->call_incoming = new_state == ZYL_CALL_STATE_RINGING;
+        svc->call_start_ms = now_ms();
+        svc->call_answered_ms = 0;
+    }
+    if (new_state == ZYL_CALL_STATE_ACTIVE && !svc->call_answered_ms)
+        svc->call_answered_ms = now_ms();
+    if (new_state == ZYL_CALL_STATE_IDLE) calllog_record(svc);
 
     g_message("[Telephony] Call: %d -> %d (%s)", old, new_state,
               number ? number : "");
@@ -95,7 +235,7 @@ static void transition_call_state(ZylTelephonyService *svc,
             ZYL_TELEPHONY_DBUS_PATH,
             ZYL_TELEPHONY_DBUS_NAME,
             "CallStateChanged",
-            g_variant_new("(iis)", (gint32)old, (gint32)new_state,
+            g_variant_new("(sss)", call_state_name(old), call_state_name(new_state),
                            svc->active_call_number),
             NULL);
     }
@@ -300,7 +440,18 @@ static void on_mm_call_state_changed(GDBusConnection *conn,
     default:        zyl_state = ZYL_CALL_STATE_IDLE; break;
     }
 
-    transition_call_state(svc, zyl_state, NULL);
+    /* A call that begins here (an incoming one) brings its number with it */
+    char *number = NULL;
+    if (svc->call_state == ZYL_CALL_STATE_IDLE && zyl_state != ZYL_CALL_STATE_IDLE) {
+        GVariant *v = get_dbus_property(svc->system_bus, MM_DBUS_NAME, object_path,
+                                        MM_CALL_IFACE, "Number");
+        if (v) {
+            number = g_variant_dup_string(v, NULL);
+            g_variant_unref(v);
+        }
+    }
+    transition_call_state(svc, zyl_state, number);
+    g_free(number);
 }
 
 /* ─── ModemManager 시그널: SMS 수신 ─── */
@@ -576,8 +727,7 @@ static const char *telephony_introspection_xml =
     "      <arg type='s' name='phone_number' direction='out'/>"
     "    </method>"
     "    <method name='GetCallState'>"
-    "      <arg type='i' name='call_state' direction='out'/>"
-    "      <arg type='s' name='number' direction='out'/>"
+    "      <arg type='a{sv}' name='call' direction='out'/>"
     "    </method>"
     "    <method name='Dial'>"
     "      <arg type='s' name='number' direction='in'/>"
@@ -587,6 +737,17 @@ static const char *telephony_introspection_xml =
     "    <method name='SendSms'>"
     "      <arg type='s' name='number' direction='in'/>"
     "      <arg type='s' name='body' direction='in'/>"
+    "    </method>"
+    "    <method name='GetCallLog'>"
+    "      <arg type='aa{sv}' name='entries' direction='out'/>"
+    "    </method>"
+    "    <method name='DeleteCallLog'>"
+    "      <arg type='t' name='id' direction='in'/>"
+    "      <arg type='b' name='found' direction='out'/>"
+    "    </method>"
+    "    <method name='SendDTMF'>"
+    "      <arg type='s' name='digit' direction='in'/>"
+    "      <arg type='b' name='sent' direction='out'/>"
     "    </method>"
     "    <method name='GetEmergencyAlerts'>"
     "      <arg type='aa{sv}' name='alerts' direction='out'/>"
@@ -618,8 +779,8 @@ static const char *telephony_introspection_xml =
     "      <arg type='s' name='text'/>"
     "    </signal>"
     "    <signal name='CallStateChanged'>"
-    "      <arg type='i' name='old_state'/>"
-    "      <arg type='i' name='new_state'/>"
+    "      <arg type='s' name='old_state'/>"
+    "      <arg type='s' name='new_state'/>"
     "      <arg type='s' name='number'/>"
     "    </signal>"
     "    <signal name='SmsReceived'>"
@@ -652,9 +813,12 @@ static void handle_telephony_method(GDBusConnection *conn, const gchar *sender,
                            svc->state.imei,
                            svc->state.phone_number));
     } else if (g_strcmp0(method, "GetCallState") == 0) {
-        g_dbus_method_invocation_return_value(inv,
-            g_variant_new("(is)", (gint32)svc->call_state,
-                           svc->active_call_number));
+        GVariantBuilder d;
+        g_variant_builder_init(&d, G_VARIANT_TYPE("a{sv}"));
+        g_variant_builder_add(&d, "{sv}", "state",
+                              g_variant_new_string(call_state_name(svc->call_state)));
+        g_variant_builder_add(&d, "{sv}", "number", g_variant_new_string(svc->active_call_number));
+        g_dbus_method_invocation_return_value(inv, g_variant_new("(a{sv})", &d));
     } else if (g_strcmp0(method, "Dial") == 0) {
         const gchar *number;
         g_variant_get(params, "(&s)", &number);
@@ -681,6 +845,17 @@ static void handle_telephony_method(GDBusConnection *conn, const gchar *sender,
             g_dbus_method_invocation_return_error(inv, G_DBUS_ERROR,
                 G_DBUS_ERROR_FAILED, "SMS send failed");
         }
+    } else if (g_strcmp0(method, "GetCallLog") == 0) {
+        g_dbus_method_invocation_return_value(inv, calllog_variant(svc));
+    } else if (g_strcmp0(method, "DeleteCallLog") == 0) {
+        guint64 id = 0;
+        g_variant_get(params, "(t)", &id);
+        g_dbus_method_invocation_return_value(inv, g_variant_new("(b)", calllog_delete(svc, id)));
+    } else if (g_strcmp0(method, "SendDTMF") == 0) {
+        const gchar *digit = NULL;
+        g_variant_get(params, "(&s)", &digit);
+        g_dbus_method_invocation_return_value(inv,
+            g_variant_new("(b)", zyl_telephony_send_dtmf(svc, digit) == 0));
     } else if (g_strcmp0(method, "GetEmergencyAlerts") == 0) {
         g_dbus_method_invocation_return_value(inv, alerts_variant(svc));
     } else if (g_strcmp0(method, "AcknowledgeEmergencyAlert") == 0) {
@@ -724,6 +899,7 @@ static const GDBusInterfaceVTable telephony_vtable = {
 
 static void on_telephony_bus_acquired(GDBusConnection *conn, const gchar *name,
                                        gpointer data) {
+    (void)name;
     ZylTelephonyService *svc = data;
     svc->session_bus = conn;
 
@@ -743,6 +919,7 @@ ZylTelephonyService *zyl_telephony_create(void) {
     svc->call_state = ZYL_CALL_STATE_IDLE;
     /* History is kept even without a modem: alerts received before a SIM swap stay readable */
     svc->cbs = zyl_cbs_store_open(ZYL_ALERTS_FILE);
+    calllog_load(svc);
 
     /* system bus 연결 (ModemManager) */
     GError *err = NULL;
@@ -789,6 +966,7 @@ void zyl_telephony_destroy(ZylTelephonyService *svc) {
 
     g_bus_unown_name(svc->dbus_owner_id);
     zyl_cbs_store_free(svc->cbs);
+    g_array_free(svc->calllog, TRUE);
     g_free(svc);
 }
 
@@ -937,6 +1115,35 @@ int zyl_telephony_hangup(ZylTelephonyService *svc) {
 
     transition_call_state(svc, ZYL_CALL_STATE_IDLE, NULL);
     return 0;
+}
+
+/* Tones on the call in progress (keypad during a call: menus, PINs) */
+int zyl_telephony_send_dtmf(ZylTelephonyService *svc, const char *digits) {
+    if (!svc || !digits || !*digits || strlen(digits) > 32 ||
+        strspn(digits, "0123456789*#ABCD") != strlen(digits)) return -1;
+    if (!svc->modem_found || !svc->system_bus || svc->call_state != ZYL_CALL_STATE_ACTIVE) return -1;
+    GVariant *calls = g_dbus_connection_call_sync(svc->system_bus,
+        MM_DBUS_NAME, active_modem_path(svc), MM_VOICE_IFACE, "ListCalls",
+        NULL, G_VARIANT_TYPE("(ao)"), G_DBUS_CALL_FLAGS_NONE, 5000, NULL, NULL);
+    if (!calls) return -1;
+    int rc = -1;
+    GVariantIter *iter;
+    const gchar *call_path;
+    g_variant_get(calls, "(ao)", &iter);
+    if (g_variant_iter_next(iter, "&o", &call_path)) {
+        GError *err = NULL;
+        GVariant *r = g_dbus_connection_call_sync(svc->system_bus, MM_DBUS_NAME, call_path,
+            MM_CALL_IFACE, "SendDtmf", g_variant_new("(s)", digits), NULL,
+            G_DBUS_CALL_FLAGS_NONE, 5000, NULL, &err);
+        if (r) { rc = 0; g_variant_unref(r); }
+        else {
+            g_warning("[Telephony] SendDtmf failed: %s", err->message);
+            g_clear_error(&err);
+        }
+    }
+    g_variant_iter_free(iter);
+    g_variant_unref(calls);
+    return rc;
 }
 
 int zyl_telephony_send_sms(ZylTelephonyService *svc,

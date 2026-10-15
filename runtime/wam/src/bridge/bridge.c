@@ -51,12 +51,6 @@ static void handle_battery_get_level(const char *type, gpointer msg_obj,
 static void handle_wifi_scan(const char *type, gpointer msg_obj,
                              ZylAppManifest *manifest,
                              ZylBridgeReplyCtx *reply_ctx, gpointer data);
-static void handle_settings_get(const char *type, gpointer msg_obj,
-                                ZylAppManifest *manifest,
-                                ZylBridgeReplyCtx *reply_ctx, gpointer data);
-static void handle_settings_update(const char *type, gpointer msg_obj,
-                                   ZylAppManifest *manifest,
-                                   ZylBridgeReplyCtx *reply_ctx, gpointer data);
 static void handle_service_request(const char *type, gpointer msg_obj,
                                    ZylAppManifest *manifest,
                                    ZylBridgeReplyCtx *reply_ctx, gpointer data);
@@ -75,8 +69,6 @@ void zyl_bridge_init(void)
     zyl_bridge_register_handler("notification.create", handle_notification_create, NULL);
     zyl_bridge_register_handler("battery.getLevel",    handle_battery_get_level, NULL);
     zyl_bridge_register_handler("wifi.scan",           handle_wifi_scan, NULL);
-    zyl_bridge_register_handler("settings.get",        handle_settings_get, NULL);
-    zyl_bridge_register_handler("settings.update",     handle_settings_update, NULL);
     zyl_bridge_register_handler("service.request",     handle_service_request, NULL);
 }
 
@@ -695,107 +687,6 @@ static void handle_wifi_scan(const char *type, gpointer msg_obj,
     g_object_unref(conn);
 }
 
-/* -- Settings get: async D-Bus query ----------------------- */
-static void handle_settings_get(const char *type, gpointer msg_obj,
-                                ZylAppManifest *manifest,
-                                ZylBridgeReplyCtx *reply_ctx, gpointer data)
-{
-    (void)type; (void)data;
-    const char *app_id = (manifest && manifest->id) ? manifest->id : "unknown";
-    JsonObject *msg = msg_obj;
-
-    const char *key = NULL;
-    if (json_object_has_member(msg, "key"))
-        key = json_object_get_string_member(msg, "key");
-
-    g_info("Bridge: settings.get from %s key='%s'",
-           app_id, key ? key : "(all)");
-
-    if (reply_ctx->callback_id < 0) return;
-
-    GError *err = NULL;
-    GDBusConnection *conn = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &err);
-    if (err) {
-        zyl_bridge_reply_error(reply_ctx, "dbus unavailable");
-        g_error_free(err);
-        return;
-    }
-
-    GVariant *params = key
-        ? g_variant_new("(s)", key)
-        : g_variant_new("(s)", "");
-
-    DbusReplyCtx *ctx = g_new(DbusReplyCtx, 1);
-    ctx->webview     = reply_ctx->webview;
-    ctx->callback_id = reply_ctx->callback_id;
-    g_object_ref(conn);
-
-    g_dbus_connection_call(conn,
-        "org.zylos.Settings", "/org/zylos/Settings",
-        "org.zylos.Settings", "Get",
-        params, NULL,
-        G_DBUS_CALL_FLAGS_NONE, 3000, NULL,
-        on_dbus_call_done, ctx);
-
-    g_object_unref(conn);
-}
-
-/* -- Settings update --------------------------------------- */
-static void handle_settings_update(const char *type, gpointer msg_obj,
-                                   ZylAppManifest *manifest,
-                                   ZylBridgeReplyCtx *reply_ctx, gpointer data)
-{
-    (void)type; (void)data;
-    const char *app_id = (manifest && manifest->id) ? manifest->id : "unknown";
-    JsonObject *msg = msg_obj;
-
-    const char *key = NULL;
-    if (json_object_has_member(msg, "key"))
-        key = json_object_get_string_member(msg, "key");
-
-    g_info("Bridge: settings.update from %s key='%s'",
-           app_id, key ? key : "(none)");
-
-    if (reply_ctx->callback_id < 0) return;
-
-    GError *err = NULL;
-    GDBusConnection *conn = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &err);
-    if (err) {
-        zyl_bridge_reply_error(reply_ctx, "dbus unavailable");
-        g_error_free(err);
-        return;
-    }
-
-    /* Build params: (key, value_json) */
-    const char *value_str = "";
-    gchar *value_json = NULL;
-    if (json_object_has_member(msg, "value")) {
-        JsonNode *val_node = json_object_get_member(msg, "value");
-        JsonGenerator *gen = json_generator_new();
-        json_generator_set_root(gen, val_node);
-        value_json = json_generator_to_data(gen, NULL);
-        value_str = value_json;
-        g_object_unref(gen);
-    }
-
-    GVariant *params = g_variant_new("(ss)", key ? key : "", value_str);
-    g_free(value_json);
-
-    DbusReplyCtx *ctx = g_new(DbusReplyCtx, 1);
-    ctx->webview     = reply_ctx->webview;
-    ctx->callback_id = reply_ctx->callback_id;
-    g_object_ref(conn);
-
-    g_dbus_connection_call(conn,
-        "org.zylos.Settings", "/org/zylos/Settings",
-        "org.zylos.Settings", "Set",
-        params, NULL,
-        G_DBUS_CALL_FLAGS_NONE, 3000, NULL,
-        on_dbus_call_done, ctx);
-
-    g_object_unref(conn);
-}
-
 /* == service.request → D-Bus dispatch ====================== */
 
 typedef struct {
@@ -826,6 +717,8 @@ static const ServiceRoute SERVICE_ROUTES[] = {
     {"telemetry",    "org.zylos.Telemetry",          "/org/zylos/Telemetry",          "org.zylos.Telemetry"},
     {"netstats",     "org.zylos.NetStats",           "/org/zylos/NetStats",           "org.zylos.NetStats"},
     {"bootctl",      "org.zylos.BootControl",        "/org/zylos/BootControl",        "org.zylos.BootControl"},
+    {"lock",         "org.zylos.Lock",               "/org/zylos/Lock",               "org.zylos.Lock"},
+    {"updater",      "org.zylos.Updater",            "/org/zylos/Updater",            "org.zylos.Updater"},
     {NULL, NULL, NULL, NULL}
 };
 
@@ -869,6 +762,9 @@ static const ServicePermission SERVICE_PERMISSIONS[] = {
     {"telemetry",     {"system", NULL}},
     {"netstats",      {"system", NULL}},
     {"bootctl",       {"system", NULL}},
+    {"lock",          {"system", NULL}},
+    /* Installs and restarts into a new OS: Settings only */
+    {"updater",       {"system", NULL}},
     {"device",        {NULL}},
     {"storage",       {NULL}},
     {"apps",          {NULL}},
@@ -878,7 +774,6 @@ static const ServicePermission SERVICE_PERMISSIONS[] = {
     {"sensors",       {NULL}},
     {"usb",           {NULL}},
     {"user",          {NULL}},
-    {"updater",       {NULL}},
     {"sandbox",       {NULL}},
     {"logger",        {NULL}},
     {"accessibility", {NULL}},
@@ -931,6 +826,61 @@ static const ServiceRoute *find_route(const char *service) {
             return &SERVICE_ROUTES[i];
     }
     return NULL;
+}
+
+/* == Service events (signals → apps) ======================== */
+
+typedef struct {
+    const ServiceRoute *route;
+    ZylBridgeEventFn    fn;
+    gpointer            data;
+} EventSub;
+
+static void on_service_signal(GDBusConnection *conn, const gchar *sender,
+                              const gchar *path, const gchar *iface,
+                              const gchar *signal, GVariant *params, gpointer user) {
+    (void)conn; (void)sender; (void)path; (void)iface;
+    EventSub *sub = user;
+    sub->fn(sub->route->service, signal, params, sub->data);
+}
+
+void zyl_bridge_subscribe_service_events(GDBusConnection *bus,
+                                         ZylBridgeEventFn fn, gpointer user_data) {
+    for (int i = 0; SERVICE_ROUTES[i].service; i++) {
+        EventSub *sub = g_new(EventSub, 1);   /* lives as long as the subscription */
+        sub->route = &SERVICE_ROUTES[i];
+        sub->fn = fn;
+        sub->data = user_data;
+        g_dbus_connection_signal_subscribe(bus, SERVICE_ROUTES[i].dbus_name,
+            SERVICE_ROUTES[i].dbus_iface, NULL, SERVICE_ROUTES[i].dbus_path, NULL,
+            G_DBUS_SIGNAL_FLAGS_NONE, on_service_signal, sub, g_free);
+    }
+}
+
+/* An event reaches only apps allowed to call its service: a call or an SMS
+   must not be visible to an app without the telephony permission. */
+char *zyl_bridge_service_event_script(const ZylAppManifest *manifest,
+                                      const char *service, const char *signal,
+                                      GVariant *params) {
+    if (!find_route(service) || !app_may_call(manifest, service)) return NULL;
+    JsonObject *msg = json_object_new();
+    json_object_set_string_member(msg, "type", "service.event");
+    json_object_set_string_member(msg, "service", service);
+    json_object_set_string_member(msg, "event", signal);
+    /* Arguments as an array, in the signal's order (one argument: that value) */
+    json_object_set_member(msg, "data", json_from_variant(params));
+    JsonNode *root = json_node_init_object(json_node_alloc(), msg);
+    gchar *json = json_to_string(root, FALSE);
+    /* The JSON text itself, quoted as a JS string literal */
+    JsonNode *lit = json_node_init_string(json_node_alloc(), json);
+    gchar *quoted = json_to_string(lit, FALSE);
+    char *script = g_strdup_printf("window.postMessage(%s,'*')", quoted);
+    g_free(quoted);
+    json_node_unref(lit);
+    g_free(json);
+    json_node_unref(root);
+    json_object_unref(msg);
+    return script;
 }
 
 static char *capitalize_method(const char *method) {

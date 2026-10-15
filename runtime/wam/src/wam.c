@@ -305,49 +305,64 @@ static const ZylDbusMethodEntry dbus_methods[] = {
 };
 
 /* ════════════════════════════════════════════════════════════════
- *  Emergency alerts (Cell Broadcast)
- *  The telephony daemon records each alert and signals it; the WAM puts
- *  the alerts app in front. The app asks the daemon for unacknowledged
- *  alerts when it loads, so an app still starting misses nothing; one
- *  already running is told to look again.
+ *  Service events → apps
+ *  Every routed OS service's signals reach the running apps allowed to
+ *  call that service (bridge.c decides and builds the message). Some
+ *  events must also bring an app to the front: it then asks its service
+ *  for the current state when it loads, so nothing is lost while it starts.
  * ════════════════════════════════════════════════════════════════ */
 
-#define WAM_ALERTS_APP "com.zylos.alerts"
-
-static void on_emergency_alert(GDBusConnection *conn, const gchar *sender,
-                               const gchar *path, const gchar *iface,
-                               const gchar *signal, GVariant *params, gpointer user_data) {
-    (void)conn; (void)sender; (void)path; (void)iface; (void)signal; (void)params;
-    ZylWam *wam = user_data;
-    gboolean running = wam->iface.get_instance(&wam->iface, WAM_ALERTS_APP) != NULL;
-    ZylAppInstance *inst = zyl_lifecycle_launch(&wam->iface, &wam->engine, WAM_ALERTS_APP);
-    if (!inst) {
-        g_warning("WAM: emergency alert received but %s could not start", WAM_ALERTS_APP);
-        return;
+static const char *app_to_show(const char *service, const char *signal, GVariant *params) {
+    if (strcmp(service, "telephony") != 0) return NULL;
+    if (strcmp(signal, "EmergencyAlert") == 0) return "com.zylos.alerts";
+    if (strcmp(signal, "CallStateChanged") == 0 &&
+        g_variant_is_of_type(params, G_VARIANT_TYPE("(sss)"))) {
+        const gchar *now = NULL;
+        g_variant_get(params, "(&s&s&s)", NULL, &now, NULL);
+        if (strcmp(now, "RINGING") == 0) return "com.zylos.phone";
     }
-    if (!running) zyl_oom_on_app_launched(g_oom, WAM_ALERTS_APP, true, 0);
-    zyl_oom_on_app_foreground(g_oom, WAM_ALERTS_APP);
-    if (running && inst->webview_widget)
-        webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(inst->webview_widget),
-            "window.postMessage(JSON.stringify({type:'emergency.alert'}),'*')",
-            -1, NULL, NULL, NULL, NULL, NULL);
+    return NULL;
 }
 
-static GDBusConnection *g_alert_bus;   /* held for the WAM's lifetime: the
-                                          subscription dies with the connection */
+static void on_service_event(const char *service, const char *signal,
+                             GVariant *params, gpointer user_data) {
+    ZylWam *wam = user_data;
+    const char *show = app_to_show(service, signal, params);
+    if (show) {
+        gboolean running = wam->iface.get_instance(&wam->iface, show) != NULL;
+        if (zyl_lifecycle_launch(&wam->iface, &wam->engine, show)) {
+            if (!running) zyl_oom_on_app_launched(g_oom, show, true, 0);
+            zyl_oom_on_app_foreground(g_oom, show);
+        } else {
+            g_warning("WAM: %s.%s needs %s, which could not start", service, signal, show);
+        }
+    }
+    GHashTableIter it;
+    gpointer key, value;
+    g_hash_table_iter_init(&it, wam->instances);
+    while (g_hash_table_iter_next(&it, &key, &value)) {
+        ZylAppInstance *inst = value;
+        if (!inst->webview_widget) continue;
+        char *script = zyl_bridge_service_event_script(inst->manifest, service, signal, params);
+        if (!script) continue;
+        webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(inst->webview_widget),
+            script, -1, NULL, NULL, NULL, NULL, NULL);
+        g_free(script);
+    }
+}
 
-static void subscribe_emergency_alerts(ZylWam *wam) {
+static GDBusConnection *g_event_bus;   /* held for the WAM's lifetime: the
+                                          subscriptions die with the connection */
+
+static void subscribe_service_events(ZylWam *wam) {
     GError *err = NULL;
-    GDBusConnection *session = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &err);
-    if (!session) {
-        g_warning("WAM: no session bus for emergency alerts: %s", err->message);
+    g_event_bus = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &err);
+    if (!g_event_bus) {
+        g_warning("WAM: no session bus for service events: %s", err->message);
         g_error_free(err);
         return;
     }
-    g_dbus_connection_signal_subscribe(session, "org.zylos.Telephony",
-        "org.zylos.Telephony", "EmergencyAlert", "/org/zylos/Telephony", NULL,
-        G_DBUS_SIGNAL_FLAGS_NONE, on_emergency_alert, wam, NULL);
-    g_alert_bus = session;
+    zyl_bridge_subscribe_service_events(g_event_bus, on_service_event, wam);
 }
 
 /* ════════════════════════════════════════════════════════════════
@@ -368,7 +383,7 @@ static void on_activate(GApplication *app, gpointer user_data) {
     zyl_oom_on_app_launched(g_oom, "com.zylos.home", true, 0);
     zyl_oom_on_app_foreground(g_oom, "com.zylos.home");
 
-    subscribe_emergency_alerts(wam);
+    subscribe_service_events(wam);
 
     g_message("WAM activated, %d apps registered",
               g_hash_table_size(wam->manifests));
