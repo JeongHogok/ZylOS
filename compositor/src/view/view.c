@@ -95,6 +95,7 @@ static void xdg_toplevel_destroy(struct wl_listener *listener, void *data)
     if (view == view->server->active_view)
         view->server->active_view = NULL;
     wl_list_remove(&view->link);
+    wl_list_remove(&view->commit.link);
     wl_list_remove(&view->map.link);
     wl_list_remove(&view->unmap.link);
     wl_list_remove(&view->destroy.link);
@@ -108,8 +109,30 @@ static void xdg_toplevel_request_fullscreen(struct wl_listener *listener,
     struct zyl_view *view =
         wl_container_of(listener, view, request_fullscreen);
     (void)data;
+    /* GTK 는 첫 commit 전에도 전체화면을 요청한다 — 그때는 아무것도 하지 않고
+       초기 commit 처리에서 함께 보낸다 (xdg_shell 규약) */
+    if (!view->xdg_toplevel->base->initialized)
+        return;
     /* Mobile OS: every app is always fullscreen */
     wlr_xdg_toplevel_set_fullscreen(view->xdg_toplevel, true);
+}
+
+/* 크기·전체화면 같은 configure 는 클라이언트의 첫 commit 뒤에 보내야 한다.
+   먼저 보내면 wlroots 가 "configure is scheduled for an uninitialized
+   xdg_surface" 로 거르고 앱은 자기 크기를 모른 채 그린다 */
+static void xdg_toplevel_commit(struct wl_listener *listener, void *data)
+{
+    struct zyl_view *view = wl_container_of(listener, view, commit);
+    (void)data;
+    if (!view->xdg_toplevel->base->initial_commit)
+        return;
+    wlr_xdg_toplevel_set_fullscreen(view->xdg_toplevel, true);
+    if (view->server->screen_width > 0) {
+        wlr_xdg_toplevel_set_size(view->xdg_toplevel,
+            view->server->screen_width,
+            view->server->screen_height
+                - view->server->config.statusbar_height_px);
+    }
 }
 
 /* ================================================================
@@ -142,14 +165,8 @@ static void handle_new_xdg_toplevel(struct wl_listener *listener, void *data)
     view->scene_tree->node.data = view;
     toplevel->base->data        = view->scene_tree;
 
-    /* Force fullscreen */
-    wlr_xdg_toplevel_set_fullscreen(toplevel, true);
-    if (server->screen_width > 0) {
-        wlr_xdg_toplevel_set_size(toplevel,
-            server->screen_width,
-            server->screen_height - server->config.statusbar_height_px);
-    }
-
+    view->commit.notify = xdg_toplevel_commit;
+    wl_signal_add(&toplevel->base->surface->events.commit, &view->commit);
     view->map.notify = xdg_toplevel_map;
     wl_signal_add(&toplevel->base->surface->events.map, &view->map);
     view->unmap.notify = xdg_toplevel_unmap;
