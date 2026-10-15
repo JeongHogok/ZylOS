@@ -151,6 +151,7 @@ install_data('system/store.json', install_dir: get_option('sysconfdir') / 'zyl-o
 install_data('system/sysusers.d/zyl-wam.conf',
              install_dir: get_option('prefix') / 'lib' / 'sysusers.d')
 install_data('system/tmpfiles.d/zyl-wam.conf', 'system/tmpfiles.d/zyl-data.conf',
+             'system/tmpfiles.d/zyl-state.conf',
              install_dir: get_option('prefix') / 'lib' / 'tmpfiles.d')
 
 # Build facts for tooling outside meson (tools/build-image.sh): which board,

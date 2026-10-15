@@ -15,8 +15,11 @@
 # SOLID: SRP — 이미지 조립만, DIP — 레이아웃·패키지·파일 목록을 스스로 알지 않음
 #
 # 사용법: tools/build-image.sh [--builddir DIR] [--out DIR] [--suite NAME]
-#                              [--mirror URL] [--rootfs-only]
+#                              [--mirror URL] [--rootfs-only] [--with-kernel]
 #   기본: --builddir builddir, --out out/image
+#   --with-kernel: 배포판 커널과 모듈을 이미지에 넣는다. 실기기 이미지는 커널을
+#                  서명 FIT 으로 받으므로 기본은 끔. QEMU 레인은 켠다 (DRM 등
+#                  모듈이 rootfs 에 있어야 컴포지터가 화면을 잡는다)
 #   서명·verity·A/B 는 tools/sign-image.sh 가 맡는다 (이 스크립트의 rootfs 이미지를 입력으로)
 # ──────────────────────────────────────────────────────────
 set -euo pipefail
@@ -27,6 +30,7 @@ OUT="$HERE/out/image"
 SUITE="trixie"
 MIRROR="http://deb.debian.org/debian"
 ROOTFS_ONLY=0
+WITH_KERNEL=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -35,6 +39,7 @@ while [ $# -gt 0 ]; do
         --suite)       SUITE="$2"; shift 2 ;;
         --mirror)      MIRROR="$2"; shift 2 ;;
         --rootfs-only) ROOTFS_ONLY=1; shift ;;
+        --with-kernel) WITH_KERNEL=1; shift ;;
         -h|--help)     sed -n '2,24p' "$0"; exit 0 ;;
         *) echo "✗ 알 수 없는 인자: $1" >&2; exit 2 ;;
     esac
@@ -70,7 +75,7 @@ case "$ZYL_ARCH" in
     *)       echo "✗ 모르는 아키텍처: $ZYL_ARCH" >&2; exit 1 ;;
 esac
 
-for c in debootstrap mkfs.ext4 sfdisk ninja python3; do
+for c in debootstrap mkfs.ext4 sfdisk ninja python3 readelf; do
     command -v "$c" >/dev/null 2>&1 || { echo "✗ 필요한 명령이 없다: $c" >&2; exit 1; }
 done
 [ "$(id -u)" = "0" ] || { echo "✗ root 로 실행해야 한다 (debootstrap) — 컨테이너를 쓸 것" >&2; exit 1; }
@@ -100,6 +105,7 @@ DESTDIR="$STAGE" ninja -C "$BUILDDIR" install >"$W/install.log" 2>&1 || {
 # ── 2. 최소 rootfs ──
 step "rootfs 부트스트랩 ($SUITE/$DEB_ARCH)"
 INCLUDE="$(grep -vE '^\s*(#|$)' "$PKGS" | sed 's/#.*//' | tr -d ' \t' | paste -sd, -)"
+[ $WITH_KERNEL = 1 ] && INCLUDE="$INCLUDE,linux-image-$DEB_ARCH"
 # 다른 아키텍처면 2단계 부트스트랩 — 2단계는 binfmt(qemu-user-static)가 필요하다
 FOREIGN=""
 [ "$DEB_ARCH" = "$(dpkg --print-architecture 2>/dev/null || echo "$DEB_ARCH")" ] || FOREIGN="--foreign"
@@ -116,12 +122,44 @@ fi
 step "Zyl 파일 설치"
 cp -a "$STAGE"/. "$ROOTFS"/
 
+# ── 2-1. 링크 검사: 설치한 바이너리가 이미지 안에서 전부 풀리는가 ──
+# exit 127 로 부팅에서 죽는 것을 빌드에서 잡는다. 실행하지 않고 ELF 의
+# DT_NEEDED 만 읽으므로 다른 아키텍처에서도 된다
+step "공유 라이브러리 해석 검사"
+python3 -I - "$STAGE" "$ROOTFS" <<'PYLINK' || exit 1
+import pathlib, re, subprocess, sys
+stage, rootfs = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+have = set()
+for d in ('lib', 'usr/lib'):
+    base = rootfs / d
+    if base.is_dir():
+        have |= {p.name for p in base.rglob('*.so*')}
+missing = {}
+for b in sorted((stage / 'usr/bin').glob('zyl-*')):
+    if b.is_symlink() or not b.is_file():
+        continue
+    with b.open('rb') as f:
+        if f.read(4) != b'\x7fELF':
+            continue                      # 셸 스크립트(zyl-selftest)는 건너뛴다
+    out = subprocess.run(['readelf', '-d', str(b)], capture_output=True, text=True).stdout
+    for so in re.findall(r'Shared library: \[([^\]]+)\]', out):
+        if so not in have:
+            missing.setdefault(so, []).append(b.name)
+if missing:
+    print('X 이미지에 없는 공유 라이브러리:', file=sys.stderr)
+    for so, who in sorted(missing.items()):
+        print('    %s  <- %s' % (so, ', '.join(who[:4])), file=sys.stderr)
+    print('  system/packages.list 에 그 라이브러리를 주는 패키지를 넣을 것', file=sys.stderr)
+    raise SystemExit(1)
+PYLINK
+
 # ── 3. 부팅 설정 ──
 step "부팅 설정 (fstab·기본 타겟·사용자·디렉터리)"
+part_dev() { echo "${ZYL_DISK_NODE}${ZYL_PART_SEP}$1"; }
 cat > "$ROOTFS/etc/fstab" <<EOF
 # tools/build-image.sh 가 board/$ZYL_BOARD/partitions.conf 에서 생성
-${ZYL_DISK_NODE}p${ZYL_PART_ROOT_A}  /       ext4  defaults,noatime  0 1
-${ZYL_DISK_NODE}p${ZYL_PART_DATA}    /data   ext4  defaults,noatime  0 2
+$(part_dev "$ZYL_PART_ROOT_A")  /       ext4  defaults,noatime  0 1
+$(part_dev "$ZYL_PART_DATA")    /data   ext4  defaults,noatime  0 2
 EOF
 mkdir -p "$ROOTFS/data"
 
@@ -137,9 +175,12 @@ systemctl --root="$ROOTFS" set-default graphical.target >/dev/null
 systemctl --root="$ROOTFS" enable zyl-os.target >/dev/null
 systemctl --root="$ROOTFS" enable zyl-apparmor.service >/dev/null 2>&1 || true
 
-# 로그인 콘솔은 두지 않는다 (셸 없는 기기 — CLAUDE.md 규칙)
-systemctl --root="$ROOTFS" mask getty@tty1.service >/dev/null 2>&1 || true
-systemctl --root="$ROOTFS" mask serial-getty@ttyS0.service >/dev/null 2>&1 || true
+# 로그인 콘솔은 두지 않는다 (셸 없는 기기 — CLAUDE.md 규칙).
+# 템플릿째 막는다: 직렬 콘솔 장치 이름이 보드마다 다르다(ttyS0·ttyAMA0…)
+systemctl --root="$ROOTFS" mask getty.target >/dev/null 2>&1 || true
+systemctl --root="$ROOTFS" mask getty@.service >/dev/null 2>&1 || true
+systemctl --root="$ROOTFS" mask serial-getty@.service >/dev/null 2>&1 || true
+systemctl --root="$ROOTFS" mask console-getty.service >/dev/null 2>&1 || true
 
 # ── 4. rootfs 이미지 ──
 step "rootfs ext4 (${ZYL_SIZE_ROOT_MIB} MiB)"

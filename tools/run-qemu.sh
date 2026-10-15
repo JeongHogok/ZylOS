@@ -9,8 +9,12 @@
 #           builddir/zyl-board.conf (아키텍처)
 # SOLID: SRP — 띄우고 지켜보는 일만. 무엇이 정상인지는 zyl-selftest 가 안다
 #
+# 네트워크 장치는 붙이지 않는다 (자기점검에 필요 없다). virtio PCI 장치는
+# 기본으로 efi-virtio.rom 을 찾으므로 romfile= 로 비운다 — 그 ROM 을 주는
+# 패키지(ipxe-qemu)가 없는 설치에서도 뜨게 한다
 # 이 레인이 검증하는 것: systemd 유닛 기동, 시스템 버스와 정책, 서비스 이름,
-#   컴포지터·WAM 기동, 앱 디렉터리·/data
+#   앱 디렉터리·/data. virtio-gpu 를 붙여 /dev/dri 가 있으므로 컴포지터도 기동을
+#   시도한다 — 하드웨어 조건이 없어 건너뛴 유닛은 실패로 보지 않는다(zyl-selftest)
 # 검증하지 않는 것: U-Boot·서명 FIT·dm-verity·A/B 전환(부트로더 빌드와
 #   tools/sign-image.sh·tests/test_boot_env.sh 소관), SoC 고유 경로(GPU·모뎀·ISP)
 #
@@ -54,10 +58,11 @@ if [ -z "$ARCH" ] && [ -f "$BUILDDIR/zyl-board.conf" ]; then
 fi
 [ -z "$ARCH" ] || [ "$ARCH" = "native" ] && ARCH="$(uname -m)"
 
+# 직렬 콘솔 장치는 머신마다 다르다 — 틀리면 게스트가 아무것도 내보내지 않는다
 case "$ARCH" in
-    x86_64)  QEMU=qemu-system-x86_64; MACHINE="-machine q35" ;;
-    riscv64) QEMU=qemu-system-riscv64; MACHINE="-machine virt" ;;
-    aarch64) QEMU=qemu-system-aarch64; MACHINE="-machine virt" ;;
+    x86_64)  QEMU=qemu-system-x86_64;  MACHINE="-machine q35";  CONSOLE=ttyS0 ;;
+    riscv64) QEMU=qemu-system-riscv64; MACHINE="-machine virt"; CONSOLE=ttyS0 ;;
+    aarch64) QEMU=qemu-system-aarch64; MACHINE="-machine virt -cpu max"; CONSOLE=ttyAMA0 ;;
     *) echo "✗ QEMU 레인이 모르는 아키텍처: $ARCH" >&2; exit 1 ;;
 esac
 command -v "$QEMU" >/dev/null 2>&1 || { echo "✗ $QEMU 가 없다" >&2; exit 1; }
@@ -76,9 +81,9 @@ fi
 LAYOUT="$HERE/board/${ZYL_BOARD:-emulator}/partitions.conf"
 # shellcheck disable=SC1090
 [ -f "$LAYOUT" ] && . "$LAYOUT"
-ROOT_DEV="/dev/vda${ZYL_PART_ROOT_A:-2}"
+ROOT_DEV="${ZYL_DISK_NODE:-/dev/vda}${ZYL_PART_SEP-}${ZYL_PART_ROOT_A:-2}"
 
-APPEND="root=$ROOT_DEV rw console=ttyS0,115200 systemd.show_status=1"
+APPEND="root=$ROOT_DEV rw console=$CONSOLE,115200 systemd.show_status=1"
 [ $CHECK = 1 ] && APPEND="$APPEND systemd.wants=zyl-selftest.service"
 
 LOG="$(mktemp -t zyl-qemu.XXXXXX)"
@@ -89,10 +94,12 @@ echo "  root  : $ROOT_DEV"
 [ $CHECK = 1 ] && echo "  check : zyl-selftest 를 기다린다 (최대 ${TIMEOUT}s)"
 
 set +e
-"$QEMU" $MACHINE -m "$MEM" -smp 2 -nographic -no-reboot \
+# -nic none: 기본 NIC 를 만들지 않는다 (그 장치가 efi-virtio.rom 을 찾는다)
+"$QEMU" $MACHINE -m "$MEM" -smp 2 -nographic -no-reboot -nic none \
     -kernel "$KERNEL" -initrd "$INITRD" -append "$APPEND" \
-    -drive "file=$IMAGE,format=raw,if=virtio" \
-    -netdev user,id=n0 -device virtio-net-pci,netdev=n0 \
+    -drive "file=$IMAGE,format=raw,if=none,id=hd0" \
+    -device virtio-blk-pci,drive=hd0,romfile= \
+    -device virtio-gpu-pci,romfile= \
     > "$LOG" 2>&1 &
 QPID=$!
 

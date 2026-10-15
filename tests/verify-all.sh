@@ -431,25 +431,37 @@ else
   warn "systemd 서비스 파일 없음"
 fi
 
-# D2: 유닛이 쓰는 /data 경로가 tmpfiles.d 로 만들어지는지
-#     ProtectSystem=strict 유닛은 ReadWritePaths 경로가 없으면 기동 전에 실패한다
+# D2: 유닛이 쓰는 경로가 tmpfiles.d 로 만들어지는지
+#     ProtectSystem=strict 유닛은 ReadWritePaths 경로가 없으면 네임스페이스 설정
+#     단계에서 기동에 실패한다. /data 만 보던 검사가 /var/log/zyl-os 와
+#     /var/lib/zyl-os/credentials 를 놓쳐 logger·credential 이 부팅에서 죽었다
+#     (QEMU 레인이 잡음). 커널·sysfs 경로는 tmpfiles 가 만들 것이 아니라 제외.
 UNPROVISIONED=$(python3 - "$ROOT" <<'PYCHK'
 import glob, re, sys
 root = sys.argv[1]
+EXEMPT = ('/sys/', '/proc/', '/dev/', '/run/')      # 커널이 주는 경로
+MOUNTS = ('/boot', '/data')                        # 파티션이라 fstab 이 올린다
 made = set()
 for f in glob.glob(root + '/system/tmpfiles.d/*.conf'):
-    made |= set(re.findall(r'^d\s+(/data/\S+)', open(f).read(), re.M))
+    made |= set(re.findall(r'^[dDfv]\s+(\S+)', open(f).read(), re.M))
 need = set()
 for f in glob.glob(root + '/system/*.service'):
-    for line in re.findall(r'^ReadWritePaths=(.*)$', open(f).read(), re.M):
-        need |= {p.lstrip('-') for p in line.split() if p.lstrip('-').startswith('/data/')}
-print(' '.join(sorted(need - made)))
+    body = open(f).read()
+    for line in re.findall(r'^ReadWritePaths=(.*)$', body, re.M):
+        for p in line.split():
+            p = p.lstrip('-')
+            if p.startswith('/') and not p.startswith(EXEMPT) and p not in MOUNTS:
+                need |= {p}
+# 상위 디렉터리가 만들어지면 그 아래도 쓸 수 있다
+missing = {p for p in need if p not in made and not any(
+    p.startswith(m.rstrip('/') + '/') for m in made)}
+print(' '.join(sorted(missing)))
 PYCHK
 )
 if [ -n "$UNPROVISIONED" ]; then
-  fail "tmpfiles.d 가 만들지 않는 /data 경로 (유닛 기동 실패): $UNPROVISIONED"
+  fail "tmpfiles.d 가 만들지 않는 유닛 쓰기 경로 (기동 실패): $UNPROVISIONED"
 else
-  pass "유닛의 /data 경로 전부 tmpfiles.d 로 생성"
+  pass "유닛의 쓰기 경로 전부 tmpfiles.d 로 생성"
 fi
 
 # ═════════════════════════════════════════════════════════════

@@ -3,6 +3,9 @@ Description=Zyl OS Web Application Manager
 After=zyl-compositor.service
 Requires=zyl-compositor.service
 PartOf=zyl-compositor.service
+# 앱 런타임은 화면 장치가 있어야 뜻이 있다. 없으면 컴포지터와 함께 건너뛴다
+# (zyl-compositor.service 와 같은 조건) — 화면 없는 보드에서 부팅이 깨지지 않게
+ConditionPathExists=/dev/dri/card0
 
 [Service]
 Type=dbus
@@ -17,9 +20,9 @@ Group=zyl-wam
 # video/render groups required for DRI/GPU access
 SupplementaryGroups=video render
 
-# Wayland display socket access: zyl-compositor must have granted group access
-# (or use /run/zyl-wam/wayland-0 scoped to zyl-wam user)
-Environment=WAYLAND_DISPLAY=wayland-0
+# Wayland 소켓은 컴포지터의 런타임 디렉터리에 있다. 절대 경로를 주면
+# XDG_RUNTIME_DIR 과 달라도 된다 — WAM 은 자기 런타임 디렉터리를 따로 쓴다
+Environment=WAYLAND_DISPLAY=/run/zyl-session/wayland-0
 RuntimeDirectory=zyl-wam
 RuntimeDirectoryMode=0700
 # XDG_RUNTIME_DIR must match the RuntimeDirectory path so WebKit/Wayland

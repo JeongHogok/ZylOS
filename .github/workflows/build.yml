@@ -161,7 +161,9 @@ jobs:
       - name: Every form factor still assembles
         run: bash tests/test_image_profiles.sh
       - name: Build the disk image
-        run: bash tools/build-image.sh --builddir builddir --out out/image
+        # --with-kernel: QEMU 게스트에는 모듈이 있어야 DRM·입력이 보인다.
+        # 실기기 이미지는 커널을 서명 FIT 으로 받으므로 기본은 끔
+        run: bash tools/build-image.sh --builddir builddir --out out/image --with-kernel
       - name: Boot it in QEMU and run the self test
         run: bash tools/run-qemu.sh --image out/image/zyl-os-emulator-phone.img --builddir builddir --check --timeout 600
 

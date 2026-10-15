@@ -22,6 +22,15 @@ e2fsprogs               # /data ext4 체크·마운트
 libglib2.0-bin          # gdbus — zyl-selftest 가 버스 이름을 확인한다
 util-linux              # mountpoint, setpriv
 
+# ── 서비스가 링크하는 런타임 라이브러리 ──
+# 빠지면 데몬이 exit 127(동적 링커 실패)로 죽는다. tools/build-image.sh 가
+# 설치된 바이너리의 DT_NEEDED 를 읽어 이 목록이 모자라면 빌드를 거부한다
+libjson-glib-1.0-0      # 거의 모든 서비스 (JSON 상태·IPC)
+libcurl4t64             # network·updater·appstore (HTTP)
+libzip5                 # appstore (.zpkg 해제)
+libssl3t64              # credential·appstore·updater (서명·암호화)
+libgps30t64             # location (gpsd)
+
 # ── 그래픽·앱 런타임 ──
 libgtk-4-1              # WAM (GTK4)
 libwebkitgtk-6.0-4      # 앱 런타임. 없으면 앱이 하나도 뜨지 않는다
@@ -34,6 +43,10 @@ libgles2                # GL ES (소프트웨어 렌더링이라도 심볼이 �
 libegl1
 libdisplay-info2        # EDID/모니터 정보
 libseat1                # 시트 관리
+libpixman-1-0           # 컴포지터 소프트웨어 렌더링
+libwayland-server0      # 컴포지터
+libxkbcommon0           # 키 배열
+libgbm1                 # DRM 버퍼 할당
 
 # ── 글꼴 (없으면 한·중·일 UI 와 이모지가 전부 두부 ▯) ──
 fonts-noto-core

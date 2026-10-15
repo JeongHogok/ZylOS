@@ -19,9 +19,14 @@ set -uo pipefail
 UNIT_DIRS=(/usr/lib/systemd/system /lib/systemd/system /etc/systemd/system)
 pass=0
 fail=0
-say() { echo "zyl-selftest: $*"; }
-ok()  { say "ok   $*"; pass=$((pass + 1)); }
-bad() { say "FAIL $*"; fail=$((fail + 1)); }
+skip=0
+say()  { echo "zyl-selftest: $*"; }
+ok()   { say "ok   $*"; pass=$((pass + 1)); }
+bad()  { say "FAIL $*"; fail=$((fail + 1)); }
+# 하드웨어가 없어 systemd 가 건너뛴 유닛은 실패가 아니다 (Condition*= 미충족).
+# 화면 없는 어플라이언스에 DRM 이 없는 것은 정상이다
+skipped() { say "skip $*"; skip=$((skip + 1)); }
+condition_failed() { [ "$(systemctl show -p ConditionResult --value "$1" 2>/dev/null)" = "no" ]; }
 
 # ── 1. 유닛: 설치된 zyl-* 서비스가 활성인가 ──
 units=""
@@ -41,11 +46,17 @@ for u in $units; do
     case "$u" in zyl-selftest.service|zyl-apparmor.service) continue ;; esac
     state="$(systemctl is-active "$u" 2>/dev/null)"
     if [ "$state" = "active" ]; then ok "unit $u"
-    else bad "unit $u ($state)"; fi
+    elif condition_failed "$u"; then skipped "unit $u (하드웨어 조건 미충족)"
+    else
+        why="$(systemctl show -p Result --value "$u" 2>/dev/null)"
+        code="$(systemctl show -p ExecMainStatus --value "$u" 2>/dev/null)"
+        bad "unit $u ($state, result=${why:-?}, exit=${code:-?})"
+    fi
 done
 
 # ── 2. 버스: 유닛이 선언한 이름이 시스템 버스에 있는가 ──
 for u in $units; do
+    condition_failed "$u" && continue      # 건너뛴 유닛의 이름을 찾을 이유가 없다
     name=""
     for d in "${UNIT_DIRS[@]}"; do
         [ -f "$d/$u" ] || continue
@@ -70,11 +81,20 @@ mountpoint -q /data && ok "/data 마운트" || bad "/data 가 마운트되지 �
 [ -f /etc/zyl-release ] && ok "release $(sed -n 's/^ZYL_OS_VERSION=//p' /etc/zyl-release | head -1)" \
     || bad "/etc/zyl-release 가 없다"
 
+# ── 4. 화면 체인 (있으면) ──
+if [ -e /dev/dri/card0 ]; then
+    ok "drm /dev/dri/card0"
+    if [ -S /run/zyl-session/wayland-0 ]; then ok "wayland /run/zyl-session/wayland-0"
+    else bad "wayland 소켓이 없다 (컴포지터가 화면을 잡지 못했다)"; fi
+else
+    skipped "drm 장치 없음 — 화면 없는 기기면 정상 ($(ls /dev/dri 2>/dev/null | tr '\n' ' '))"
+fi
+
 # ── 보고 ──
 total=$((pass + fail))
 if [ "$fail" -eq 0 ]; then
-    say "PASS ($pass/$total)"
+    say "PASS ($pass/$total, 건너뜀 $skip)"
     exit 0
 fi
-say "FAILED ($fail/$total 실패)"
+say "FAILED ($fail/$total 실패, 건너뜀 $skip)"
 exit 1
