@@ -50,16 +50,16 @@ fn safe_path(mount_point: &Path, rel_path: &str) -> Result<PathBuf, String> {
         .map_err(|e| format!("Mount point canonicalize failed: {}", e))?;
 
     // 파일이 아직 없으면 (쓰기 등) 부모 디렉토리 기준으로 확인
-    let check_path = if full.exists() {
-        full.canonicalize()
-            .map_err(|e| format!("Path canonicalize failed: {}", e))?
-    } else if let Some(parent) = full.parent() {
-        let canonical_parent = parent
-            .canonicalize()
-            .map_err(|e| format!("Parent canonicalize failed: {}", e))?;
-        canonical_parent.join(full.file_name().unwrap_or_default())
-    } else {
-        return Err("Invalid path".into());
+    // What does not exist yet (a new file, new folders) is judged by its
+    // nearest existing ancestor: the rest of the path has no '..' to climb with
+    let mut probe = full.as_path();
+    let check_path = loop {
+        if probe.exists() {
+            break probe
+                .canonicalize()
+                .map_err(|e| format!("Path canonicalize failed: {}", e))?;
+        }
+        probe = probe.parent().ok_or("Invalid path")?;
     };
 
     if !check_path.starts_with(&canonical_mount) {
@@ -218,6 +218,7 @@ fn base64_encode(data: &[u8]) -> String {
 pub fn fs_write_file(
     path: String,
     content: String,
+    encoding: Option<String>,
     state: State<'_, Mutex<AppState>>,
 ) -> Result<(), String> {
     let app_state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
@@ -248,15 +249,9 @@ pub fn fs_write_file(
     }
 
     // base64 감지: JPEG/PNG 등 바이너리 데이터는 base64로 전달됨
-    if content.len() > 100 && !content.contains('\n') && content.chars().all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '=') {
-        // base64 디코딩 시도
-        use std::io::Write;
-        let decoded = base64_decode(&content);
-        if !decoded.is_empty() {
-            let mut file = fs::File::create(&full_path).map_err(|e| format!("Create error: {}", e))?;
-            file.write_all(&decoded).map_err(|e| format!("Write error: {}", e))?;
-            return Ok(());
-        }
+    // Binary content is said to be so — never guessed from how text looks
+    if encoding.as_deref() == Some("base64") {
+        return fs::write(&full_path, base64_decode(&content)).map_err(|e| format!("Write error: {}", e));
     }
 
     fs::write(&full_path, content).map_err(|e| format!("Write error: {}", e))

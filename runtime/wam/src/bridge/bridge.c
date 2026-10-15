@@ -723,6 +723,7 @@ static const ServiceRoute SERVICE_ROUTES[] = {
     {"apps",         "org.zylos.WebAppManager",      "/org/zylos/WebAppManager",      "org.zylos.WebAppManager"},
     {"device",       "org.zylos.Device",             "/org/zylos/Device",             "org.zylos.Device"},
     {"storage",      "org.zylos.Storage",            "/org/zylos/Storage",            "org.zylos.Storage"},
+    {"fs",           "org.zylos.FileSystem",         "/org/zylos/FileSystem",         "org.zylos.FileSystem"},
     {NULL, NULL, NULL, NULL}
 };
 

@@ -221,6 +221,16 @@ test('hal-power',
   )
 )
 
+# Test: file service path policy (root, .., links, protected paths), listing,
+# text vs explicit base64, rename/remove
+test('fs-service',
+  executable('test-fs-service',
+    'test_fs_service.c',
+    dependencies: [gio_dep],
+    c_args: ['-DZYL_TEST'],
+  )
+)
+
 # Test: device app scan — a user app must not replace a system app by reusing its id
 test('manifest-scan',
   executable('test-manifest-scan',

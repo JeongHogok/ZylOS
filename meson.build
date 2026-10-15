@@ -34,7 +34,7 @@ subdir('board')   # defines board_id / board_soc / board_arch / board_hal_backen
 zyl_core_services = [
   'dbus', 'logger', 'display', 'input', 'power', 'sandbox', 'crash',
   'credential', 'user', 'accessibility', 'notification', 'updater', 'telemetry',
-  'netstats', 'bootctl', 'settings', 'lock', 'device', 'storage',
+  'netstats', 'bootctl', 'settings', 'lock', 'device', 'storage', 'fs',
 ]
 
 # Hardware-dependent services, added per form factor.

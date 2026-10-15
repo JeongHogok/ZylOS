@@ -252,7 +252,6 @@ pub fn list_installed_apps() -> Result<Vec<serde_json::Value>, String> {
                 if manifest_path.exists() {
                     if let Ok(content) = fs::read_to_string(&manifest_path) {
                         if let Ok(mut manifest) = serde_json::from_str::<serde_json::Value>(&content) {
-                            let app_id = manifest.get("id").and_then(|v| v.as_str()).unwrap_or("");
                             /* Rust does NOT determine system status.
                                It passes raw app.json data; the OS permission layer
                                (ZylPermissions.SYSTEM_APPS) is the sole authority.
