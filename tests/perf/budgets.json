@@ -164,14 +164,6 @@
       "domNodes": 150,
       "layouts": 24
     },
-    "terminal": {
-      "loadMs": 600,
-      "fcpMs": 800,
-      "blockingMs": 200,
-      "heapMB": 2,
-      "domNodes": 320,
-      "layouts": 26
-    },
     "weather": {
       "loadMs": 600,
       "fcpMs": 800,

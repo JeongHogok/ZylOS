@@ -327,7 +327,7 @@ root = sys.argv[1]
 # 격리 의미가 없어 의도적으로 0을 반환하는 권한 (OS 레이어에서만 게이트)
 NO_ISOLATION = {
     'audio', 'wifi', 'display', 'input', 'i18n', 'time', 'webview',
-    'wallpaper', 'bookmarks', 'auth', 'battery', 'shell',
+    'wallpaper', 'bookmarks', 'auth', 'battery',
     'app.launch', 'app.list', 'app.manage',
 }
 src = open(root + '/runtime/services/sandbox/sandbox.c').read()
@@ -401,7 +401,7 @@ fi
 # Services apps call that no device route serves at all: on a device every such
 # request is refused ("unknown service"). The gap check above sees only routed
 # services, so these are counted on their own.
-UNROUTED_MAX=6
+UNROUTED_MAX=5
 UNROUTED=$(python3 - "$ROOT" <<'PYCHK'
 import re, glob, sys
 root = sys.argv[1]

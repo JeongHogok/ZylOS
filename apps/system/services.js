@@ -193,7 +193,6 @@ window.ZylSystemServices = (function () {
       _modules.device = devMod;
     }
     if (ns.storage)       serviceMap.storage      = ns.storage(deps);
-    if (ns.terminal)      serviceMap.terminal     = ns.terminal(deps);
     if (ns.wifi)          serviceMap.wifi         = ns.wifi(deps);
     if (ns.bluetooth)     serviceMap.bluetooth    = ns.bluetooth(deps);
     if (ns.network)       serviceMap.network      = ns.network(deps);

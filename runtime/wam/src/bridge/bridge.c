@@ -752,7 +752,6 @@ typedef struct {
 
 static const ServicePermission SERVICE_PERMISSIONS[] = {
     {"fs",            {"storage", "files.read", "files.write", "files.delete", NULL}},
-    {"terminal",      {"shell", NULL}},
     {"credential",    {"credential", NULL}},
     {"settings",      {"system", NULL}},
     {"wifi",          {"wifi", NULL}},
@@ -790,7 +789,7 @@ static const ServicePermission SERVICE_PERMISSIONS[] = {
 
 /* Never granted by declaring them in app.json — only system apps hold these */
 static const char *const RESERVED_PERMISSIONS[] = {
-    "system", "shell", "credential", "app.manage", "notification.read", NULL
+    "system", "credential", "app.manage", "notification.read", NULL
 };
 
 static gboolean is_reserved_permission(const char *perm) {

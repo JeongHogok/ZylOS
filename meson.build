@@ -96,7 +96,6 @@ install_subdir('apps/statusbar',  install_dir: get_option('datadir') / 'zyl-os' 
 install_subdir('apps/settings',   install_dir: get_option('datadir') / 'zyl-os' / 'apps')
 install_subdir('apps/browser',    install_dir: get_option('datadir') / 'zyl-os' / 'apps')
 install_subdir('apps/files',      install_dir: get_option('datadir') / 'zyl-os' / 'apps')
-install_subdir('apps/terminal',   install_dir: get_option('datadir') / 'zyl-os' / 'apps')
 install_subdir('apps/camera',     install_dir: get_option('datadir') / 'zyl-os' / 'apps')
 install_subdir('apps/keyboard',   install_dir: get_option('datadir') / 'zyl-os' / 'apps')
 install_subdir('apps/calc',        install_dir: get_option('datadir') / 'zyl-os' / 'apps')

@@ -17,7 +17,7 @@ window.ZylPermissions = (function () {
   var SYSTEM_APPS = [
     'com.zylos.home', 'com.zylos.lockscreen', 'com.zylos.statusbar',
     'com.zylos.oobe', 'com.zylos.settings', 'com.zylos.browser',
-    'com.zylos.files', 'com.zylos.terminal', 'com.zylos.camera',
+    'com.zylos.files', 'com.zylos.camera',
     'com.zylos.gallery', 'com.zylos.music', 'com.zylos.clock',
     'com.zylos.calc', 'com.zylos.notes', 'com.zylos.weather',
     'com.zylos.store', 'com.zylos.keyboard',
@@ -28,7 +28,6 @@ window.ZylPermissions = (function () {
   /* Service → required permission(s). App needs at least ONE of these. */
   var SERVICE_PERMISSIONS = {
     'fs':           ['storage', 'files.read', 'files.write', 'files.delete'],
-    'terminal':     ['shell'],
     'credential':   ['credential'],
     'settings':     ['system'],
     'wifi':         ['wifi'],
@@ -88,7 +87,6 @@ window.ZylPermissions = (function () {
      they are gated at runtime by the permission dialog instead. */
   var RESERVED_PERMISSIONS = [
     'system',             /* settings writes, telemetry consent */
-    'shell',              /* command execution */
     'credential',         /* keychain */
     'app.manage',         /* install / uninstall other apps */
     'notification.read'   /* read every app's notifications */
@@ -103,7 +101,7 @@ window.ZylPermissions = (function () {
   /* All known permission strings — system apps get all of these */
   var ALL_PERMISSIONS = [
     'storage', 'files.read', 'files.write', 'files.delete',
-    'shell', 'credential', 'system', 'wifi', 'bluetooth',
+    'credential', 'system', 'wifi', 'bluetooth',
     'notification', 'notification.read', 'camera', 'microphone',
     'audio', 'app.manage', 'app.list', 'app.launch',
     'location', 'network', 'webview', 'downloads', 'bookmarks',

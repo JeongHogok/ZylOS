@@ -23,7 +23,6 @@
   "app": {
     "browser": "Browser",
     "files": "Files",
-    "terminal": "Terminal",
     "settings": "Settings",
     "camera": "Camera",
     "gallery": "Gallery",

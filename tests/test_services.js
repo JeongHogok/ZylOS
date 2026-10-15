@@ -71,7 +71,7 @@ var fs = require('fs');
 
 var moduleFiles = [
   'fs.js', 'device.js', 'storage.js', 'apps.js', 'settings.js',
-  'terminal.js', 'wifi.js', 'bluetooth.js', 'network.js', 'browser.js',
+  'wifi.js', 'bluetooth.js', 'network.js', 'browser.js',
   'notification.js', 'power.js', 'display.js', 'input.js', 'sensors.js',
   'location.js', 'telephony.js', 'contacts.js', 'messaging.js', 'usb.js',
   'user.js', 'credential.js', 'appstore.js', 'updater.js', 'sandbox.js',
@@ -617,7 +617,7 @@ console.log('\n■ ZylFormFactor / ZylFocusNav');
     FF.reload();
     var appList = [
       { id: 'com.zylos.home',     formFactors: ['*'] },
-      { id: 'com.zylos.terminal', formFactors: ['phone', 'tablet', 'desktop', 'pda'] },
+      { id: 'com.example.desk',   formFactors: ['phone', 'tablet', 'desktop', 'pda'] },
       { id: 'com.zylos.phone',    formFactors: ['phone', 'tablet', 'auto', 'watch', 'pda'] },
       { id: 'com.zylos.browser',  formFactors: ['phone', 'tablet', 'tv', 'desktop', 'pda'] },
       { id: 'com.zylos.legacy' }   /* no declaration → stays visible */
@@ -1121,7 +1121,7 @@ console.log('\n■ ZylPermissions');
 
   P.registerFromAppList([
     { id: 'com.zylos.settings', permissions: [] },
-    { id: 'com.evil.app', permissions: ['system', 'shell', 'credential',
+    { id: 'com.evil.app', permissions: ['system', 'credential',
                                         'app.manage', 'notification.read',
                                         'camera', 'network'] },
     { id: 'com.zylos.settings', permissions: ['camera'] }   /* ID spoof */
@@ -1129,7 +1129,7 @@ console.log('\n■ ZylPermissions');
 
   test('a third-party app cannot declare itself system permissions', function () {
     var got = P.getEffectivePermissions('com.evil.app');
-    ['system', 'shell', 'credential', 'app.manage', 'notification.read'].forEach(function (r) {
+    ['system', 'credential', 'app.manage', 'notification.read'].forEach(function (r) {
       assert.strictEqual(got.indexOf(r), -1, r + ' must not be grantable by declaration');
     });
   });
@@ -1143,7 +1143,6 @@ console.log('\n■ ZylPermissions');
   test('settings and telemetry stay closed to third-party apps', function () {
     assert.strictEqual(P.checkPermission('com.evil.app', 'settings', 'set'), false);
     assert.strictEqual(P.checkPermission('com.evil.app', 'telemetry', 'setEnabled'), false);
-    assert.strictEqual(P.checkPermission('com.evil.app', 'terminal', 'exec'), false);
   });
 
   test('system apps keep reserved permissions', function () {

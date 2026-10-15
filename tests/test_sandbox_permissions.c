@@ -90,7 +90,7 @@ static void test_permissions_without_isolation_meaning(void)
 {
     const char *none[] = {
         "audio", "wifi", "display", "input", "i18n", "time", "webview",
-        "wallpaper", "bookmarks", "auth", "battery", "shell",
+        "wallpaper", "bookmarks", "auth", "battery",
         "app.launch", "app.list", "app.manage", NULL
     };
     for (int i = 0; none[i]; i++)

@@ -743,30 +743,29 @@ export WEBKIT_INSPECTOR_SERVER=0.0.0.0:8090
 | 3 | storage | getUsage |
 | 4 | apps | getInstalled, install, uninstall, getAppInfo |
 | 5 | settings | get, set, getAll |
-| 6 | terminal | exec |
-| 7 | wifi | scan, connect, getConnected |
-| 8 | bluetooth | getDevices, getConnected |
-| 9 | browser | navigate, getHistory |
-| 10 | notification | create, list, dismiss, clearAll |
-| 11 | power | getState, setBrightness, getBattery |
-| 12 | display | getInfo, setRotation, getDPI |
-| 13 | input | getKeyboardState, setIME |
-| 14 | sensors | getAccelerometer, getGyroscope, getProximity, getLight |
-| 15 | location | getPosition |
-| 16 | telephony | getState, getCallState, dial, answer, hangup, sendDTMF, getCallLog, deleteCallLog (기록은 서비스가 통화 상태로 남김) |
-| 17 | usb | getState, setMode |
-| 18 | user | getCurrentUser, listUsers, switchUser |
-| 19 | credential | store, lookup, delete |
-| 20 | appstore | search, install, uninstall, listInstalled |
-| 21 | updater | getState, check, install, restart (시스템 앱 전용) |
-| 22 | sandbox | getPolicy |
-| 23 | logger | getLogs, clearLogs |
-| 24 | accessibility | getSettings, setFontScale, setHighContrast |
-| 25 | audio | getVolume, setVolume ({stream: media·notif·alarm·ringtone·system, value}), setMicMute, playNotificationSound, vibrate |
-| 26 | contacts | getAll, getById, create, update, delete, search |
-| 27 | messaging | getConversations, getMessages, sendMessage, deleteMessage |
-| 28 | clipboard | copy, paste, clear |
-| 29 | network | fetch |
+| 6 | wifi | scan, connect, getConnected |
+| 7 | bluetooth | getDevices, getConnected |
+| 8 | browser | navigate, getHistory |
+| 9 | notification | create, list, dismiss, clearAll |
+| 10 | power | getState, setBrightness, getBattery |
+| 11 | display | getInfo, setRotation, getDPI |
+| 12 | input | getKeyboardState, setIME |
+| 13 | sensors | getAccelerometer, getGyroscope, getProximity, getLight |
+| 14 | location | getPosition |
+| 15 | telephony | getState, getCallState, dial, answer, hangup, sendDTMF, getCallLog, deleteCallLog (기록은 서비스가 통화 상태로 남김) |
+| 16 | usb | getState, setMode |
+| 17 | user | getCurrentUser, listUsers, switchUser |
+| 18 | credential | store, lookup, delete |
+| 19 | appstore | search, install, uninstall, listInstalled |
+| 20 | updater | getState, check, install, restart (시스템 앱 전용) |
+| 21 | sandbox | getPolicy |
+| 22 | logger | getLogs, clearLogs |
+| 23 | accessibility | getSettings, setFontScale, setHighContrast |
+| 24 | audio | getVolume, setVolume ({stream: media·notif·alarm·ringtone·system, value}), setMicMute, playNotificationSound, vibrate |
+| 25 | contacts | getAll, getById, create, update, delete, search |
+| 26 | messaging | getConversations, getMessages, sendMessage, deleteMessage |
+| 27 | clipboard | copy, paste, clear |
+| 28 | network | fetch |
 
 ### zylI18n (공유 모듈)
 

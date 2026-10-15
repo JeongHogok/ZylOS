@@ -56,29 +56,28 @@ cargo tauri build
 3. **Storage** — 디스크 사용량 (마운트 포인트)
 4. **Apps** — 설치된 앱 (OS 이미지에서 로드)
 5. **Settings** — 영속 설정 JSON
-6. **Terminal** — 셸 명령 실행 (22패턴 위험 명령 필터링)
-7. **WiFi** — 호스트 실제 네트워크 스캔
-8. **Bluetooth** — 호스트 페어링 디바이스 조회
-9. **Browser** — URL 로딩/탐색
-10. **Notification** — 알림 생성/조회/채널 관리
-11. **Power** — 밝기 동기화, 배터리 상태
-12. **Display** — 해상도/회전/DPI (상태 유지)
-13. **Input** — 키보드/IME 상태 (상태 유지)
-14. **Sensors** — 가속도/자이로/근접/조도 (동적 타임스탬프 + 마이크로 노이즈)
-15. **Location** — Rust 백엔드 IP 기반 geolocation
-16. **Telephony** — settings 기반 SIM/신호 정보
-17. **USB** — 가젯 모드 상태 (상태 유지)
-18. **User** — Rust 백엔드 사용자 정보
-19. **Credential** — Rust 백엔드 영속 저장소
-20. **App Store** — 실제 설치/제거 + 영속성
-21. **Updater** — 버전 비교
-22. **Sandbox** — 앱별 보안 정책
-23. **Logger** — 인메모리 로그 저장소
-24. **Accessibility** — settings 기반 접근성 설정
-25. **Audio** — 5개 볼륨 카테고리, 키클릭, 알림음, 진동
-26. **Contacts** — 연락처 CRUD, 검색, 그룹 관리
-27. **Messaging** — SMS/MMS 수신함, 대화 스레드 관리
-28. **Network** — HTTP fetch (비동기 curl, native fetch API 폴백)
+6. **WiFi** — 호스트 실제 네트워크 스캔
+7. **Bluetooth** — 호스트 페어링 디바이스 조회
+8. **Browser** — URL 로딩/탐색
+9. **Notification** — 알림 생성/조회/채널 관리
+10. **Power** — 밝기 동기화, 배터리 상태
+11. **Display** — 해상도/회전/DPI (상태 유지)
+12. **Input** — 키보드/IME 상태 (상태 유지)
+13. **Sensors** — 가속도/자이로/근접/조도 (동적 타임스탬프 + 마이크로 노이즈)
+14. **Location** — Rust 백엔드 IP 기반 geolocation
+15. **Telephony** — settings 기반 SIM/신호 정보
+16. **USB** — 가젯 모드 상태 (상태 유지)
+17. **User** — Rust 백엔드 사용자 정보
+18. **Credential** — Rust 백엔드 영속 저장소
+19. **App Store** — 실제 설치/제거 + 영속성
+20. **Updater** — 버전 비교
+21. **Sandbox** — 앱별 보안 정책
+22. **Logger** — 인메모리 로그 저장소
+23. **Accessibility** — settings 기반 접근성 설정
+24. **Audio** — 5개 볼륨 카테고리, 키클릭, 알림음, 진동
+25. **Contacts** — 연락처 CRUD, 검색, 그룹 관리
+26. **Messaging** — SMS/MMS 수신함, 대화 스레드 관리
+27. **Network** — HTTP fetch (비동기 curl, native fetch API 폴백)
 
 **OS 보안 컴포넌트**:
 - `apps/system/permissions.js` — ZylPermissions: 앱 권한 실시간 시행

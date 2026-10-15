@@ -244,13 +244,12 @@ static void test_policy_declared_permission_grants_its_service(void)
 
 static void test_policy_reserved_permissions_cannot_be_self_declared(void)
 {
-    const char *perms[] = { "system", "shell", "credential", "app.manage",
+    const char *perms[] = { "system", "credential", "app.manage",
                             "notification.read", NULL };
     ZylAppManifest m = perm_manifest("com.evil.app", FALSE, perms);
     assert(app_may_call(&m, "settings") == FALSE);
     assert(app_may_call(&m, "telemetry") == FALSE);
     assert(app_may_call(&m, "credential") == FALSE);
-    assert(app_may_call(&m, "terminal") == FALSE);
 }
 
 static void test_policy_services_without_requirement_are_open(void)

@@ -30,7 +30,7 @@
 
 ## 최근 보강 내역 (v0.1.0)
 
-- **앱 기능 보강**: calc 공학용 모드+이력, clock 세계시계+스누즈, messages 검색/삭제/읽음, weather 다중도시, music 재생목록+앨범아트, phone 즐겨찾기+DTMF, gallery 앨범+슬라이드쇼, browser 히스토리+프라이빗, store 카테고리+상세, terminal 멀티탭+테마, notes 검색/정렬/서식
+- **앱 기능 보강**: calc 공학용 모드+이력, clock 세계시계+스누즈, messages 검색/삭제/읽음, weather 다중도시, music 재생목록+앨범아트, phone 즐겨찾기+DTMF, gallery 앨범+슬라이드쇼, browser 히스토리+프라이빗, store 카테고리+상세, notes 검색/정렬/서식
 - **OS 핵심 UI 보강**: home 배지+정렬, keyboard CapsLock+악센트, lockscreen 잠금카운트다운, statusbar 알림관리, oobe 역슬라이드
 
 ## 기술 스택
@@ -129,7 +129,6 @@
 | settings | 영속 설정 JSON |
 | storage | 디스크 사용량 조회 |
 | telephony | 통화 발신/수신/종료, SIM 정보 |
-| terminal | 셸 명령 실행 (22패턴 위험 명령 필터링) |
 | updater | A/B 파티션 OTA 업데이트, 버전 비교 |
 | usb | configfs 가젯 (MTP/ADB) |
 | user | 사용자 프로필 |

@@ -23,7 +23,6 @@
   "app": {
     "browser": "浏览器",
     "files": "文件",
-    "terminal": "终端",
     "settings": "设置",
     "camera": "相机",
     "gallery": "相册",
