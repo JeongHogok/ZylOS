@@ -89,6 +89,8 @@ if [ -z "$ROOT_HASH" ] || [ -z "$SALT" ] || [ -z "$DATA_BLOCKS" ] || [ -z "$DATA
 fi
 # The dm table length is in 512-byte sectors, not verity data blocks
 SECTORS=$(( DATA_BLOCKS * DATA_BLOCK_SIZE / 512 ))
+# veritysetup puts its superblock in the first hash block; the tree follows
+HASH_START=1
 cat > "$OUT/verity-params-$SLOT.txt" <<EOF
 ROOT_HASH=$ROOT_HASH
 SALT=$SALT
@@ -99,7 +101,7 @@ EOF
 
 # ── 2. Command line for this slot, inside the DTB that gets signed ──
 echo "▸ [2/4] Kernel command line → DTB /chosen/bootargs"
-CMDLINE="root=/dev/dm-0 ro dm-mod.create=\"verity,,,ro,0 $SECTORS verity 1 /dev/mmcblk0p$ROOT_PART /dev/mmcblk0p$VERITY_PART $DATA_BLOCK_SIZE $HASH_BLOCK_SIZE $DATA_BLOCKS 0 sha256 $ROOT_HASH $SALT\" console=ttyS0,115200 zyl.slot=$SLOT quiet splash"
+CMDLINE="root=/dev/dm-0 ro dm-mod.create=\"verity,,,ro,0 $SECTORS verity 1 /dev/mmcblk0p$ROOT_PART /dev/mmcblk0p$VERITY_PART $DATA_BLOCK_SIZE $HASH_BLOCK_SIZE $DATA_BLOCKS $HASH_START sha256 $ROOT_HASH $SALT\" console=ttyS0,115200 zyl.slot=$SLOT quiet splash"
 printf '%s\n' "$CMDLINE" > "$OUT/cmdline-$SLOT.txt"
 cp "$DTB" "$OUT/fdt-$SLOT.dtb"
 fdtput -c "$OUT/fdt-$SLOT.dtb" /chosen 2>/dev/null || true

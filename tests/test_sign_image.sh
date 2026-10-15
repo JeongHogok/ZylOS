@@ -50,6 +50,16 @@ case "$ARGS" in
   *"ro,0 $SECTORS verity"*) ok "dm table length is in 512-byte sectors ($SECTORS)" ;;
   *) bad "dm table length is not $SECTORS sectors: $ARGS" ;;
 esac
+# The kernel reads the table as given — check it verifies the image with
+# exactly those values: <dbs> <hbs> <blocks> <hash start block> sha256 <root> <salt>
+read -r DBS HBS NB HSTART ALG RH SALT_ <<<"$(printf '%s\n' "$ARGS" | sed -n 's/.*mmcblk0p5 \([0-9]*\) \([0-9]*\) \([0-9]*\) \([0-9]*\) \([a-z0-9]*\) \([0-9a-f]*\) \([0-9a-f]*\)".*/\1 \2 \3 \4 \5 \6 \7/p')"
+if [ -n "${SALT_:-}" ] && veritysetup verify --no-superblock --data-block-size "$DBS" --hash-block-size "$HBS" \
+     --data-blocks "$NB" --hash-offset $(( HSTART * HBS )) --hash "$ALG" --salt "$SALT_" \
+     "$W/rootfs.img" "$W/out/verity-hashtree-b.img" "$RH" >/dev/null 2>&1; then
+  ok "the signed dm-verity table verifies the rootfs"
+else
+  bad "the signed dm-verity table does not verify the rootfs: $ARGS"
+fi
 
 grep -q "zylos-boot-key" <(fdtget -l "$W/out/u-boot.dtb" /signature 2>/dev/null) \
   && ok "public key written into U-Boot's DTB" || bad "no key in u-boot.dtb"
@@ -59,7 +69,9 @@ if command -v fit_check_sign >/dev/null 2>&1; then
     && ok "signature verifies the way U-Boot checks it" || bad "signature does not verify"
   cp "$W/out/fit-image-b.itb" "$W/tampered.itb"
   SIZE=$(wc -c < "$W/tampered.itb")
-  printf '\x5a' | dd of="$W/tampered.itb" bs=1 seek=$(( SIZE / 2 )) conv=notrunc status=none
+  # Flip the byte: writing a fixed value leaves it unchanged 1 time in 256
+  B=$(dd if="$W/tampered.itb" bs=1 skip=$(( SIZE / 2 )) count=1 status=none | od -An -tu1 | tr -d ' ')
+  printf "\\$(printf '%03o' $(( B ^ 255 )))" | dd of="$W/tampered.itb" bs=1 seek=$(( SIZE / 2 )) conv=notrunc status=none
   if fit_check_sign -f "$W/tampered.itb" -k "$W/out/u-boot.dtb" >/dev/null 2>&1; then
     bad "a modified image still verifies"
   else
