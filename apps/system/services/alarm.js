@@ -108,7 +108,8 @@
       }).catch(function () { return null; });
     }
 
-    load();
+    /* The stored copy is read asynchronously; the OS (and the tests) can wait */
+    var ready = load();
 
     return {
       /* p: { tag, triggerAt, intervalMs, appId, repeating, title } — same tag replaces */
@@ -143,6 +144,9 @@
       list: function () {
         return Promise.resolve(listRecords());
       },
+
+      /* Resolves once the stored alarms have been read and armed */
+      _ready: ready,
 
       /* The app was removed: its alarms go with it, memory and stored copy */
       _forgetApp: function (appId) {
