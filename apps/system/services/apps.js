@@ -2,8 +2,9 @@
 // [Clean Architecture] Domain Layer - Service Module
 //
 // Role: AppRegistry service — installed apps from OS image
-// Scope: getInstalled, getById
-// Dependency Direction: Domain -> invoker, ZylPermissions, ZylAppRegistry
+// Scope: getInstalled, getById. A store-installed app is listed only while its
+//        seal holds (app-seal.js) — as the device's WAM registers
+// Dependency Direction: Domain -> invoker, app seal, ZylPermissions, ZylAppRegistry
 // SOLID: SRP — app registry only
 // ----------------------------------------------------------
 
@@ -13,12 +14,15 @@
   ns.apps = function (deps) {
     var invoke = deps.invoke;
     var SYSTEM_APPS = deps.SYSTEM_APPS;
+    var seal = deps.seal;
 
     var _cache = null;
 
     function getInstalled() {
       if (_cache) return Promise.resolve(_cache);
       return invoke('list_installed_apps').then(function (list) {
+        return seal ? seal.sealedOnly(list) : list;
+      }).then(function (list) {
         if (list && list.length > 0) {
           _cache = list.map(function (m) {
             var appName = (m.id || '').split('.').pop();

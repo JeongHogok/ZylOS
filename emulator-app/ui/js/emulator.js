@@ -1230,7 +1230,7 @@
 
     /* 서비스에 디바이스 프로필 적용 */
     if (typeof ZylServices !== 'undefined') {
-      ZylServices.device.applyProfile(profile);
+      ZylServices.applyDisplayProfile(profile);
       if (ZylServices.storage && ZylServices.storage.prefetch) {
         ZylServices.storage.prefetch();
       }
@@ -1322,6 +1322,7 @@
       navMode: navMode,
       inputModel: String(config.input_model || config.inputModel || 'touch'),
       hasNotch: config.has_notch !== false,
+      deviceId: (bootInfo && bootInfo.device_id) || '',
     };
 
     /* 부팅 정보 로그 (앱은 Rust에서 ui/apps/로 복사됨) */

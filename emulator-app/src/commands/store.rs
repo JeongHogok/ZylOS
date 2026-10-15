@@ -5,10 +5,11 @@
 // 수행범위: OS 이미지의 스토어 설정(system/store.json) 제공, https 다운로드,
 //           패키지 풀기(이름 검사: 절대 경로·..·링크 거부)·확정·버리기·삭제(앱
 //           컨테이너까지), 설치된 스토어 앱 목록, 스토어 앱을 기기와 같은 출처
-//           zyl-app://<id>/ 로 제공(/shared/ 는 OS 공용 코드).
-//           무엇을 받을지·서명·카탈로그 해석·app.json 확인은 OS
-//           (apps/system/services/appstore.js)의 몫
-// 의존방향: state, appdata::container, config::bundled_app_dirs, curl, unzip/zipinfo
+//           zyl-app://<id>/ 로 제공(/shared/ 는 OS 공용 코드). 봉인 대조용 자료
+//           (파일마다 SHA-256, .zyl-seal/ 의 내용)와 스토어가 폐기한 인증서 목록 보관.
+//           무엇을 받을지·서명·봉인·카탈로그 해석·app.json 확인은 OS
+//           (apps/system/services/appstore.js, app-seal.js)의 몫
+// 의존방향: state, appdata::container, config::bundled_app_dirs, curl, unzip/zipinfo, sha2
 // SOLID: SRP — 스토어 앱 파일 입출력만 담당
 //
 // 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
@@ -19,6 +20,7 @@ use crate::commands::appdata::container;
 use crate::commands::config::bundled_app_dirs;
 use crate::state::AppState;
 use base64::Engine;
+use sha2::{Digest, Sha256};
 use std::borrow::Cow;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -86,8 +88,38 @@ fn safe_entry(name: &str) -> bool {
         })
 }
 
-/// Unpack into staging; { manifest: app.json text, files: [names] } for the OS to
-/// check before it commits or discards
+/// What the OS checks a seal against: every file's SHA-256 by its relative path
+/// (anything but a plain file as "", which no seal matches) and the seal's own
+/// files (.zyl-seal/*) as text
+fn inspect(dir: &Path) -> serde_json::Value {
+    fn walk(root: &Path, dir: &Path, hashes: &mut serde_json::Map<String, serde_json::Value>) {
+        for entry in fs::read_dir(dir).into_iter().flatten().flatten() {
+            let path = entry.path();
+            let rel = path.strip_prefix(root).unwrap_or(&path).to_string_lossy().replace('\\', "/");
+            match fs::symlink_metadata(&path) {
+                Ok(m) if m.is_dir() => walk(root, &path, hashes),
+                Ok(m) if m.is_file() => {
+                    let hex = fs::read(&path).map(|b| format!("{:x}", Sha256::digest(&b))).unwrap_or_default();
+                    hashes.insert(rel, hex.into());
+                }
+                _ => { hashes.insert(rel, "".into()); }
+            }
+        }
+    }
+    let mut hashes = serde_json::Map::new();
+    walk(dir, dir, &mut hashes);
+    let mut seal = serde_json::Map::new();
+    for entry in fs::read_dir(dir.join(".zyl-seal")).into_iter().flatten().flatten() {
+        if let Ok(text) = fs::read_to_string(entry.path()) {
+            seal.insert(entry.file_name().to_string_lossy().into_owned(), text.into());
+        }
+    }
+    serde_json::json!({ "hashes": hashes, "seal": seal })
+}
+
+/// Unpack into staging (named by the app id, or a placeholder when the id is not
+/// known yet: a package from the user's files); { manifest: app.json text,
+/// hashes, seal } for the OS to check before it commits or discards
 #[tauri::command]
 pub fn store_unpack(app_id: String, package: String, state: State<'_, Mutex<AppState>>) -> Result<serde_json::Value, String> {
     let app_state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
@@ -119,14 +151,24 @@ pub fn store_unpack(app_id: String, package: String, state: State<'_, Mutex<AppS
         return Err("cannot unpack".into());
     }
     let manifest = fs::read_to_string(out.join("app.json")).map_err(|_| "no app.json".to_string())?;
-    Ok(serde_json::json!({ "manifest": manifest, "files": entries }))
+    let mut found = inspect(&out);
+    found["manifest"] = manifest.into();
+    Ok(found)
 }
 
-/// The unpacked app replaces the installed one (an update keeps the container)
+/// An installed store app's files, for the OS to check its seal before listing it
 #[tauri::command]
-pub fn store_commit(app_id: String, state: State<'_, Mutex<AppState>>) -> Result<bool, String> {
+pub fn store_inspect(app_id: String, state: State<'_, Mutex<AppState>>) -> Result<serde_json::Value, String> {
     let app_state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
-    let stage = staging(&app_state, &app_id)?;
+    Ok(inspect(&app_dir(&app_state, &app_id)?))
+}
+
+/// The unpacked app (staged as stage, or as app_id) replaces the installed one
+/// (an update keeps the container)
+#[tauri::command]
+pub fn store_commit(app_id: String, stage: Option<String>, state: State<'_, Mutex<AppState>>) -> Result<bool, String> {
+    let app_state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
+    let stage = staging(&app_state, stage.as_deref().unwrap_or(&app_id))?;
     let target = app_dir(&app_state, &app_id)?;
     let old = stage.join("old");
     let had = target.exists();
@@ -160,6 +202,19 @@ pub fn store_remove(app_id: String, state: State<'_, Mutex<AppState>>) -> Result
         }
     }
     Ok(true)
+}
+
+/// The developer certificates the store last listed as revoked (list: replace
+/// them); what is kept
+#[tauri::command]
+pub fn store_revoked(list: Option<Vec<String>>, state: State<'_, Mutex<AppState>>) -> Result<Vec<String>, String> {
+    let app_state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
+    let path = store_root(&app_state).join(".revoked");
+    if let Some(list) = list {
+        fs::create_dir_all(store_root(&app_state)).map_err(|e| format!("Create error: {}", e))?;
+        fs::write(&path, list.join("\n")).map_err(|e| format!("Write error: {}", e))?;
+    }
+    Ok(fs::read_to_string(&path).unwrap_or_default().lines().map(str::to_string).collect())
 }
 
 /// Installed store apps, raw app.json data marked "source": "store"
@@ -272,6 +327,24 @@ mod tests {
         assert!(resolve(&app, &shared, "/shared/../secret").is_none());
         assert!(resolve(&app, &shared, "/js").is_none());
         assert_eq!(mime(Path::new("a.JS")), "text/javascript");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn inspect_hashes_every_file_and_reads_the_seal() {
+        let root = std::env::temp_dir().join(format!("zyl-store-inspect-{}", std::process::id()));
+        fs::create_dir_all(root.join("js")).unwrap();
+        fs::create_dir_all(root.join(".zyl-seal")).unwrap();
+        fs::write(root.join("js/app.js"), "x=1\n").unwrap();
+        fs::write(root.join(".zyl-seal/seal.sig"), "c2ln").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink("/etc/passwd", root.join("pw")).unwrap();
+        let v = inspect(&root);
+        assert_eq!(v["hashes"]["js/app.js"], "98752ee28d5484bdc2814fb70adb6a0b2fb31f6a9b8ee7ae81fd2fc9cf300b3b");
+        assert_eq!(v["seal"]["seal.sig"], "c2ln");
+        assert!(v["hashes"][".zyl-seal/seal.sig"].is_string());
+        #[cfg(unix)]
+        assert_eq!(v["hashes"]["pw"], "");
         let _ = fs::remove_dir_all(&root);
     }
 }

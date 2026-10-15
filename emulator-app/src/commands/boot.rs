@@ -117,6 +117,22 @@ fn unmount_os_image(mount_point: &str) {
    런타임에 ui/apps/로 복사하면 Tauri watcher가 재시작 루프를 발생시키므로
    런타임 복사는 하지 않는다. */
 
+/// The virtual device's hardware ID, as a real device's chip ID: made once,
+/// kept beside its disk image, gone with the device (delete_saved_device)
+fn device_id(data_dir: &std::path::Path, profile_id: &str) -> String {
+    let path = data_dir.join("images").join(format!("{}.id", profile_id));
+    match std::fs::read_to_string(&path) {
+        Ok(id) if !id.trim().is_empty() => id.trim().to_string(),
+        _ => {
+            let id = format!("EMU-{:016X}", rand::random::<u64>());
+            if let Err(e) = std::fs::write(&path, &id) {
+                log::warn!("Device ID not kept ({}): a new one next boot", e);
+            }
+            id
+        }
+    }
+}
+
 /// 디바이스 부팅: OS 이미지 마운트 + 리소스 예약 → 부팅 정보 반환
 #[tauri::command]
 pub async fn boot_device(
@@ -184,6 +200,7 @@ pub async fn boot_device(
         config.storage_gb
     );
 
+    let device_id = device_id(&data_dir, &config.profile_id);
     Ok(BootInfo {
         profile_id: config.profile_id,
         mount_point: resource_info.mount_point,
@@ -192,6 +209,7 @@ pub async fn boot_device(
         nav_mode: config.nav_mode.to_string(),
         screen_width: config.screen_width,
         screen_height: config.screen_height,
+        device_id,
     })
 }
 

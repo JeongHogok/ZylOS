@@ -283,6 +283,8 @@
       { label: t('settings.kernel'),      value: info.kernel },
       { label: t('settings.build'),       value: info.build }
     ];
+    /* What a developer registers in a provisioning profile; none on a board without one */
+    if (info.deviceId) items.push({ label: t('settings.device_id'), value: info.deviceId });
     items.forEach(function (item) {
       list.appendChild(infoRow(item.label, item.value));
     });

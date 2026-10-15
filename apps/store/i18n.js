@@ -10,6 +10,10 @@
   if (typeof zylI18n === 'undefined') return;
 
   zylI18n.addTranslations('ko', {
+    'store.error_not_provisioned': '이 기기에서 실행하도록 허락된 개발 빌드가 아닙니다',
+    'store.error_expired': '개발자 인증서나 프로필이 만료되었습니다',
+    'store.error_revoked': '앱스토어가 이 개발자의 인증서를 폐기했습니다',
+    'store.install_file_prompt': '이 앱 패키지를 설치할까요? 앱스토어나 이 기기에 허락된 개발자가 서명한 앱만 설치됩니다',
     'store.unconfigured': '이 기기에는 앱스토어가 설정되어 있지 않습니다',
     'store.error_network': '앱스토어에 연결할 수 없습니다',
     'store.error_untrusted': '앱스토어의 내용을 확인할 수 없어 설치하지 않았습니다',
@@ -46,6 +50,10 @@
   });
 
   zylI18n.addTranslations('en', {
+    'store.error_not_provisioned': "This development build isn't allowed on this device",
+    'store.error_expired': 'The developer certificate or profile has expired',
+    'store.error_revoked': "The app store revoked this developer's certificate",
+    'store.install_file_prompt': 'Install this app package? Only apps signed by the app store, or by a developer allowed on this device, are installed',
     'store.unconfigured': 'No app store is set up on this device',
     'store.error_network': "Couldn't reach the app store",
     'store.error_untrusted': "The app store's content couldn't be verified, so nothing was installed",
@@ -82,6 +90,10 @@
   });
 
   zylI18n.addTranslations('ja', {
+    'store.error_not_provisioned': 'このデバイスでの実行が許可された開発ビルドではありません',
+    'store.error_expired': '開発者証明書またはプロファイルの有効期限が切れています',
+    'store.error_revoked': 'App Store がこの開発者の証明書を失効させました',
+    'store.install_file_prompt': 'このアプリパッケージをインストールしますか？App Store またはこのデバイスで許可された開発者が署名したアプリのみインストールされます',
     'store.unconfigured': 'このデバイスにはアプリストアが設定されていません',
     'store.error_network': 'アプリストアに接続できません',
     'store.error_untrusted': 'アプリストアの内容を確認できないため、インストールしませんでした',
@@ -118,6 +130,10 @@
   });
 
   zylI18n.addTranslations('zh', {
+    'store.error_not_provisioned': '此开发版本未获准在此设备上运行',
+    'store.error_expired': '开发者证书或描述文件已过期',
+    'store.error_revoked': '应用商店已吊销此开发者的证书',
+    'store.install_file_prompt': '要安装此应用包吗？只会安装由应用商店或获准在此设备上的开发者签名的应用',
     'store.unconfigured': '此设备未设置应用商店',
     'store.error_network': '无法连接应用商店',
     'store.error_untrusted': '无法验证应用商店的内容，未进行安装',
@@ -154,6 +170,10 @@
   });
 
   zylI18n.addTranslations('es', {
+    'store.error_not_provisioned': 'Esta compilación de desarrollo no está permitida en este dispositivo',
+    'store.error_expired': 'El certificado o el perfil de desarrollador ha caducado',
+    'store.error_revoked': 'La tienda de apps revocó el certificado de este desarrollador',
+    'store.install_file_prompt': '¿Instalar este paquete de app? Solo se instalan apps firmadas por la tienda o por un desarrollador permitido en este dispositivo',
     'store.unconfigured': 'No hay una tienda de apps configurada en este dispositivo',
     'store.error_network': 'No se pudo conectar con la tienda de apps',
     'store.error_untrusted': 'No se pudo verificar el contenido de la tienda, así que no se instaló nada',

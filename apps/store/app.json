@@ -9,6 +9,9 @@
     "storage",
     "app.manage"
   ],
+  "intents": [
+    { "action": "zyl.intent.action.VIEW", "mimeType": "application/x-zyl-package" }
+  ],
   "formFactors": [
     "phone",
     "tablet",

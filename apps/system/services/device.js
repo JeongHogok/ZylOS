@@ -2,7 +2,8 @@
 // [Clean Architecture] Domain Layer - Service Module
 //
 // Role: DeviceInfo service — device metadata and uptime
-// Scope: deviceName, osVersion, securityPatch, SoC, RAM, kernel, build info
+// Scope: deviceName, osVersion, securityPatch, SoC, RAM, kernel, build info,
+//        deviceId (the hardware's own ID — what development profiles list)
 // Dependency Direction: Domain -> none (static data)
 // SOLID: SRP — device info only
 // ----------------------------------------------------------
@@ -27,6 +28,7 @@
       resolution: '',
       hostname: '',
       username: 'user',
+      deviceId: '',
       bootTime: Date.now()
     };
 
@@ -39,6 +41,7 @@
         info.soc = profile.soc ? profile.soc + ' (RISC-V)' : info.soc;
         info.ram = profile.ram ? profile.ram + ' LPDDR4X' : info.ram;
         info.resolution = profile.screen || info.resolution;
+        info.deviceId = profile.deviceId || info.deviceId;
         if (profile.id) {
           info.hostname = profile.id.replace(/^zyl-/, '').replace(/-/g, '_');
         }

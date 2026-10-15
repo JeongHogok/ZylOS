@@ -74,7 +74,7 @@ var moduleFiles = [
   'wifi.js', 'bluetooth.js', 'network.js', 'appdata.js', 'clipboard.js',
   'notification.js', 'power.js', 'display.js', 'input.js', 'sensors.js',
   'location.js', 'telephony.js', 'contacts.js', 'messaging.js', 'usb.js',
-  'user.js', 'credential.js', 'appstore.js', 'updater.js', 'sandbox.js',
+  'user.js', 'credential.js', 'app-seal.js', 'appstore.js', 'updater.js', 'sandbox.js',
   'logger.js', 'accessibility.js', 'audio.js', 'telemetry.js', 'netstats.js', 'bootctl.js', 'lock.js'
 ];
 
@@ -1571,17 +1571,49 @@ var callTests = (function () {
 
 /* ═══════════════════════════════════════════════════════
    App store (emulator contract of runtime/services/appstore): a store signed
-   the way tools/build-store.py signs — RSA-SHA256 over the SHA-256
+   the way tools/build-store.py signs — RSA-SHA256 over the SHA-256 — and
+   packages sealed the way it seals them (.zyl-seal/)
    ═══════════════════════════════════════════════════════ */
 console.log('\n■ App store');
 
 var storeTests = (function () {
   var nodeCrypto = require('crypto');
   var keys = nodeCrypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+  var devKeys = nodeCrypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
   var pub = keys.publicKey.export({ type: 'spki', format: 'pem' });
+  var devPub = devKeys.publicKey.export({ type: 'spki', format: 'pem' });
   function sha(buf) { return nodeCrypto.createHash('sha256').update(buf).digest(); }
-  function sign(buf) { return nodeCrypto.sign('sha256', sha(buf), keys.privateKey).toString('base64'); }
+  function signWith(key, buf) { return nodeCrypto.sign('sha256', sha(buf), key).toString('base64'); }
+  function sign(buf) { return signWith(keys.privateKey, buf); }
+  function hexOf(text) { return sha(Buffer.from(text)).toString('hex'); }
   var pkg = Buffer.from('a zip, as far as the OS is concerned');
+
+  /* What the container reports for an unpacked package (store_unpack, store_inspect):
+     every file's hash and the seal's files, as the tool writes them */
+  function sealed(o) {
+    o = o || {};
+    var id = o.id || 'com.example.hello', version = o.version || '2.0.0';
+    var files = {}, hashes = {}, seal = {};
+    ['app.json', 'index.html'].forEach(function (n) { files[n] = hashes[n] = hexOf(n + ' of ' + id); });
+    function put(name, obj, key) {
+      var json = JSON.stringify(obj);
+      seal[name + '.json'] = json;
+      seal[name + '.sig'] = signWith(key, Buffer.from(json)) + '\n';
+      hashes['.zyl-seal/' + name + '.json'] = hexOf(json);
+      hashes['.zyl-seal/' + name + '.sig'] = hexOf(seal[name + '.sig']);
+    }
+    if (o.dev) {
+      var now = Math.floor(Date.now() / 1000);
+      put('cert', { developer: 'acme', name: 'ACME', publicKey: devPub, notAfter: now + (o.expired ? -60 : 86400) },
+          keys.privateKey);
+      put('profile', { cert: hashes['.zyl-seal/cert.json'], apps: ['com.example.*'], devices: ['DEV-1'],
+                       notAfter: now + 86400 }, keys.privateKey);
+    }
+    put('seal', { version: 1, id: id, appVersion: version, files: files }, o.dev ? devKeys.privateKey : keys.privateKey);
+    if (o.added) hashes['js/extra.js'] = hexOf('evil()');
+    if (o.unsealed) seal = {};
+    return { manifest: JSON.stringify({ id: id, version: version }), hashes: hashes, seal: seal };
+  }
 
   function store(opts) {
     opts = opts || {};
@@ -1589,36 +1621,47 @@ var storeTests = (function () {
                   size: pkg.length, sha256: sha(pkg).toString('hex'), signature: sign(pkg), permissions: ['network'] };
     var cat = Buffer.from(JSON.stringify({ apps: [entry,
       { id: 'com.zylos.settings', name: 'S', version: '9', package: 's', size: 1, sha256: entry.sha256, signature: 'c2ln' },
-      { id: '../evil', name: 'E', version: '1', package: 'e', size: 1, sha256: entry.sha256, signature: 'c2ln' }] }));
+      { id: '../evil', name: 'E', version: '1', package: 'e', size: 1, sha256: entry.sha256, signature: 'c2ln' }],
+      revoked: opts.revokeInCatalog || [] }));
     var calls = [], files = {
       'https://store.example/v1/catalog.json': opts.catalog || cat,
       'https://store.example/v1/catalog.json.sig': Buffer.from(sign(cat) + '\n'),
       'https://store.example/v1/hello.zpkg': opts.pkg || pkg
     };
     var installedApps = [{ id: 'com.zylos.settings', source: 'image', version: '1' }].concat(opts.installed || []);
-    var forgotten = [];
+    var forgotten = [], revoked = opts.revoked || [], committed = [];
+    function invoke(cmd, a) {
+      calls.push(cmd);
+      if (cmd === 'store_config') {
+        return Promise.resolve(JSON.stringify(opts.unconfigured ? { url: '', publicKey: '' }
+          : { url: 'https://store.example/v1/catalog.json', publicKey: pub }));
+      }
+      if (cmd === 'store_download') {
+        return files[a.url] ? Promise.resolve(files[a.url].toString('base64')) : Promise.reject(new Error('404'));
+      }
+      if (cmd === 'fs_read_binary') return Promise.resolve(pkg.toString('base64'));
+      if (cmd === 'store_unpack') return Promise.resolve(opts.unpacked || sealed());
+      if (cmd === 'store_inspect') return Promise.resolve(opts.inspect[a.appId]);
+      if (cmd === 'store_revoked') {
+        if (a.list) revoked = a.list;
+        return Promise.resolve(revoked);
+      }
+      if (cmd === 'store_commit') committed.push([a.appId, a.stage]);
+      return Promise.resolve(true);
+    }
+    var seal = ns.appSeal({ invoke: invoke, deviceRef: { deviceId: opts.device === undefined ? 'DEV-1' : opts.device } });
     var svc = ns.appstore({
       SYSTEM_APPS: ['com.zylos.settings'],
+      seal: seal,
       forgetApp: function (id) { forgotten.push(id); },
       appsSvc: { getInstalled: function () { return Promise.resolve(installedApps); }, _invalidate: function () {} },
-      invoke: function (cmd, a) {
-        calls.push(cmd);
-        if (cmd === 'store_config') {
-          return Promise.resolve(JSON.stringify(opts.unconfigured ? { url: '', publicKey: '' }
-            : { url: 'https://store.example/v1/catalog.json', publicKey: pub }));
-        }
-        if (cmd === 'store_download') {
-          return files[a.url] ? Promise.resolve(files[a.url].toString('base64')) : Promise.reject(new Error('404'));
-        }
-        if (cmd === 'store_unpack') {
-          return Promise.resolve({ manifest: JSON.stringify(opts.manifest || { id: 'com.example.hello', version: '2.0.0' }),
-                                   files: ['app.json', 'index.html'] });
-        }
-        return Promise.resolve(true);
-      }
+      invoke: invoke
     });
-    return { svc: svc, calls: calls, forgotten: forgotten };
+    return { svc: svc, seal: seal, calls: calls, forgotten: forgotten, committed: committed,
+             revoked: function () { return revoked; } };
   }
+
+  function devFp() { return sealed({ dev: true }).hashes['.zyl-seal/cert.json']; }
 
   return Promise.all([
     asyncTest('catalog: verified, invalid and image apps left out, installed state shown', function () {
@@ -1637,26 +1680,82 @@ var storeTests = (function () {
         assert.strictEqual(r[1].state, 'untrusted');
       });
     }),
-    asyncTest('install: a verified package is committed; a tampered one never unpacked', function () {
+    asyncTest('catalog: its revoked certificates are kept', function () {
+      var s = store({ revokeInCatalog: [devFp().toUpperCase(), 'short'] });
+      return s.svc.getCatalog().then(function () {
+        assert.deepStrictEqual(s.revoked(), [devFp()]);
+      });
+    }),
+    asyncTest('install: a verified, store-sealed package is committed; a tampered one never unpacked', function () {
       var good = store(), bad = store({ pkg: Buffer.from('changed after signing') });
       return Promise.all([good.svc.install({ appId: 'com.example.hello' }),
                           bad.svc.install({ appId: 'com.example.hello' })]).then(function (r) {
-        assert.deepStrictEqual(r[0], { ok: true, reason: '' });
-        assert.ok(good.calls.indexOf('store_commit') !== -1);
+        assert.deepStrictEqual(r[0], { ok: true, reason: '', appId: 'com.example.hello' });
+        assert.deepStrictEqual(good.committed, [['com.example.hello', 'com.example.hello']]);
         assert.deepStrictEqual(r[1], { ok: false, reason: 'bad_package' });
         assert.strictEqual(bad.calls.indexOf('store_unpack'), -1);
       });
     }),
+    asyncTest('install: from the catalog, no seal, a changed file or a development build is refused', function () {
+      var cases = [store({ unpacked: sealed({ unsealed: true }) }), store({ unpacked: sealed({ added: true }) }),
+                   store({ unpacked: sealed({ dev: true }) })];
+      return Promise.all(cases.map(function (s) { return s.svc.install({ appId: 'com.example.hello' }); })).then(function (r) {
+        r.forEach(function (x) { assert.deepStrictEqual(x, { ok: false, reason: 'bad_package' }); });
+        cases.forEach(function (s) {
+          assert.ok(s.calls.indexOf('store_discard') !== -1 && s.committed.length === 0);
+        });
+      });
+    }),
     asyncTest('install: not the catalog\'s version, a system app, already current', function () {
-      var wrong = store({ manifest: { id: 'com.example.hello', version: '1.0.0' } });
+      var wrong = store({ unpacked: sealed({ version: '1.0.0' }) });
       var current = store({ installed: [{ id: 'com.example.hello', source: 'store', version: '2.0.0' }] });
       return Promise.all([wrong.svc.install({ appId: 'com.example.hello' }),
                           store().svc.install({ appId: 'com.zylos.settings' }),
                           current.svc.install({ appId: 'com.example.hello' })]).then(function (r) {
         assert.strictEqual(r[0].reason, 'invalid_package');
-        assert.ok(wrong.calls.indexOf('store_discard') !== -1 && wrong.calls.indexOf('store_commit') === -1);
+        assert.ok(wrong.calls.indexOf('store_discard') !== -1 && wrong.committed.length === 0);
         assert.strictEqual(r[1].reason, 'system_app');        /* listed by the store, still the image's */
         assert.strictEqual(r[2].reason, 'up_to_date');
+      });
+    }),
+    asyncTest('installFile: a development build only where provisioned, unexpired, unrevoked', function () {
+      var here = store({ unpacked: sealed({ dev: true }) });
+      var elsewhere = store({ unpacked: sealed({ dev: true }), device: 'DEV-2' });
+      var noDevice = store({ unpacked: sealed({ dev: true }), device: '' });
+      var other = store({ unpacked: sealed({ dev: true, id: 'com.other.app' }) });
+      var expired = store({ unpacked: sealed({ dev: true, expired: true }) });
+      var revoked = store({ unpacked: sealed({ dev: true }), revoked: [devFp()] });
+      var all = [here, elsewhere, noDevice, other, expired, revoked];
+      return Promise.all(all.map(function (s) {
+        return s.svc.installFile({ path: 'Downloads/app.zpkg' });
+      })).then(function (r) {
+        assert.deepStrictEqual(r[0], { ok: true, reason: '', appId: 'com.example.hello' });
+        assert.deepStrictEqual(here.committed, [['com.example.hello', 'local.package']]);
+        assert.deepStrictEqual(r.slice(1).map(function (x) { return x.reason; }),
+          ['not_provisioned', 'not_provisioned', 'not_provisioned', 'expired', 'revoked']);
+      });
+    }),
+    asyncTest('installFile: the store\'s own package; a path out of the user\'s files; a downgrade', function () {
+      var down = store({ installed: [{ id: 'com.example.hello', source: 'store', version: '3.0.0' }] });
+      var same = store({ installed: [{ id: 'com.example.hello', source: 'store', version: '2.0.0' }] });
+      var s = store();
+      return Promise.all([s.svc.installFile({ path: 'Downloads/hello.zpkg' }),
+                          store().svc.installFile({ path: '../../etc/passwd' }),
+                          down.svc.installFile({ path: 'a.zpkg' }),
+                          same.svc.installFile({ path: 'a.zpkg' })]).then(function (r) {
+        assert.strictEqual(r[0].ok, true);
+        assert.strictEqual(r[1].reason, 'invalid_package');
+        assert.strictEqual(r[2].reason, 'up_to_date');
+        assert.strictEqual(r[3].ok, true);                    /* a developer's next build, same version */
+      });
+    }),
+    asyncTest('apps list: a store app whose seal does not hold is not listed', function () {
+      var s = store({ inspect: { 'com.example.hello': sealed(), 'com.example.bad': sealed({ id: 'com.example.bad', added: true }) } });
+      var list = [{ id: 'com.zylos.settings', source: 'image' },
+                  { id: 'com.example.hello', source: 'store', version: '2.0.0' },
+                  { id: 'com.example.bad', source: 'store', version: '2.0.0' }];
+      return s.seal.sealedOnly(list).then(function (kept) {
+        assert.deepStrictEqual(kept.map(function (a) { return a.id; }), ['com.zylos.settings', 'com.example.hello']);
       });
     }),
     asyncTest('uninstall: the container goes and the OS forgets the app; system apps stay', function () {
