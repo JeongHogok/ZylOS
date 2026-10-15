@@ -656,6 +656,7 @@ static void subscribe_service_events(ZylWam *wam) {
         return;
     }
     zyl_bridge_subscribe_service_events(g_event_bus, on_service_event, wam);
+    zyl_bridge_watch_revocations(g_event_bus);
 }
 
 /* ════════════════════════════════════════════════════════════════

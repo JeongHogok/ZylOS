@@ -139,15 +139,21 @@ OS 서비스는 프로세스마다 systemd 하드닝과 AppArmor 프로필로 �
 
 ---
 
-## 런타임 권한 (ZylPermissionDialog)
+## 앱 권한
 
-위험 권한(camera, location, contacts, messaging, telephony, storage, microphone, bluetooth)은
-앱이 처음 사용을 시도할 때 OS 수준 다이얼로그를 통해 사용자 승인이 필요합니다.
+권한은 `app.json` 의 `permissions` 선언으로 정해지고, 서비스 호출마다 OS 가 판정합니다
+(에뮬레이터 `apps/system/permissions.js`, 기기 `runtime/wam/src/bridge/bridge.c` —
+`tests/verify-all.sh` 가 두 표가 어긋나면 실패시킵니다).
 
-- `ZylPermissionDialog.requestPermission(appId, permission)` → `Promise<boolean>`
-- 승인된 권한은 `ZylPermissions` 런타임 상태에 기록
-- 설정 앱에서 언제든 권한 취소 가능
-- 취소된 권한으로 서비스 호출 시 즉시 에러 응답
+- 시스템 앱(검증된 읽기 전용 시스템 파티션에 설치된 앱)은 모든 서비스를 부릅니다
+- 예약 권한(`system`, `credential`, `app.manage`, `notification.read`)은 앱이 스스로
+  선언해서 얻을 수 없습니다
+- 사용자는 설정 → 애플리케이션에서 제3자 앱의 권한을 끌 수 있습니다. 끈 목록은
+  settings 서비스의 `app_permissions` 에 남고, 기기에서는 WAM 이 그 변경을 따라가
+  다음 호출부터 거부합니다 (시스템 앱은 끌 수 없습니다)
+- **첫 사용 시 묻는 동의 창은 없습니다.** 제3자 앱이 생기면 그때 넣을 자리는 호출
+  게이트(위 두 곳)이고, 그리는 쪽은 앱 화면에 OS 공용 코드로(인텐트 선택 시트와
+  같은 방식) 입니다
 
 ---
 

@@ -340,46 +340,51 @@ ZylContentProvider.query(
 
 ---
 
-## 7. 런타임 권한
+## 7. 앱 권한
 
-위험 권한은 실제 사용 시점에 사용자 승인을 요청합니다.
+권한은 `app.json` 의 `permissions` 선언으로 정해집니다. 서비스 호출마다 OS 가
+판정하므로 앱이 따로 요청할 API 는 없습니다.
 
-### 7.1 권한 요청 패턴
-
-```javascript
-// 카메라 권한 요청
-ZylPermissionDialog.requestPermission('com.yourname.myapp', 'camera')
-  .then(function(granted) {
-    if (granted) {
-      // 카메라 기능 사용
-      startCamera();
-    } else {
-      // 거부 처리
-      showPermissionRationale();
-    }
-  });
-```
-
-### 7.2 권한 확인 후 요청
-
-```javascript
-// 이미 승인된 권한인지 먼저 확인
-if (ZylPermissions.hasPermission('com.yourname.myapp', 'location')) {
-  getLocation();
-} else {
-  ZylPermissionDialog.requestPermission('com.yourname.myapp', 'location')
-    .then(function(granted) {
-      if (granted) getLocation();
-    });
+```json
+{
+  "permissions": ["camera", "storage", "network"]
 }
 ```
 
-### 7.3 위험 권한 목록
+### 7.1 판정 규칙
 
-`camera`, `location`, `contacts`, `messaging`, `telephony`, `storage`, `microphone`, `bluetooth`
+- 선언하지 않은 권한이 필요한 서비스는 거부됩니다 (호출이 에러로 돌아옵니다)
+- 예약 권한 `system`, `credential`, `app.manage`, `notification.read` 는 선언해도
+  얻을 수 없습니다 — 시스템 앱만 갖습니다
+- 사용자가 설정 → 애플리케이션에서 끈 권한은 그 다음 호출부터 거부됩니다
+  (에뮬레이터·기기 모두)
+- 첫 사용 시 묻는 동의 창은 아직 없습니다. 거부는 조용히 오지 않고 **에러 응답**으로
+  오므로, 앱은 실패 경로에서 사용자에게 왜 안 되는지 알려야 합니다
 
-이 권한들은 반드시 런타임 다이얼로그를 통해 사용자 승인이 필요합니다.
-`app.json`에 선언 + 런타임 승인 둘 다 필요합니다.
+```javascript
+ZylBridge.requestService('camera', 'requestAccess', {})
+  .then(function () { startCamera(); })
+  .catch(function () { showWhyCameraIsOff(); });   /* 권한 거부도 이 경로 */
+```
+
+### 7.2 권한 → 서비스
+
+| 권한 | 접근 가능 서비스 |
+|------|-----------------|
+| `camera` | camera |
+| `contacts` | contacts |
+| `messaging` | messaging |
+| `telephony` | telephony |
+| `location` | location |
+| `notification` | notification, alarm |
+| `network` | network |
+| `storage`·`files.read`·`files.write`·`files.delete` | fs |
+| `audio` | audio |
+| `wifi` | wifi |
+| `bluetooth` | bluetooth |
+
+선언 없이 부를 수 있는 서비스: device, storage, apps, display, input, sensors, usb,
+user, logger, accessibility, clipboard, appdata, power.
 
 ---
 
@@ -682,13 +687,7 @@ export WEBKIT_INSPECTOR_SERVER=0.0.0.0:8090
 | `update(callerAppId, uri, values)` | Promise | 데이터 수정 |
 | `delete(callerAppId, uri)` | Promise | 데이터 삭제 |
 
-### ZylPermissionDialog
-
-| 메서드 | 반환 | 설명 |
-|--------|------|------|
-| `requestPermission(appId, permission)` | Promise\<boolean\> | 런타임 권한 요청 |
-
-### JS 서비스 (29개 — apps/system/services/)
+### JS 서비스 (33개 — apps/system/services/)
 
 앱에서 `ZylBridge.requestService(service, method, params)`로 접근:
 

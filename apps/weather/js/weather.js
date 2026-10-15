@@ -97,28 +97,11 @@
       locationName.setAttribute('data-loading', 'true');
     }
 
-    if (typeof ZylPermissionDialog !== 'undefined') {
-      ZylPermissionDialog.checkAndRequest('com.zylos.weather', 'location').then(function (granted) {
-        if (granted) {
-          ZylBridge.sendToSystem({
-            type: 'service.request', service: 'location', method: 'getLastKnown'
-          });
-        } else {
-          if (locationName) {
-            locationName.textContent = t('weather.location_unavailable');
-            locationName.removeAttribute('data-loading');
-          }
-          setRefreshing(false);
-        }
-      }).catch(function (err) {
-        if (typeof console !== 'undefined') console.error('[Weather] permission check failed:', err);
-        setRefreshing(false);
-      });
-    } else {
-      ZylBridge.sendToSystem({
-        type: 'service.request', service: 'location', method: 'getLastKnown'
-      });
-    }
+    /* 권한 판정은 OS 몫이다: 거부되면 응답이 없고 아래 타임아웃이
+       weather.location_unavailable 을 띄운다 */
+    ZylBridge.sendToSystem({
+      type: 'service.request', service: 'location', method: 'getLastKnown'
+    });
 
     locationTimeout = setTimeout(function () {
       if (locationName && locationName.getAttribute('data-loading') === 'true') {

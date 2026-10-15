@@ -790,6 +790,96 @@ static const ServicePermission SERVICE_PERMISSIONS[] = {
     {NULL, {NULL}}
 };
 
+/* == User revocations =======================================
+ * Settings can switch a declared permission off for an installed app; the
+ * switch writes the settings service's "app_permissions" category, one
+ * comma-separated list of revoked permissions per app id.
+ *
+ * The emulator's ZylPermissions applied it; the device did not, so turning a
+ * permission off in Settings changed nothing here. The WAM is the only gate,
+ * so it keeps the table and refreshes it when the settings service says the
+ * category changed. A system app is never revocable — the same rule as
+ * apps/system/permissions.js. */
+static GHashTable *revocations;     /* app id → GHashTable<perm, TRUE> */
+
+static void revocations_set(const char *app_id, const char *csv)
+{
+    if (!app_id || !app_id[0]) return;
+    if (!revocations)
+        revocations = g_hash_table_new_full(g_str_hash, g_str_equal, g_free,
+                                            (GDestroyNotify)g_hash_table_destroy);
+    GHashTable *set = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+    gchar **parts = g_strsplit(csv ? csv : "", ",", -1);
+    for (int i = 0; parts[i]; i++) {
+        gchar *perm = g_strstrip(parts[i]);
+        if (perm[0]) g_hash_table_add(set, g_strdup(perm));
+    }
+    g_strfreev(parts);
+    g_hash_table_replace(revocations, g_strdup(app_id), set);
+}
+
+static gboolean is_revoked(const char *app_id, const char *perm)
+{
+    if (!revocations || !app_id) return FALSE;
+    GHashTable *set = g_hash_table_lookup(revocations, app_id);
+    return set && g_hash_table_contains(set, perm);
+}
+
+static void on_revocations_read(GObject *src, GAsyncResult *res, gpointer data)
+{
+    (void)data;
+    GError *error = NULL;
+    GVariant *reply = g_dbus_connection_call_finish(G_DBUS_CONNECTION(src), res, &error);
+    if (!reply) {
+        g_message("Bridge: no app_permissions from the settings service (%s)",
+                  error ? error->message : "no reply");
+        g_clear_error(&error);
+        return;
+    }
+    GVariant *dict = g_variant_get_child_value(reply, 0);
+    GVariantIter iter;
+    const gchar *app_id = NULL;
+    GVariant *value = NULL;
+    g_variant_iter_init(&iter, dict);
+    if (revocations) g_hash_table_remove_all(revocations);
+    while (g_variant_iter_next(&iter, "{&sv}", &app_id, &value)) {
+        if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING))
+            revocations_set(app_id, g_variant_get_string(value, NULL));
+        g_variant_unref(value);
+    }
+    g_variant_unref(dict);
+    g_variant_unref(reply);
+}
+
+static void revocations_read(GDBusConnection *conn)
+{
+    g_dbus_connection_call(conn, "org.zylos.Settings", "/org/zylos/Settings",
+        "org.zylos.Settings", "Get", g_variant_new("(s)", "app_permissions"),
+        G_VARIANT_TYPE("(a{sv})"), G_DBUS_CALL_FLAGS_NONE, 5000, NULL,
+        on_revocations_read, NULL);
+}
+
+static void on_settings_changed(GDBusConnection *conn, const gchar *sender,
+                                const gchar *path, const gchar *iface,
+                                const gchar *signal, GVariant *params,
+                                gpointer data)
+{
+    (void)sender; (void)path; (void)iface; (void)signal; (void)data;
+    const gchar *category = NULL;
+    if (!g_variant_is_of_type(params, G_VARIANT_TYPE("(s)"))) return;
+    g_variant_get(params, "(&s)", &category);
+    if (g_strcmp0(category, "app_permissions") == 0) revocations_read(conn);
+}
+
+void zyl_bridge_watch_revocations(GDBusConnection *conn)
+{
+    if (!conn) return;
+    g_dbus_connection_signal_subscribe(conn, "org.zylos.Settings",
+        "org.zylos.Settings", "CategoryChanged", "/org/zylos/Settings", NULL,
+        G_DBUS_SIGNAL_FLAGS_NONE, on_settings_changed, NULL, NULL);
+    revocations_read(conn);
+}
+
 /* Never granted by declaring them in app.json — only system apps hold these */
 static const char *const RESERVED_PERMISSIONS[] = {
     "system", "credential", "app.manage", "notification.read", NULL
@@ -803,6 +893,7 @@ static gboolean is_reserved_permission(const char *perm) {
 
 static gboolean manifest_holds(const ZylAppManifest *m, const char *perm) {
     if (!m->is_system && is_reserved_permission(perm)) return FALSE;
+    if (!m->is_system && is_revoked(m->id, perm)) return FALSE;
     for (int i = 0; i < m->n_permissions && m->permissions && m->permissions[i]; i++)
         if (strcmp(m->permissions[i], perm) == 0) return TRUE;
     return FALSE;

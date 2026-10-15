@@ -164,7 +164,6 @@ window.ZylSystemServices = (function () {
         if (m && typeof m._forgetApp === 'function') m._forgetApp(appId);
       });
       if (typeof ZylPermissions !== 'undefined' && ZylPermissions.forgetApp) ZylPermissions.forgetApp(appId);
-      if (typeof ZylPermissionDialog !== 'undefined' && ZylPermissionDialog.forgetApp) ZylPermissionDialog.forgetApp(appId);
       if (settingsMod) settingsMod._removeSetting('app_permissions', appId);
       if (appsMod) appsMod._invalidate();
       window.dispatchEvent(new CustomEvent('zyl:app-removed', { detail: appId }));

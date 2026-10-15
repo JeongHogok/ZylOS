@@ -68,28 +68,11 @@
 
   /* ─── Request camera access via OS permission service ─── */
   function requestCameraAccess() {
-    /* 런타임 퍼미션: ZylPermissionDialog로 camera 권한 체크 및 요청 */
-    if (typeof ZylPermissionDialog !== 'undefined') {
-      ZylPermissionDialog.checkAndRequest('com.zylos.camera', 'camera').then(function (granted) {
-        if (granted) {
-          startCamera();
-        } else {
-          if (viewfinder) {
-            var overlay = document.createElement('div');
-            overlay.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:14px;text-align:center;padding:20px;z-index:5';
-            overlay.textContent = (typeof zylI18n !== 'undefined') ? zylI18n.t('camera.access_denied') : 'Camera access denied';
-            viewfinder.appendChild(overlay);
-          }
-        }
-      }).catch(function (err) {
-        if (typeof console !== 'undefined') console.error('[Camera] permission check failed:', err);
-      });
-    } else {
-      /* ZylPermissionDialog 미로드 시 폴백: 기존 OS 서비스 요청 */
-      ZylBridge.sendToSystem({
-        type: 'service.request', service: 'camera', method: 'requestAccess', params: {}
-      });
-    }
+    /* 권한 판정은 OS 몫이다 (bridge.c / permissions.js): 앱은 요청만 하고
+       거부되면 아래 getUserMedia 실패 경로가 같은 안내를 띄운다 */
+    ZylBridge.sendToSystem({
+      type: 'service.request', service: 'camera', method: 'requestAccess', params: {}
+    });
   }
   requestCameraAccess();
 

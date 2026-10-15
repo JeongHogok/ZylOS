@@ -137,11 +137,6 @@ URI 기반 앱 간 데이터 공유 게이트웨이.
 `ZylContentProvider.query(callerAppId, uri)`로 다른 앱 데이터에 접근합니다.
 쿼리 시 `ZylPermissions`를 통한 권한 체크가 선행됩니다.
 
-#### PermissionDialog (permission-dialog.js)
-앱이 위험 권한(camera, location, contacts, messaging, telephony, storage, microphone, bluetooth)을
-요청할 때 OS 수준 다이얼로그를 표시합니다.
-`ZylPermissionDialog.requestPermission(appId, permission)` → Promise\<boolean\>.
-
 #### 앱 레지스트리 (app-registry.js)
 `app.json` 메타데이터 기반 동적 앱 로딩. 홈/런처의 단일 진실 소스.
 `iconSvg` 필드로 인라인 SVG 아이콘 정의.
@@ -317,15 +312,18 @@ CSS에 `zoom: var(...)` 를 쓰면 조용히 1이 된다. `zoom` 은 vw/vh 를 �
   → Promise<rows>
 ```
 
-### 런타임 퍼미션 흐름
+### 권한 판정 흐름
 ```
-앱 → 위험 권한 서비스 호출
-  → ZylPermissions 실행 시점 검증
-  → 권한 미부여 → ZylPermissionDialog.requestPermission(appId, permission)
-  → OS 수준 다이얼로그 표시 (사용자 승인/거부)
-  → 승인 → ZylPermissions 상태 업데이트 → 서비스 요청 처리
-  → 거부 → 에러 응답
+앱 → 서비스 호출 (ZylBridge)
+  → OS 가 판정: 시스템 앱이면 통과, 아니면 app.json 선언 + 사용자 설정
+     (에뮬레이터 ZylPermissions.checkPermission, 기기 bridge.c app_may_call)
+  → 설정에서 끈 권한이면 거부 (settings 서비스의 app_permissions —
+     기기에서는 WAM 이 그 변경을 따라간다)
+  → 통과 → 서비스 요청 처리 / 거부 → 에러 응답
 ```
+
+첫 사용 시 사용자에게 묻는 동의 창(iOS·안드로이드 식)은 **없습니다**. 권한은 설치
+시점에 `app.json` 선언으로 정해지고, 사용자는 설정에서 끌 수 있습니다.
 
 ## 보안 모델
 
@@ -336,7 +334,7 @@ CSS에 `zoom: var(...)` 를 쓰면 조용히 1이 된다. `zoom` 은 vw/vh 를 �
 3. **데몬**: systemd 하드닝 + AppArmor 프로필 (`system/apparmor/zyl-*`)
 4. **앱 컨테이너**: `/data/appdata/<id>/` — 파일·웹 저장소·출처가 앱마다 분리
 5. **IPC**: D-Bus 정책 XML (권한별 서비스 접근)
-6. **앱 권한 시행**: ZylPermissions + ZylPermissionDialog — 서비스 호출 시 권한 실시간 검증
+6. **앱 권한 시행**: 서비스 호출마다 OS 가 판정 (ZylPermissions / bridge.c), 사용자가 설정에서 끈 권한은 거부
 
 ### 앱 격리
 앱 코드는 WAM 이 띄우는 WebKitGTK 웹 프로세스에서 돌고, 그 프로세스는 WebKit 이 직접

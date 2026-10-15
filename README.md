@@ -16,7 +16,7 @@
 - **ZylAppRegistry**: 동적 앱 로딩 — app.json 메타데이터 기반 앱 레지스트리 (단일 진실 소스)
 - **Intent 시스템**: Android 스타일 인텐트 — 명시적/암시적 앱 간 통신
 - **ContentProvider**: URI 기반 앱 간 데이터 공유 게이트웨이
-- **런타임 퍼미션**: 위험 권한 요청 시 OS 수준 다이얼로그 (ZylPermissionDialog)
+- **앱 권한**: app.json 선언 + 서비스 호출마다 OS 판정, 설정에서 끈 권한은 기기에서도 거부
 - **클립보드 API**: 앱 간 텍스트/mimeType 공유 (clipboard.js 서비스)
 - **앱별 i18n**: 공유 엔진(shared/i18n.js) + 앱별 번역 데이터 (ko/en/ja/zh/es)
 - **7계층 보안**: iframe sandbox + CSP + 권한 체크 + 파일 보호 + 도메인 화이트리스트 + 앱 워치독 + Verified Boot
@@ -287,7 +287,7 @@ ninja -C builddir-riscv
 | 앱 프로세스 격리 | **WebKitGTK 샌드박스** — bubblewrap 네임스페이스 + seccomp | webkitgtk-6.0 은 상시 ON |
 | Verified Boot | **FIT 이미지 서명 + dm-verity** | gen-boot-keys.sh + sign-image.sh |
 | 데몬 격리 | **AppArmor + systemd 하드닝** | 파서 오류면 부팅 중단 (fail closed) |
-| 런타임 퍼미션 | **ZylPermissionDialog** | 위험 권한 사용자 승인 필수 |
+| 앱 권한 | **호출마다 OS 판정** | 설정에서 끈 권한은 기기에서도 거부 (첫 사용 동의 창은 없음) |
 
 ### 알려진 제한사항
 

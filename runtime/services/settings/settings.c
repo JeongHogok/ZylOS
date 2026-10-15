@@ -141,8 +141,22 @@ static const char *settings_introspection_xml =
     "      <arg type='v' name='value' direction='in'/>"
     "      <arg type='a{sv}' name='category_value' direction='out'/>"
     "    </method>"
+    /* The WAM follows app_permissions through this: a permission the user
+       switches off in Settings must take effect without a restart */
+    "    <signal name='CategoryChanged'>"
+    "      <arg type='s' name='category'/>"
+    "    </signal>"
     "  </interface>"
     "</node>";
+
+static GDBusConnection *g_settings_bus;
+
+static void emit_category_changed(const char *category) {
+    if (!g_settings_bus || !category || !category[0]) return;
+    g_dbus_connection_emit_signal(g_settings_bus, NULL, "/org/zylos/Settings",
+        "org.zylos.Settings", "CategoryChanged",
+        g_variant_new("(s)", category), NULL);
+}
 
 /* A category as a{sv}: what the WAM bridge turns back into a JSON object */
 static GVariant *object_variant(JsonObject *obj) {
@@ -181,6 +195,7 @@ static void handle_settings_method(GDBusConnection *conn, const gchar *sender,
             g_dbus_method_invocation_return_value(inv,
                 g_variant_new("(@a{sv})", object_variant(obj)));
             json_object_unref(obj);
+            emit_category_changed(category);
         }
         g_variant_unref(value);
     }
@@ -191,6 +206,7 @@ static const GDBusInterfaceVTable settings_vtable = { .method_call = handle_sett
 #ifndef ZYL_TEST
 static void on_settings_bus(GDBusConnection *conn, const gchar *name, gpointer data) {
     (void)name; (void)data;
+    g_settings_bus = conn;
     GDBusNodeInfo *info = g_dbus_node_info_new_for_xml(settings_introspection_xml, NULL);
     if (info && info->interfaces && info->interfaces[0])
         g_dbus_connection_register_object(conn, "/org/zylos/Settings",
