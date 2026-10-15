@@ -4,9 +4,11 @@
 #
 # 역할: 부트로더 환경(board/bpi-f3/u-boot-env.txt) 결정 로직 테스트
 # 수행범위: 실제 환경 파일을 읽어 bootcmd 를 실행 — U-Boot 명령(setenv,
-#           saveenv, run, button, mmc, part, load, bootm, reset)은 기록만 하는
-#           셸 함수로 대신한다. A/B 시도·롤백, 부팅 실패 시 롤백 예약,
-#           잠금 전환(허용·버튼 확인·데이터 삭제), 잠금 해제 시 검증 해제
+#           saveenv, run, button, mmc, part, load, bootm, reset, zyl_serial,
+#           zyl_rotpk)은 기록만 하는 셸 함수로 대신한다. A/B 시도·롤백, 부팅
+#           실패 시 롤백 예약, 잠금 전환(허용·버튼 확인·데이터 삭제), 잠금
+#           해제 시 검증 해제, OS 전에 부팅 영역 쓰기 보호·기기 ID, eFuse 는
+#           빌드가 고른 잠긴 기기에서만, 잠긴 기기는 실패 시 셸 대신 재시작
 # 의존방향: bash. U-Boot hush 와 공통인 문법만 쓰는 스크립트라 그대로 실행된다
 # SOLID: SRP — 부트 정책 검증만 담당
 # ──────────────────────────────────────────────────────────
@@ -43,6 +45,8 @@ part()    { printf -v "$5" '%s' "0x1000"; }
 load()    { log "load $4"; }
 bootm()   { log "bootm verify=${verify}"; [ -z "${FAKE_BOOT_FAIL:-}" ] && finish; return 1; }
 reset()   { log "reset"; finish; }
+zyl_serial() { log "zyl_serial"; }
+zyl_rotpk()  { log "zyl_rotpk $*"; }
 echo()    { log "echo $*"; }
 finish()  { STATE="slot=${zyl_slot} active=${zyl_active_slot} next=${zyl_next_slot:-} count=${zyl_boot_count} unlocked=${zyl_unlocked} seen=${zyl_lock_seen} allowed=${zyl_oem_unlock_allowed}"; exit 0; }
 
@@ -109,6 +113,24 @@ check "relocking also erases data, then verification is back" "$out" \
 
 out=$(boot zyl_unlocked=0 zyl_lock_seen=1)
 check "an unconfirmed relock stays unlocked" "$out" "unlocked=1" "bootm verify=no"
+
+out=$(boot)
+check "before the OS: the chip's device ID, then boot0 write-protected" "$out" \
+  "zyl_serial"$'\n'"mmc dev 2"$'\n'"mmc wp"$'\n'"load fit-image-a.itb" "!zyl_rotpk"
+
+out=$(boot zyl_rotpk_burn=1)
+check "a build that chose eFuse burns it on a locked device, before the OS" "$out" \
+  "zyl_rotpk burn"$'\n'"zyl_serial" "bootm verify=yes"
+
+out=$(boot zyl_rotpk_burn=1 zyl_unlocked=1 zyl_lock_seen=1)
+check "never on an unlocked device" "$out" "!zyl_rotpk" "bootm verify=no"
+
+out=$(boot FAKE_BOOT_FAIL=1)
+check "a locked device that boots nothing restarts, never a shell" "$out" \
+  "no verified system booted" "reset"
+
+out=$(boot zyl_unlocked=1 zyl_lock_seen=1 FAKE_BOOT_FAIL=1)
+check "an unlocked device that boots nothing is left to its owner" "$out" "!reset" "did not boot"
 
 builtin echo ""
 builtin echo "Results: $PASS passed, $FAIL failed"
