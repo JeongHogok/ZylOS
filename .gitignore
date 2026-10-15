@@ -36,7 +36,7 @@ emulator-app/assets/apps/
 emulator-app/ui/index.html.full
 
 # Package artifacts
-*.ospkg
+*.zpkg
 *.img
 *.img.gz
 emulator-app/gen/

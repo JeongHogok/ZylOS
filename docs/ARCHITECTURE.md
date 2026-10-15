@@ -100,7 +100,7 @@ Linux 커널 위에 Wayland 컴포지터 + WebKitGTK 앱 런타임으로 구성�
 |--------|------|
 | accessibility | 고대비, 폰트 스케일 |
 | apps | 설치된 앱 목록/관리 |
-| appstore | .ospkg 패키지 검증/설치 |
+| appstore | 서명된 카탈로그, .zpkg 봉인 검증/설치·삭제, 개발 빌드(프로비저닝) |
 | audio | 5개 볼륨 카테고리, 키클릭, 알림음, 진동 |
 | bluetooth | BT 디바이스 조회 (비동기) |
 | browser | URL 로딩/탐색 |

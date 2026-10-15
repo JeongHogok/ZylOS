@@ -33,7 +33,7 @@ sudo apt install -y \
 |--------|------|
 | `libssl-dev` | OpenSSL — AES-256-GCM (credential), RSA-2048 (appstore, updater) |
 | `libseccomp-dev` | libseccomp BPF — 샌드박스 시스콜 필터 (sandbox.c) |
-| `libzip-dev` | .ospkg 패키지 압축/해제 (appstore.c) |
+| `libzip-dev` | .zpkg 패키지 해제 (appstore) |
 | `libjson-glib-dev` | JSON 파싱 |
 
 ### Docker 빌드 (재현 가능)
@@ -176,7 +176,7 @@ apps/system/       OS 서비스 프레임워크
 apps/shared/       공유 런타임 (bridge.js, i18n.js, touch-scroll.js)
 apps/keyboard/     가상 키보드 시스템 앱
 system/            systemd (25개), plymouth, DTS, AppArmor, 복구
-tools/             빌드/개발 도구 (zyl SDK CLI, gen-boot-keys.sh, sign-ospkg.sh, sign-image.sh)
+tools/             빌드/개발 도구 (zyl SDK CLI, build-store.py, gen-boot-keys.sh, sign-image.sh)
 tests/             테스트
 docs/              문서
 Dockerfile         Docker 재현 가능 빌드

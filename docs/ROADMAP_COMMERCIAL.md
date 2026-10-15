@@ -290,20 +290,17 @@ Screen Off → Idle (5분) → Doze (30분) → Deep Sleep
 1. 서버 API 설계 (REST)
    - `GET /v1/apps` — 앱 목록 (페이지네이션, 카테고리 필터)
    - `GET /v1/apps/{id}` — 앱 상세
-   - `GET /v1/apps/{id}/download` — .ospkg 다운로드
+   - `GET /v1/apps/{id}/download` — .zpkg 다운로드
    - `POST /v1/apps/{id}/review` — 리뷰 등록
 2. 클라이언트: `apps/store/js/store.js`에 서버 연동
 3. 자동 업데이트 체크 (`updater` 서비스 확장)
 
 ### F2. 앱 서명 인프라
 
-**현재**: RSA-2048 검증 구현됨. 서명 도구 없음.
-**목표**: 개발자가 앱에 서명할 수 있는 도구 체인.
-
-**작업**:
-1. `tools/sign-ospkg.sh` — .ospkg 서명 스크립트
-2. 개발자 인증서 발급 CLI
-3. 인증서 폐기 목록 (CRL) 서버
+**현재**: 구현됨 — 앱 봉인(`.zyl-seal`), 스토어가 서명하는 개발자 인증서·
+프로비저닝 프로필(`tools/build-store.py dev-cert / profile`), 개발자 CLI
+(`tools/zyl keygen / package`), 카탈로그의 폐기 목록(`revoked`).
+**남은 작업**: 개발자가 공개 키·기기 ID 를 제출하고 인증서·프로필을 받는 포털
 
 ### F3. 앱 결제
 
