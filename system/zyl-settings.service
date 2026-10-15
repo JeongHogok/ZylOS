@@ -1,0 +1,27 @@
+[Unit]
+Description=Zyl OS Settings Service
+After=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/zyl-settings
+Restart=on-failure
+RestartSec=10
+StartLimitBurst=5
+StartLimitIntervalSec=120
+TimeoutStopSec=5
+
+# Keeps only /data/settings; no network
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/data/settings
+ProtectHome=read-only
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+
+[Install]
+WantedBy=zyl-os.target

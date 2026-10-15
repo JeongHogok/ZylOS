@@ -119,6 +119,17 @@ test('bootctl',
   workdir: meson.project_source_root(),
 )
 
+# Test: settings persistence (defaults + user layer, corrupt file kept,
+# JSON ↔ D-Bus value round trip, the shipped defaults file)
+test('settings',
+  executable('test-settings',
+    'test_settings.c',
+    dependencies: [gio_dep, json_glib_dep],
+    c_args: ['-DZYL_TEST'],
+  ),
+  workdir: meson.project_source_root(),
+)
+
 # Test: device app scan — a user app must not replace a system app by reusing its id
 test('manifest-scan',
   executable('test-manifest-scan',

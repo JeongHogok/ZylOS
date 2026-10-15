@@ -753,6 +753,76 @@ console.log('\n■ ZylIme');
 })();
 
 /* ═══════════════════════════════════════════════════════
+   apps/shared/bridge.js on the device (WAM / WebKitGTK)
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ ZylBridge on the device');
+
+var deviceBridgeTests = (function () {
+  var vm = require('vm');
+  /* A page as the WAM builds it: messageHandlers.bridge plus the injected
+     navigator.system, and window.postMessage delivering to listeners */
+  function devicePage() {
+    var sent = [], listeners = [];
+    var win = {
+      webkit: { messageHandlers: { bridge: { postMessage: function (j) { sent.push(JSON.parse(j)); } } } },
+      navigator: { system: { app: { id: 'com.zylos.settings' } } },
+      addEventListener: function (t, fn) { if (t === 'message') listeners.push(fn); },
+      postMessage: function (data) {
+        setTimeout(function () { listeners.forEach(function (fn) { fn({ data: data, source: win }); }); }, 0);
+      },
+      setTimeout: setTimeout, clearTimeout: clearTimeout
+    };
+    win.window = win; win.parent = win;
+    var ctx = { window: win, navigator: win.navigator, document: { addEventListener: function () {} },
+                console: console, setTimeout: setTimeout, clearTimeout: clearTimeout, JSON: JSON, Promise: Promise };
+    vm.createContext(ctx);
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'apps', 'shared', 'bridge.js'), 'utf8'), ctx);
+    return { win: win, sent: sent, B: win.ZylBridge || ctx.ZylBridge, listeners: listeners };
+  }
+
+  return Promise.all([
+    asyncTest('device messages go to the WAM, not the injected navigator.system', function () {
+      var p = devicePage();
+      assert.strictEqual(p.B.getIpcMode(), 'webkit');
+      p.B.sendToSystem({ type: 'navigation.handled' });
+      assert.strictEqual(p.sent.length, 1);
+      return Promise.resolve();
+    }),
+    asyncTest('a service request gets its answer through the native callback', function () {
+      var p = devicePage();
+      var pr = p.B.requestService('settings', 'get', { category: 'display' });
+      var msg = p.sent[0];
+      assert.ok(msg.callbackId >= 1000000, 'callbackId set, clear of navigator.system ids');
+      p.win['_zylCb_' + msg.callbackId]({ brightness: 35 });   /* what bridge.c evaluates */
+      return pr.then(function (d) { assert.deepStrictEqual(d, { brightness: 35 }); });
+    }),
+    asyncTest('a native error answer rejects', function () {
+      var p = devicePage();
+      var pr = p.B.requestService('settings', 'get', { category: 'x' });
+      p.win['_zylCb_' + p.sent[0].callbackId]({ error: true, message: 'Permission denied' });
+      return pr.then(function () { throw new Error('resolved'); },
+                     function (e) { assert.strictEqual(e.message, 'Permission denied'); });
+    }),
+    asyncTest('fire-and-forget callers get the service.response the emulator sends', function () {
+      var p = devicePage();
+      var got = new Promise(function (resolve) {
+        p.listeners.push(function (e) {
+          var m = JSON.parse(e.data);
+          if (m.type === 'service.response') resolve(m);
+        });
+      });
+      p.B.requestServiceFire('settings', 'get', { category: 'wifi' });
+      p.win['_zylCb_' + p.sent[0].callbackId]({ enabled: true });
+      return got.then(function (m) {
+        assert.strictEqual(m.service, 'settings');
+        assert.deepStrictEqual(m.params, { category: 'wifi' });
+        assert.deepStrictEqual(m.data, { enabled: true });
+      });
+    })
+  ]);
+})();
+
+/* ═══════════════════════════════════════════════════════
    Hangul 2-beolsik composition automaton
    ═══════════════════════════════════════════════════════ */
 console.log('\n■ ZylHangul');
@@ -1351,7 +1421,7 @@ console.log('\n■ zylI18n time');
    ═══════════════════════════════════════════════════════ */
 Promise.all([settingsTests, displayTests, inputTests, sensorsTests,
              usbTests, powerTests, audioTests, fsTests, updaterTests, telemetryTests,
-             netstatsTests, alertTests, appStateTests])
+             netstatsTests, alertTests, deviceBridgeTests, appStateTests])
   .then(function () {
     console.log('\n════════════════════════');
     console.log('Total: ' + total + '  Passed: ' + passed + '  Failed: ' + failed);

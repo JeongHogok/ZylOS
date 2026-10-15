@@ -26,11 +26,11 @@ var ZylBridge = (function () {
      Determines whether we're running in:
      - 'iframe'  : Tauri emulator (app inside iframe, postMessage to parent)
      - 'webkit'  : Real device WAM (WebKitGTK messageHandlers → D-Bus)
-     - 'native'  : Real device with navigator.system bridge
      - 'standalone' : Plain browser (no parent, no bridge — fallback)
+     The WAM also injects navigator.system, but that object has no transport
+     of its own: checking it first sent every device message nowhere.
      ═══════════════════════════════════════════════════════════ */
   var IPC_MODE = (function () {
-    if (window.navigator && window.navigator.system) return 'native';
     if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.bridge) return 'webkit';
     if (window.parent && window.parent !== window) return 'iframe';
     return 'standalone';
@@ -49,16 +49,23 @@ var ZylBridge = (function () {
     }
     var json = JSON.stringify(payload);
     switch (IPC_MODE) {
-      case 'native':
-        /* Real device: navigator.system bridge */
-        try {
-          if (window.navigator.system.postMessage) {
-            window.navigator.system.postMessage(json);
-          }
-        } catch (e) { log('native IPC error:', e); }
-        break;
       case 'webkit':
-        /* Real device WAM: WebKit messageHandlers → D-Bus */
+        /* Real device WAM: WebKit messageHandlers → D-Bus. bridge.c answers
+           only a message carrying a callbackId, by calling window._zylCb_<id>.
+           The answer is re-posted as the service.response the emulator sends,
+           so promise callers and response listeners work the same on both. */
+        if (payload && payload.type === 'service.request') {
+          var cbId = _nextCallbackId++;
+          payload.callbackId = cbId;
+          json = JSON.stringify(payload);
+          window['_zylCb_' + cbId] = function (data) {
+            delete window['_zylCb_' + cbId];
+            window.postMessage(JSON.stringify({
+              type: 'service.response', service: payload.service, method: payload.method,
+              params: payload.params || {}, requestId: payload.requestId || null, data: data
+            }), '*');
+          };
+        }
         try {
           window.webkit.messageHandlers.bridge.postMessage(json);
         } catch (e) { log('webkit IPC error:', e); }
@@ -93,6 +100,8 @@ var ZylBridge = (function () {
 
   /* ─── Request-Response Matching ─── */
   var _nextRequestId = 1;
+  /* Above the WAM-injected navigator.system's own _zylCb_ counter, which starts at 1 */
+  var _nextCallbackId = 1000000;
   var _pendingRequests = {}; /* requestId → { resolve, reject, timer } */
   var REQUEST_TIMEOUT_MS = 15000;
 
@@ -147,7 +156,7 @@ var ZylBridge = (function () {
 
   /**
    * Get current IPC mode for diagnostics.
-   * @returns {string} 'native' | 'webkit' | 'iframe' | 'standalone'
+   * @returns {string} 'webkit' | 'iframe' | 'standalone'
    */
   function getIpcMode() { return IPC_MODE; }
 

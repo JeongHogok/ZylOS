@@ -51,12 +51,6 @@ static void handle_battery_get_level(const char *type, gpointer msg_obj,
 static void handle_wifi_scan(const char *type, gpointer msg_obj,
                              ZylAppManifest *manifest,
                              ZylBridgeReplyCtx *reply_ctx, gpointer data);
-static void handle_settings_get(const char *type, gpointer msg_obj,
-                                ZylAppManifest *manifest,
-                                ZylBridgeReplyCtx *reply_ctx, gpointer data);
-static void handle_settings_update(const char *type, gpointer msg_obj,
-                                   ZylAppManifest *manifest,
-                                   ZylBridgeReplyCtx *reply_ctx, gpointer data);
 static void handle_service_request(const char *type, gpointer msg_obj,
                                    ZylAppManifest *manifest,
                                    ZylBridgeReplyCtx *reply_ctx, gpointer data);
@@ -75,8 +69,6 @@ void zyl_bridge_init(void)
     zyl_bridge_register_handler("notification.create", handle_notification_create, NULL);
     zyl_bridge_register_handler("battery.getLevel",    handle_battery_get_level, NULL);
     zyl_bridge_register_handler("wifi.scan",           handle_wifi_scan, NULL);
-    zyl_bridge_register_handler("settings.get",        handle_settings_get, NULL);
-    zyl_bridge_register_handler("settings.update",     handle_settings_update, NULL);
     zyl_bridge_register_handler("service.request",     handle_service_request, NULL);
 }
 
@@ -690,107 +682,6 @@ static void handle_wifi_scan(const char *type, gpointer msg_obj,
         "org.zylos.WifiService", "Scan",
         NULL, NULL,
         G_DBUS_CALL_FLAGS_NONE, 10000, NULL,
-        on_dbus_call_done, ctx);
-
-    g_object_unref(conn);
-}
-
-/* -- Settings get: async D-Bus query ----------------------- */
-static void handle_settings_get(const char *type, gpointer msg_obj,
-                                ZylAppManifest *manifest,
-                                ZylBridgeReplyCtx *reply_ctx, gpointer data)
-{
-    (void)type; (void)data;
-    const char *app_id = (manifest && manifest->id) ? manifest->id : "unknown";
-    JsonObject *msg = msg_obj;
-
-    const char *key = NULL;
-    if (json_object_has_member(msg, "key"))
-        key = json_object_get_string_member(msg, "key");
-
-    g_info("Bridge: settings.get from %s key='%s'",
-           app_id, key ? key : "(all)");
-
-    if (reply_ctx->callback_id < 0) return;
-
-    GError *err = NULL;
-    GDBusConnection *conn = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &err);
-    if (err) {
-        zyl_bridge_reply_error(reply_ctx, "dbus unavailable");
-        g_error_free(err);
-        return;
-    }
-
-    GVariant *params = key
-        ? g_variant_new("(s)", key)
-        : g_variant_new("(s)", "");
-
-    DbusReplyCtx *ctx = g_new(DbusReplyCtx, 1);
-    ctx->webview     = reply_ctx->webview;
-    ctx->callback_id = reply_ctx->callback_id;
-    g_object_ref(conn);
-
-    g_dbus_connection_call(conn,
-        "org.zylos.Settings", "/org/zylos/Settings",
-        "org.zylos.Settings", "Get",
-        params, NULL,
-        G_DBUS_CALL_FLAGS_NONE, 3000, NULL,
-        on_dbus_call_done, ctx);
-
-    g_object_unref(conn);
-}
-
-/* -- Settings update --------------------------------------- */
-static void handle_settings_update(const char *type, gpointer msg_obj,
-                                   ZylAppManifest *manifest,
-                                   ZylBridgeReplyCtx *reply_ctx, gpointer data)
-{
-    (void)type; (void)data;
-    const char *app_id = (manifest && manifest->id) ? manifest->id : "unknown";
-    JsonObject *msg = msg_obj;
-
-    const char *key = NULL;
-    if (json_object_has_member(msg, "key"))
-        key = json_object_get_string_member(msg, "key");
-
-    g_info("Bridge: settings.update from %s key='%s'",
-           app_id, key ? key : "(none)");
-
-    if (reply_ctx->callback_id < 0) return;
-
-    GError *err = NULL;
-    GDBusConnection *conn = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &err);
-    if (err) {
-        zyl_bridge_reply_error(reply_ctx, "dbus unavailable");
-        g_error_free(err);
-        return;
-    }
-
-    /* Build params: (key, value_json) */
-    const char *value_str = "";
-    gchar *value_json = NULL;
-    if (json_object_has_member(msg, "value")) {
-        JsonNode *val_node = json_object_get_member(msg, "value");
-        JsonGenerator *gen = json_generator_new();
-        json_generator_set_root(gen, val_node);
-        value_json = json_generator_to_data(gen, NULL);
-        value_str = value_json;
-        g_object_unref(gen);
-    }
-
-    GVariant *params = g_variant_new("(ss)", key ? key : "", value_str);
-    g_free(value_json);
-
-    DbusReplyCtx *ctx = g_new(DbusReplyCtx, 1);
-    ctx->webview     = reply_ctx->webview;
-    ctx->callback_id = reply_ctx->callback_id;
-    g_object_ref(conn);
-
-    g_dbus_connection_call(conn,
-        "org.zylos.Settings", "/org/zylos/Settings",
-        "org.zylos.Settings", "Set",
-        params, NULL,
-        G_DBUS_CALL_FLAGS_NONE, 3000, NULL,
         on_dbus_call_done, ctx);
 
     g_object_unref(conn);

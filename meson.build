@@ -34,7 +34,7 @@ subdir('board')   # defines board_id / board_soc / board_arch / board_hal_backen
 zyl_core_services = [
   'dbus', 'logger', 'display', 'input', 'power', 'sandbox', 'crash',
   'credential', 'user', 'accessibility', 'notification', 'updater', 'telemetry',
-  'netstats', 'bootctl',
+  'netstats', 'bootctl', 'settings',
 ]
 
 # Hardware-dependent services, added per form factor.
@@ -149,6 +149,8 @@ configure_file(
 )
 
 install_data('system/timesyncd.conf', install_dir: get_option('sysconfdir') / 'systemd')
+# Settings defaults — read by zyl-settings on the device and built into the emulator
+install_data('system/settings-defaults.json', install_dir: get_option('datadir') / 'zyl-os')
 # Service users and the /data directories units write to. Without them the
 # WAM (User=zyl-wam) and every ProtectSystem=strict unit with a /data path
 # fail before they start.

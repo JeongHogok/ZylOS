@@ -1,0 +1,28 @@
+{
+  "wifi": { "enabled": true },
+  "bluetooth": { "enabled": true },
+  "display": {
+    "brightness": 80,
+    "darkMode": true,
+    "autoBrightness": true,
+    "fontSize": "medium"
+  },
+  "sound": {
+    "mediaVolume": 70,
+    "notifVolume": 80,
+    "alarmVolume": 90,
+    "systemVolume": 50,
+    "ringtoneVolume": 80,
+    "vibration": true,
+    "silentMode": false
+  },
+  "security": {
+    "lockType": "swipe",
+    "pin": "",
+    "fingerprint": false
+  },
+  "wallpaper": {
+    "current": "default",
+    "options": ["default", "blue", "purple", "dark", "sunset"]
+  }
+}

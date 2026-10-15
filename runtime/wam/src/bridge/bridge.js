@@ -125,18 +125,9 @@
       }
     },
 
-    /* ── Settings ─────────────────────────────────────────
-     * get(key?)   → Promise<value>
-     * set(key, v) → Promise<{ok:true}>
-     */
-    settings: {
-      get: function (key) {
-        return asyncBridge({ type: "settings.get", key: key || null });
-      },
-      set: function (key, value) {
-        return asyncBridge({ type: "settings.update", key: key, value: value });
-      }
-    },
+    /* Settings are not here: they go through service.request ('settings'),
+       which checks the caller's permission — the old settings.get/update
+       messages reached the settings daemon with no check at all. */
 
     /* ── Camera ───────────────────────────────────────────
      * capture(opts?) → Promise<{path: string}>
