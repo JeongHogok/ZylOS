@@ -306,6 +306,16 @@ test('app-seal',
   workdir: meson.project_source_root(),
 )
 
+# Test: the sensor service polls the hardware it found without being asked
+# (nothing on D-Bus starts polling, so GetLatest used to return 0 forever)
+test('sensors-polling',
+  executable('test-sensors-polling', 'test_sensors_polling.c',
+    include_directories: include_directories('../runtime/services/sensors'),
+    dependencies: [gio_dep, dependency('threads')],
+    c_args: ['-DZYL_TEST'],
+  )
+)
+
 # Test: a removed app's alarms go, from memory and from disk
 test('alarm',
   executable('test-alarm', 'test_alarm.c',

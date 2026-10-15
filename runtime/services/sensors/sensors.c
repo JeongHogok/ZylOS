@@ -21,7 +21,11 @@
 #include <gio/gio.h>
 
 /* ─── 내부 상수 ─── */
+#ifndef IIO_BASE_PATH               /* 테스트가 가짜 sysfs 로 바꿔 끼운다 */
 #define IIO_BASE_PATH       "/sys/bus/iio/devices"
+#endif
+/* 화면 회전·근접·조도에 충분하고 배터리에 가벼운 공통 주기 */
+#define DEFAULT_RATE_HZ     5.0f
 #define MAX_LISTENERS       16
 #define MAX_IIO_DEVICES     8
 #define SYSFS_BUF           256
@@ -63,15 +67,6 @@ struct ZylSensorService {
 };
 
 /* ─── 유틸리티: sysfs 읽기 ─── */
-static int sysfs_read_int(const char *path) {
-    FILE *f = fopen(path, "r");
-    if (!f) return 0;
-    int val = 0;
-    if (fscanf(f, "%d", &val) != 1) val = 0;
-    fclose(f);
-    return val;
-}
-
 static double sysfs_read_double(const char *path) {
     FILE *f = fopen(path, "r");
     if (!f) return 0.0;
@@ -458,6 +453,7 @@ static const GDBusInterfaceVTable sensor_vtable = {
 
 static void on_sensor_bus_acquired(GDBusConnection *conn, const gchar *name,
                                     gpointer data) {
+    (void)name;
     ZylSensorService *svc = data;
     svc->dbus = conn;
 
@@ -480,6 +476,17 @@ ZylSensorService *zyl_sensor_create(void) {
 
     /* IIO 장치 스캔 */
     scan_iio_devices(svc);
+
+    /* 찾은 장치는 서비스가 바로 읽기 시작한다. D-Bus 에 구독 메서드가 없어
+       폴링을 시작시키는 쪽이 아무도 없었고, 그래서 GetLatest 는 늘 0 을,
+       SensorEvent 는 아무것도 내보내지 않았다.
+       shortcut: 화면이 꺼져도 계속 읽는다 — 배터리가 문제가 되면 앱별 구독
+       (Subscribe/Unsubscribe)을 D-Bus 에 넣고 그때만 켤 것 */
+    for (int i = 0; i < svc->device_count; i++) {
+        if (!svc->devices[i].available) continue;
+        zyl_sensor_register_listener(svc, svc->devices[i].type,
+                                     DEFAULT_RATE_HZ, NULL, NULL);
+    }
 
     /* D-Bus 등록 */
     svc->dbus_owner_id = g_bus_own_name(G_BUS_TYPE_SESSION,
@@ -512,7 +519,7 @@ int zyl_sensor_register_listener(ZylSensorService *svc,
                                   float rate_hz,
                                   zyl_sensor_callback_fn cb,
                                   void *user_data) {
-    if (!svc || !cb) return -1;
+    if (!svc) return -1;        /* cb 없음 = 캐시와 시그널만 (서비스 자체 폴링) */
     if (rate_hz <= 0.0f) rate_hz = 1.0f;
     if (rate_hz > 1000.0f) rate_hz = 1000.0f;
 
@@ -596,6 +603,7 @@ int zyl_sensor_get_latest(ZylSensorService *svc,
     return (out->timestamp_ns > 0) ? 0 : -1;
 }
 
+#ifndef ZYL_TEST
 /* ─── main(): 독립 데몬 실행 ─── */
 int main(int argc, char *argv[]) {
     (void)argc; (void)argv;
@@ -617,3 +625,4 @@ int main(int argc, char *argv[]) {
     g_message("[Sensors] Service stopped");
     return 0;
 }
+#endif /* ZYL_TEST */
