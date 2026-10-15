@@ -108,3 +108,24 @@ tools/build-bootloader.sh --key-dir <keys> --burn-rotpk out/
   SHA-256)를 그대로 굽습니다. 형식이 다르면 그 보드는 어떤 FSBL 도 부팅하지 못합니다.
   **버려도 되는 보드로 먼저 확인하십시오.** 제조사 U-Boot 는 bank 8 미만 쓰기를 막아 두었고,
   Zyl 패치가 bank 4 에 한해 그 경로를 엽니다 (`board/bpi-f3/bootloader`)
+
+### 굽기 전에 — `zyl_rotpk show`
+
+굽는 코드가 없는 기본 빌드에도 **읽기 전용** 명령이 들어 있습니다. 벽돌 위험 없이 형식을
+먼저 맞춰 보는 용도입니다 (U-Boot 콘솔):
+
+```
+=> zyl_rotpk show
+zyl_rotpk: bank 4 (ROTPKH) now:  0000...0000
+zyl_rotpk: bank 6 (locks) now:   0000...0000
+zyl_rotpk: a burn would write:   3f2a...  (eMMC boot0 FSBL 의 앞 256바이트 SHA-256)
+zyl_rotpk: this build cannot burn (no --burn-rotpk)
+```
+
+확인할 것 세 가지 — 하나라도 다르면 굽지 마십시오:
+
+1. bank 4 가 ROTPKH 인지 (제조사 도구로 구운 보드의 bank 4 와 `a burn would write` 값이 같아야 함)
+2. 바이트 순서 (제조사 도구 출력과 같은 순서로 보이는지)
+3. bank 6 word 0 의 잠금 비트 위치 (bit 4 = bank 4) — 제조사 도구로 잠근 보드와 대조
+
+세 항목이 맞는 것을 **버려도 되는 보드에서** 확인한 뒤에만 `--burn-rotpk` 빌드로 넘어가십시오.

@@ -6,6 +6,9 @@ the commit tools/build-bootloader.sh pins).
   no environment from bootfs, no automatic flashing from an SD card, no shell
   on request; zyl_serial sets serial# (the device tree's serial-number, the
   OS's device ID) from the chip ID in eFuse
+- zyl_rotpk show: what eFuse bank 4/6 hold and what a burn would write — reads
+  only, so an undocumented hash format can be compared against the vendor's
+  own tool before anything is fused. In every build
 - CONFIG_ZYL_ROTPK_BURN: zyl_rotpk burn — fuse the Root of Trust public key
   hash (bank 4) and lock it, only if the FSBL in eMMC boot0 is the one this
   build signed (include/zyl_rotpk.h)
@@ -100,7 +103,7 @@ new file mode 100644
 index 00000000..28a57932
 --- /dev/null
 +++ b/board/spacemit/k1-x/zyl.c
-@@ -0,0 +1,117 @@
+@@ -0,0 +1,182 @@
 +// SPDX-License-Identifier: GPL-2.0+
 +/*
 + * Zyl OS boot policy commands for the SpacemiT K1 (CONFIG_ZYL_OS)
@@ -152,15 +155,67 @@ index 00000000..28a57932
 +U_BOOT_CMD(zyl_serial, 1, 0, do_zyl_serial,
 +	   "set serial# from the chip ID in eFuse", "");
 +
-+#ifdef CONFIG_ZYL_ROTPK_BURN
 +#include <zyl_rotpk.h>	/* ZYL_FSBL_SIZE, ZYL_FSBL_SHA256: the FSBL this build signed */
 +
 +#define FSBL_BOOT0_OFFSET	0x200	/* bootinfo_emmc.json spl0_offset */
 +#define ROTPK_SIZE		256	/* the FSBL begins with the RSA-2048 modulus */
 +
++static void print_bytes(const char *label, const u8 *b, int n)
++{
++	int i;
++
++	printf("%s", label);
++	for (i = 0; i < n; i++)
++		printf("%02x", b[i]);
++	printf("\n");
++}
++
++/*
++ * What is fused now, and what a burn would write. Reads only: the vendor does
++ * not document the hash the Boot ROM expects, so this is how a board (one you
++ * can afford to lose) gets compared against the vendor's own tool before
++ * anyone fuses anything. Present in every build, burn or not.
++ */
++static int rotpk_show(void)
++{
++	struct blk_desc *desc = blk_get_dev("mmc", MMC_DEV_EMMC);
++	struct udevice *dev;
++	u8 bank[FUSE_BANK_BYTES], first[512], hash[32];
++	int ret = CMD_RET_SUCCESS;
++
++	if (efuse_device(&dev)) {
++		printf("zyl_rotpk: no eFuse\n");
++		return CMD_RET_FAILURE;
++	}
++	if (misc_read(dev, 4 * FUSE_BANK_BYTES, bank, sizeof(bank)) < 0)
++		return CMD_RET_FAILURE;
++	print_bytes("zyl_rotpk: bank 4 (ROTPKH) now:  ", bank, sizeof(bank));
++	if (misc_read(dev, 6 * FUSE_BANK_BYTES, bank, sizeof(bank)) < 0)
++		return CMD_RET_FAILURE;
++	print_bytes("zyl_rotpk: bank 6 (locks) now:   ", bank, sizeof(bank));
++
++	if (!desc || blk_dselect_hwpart(desc, 1) ||
++	    blk_dread(desc, FSBL_BOOT0_OFFSET / desc->blksz, 1, first) != 1) {
++		printf("zyl_rotpk: cannot read the FSBL in eMMC boot0\n");
++		ret = CMD_RET_FAILURE;
++	} else {
++		sha256_csum_wd(first, ROTPK_SIZE, hash, CHUNKSZ_SHA256);
++		print_bytes("zyl_rotpk: a burn would write:   ", hash, sizeof(hash));
++	}
++	if (desc)
++		blk_dselect_hwpart(desc, 0);
++	if (ZYL_FSBL_SIZE)
++		printf("zyl_rotpk: this build signed an FSBL of %u bytes\n",
++		       (unsigned int)ZYL_FSBL_SIZE);
++	else
++		printf("zyl_rotpk: this build cannot burn (no --burn-rotpk)\n");
++	return ret;
++}
++
++#ifdef CONFIG_ZYL_ROTPK_BURN
 +int efuse_burn_rotpkh(struct udevice *dev, const u8 *hash);
 +
-+static int do_zyl_rotpk(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
++static int rotpk_burn(void)
 +{
 +	static const u8 want_fsbl[32] = ZYL_FSBL_SHA256;
 +	static const u8 zero[FUSE_BANK_BYTES];
@@ -171,8 +226,6 @@ index 00000000..28a57932
 +	u8 *fsbl;
 +	int ret = CMD_RET_FAILURE;
 +
-+	if (argc != 2 || strcmp(argv[1], "burn"))
-+		return CMD_RET_USAGE;
 +	if (!desc || efuse_device(&dev) || misc_read(dev, 4 * FUSE_BANK_BYTES, have, sizeof(have)) < 0) {
 +		printf("zyl_rotpk: no eFuse or eMMC - not burning\n");
 +		return CMD_RET_FAILURE;
@@ -213,11 +266,26 @@ index 00000000..28a57932
 +	free(fsbl);
 +	return ret;
 +}
++#endif
++
++static int do_zyl_rotpk(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
++{
++	if (argc == 2 && !strcmp(argv[1], "show"))
++		return rotpk_show();
++#ifdef CONFIG_ZYL_ROTPK_BURN
++	if (argc == 2 && !strcmp(argv[1], "burn"))
++		return rotpk_burn();
++#endif
++	return CMD_RET_USAGE;
++}
 +
 +U_BOOT_CMD(zyl_rotpk, 2, 0, do_zyl_rotpk,
-+	   "fuse the Root of Trust public key hash",
-+	   "burn - only if the FSBL in eMMC boot0 is the one this build signed");
++	   "Root of Trust public key hash in eFuse",
++	   "show - what is fused now, and what a burn would write"
++#ifdef CONFIG_ZYL_ROTPK_BURN
++	   "\nzyl_rotpk burn - fuse it, only for the FSBL this build signed"
 +#endif
++	   );
 diff --git a/drivers/misc/spacemit_k1x_efuse.c b/drivers/misc/spacemit_k1x_efuse.c
 index ab030edf..7dde58c0 100644
 --- a/drivers/misc/spacemit_k1x_efuse.c
