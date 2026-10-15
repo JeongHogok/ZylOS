@@ -1,8 +1,15 @@
 openssl = dependency('openssl', version: '>=1.1.1')
 json_glib = dependency('json-glib-1.0')
+gio = dependency('gio-2.0')
 
-static_library('zyl-updater',
-  'updater.c',
-  dependencies: [openssl, json_glib],
-  install: false,
+executable('zyl-updater', 'updaterd.c', 'updater.c',
+  dependencies: [openssl, json_glib, gio],
+  install: true,
 )
+
+# The key that signs OTA packages (tools/build-ota.sh signs with the boot key:
+# give its .pub). Without it the device refuses every update.
+if get_option('ota_public_key') != ''
+  install_data(meson.project_source_root() / get_option('ota_public_key'),
+    rename: 'ota-signing-key.pem', install_dir: '/etc/zyl-os')
+endif

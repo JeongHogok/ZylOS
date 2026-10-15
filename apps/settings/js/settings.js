@@ -57,6 +57,7 @@
     security: 'settings.security',
     storage: 'settings.storage',
     about: 'settings.about',
+    update: 'settings.software_update',
     applications: 'settings.applications',
     /* FIX: Added missing placeholder sections that were in the menu but had no routing */
     battery: 'settings.battery',

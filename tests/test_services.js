@@ -337,10 +337,14 @@ console.log('\n■ Updater Service');
 var updaterTests = (function () {
   var upd = ns.updater({ deviceRef: { osVersion: '0.1.0' } });
 
-  return asyncTest('checkForUpdate returns current version', function () {
-    return upd.checkForUpdate().then(function (r) {
-      assert.strictEqual(r.available, false);
-      assert.strictEqual(r.currentVersion, '0.1.0');
+  /* The device daemon's answer shape; the emulator cannot install updates */
+  return asyncTest('updater reports the running version and that it cannot install here', function () {
+    return Promise.all([upd.getState(), upd.check(), upd.install()]).then(function (rs) {
+      rs.forEach(function (r) {
+        assert.strictEqual(r.state, 'unsupported');
+        assert.strictEqual(r.version, '0.1.0');
+        assert.strictEqual(r.available, '');
+      });
     });
   });
 })();

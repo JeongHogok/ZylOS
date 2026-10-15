@@ -758,7 +758,7 @@ export WEBKIT_INSPECTOR_SERVER=0.0.0.0:8090
 | 18 | user | getCurrentUser, listUsers, switchUser |
 | 19 | credential | store, lookup, delete |
 | 20 | appstore | search, install, uninstall, listInstalled |
-| 21 | updater | checkUpdate, getVersion |
+| 21 | updater | getState, check, install, restart (시스템 앱 전용) |
 | 22 | sandbox | getPolicy |
 | 23 | logger | getLogs, clearLogs |
 | 24 | accessibility | getSettings, setFontScale, setHighContrast |

@@ -796,6 +796,21 @@ static bool verify_package(ZylUpdater *u, const char *pkg_path) {
     return true;
 }
 
+bool zyl_updater_supported(const ZylUpdater *u) {
+    (void)u;
+    char *slot = fw_get("zyl_active_slot");
+    bool ok = slot && access(ZYL_OTA_KEY, R_OK) == 0;
+    g_free(slot);
+    return ok;
+}
+
+bool zyl_updater_on_trial(const ZylUpdater *u) {
+    char *next = fw_get("zyl_next_slot");
+    bool trial = u && next && strcmp(next, u->active_slot) == 0;
+    g_free(next);
+    return trial;
+}
+
 static bool apply_failed(ZylUpdater *u, const char *msg) {
     fprintf(stderr, "[UPDATER] %s\n", msg);
     u->state = ZYL_UPDATE_FAILED;
@@ -829,10 +844,7 @@ bool zyl_updater_apply(ZylUpdater *u,
 
     /* The slot to write is the one U-Boot falls back to while the running
        slot is still on trial — never overwrite it before this boot is confirmed */
-    char *trying = fw_get("zyl_next_slot");
-    bool on_trial = trying && strcmp(trying, u->active_slot) == 0;
-    g_free(trying);
-    if (on_trial) return apply_failed(u, "The previous update is not confirmed yet");
+    if (zyl_updater_on_trial(u)) return apply_failed(u, "The previous update is not confirmed yet");
 
     /* Partitions per board/bpi-f3/README.md: rootfs A p2 / B p4, verity A p3 / B p5 */
     const char *inactive = strcmp(u->active_slot, "a") == 0 ? "b" : "a";

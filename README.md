@@ -96,7 +96,7 @@
 | sensors | org.zylos.SensorService | 가속도계, 자이로, 근접, 조도 |
 | telemetry | org.zylos.TelemetryService | 익명 사용 통계 수집 |
 | telephony | org.zylos.Telephony | ModemManager 통합, 통화/SMS |
-| updater | (라이브러리) | A/B OTA, RSA-2048 서명 검증 |
+| updater | org.zylos.Updater | A/B OTA, RSA-2048 서명 검증, 부팅 후 슬롯 확정 |
 | usb | org.zylos.UsbManager | USB 가젯 모드 (MTP/PTP/ADB) |
 | user | org.zylos.UserManager | 멀티유저, 프로필 전환, 앱별 UID |
 | wifi | org.zylos.WiFiManager | wpa_supplicant 연동, WiFi 스캔/연결 |

@@ -718,6 +718,7 @@ static const ServiceRoute SERVICE_ROUTES[] = {
     {"netstats",     "org.zylos.NetStats",           "/org/zylos/NetStats",           "org.zylos.NetStats"},
     {"bootctl",      "org.zylos.BootControl",        "/org/zylos/BootControl",        "org.zylos.BootControl"},
     {"lock",         "org.zylos.Lock",               "/org/zylos/Lock",               "org.zylos.Lock"},
+    {"updater",      "org.zylos.Updater",            "/org/zylos/Updater",            "org.zylos.Updater"},
     {NULL, NULL, NULL, NULL}
 };
 
@@ -762,6 +763,8 @@ static const ServicePermission SERVICE_PERMISSIONS[] = {
     {"netstats",      {"system", NULL}},
     {"bootctl",       {"system", NULL}},
     {"lock",          {"system", NULL}},
+    /* Installs and restarts into a new OS: Settings only */
+    {"updater",       {"system", NULL}},
     {"device",        {NULL}},
     {"storage",       {NULL}},
     {"apps",          {NULL}},
@@ -771,7 +774,6 @@ static const ServicePermission SERVICE_PERMISSIONS[] = {
     {"sensors",       {NULL}},
     {"usb",           {NULL}},
     {"user",          {NULL}},
-    {"updater",       {NULL}},
     {"sandbox",       {NULL}},
     {"logger",        {NULL}},
     {"accessibility", {NULL}},

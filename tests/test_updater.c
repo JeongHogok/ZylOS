@@ -5,7 +5,8 @@
  * 수행범위: 서명이 맞는 패키지만 설치, 비활성 슬롯의 rootfs·verity 트리·FIT 만
  *           기록(실행 중인 슬롯은 그대로), 일부가 빠진 패키지는 부트로더를
  *           새 슬롯으로 돌리지 않음, 시험 부팅 중엔 되돌아갈 슬롯을 덮지 않음,
- *           전체 이미지만 허용, U-Boot 변수 이름이 u-boot-env.txt 와 일치
+ *           전체 이미지만 허용, 지원 여부(키·U-Boot 환경), 시험 부팅 판정,
+ *           U-Boot 변수 이름이 u-boot-env.txt 와 일치
  * 의존방향: runtime/services/updater/updater.c, 가짜 fw_printenv/fw_setenv,
  *           파일로 만든 가짜 파티션, tar, OpenSSL (테스트 키로 서명)
  * SOLID: SRP — 설치 경로 검증만 담당
@@ -188,6 +189,22 @@ static void test_rollback_is_tried_like_an_update(void) {
     assert(is(DIR_ "/env.log", "zyl_boot_count 0\nzyl_next_slot b\n"));
 }
 
+static void test_supported_needs_the_key_and_a_bootloader_environment(void) {
+    assert(!zyl_updater_supported(u));                     /* fake fw_printenv: no zyl_active_slot */
+    tool("fw_printenv", "[ \"$2\" = zyl_active_slot ] && exec echo a\nexit 1\n");
+    assert(zyl_updater_supported(u));
+    unlink(ZYL_OTA_KEY);
+    assert(!zyl_updater_supported(u));
+}
+
+static void test_on_trial_only_while_u_boot_is_trying_this_slot(void) {
+    assert(!zyl_updater_on_trial(u));
+    put(DIR_ "/next", "b");                                 /* b installed, not booted yet */
+    assert(!zyl_updater_on_trial(u));
+    put(DIR_ "/next", "a");
+    assert(zyl_updater_on_trial(u));
+}
+
 static void test_variables_are_the_ones_u_boot_reads(void) {
     char *env = NULL;
     assert(g_file_get_contents("board/bpi-f3/u-boot-env.txt", &env, NULL, NULL));
@@ -209,6 +226,8 @@ int main(void) {
     RUN_TEST(test_the_fallback_slot_is_kept_while_this_boot_is_on_trial);
     RUN_TEST(test_only_full_images_are_installed);
     RUN_TEST(test_rollback_is_tried_like_an_update);
+    RUN_TEST(test_supported_needs_the_key_and_a_bootloader_environment);
+    RUN_TEST(test_on_trial_only_while_u_boot_is_trying_this_slot);
     RUN_TEST(test_variables_are_the_ones_u_boot_reads);
     zyl_updater_destroy(u);
     EVP_PKEY_free(key);

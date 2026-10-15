@@ -61,7 +61,7 @@ zyl_profile_extras = {
 zyl_services = zyl_core_services + zyl_profile_extras[zyl_profile]
 
 # Services that ship no systemd unit (static library or on-demand binary).
-zyl_services_without_unit = ['appstore', 'dbus', 'sandbox', 'updater']
+zyl_services_without_unit = ['appstore', 'dbus', 'sandbox']
 # Unit basename differs from the service directory name.
 zyl_unit_overrides = {'crash': 'zyl-crash-handler'}
 

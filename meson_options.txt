@@ -18,3 +18,8 @@ option('profile',
   choices: ['phone', 'tablet', 'tv', 'auto', 'watch', 'desktop', 'appliance', 'pda'],
   value: 'phone',
   description: 'Form-factor profile — selects the C service set and systemd units to build/install')
+
+option('ota_public_key',
+  type: 'string',
+  value: '',
+  description: 'PEM public key that signs OTA packages, installed as /etc/zyl-os/ota-signing-key.pem (tools/build-ota.sh signs with <key-dir>/zylos-boot-key.key — give its .pub). Empty: updates are refused')

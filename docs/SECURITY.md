@@ -77,8 +77,12 @@ openssl dgst -sha256 -sign developer.key -out SIGNATURE manifest.hash
 ### updater.c
 - **SHA-256 해시 무결성 검증** (다운로드 완료 후)
 - **RSA-2048+SHA-256 서명 검증** (OpenSSL EVP API) — 중간자 공격 방지
-- 검증 실패 시 업데이트 중단, 비활성 파티션 클린업
+- 검증 실패 시 업데이트 중단 — 검증을 통과하지 않은 패키지는 설치하지 않음
 - 서버 통신은 HTTPS 필수
+- 설치는 비활성 슬롯에만, 부트로더는 모든 기록이 끝난 뒤에야 새 슬롯을 시도.
+  현재 부팅이 확정 전 시험 부팅이면 되돌아갈 슬롯을 덮지 않음
+- 패키지 서명 키 = 부트 서명 키. 기기의 공개키는 `-Dota_public_key` 로 넣으며 없으면 업데이트 거부
+- 새 슬롯의 부팅 자체는 U-Boot 의 FIT 서명 검증과 dm-verity 가 다시 확인
 
 ---
 
