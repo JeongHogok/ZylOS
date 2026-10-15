@@ -4,7 +4,7 @@
 // 역할: 설정 앱 WiFi 도메인 — WiFi 토글, 네트워크 목록, 스캔, 연결
 // 수행범위: WiFi 상태 렌더링, 네트워크 목록 표시(이름은 텍스트로만), 스캔 버튼,
 //          네트워크를 눌러 연결(보안 네트워크는 암호 입력)
-// 의존방향: ZylSettingsCore (settings.js), ZylBridge (bridge.js)
+// 의존방향: ZylSettingsCore (settings.js)
 // SOLID: SRP — WiFi 설정 UI만 담당
 //
 // 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
@@ -32,7 +32,7 @@
 
   function connect(net, passphrase) {
     joinMsg.textContent = core.t('settings.wifi_connecting');
-    ZylBridge.requestService('wifi', 'connect', { ssid: net.ssid, passphrase: passphrase })
+    core.requestService('wifi', 'connect', { ssid: net.ssid, passphrase: passphrase })
       .then(function (ok) {
         if (!ok) throw new Error('not connected');
         joining = null;

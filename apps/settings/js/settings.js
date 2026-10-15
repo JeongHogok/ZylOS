@@ -321,9 +321,12 @@
   };
 
   /* ─── Expose ZylSettingsCore namespace for domain modules ─── */
+  /* Domain modules reach the system only through this object */
   window.ZylSettingsCore = {
     t: t,
     requestService: requestService,
+    onServiceEvent: function (service, event, fn) { ZylBridge.onServiceEvent(service, event, fn); },
+    sendToSystem: function (msg) { ZylBridge.sendToSystem(msg); },
     updateSetting: updateSetting,
     settingsCache: settingsCache,
     handlers: handlers,

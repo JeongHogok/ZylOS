@@ -3,7 +3,7 @@
 //
 // 역할: 설정 앱 보안 도메인 — 화면잠금, PIN 변경/제거, 지문인식
 // 수행범위: 보안 설정 상태 렌더링, PIN 다이얼로그 (설정·검증은 lock 서비스), 지문 토글
-// 의존방향: ZylSettingsCore (settings.js), ZylBridge (bridge.js)
+// 의존방향: ZylSettingsCore (settings.js)
 // SOLID: SRP — 보안 설정 UI만 담당
 //
 // 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
@@ -28,7 +28,7 @@
     if (lockVal) lockVal.textContent = core.t(hasPin ? 'settings.lock_pin' : 'settings.swipe');
   }
   function refreshLockType() {
-    ZylBridge.requestService('lock', 'getState').then(function (r) {
+    core.requestService('lock', 'getState').then(function (r) {
       showLockType(!!(r && r.hasPin));
     }, function () { /* leave the label as it is */ });
   }
@@ -91,7 +91,7 @@
         showPinMessage(core.t('settings.pin_format'), '#ef4444');
         return;
       }
-      ZylBridge.requestService('lock', 'setPin', {
+      core.requestService('lock', 'setPin', {
         current: curInput ? curInput.value : '', pin: newPin
       }).then(function (r) {
         if (!r || r.ok !== true) { showPinMessage(lockMessage(r), '#ef4444'); return; }
@@ -107,12 +107,12 @@
   if (pinRemoveBtn) {
     pinRemoveBtn.addEventListener('click', function () {
       var curInput = document.getElementById('current-pin-input');
-      ZylBridge.requestService('lock', 'getState').then(function (st) {
+      core.requestService('lock', 'getState').then(function (st) {
         if (!st || !st.hasPin) {
           showPinMessage(core.t('settings.no_pin_set'), '#f59e0b');
           return null;
         }
-        return ZylBridge.requestService('lock', 'setPin', {
+        return core.requestService('lock', 'setPin', {
           current: curInput ? curInput.value : '', pin: ''
         }).then(function (r) {
           if (!r || r.ok !== true) { showPinMessage(lockMessage(r), '#ef4444'); return; }

@@ -103,6 +103,7 @@ test('telephony-dbus',
   executable('test-telephony-dbus',
     'test_telephony_dbus.c',
     '../runtime/services/telephony/cbs.c',
+    '../runtime/services/telephony/calllog.c',
     include_directories: include_directories('../runtime/services/telephony'),
     dependencies: [gio_dep],
   )
@@ -156,6 +157,17 @@ test('wifi',
     'test_wifi.c',
     '../runtime/services/wifi/captive_portal.c',
     include_directories: include_directories('../runtime/services/wifi'),
+    dependencies: [gio_dep],
+  )
+)
+
+# Test: call log policy — outgoing/incoming/missed, duration, unique ids, the
+# 500-entry cap, persistence, delete
+test('calllog',
+  executable('test-calllog',
+    'test_calllog.c',
+    '../runtime/services/telephony/calllog.c',
+    include_directories: include_directories('../runtime/services/telephony'),
     dependencies: [gio_dep],
   )
 )

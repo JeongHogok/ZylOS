@@ -9,7 +9,7 @@
  *           모바일 데이터 — IPv4v6 + CLAT 연결 생성(구버전 NM 폴백),
  *           GetMobileData / SetMobileData (자동 연결·로밍).
  *           통화 — 수신 번호, 통화 기록(부재중·수신·발신, 재시작 후 유지, 삭제), DTMF
- * 의존방향: runtime/services/telephony/telephony.c (main 이름 변경), cbs.c,
+ * 의존방향: runtime/services/telephony/telephony.c (main 이름 변경), cbs.c, calllog.c,
  *           gio, dbus-daemon (없으면 SKIP)
  * SOLID: SRP — 모뎀 ↔ 텔레포니 D-Bus 계약 검증만 담당
  * ────────────────────────────────────────────────────────── */
@@ -400,8 +400,8 @@ int main(void) {
     assert(strcmp(g_call_state, "RINGING") == 0 && strcmp(g_call_number, "01012345678") == 0);
     emit_call(mm, 3, 7);
     assert(wait_for(&g_call_signals, 2) && strcmp(g_call_state, "IDLE") == 0);
-    assert(svc->calllog->len == 1);
-    CallLogEntry *missed = &g_array_index(svc->calllog, CallLogEntry, 0);
+    assert(zyl_calllog_count(svc->calllog) == 1);
+    const ZylCallLogEntry *missed = zyl_calllog_get(svc->calllog, 0);
     assert(strcmp(missed->type, "missed") == 0 && strcmp(missed->number, "01012345678") == 0);
     assert(missed->duration == 0);
     printf("PASS\n");
@@ -443,22 +443,21 @@ int main(void) {
     printf("PASS\n");
 
     printf("  %-56s ", "the call log survives a restart; entries can be deleted");
-    ZylTelephonyService probe = {0};
-    calllog_load(&probe);
-    assert(probe.calllog->len == 3);
-    g_array_free(probe.calllog, TRUE);
+    ZylCallLog *probe = zyl_calllog_open(ZYL_CALLLOG_FILE);
+    assert(zyl_calllog_count(probe) == 3);
+    zyl_calllog_free(probe);
     GVariant *del = call_os(os, "DeleteCallLog", g_variant_new("(t)", missed_id), "(b)");
     gboolean gone = FALSE;
     g_variant_get(del, "(b)", &gone);
-    assert(gone && svc->calllog->len == 2);
+    assert(gone && zyl_calllog_count(svc->calllog) == 2);
     g_variant_unref(del);
     del = call_os(os, "DeleteCallLog", g_variant_new("(t)", missed_id), "(b)");
     g_variant_get(del, "(b)", &gone);
     assert(!gone);
     g_variant_unref(del);
-    calllog_load(&probe);
-    assert(probe.calllog->len == 2);
-    g_array_free(probe.calllog, TRUE);
+    probe = zyl_calllog_open(ZYL_CALLLOG_FILE);
+    assert(zyl_calllog_count(probe) == 2);
+    zyl_calllog_free(probe);
     printf("PASS\n");
 
     zyl_telephony_destroy(svc);
