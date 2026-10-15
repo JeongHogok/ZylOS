@@ -52,20 +52,6 @@ test('bridge-dispatch',
   )
 )
 
-# Test: sandbox permission vocabulary mapping (Linux only — uses seccomp/namespaces)
-if host_machine.system() == 'linux'
-  test('sandbox-permissions',
-    executable('test-sandbox-permissions',
-      'test_sandbox_permissions.c',
-      include_directories: include_directories(
-        '../runtime/services/sandbox',
-      ),
-      dependencies: [gio_dep, json_glib_dep,
-                     dependency('libseccomp', version: '>=2.5.0')],
-    )
-  )
-endif
-
 # Test: telemetry opt-in consent (no collection or identifier before consent,
 # erasure on withdrawal). Uses the real daemon source with main() compiled out.
 test('telemetry-consent',

@@ -54,26 +54,28 @@ python3 -I tools/build-store.py package --key store.key …   # 스토어: 공�
 
 ---
 
-## seccomp 시스콜 필터
+## 프로세스 격리
 
-### libseccomp BPF 3프로필 (sandbox.c)
+### 앱 — WebKitGTK 샌드박스
 
-> 구현돼 있으나 **아직 어떤 프로세스에도 적용되지 않음**: `zyl-sandbox` 라이브러리는 어떤 실행 파일에도 링크되지
-> 않고, 적용 지점인 WAM zygote 도 호출되지 않는다. 앱 격리는 현재 WebKitGTK 의 웹 프로세스
-> 샌드박스, 앱별 컨테이너, OS 레이어 권한 검사에 의존한다.
+앱 코드는 WAM 이 띄우는 WebKitGTK 웹 프로세스에서 돈다. 그 프로세스의 격리는 WebKit 이
+직접 한다: bubblewrap 네임스페이스 + seccomp 시스콜 필터 + xdg-dbus-proxy.
 
-| 프로필 | 대상 | 설명 |
-|--------|------|------|
-| **STRICT** | 서드파티 앱 | DEFAULT 규칙 + 추가 제한 |
-| **DEFAULT** | 일반 시스템 앱 | 위험 시스콜 차단 (기본 집합, ~46개 규칙 총합) |
-| **PERMISSIVE** | 권한 있는 시스템 서비스 | 최소 규칙만 적용 |
+- `webkitgtk-6.0`: 샌드박스가 **상시 ON** — 끄는 API 자체가 없다
+- `webkit2gtk-4.1` 폴백: WAM 이 `webkit_web_context_set_sandbox_enabled()` 로 켠다
+  (`runtime/wam/src/wam.c`)
+- 이미지에 `bubblewrap`·`xdg-dbus-proxy` 가 없으면 격리가 **조용히 실패**한다 —
+  [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) 의 필수 패키지
 
-차단 대상 시스콜 예시 (DEFAULT):
-`ptrace`, `mount`, `umount2`, `reboot`, `kexec_load`, `init_module`, `delete_module`,
-`finit_module`, `pivot_root`, `swapon`, `swapoff`, `acct`, `settimeofday`, `clock_settime`,
-`adjtimex`, `personality`, `unshare`, `setns`, `keyctl`, `add_key`, ...
+OS 가 자체 seccomp·네임스페이스 코드로 앱을 가두는 길은 쓰지 않는다. WAM 이 fork 하는
+자식이 없어(웹 프로세스는 WebKit 이 띄운다) 걸 대상이 없고, 같은 일을 WebKit 이 이미
+유지보수된 코드로 한다.
 
-모든 프로필에서 `PR_SET_NO_NEW_PRIVS` 설정.
+### 데몬 — systemd + AppArmor
+
+OS 서비스는 프로세스마다 systemd 하드닝과 AppArmor 프로필로 격리한다
+(`system/apparmor/zyl-*`). `zyl-apparmor.service` 가 부팅 때 `/etc/apparmor.d/zyl-*` 를
+모두 로드하고 파서 오류면 부팅을 멈춘다 (fail closed).
 
 ---
 
@@ -122,15 +124,18 @@ python3 -I tools/build-store.py package --key store.key …   # 스토어: 공�
 
 ## 앱 격리
 
-### 앱별 UID
-- 각 앱은 독립된 Linux UID로 실행 (`user` 서비스의 `zyl_user_get_app_uid()`)
-- 앱 간 파일 접근은 UID 기반으로 커널에서 차단
-- 앱 제거 시 해당 UID의 모든 리소스 정리
+앱별 Linux UID 는 쓰지 않는다 — WAM 한 프로세스가 모든 웹뷰를 띄우므로 UID 로는 앱이
+갈라지지 않는다. 갈라야 하는 지점을 각각 맡는 것:
 
-### 프로세스 격리
-- **mount namespace**: 앱별 독립 파일시스템 뷰
-- **network namespace**: 권한 없으면 네트워크 차단
-- **cgroup v2**: 메모리/CPU/PID 제한
+- **프로세스**: WebKitGTK 샌드박스 (위 "프로세스 격리")
+- **저장소**: 앱마다 `zyl-app://<id>/` 출처와 `/data/appdata/<id>/webkit/` 세션 —
+  웹 저장소가 섞이지 않는다
+- **파일**: 제3자 앱의 `fs` 는 자기 컨테이너가 루트 (브릿지가 채우는 `container` in-arg)
+- **앱 간 데이터**: ContentProvider URI 경유, 권한은 `ZylContentProvider` 가 검사
+- **서비스**: 호출 가능 서비스와 필요 권한은 OS 가 판정
+  (`runtime/wam/src/bridge/bridge.c` 의 `SERVICE_PERMISSIONS`, 에뮬레이터는
+  `apps/system/permissions.js`)
+- **제거**: 컨테이너를 지우면 앱이 남긴 것이 하나도 남지 않는다 (`tests/store_e2e.sh`)
 
 ---
 
@@ -183,11 +188,13 @@ python3 -I tools/build-store.py package --key store.key …   # 스토어: 공�
 - 타임아웃 시 자동 release (power 서비스 타이머 관리)
 - 무한 웨이크락으로 인한 배터리 소진 방지
 
-### OOM Killer (cgroup v2)
-- cgroup v2 `memory.max` 기반 앱별 메모리 상한 적용
-- `memory.pressure` 이벤트 기반 Low Memory Killer (LMK)
-- 백그라운드 앱 → 캐시 앱 → 사용자 앱 순으로 OOM 처리
-- 앱별 UID + cgroup v2 조합으로 메모리 격리 강제
+### OOM Killer
+- `/proc/meminfo` 의 MemAvailable 비율을 5초마다 확인 (`runtime/wam/src/oom`)
+- 25% 경고 로그 → 15% 에서 `zyl:lowmemory` 로 상태 저장 기회를 주고 0.5초 뒤 종료 →
+  10% 에서 즉시 종료
+- 포그라운드 앱은 보호, suspended 앱을 먼저, 그다음 LRU 순으로 닫는다
+- 앱별 메모리 상한(cgroup `memory.max`)은 없다: 앱 코드는 WebKit 이 띄우는 웹
+  프로세스에서 돌고 WAM 이 그 PID 를 알 길이 없다. 어느 앱을 닫을지가 WAM 이 쥔 지렛대다
 
 ### systemd 서비스 보안 하드닝
 - 25개 systemd 서비스 유닛에 보안 하드닝 전체 적용

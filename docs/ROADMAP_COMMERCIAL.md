@@ -267,15 +267,16 @@ Screen Off → Idle (5분) → Doze (30분) → Deep Sleep
 2. 앱별 Smack 라벨 할당
 3. 서비스 간 통신 규칙 정의
 
-### E3. Zygote 패턴
+### E3. 콜드 스타트 단축
 
-**현재**: 앱마다 새 WebKitGTK 프로세스.
-**목표**: 사전 fork된 프로세스 풀에서 즉시 launch.
+**현재**: 앱마다 WebKit 이 새 웹 프로세스를 띄운다 (~2초).
+**목표**: ~200ms.
 
 **작업**:
-1. WAM에 zygote 프로세스 추가 — WebKitGTK 초기화 후 대기
-2. 앱 launch 요청 → zygote fork → `setuid` + sandbox → 앱 로드
-3. 콜드 스타트: ~2초 → ~200ms 목표
+1. WebKit 의 프로세스 사전 준비 경로를 쓴다 — 직접 fork 하는 zygote 를 다시 만들지 말 것:
+   웹 프로세스를 띄우는 주체가 WebKit 이라 WAM 이 fork 해도 그 자식이 앱을 로드하지 않는다
+2. 앱 자원 선로딩 (`zyl-app://` 스킴 핸들러 캐시)
+3. `tests/perf/budgets.json` 의 시작 시간 예산으로 측정
 
 ---
 

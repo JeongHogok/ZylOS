@@ -37,7 +37,6 @@ wam_sources = files(
   'src/lifecycle/lifecycle.c',
   'src/bridge/bridge.c',
   'src/dbus/dbus_service.c',
-  'src/zygote.c',
   'src/oom/oom.c',
   'src/intent/intent.c',
   'src/scheme/app_scheme.c',

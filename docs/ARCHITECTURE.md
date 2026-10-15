@@ -82,12 +82,6 @@ Linux 커널 위에 Wayland 컴포지터 + WebKitGTK 앱 런타임으로 구성�
 | user | org.zylos.UserManager | 멀티유저, 앱별 UID |
 | wifi | org.zylos.WifiService | wpa_supplicant 연동, WiFi 스캔/연결 |
 
-#### 라이브러리 (D-Bus 데몬 없음):
-
-| 서비스 | 역할 |
-|--------|------|
-| sandbox | namespace + libseccomp BPF + cgroup v2 — 구현만, 아직 어떤 프로세스에도 적용되지 않음 |
-
 appstore(`org.zylos.AppStore`)와 updater(`org.zylos.Updater`)는 D-Bus 데몬이다.
 
 ### JS 서비스 모듈 (33개 — apps/system/services/)
@@ -339,28 +333,22 @@ CSS에 `zoom: var(...)` 를 쓰면 조용히 1이 된다. `zoom` 은 vw/vh 를 �
 
 ## 보안 모델
 
-### 7계층 보안
+### 6계층 보안
 1. **Verified Boot**: FIT 이미지 서명 (RSA-2048) + dm-verity (rootfs 무결성)
-2. **파일시스템**: mount namespace + bind mount ¹
-3. **시스콜**: libseccomp BPF (3프로필 — STRICT/DEFAULT/PERMISSIVE, 총 46개 규칙) ¹
-4. **네트워크**: network namespace (권한 없으면 차단) ¹
-5. **리소스**: cgroup v2 (메모리/CPU/PID 제한) ¹
+2. **앱 프로세스**: WebKitGTK 샌드박스 — bubblewrap 네임스페이스 + seccomp
+   (webkitgtk-6.0 은 상시 ON, 4.1 폴백은 WAM 이 켠다)
+3. **데몬**: systemd 하드닝 + AppArmor 프로필 (`system/apparmor/zyl-*`)
+4. **앱 컨테이너**: `/data/appdata/<id>/` — 파일·웹 저장소·출처가 앱마다 분리
+5. **IPC**: D-Bus 정책 XML (권한별 서비스 접근)
+6. **앱 권한 시행**: ZylPermissions + ZylPermissionDialog — 서비스 호출 시 권한 실시간 검증
 
-¹ `runtime/services/sandbox` 에 구현돼 있으나 아직 어떤 프로세스에도 적용되지 않음 (WAM 의 zygote 와 함께 미연결)
-6. **IPC**: D-Bus 정책 XML (권한별 서비스 접근)
-7. **앱 권한 시행**: ZylPermissions + ZylPermissionDialog — 서비스 호출 시 권한 실시간 검증
-
-### 앱 격리 (seccomp 프로필)
-| 프로필 | 대상 | 차단 규칙 수 |
-|--------|------|------------|
-| STRICT | 서드파티 앱 | DEFAULT + 추가 규칙 (총 최다) |
-| DEFAULT | 일반 시스템 앱 | 위험 시스콜 차단 (기본 집합) |
-| PERMISSIVE | 권한 있는 시스템 앱 | 최소 규칙만 적용 |
-
-### 앱별 UID
-각 앱은 독립된 Linux UID로 실행됩니다.
-`user` 서비스의 `zyl_user_get_app_uid(appId)`로 앱별 UID 조회.
-앱 간 파일 접근은 UID 기반으로 커널에서 차단됩니다.
+### 앱 격리
+앱 코드는 WAM 이 띄우는 WebKitGTK 웹 프로세스에서 돌고, 그 프로세스는 WebKit 이 직접
+격리합니다 (bubblewrap + seccomp + xdg-dbus-proxy). 앱별 Linux UID 는 쓰지 않습니다 —
+WAM 한 프로세스가 모든 웹뷰를 띄우므로 UID 로는 앱이 갈라지지 않고, 갈라야 하는 지점은
+따로 있습니다: 저장소는 `zyl-app://<id>/` 출처와 앱별 WebKit 세션, 파일은 컨테이너,
+서비스 호출은 브릿지가 채운 `caller` 기준 OS 권한 검사.
+자세한 내용은 [SECURITY.md](SECURITY.md) 참조.
 
 ### 크리덴셜 보안
 - 저장 포맷: `[salt(16B)][iv(12B)][ciphertext(N)][tag(16B)]`

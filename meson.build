@@ -32,7 +32,7 @@ subdir('board')   # defines board_id / board_soc / board_arch / board_hal_backen
 # ─── Form-factor profile → C service set ───────────────────
 # Every profile needs these: display, input, power, security, logging, OTA.
 zyl_core_services = [
-  'logger', 'display', 'input', 'power', 'sandbox', 'crash',
+  'logger', 'display', 'input', 'power', 'crash',
   'credential', 'user', 'accessibility', 'notification', 'updater', 'telemetry',
   'netstats', 'bootctl', 'settings', 'lock', 'device', 'storage', 'fs', 'clipboard', 'network', 'appdata',
 ]
@@ -63,8 +63,6 @@ zyl_profile_extras = {
 
 zyl_services = zyl_core_services + zyl_profile_extras[zyl_profile]
 
-# Services that ship no systemd unit (static library or on-demand binary).
-zyl_services_without_unit = ['sandbox']
 # Unit basename differs from the service directory name.
 zyl_unit_overrides = {'crash': 'zyl-crash-handler'}
 
@@ -118,9 +116,7 @@ install_headers('runtime/hal/hal.h', subdir: 'zyl-os')
 # ─── systemd units — only those the profile actually builds ───
 zyl_units = ['zyl-compositor', 'zyl-wam', 'zyl-apparmor']
 foreach svc : zyl_services
-  if not zyl_services_without_unit.contains(svc)
-    zyl_units += zyl_unit_overrides.get(svc, 'zyl-' + svc)
-  endif
+  zyl_units += zyl_unit_overrides.get(svc, 'zyl-' + svc)
 endforeach
 
 _systemd_dir = get_option('prefix') / 'lib' / 'systemd' / 'system'
@@ -187,10 +183,18 @@ install_data('system/recovery/recovery.sh',       install_dir: get_option('datad
 install_data('system/recovery/factory-reset.sh',  install_dir: get_option('datadir') / 'zyl-os' / 'recovery', install_mode: 'rwxr-xr-x')
 install_data('system/recovery/recovery.service',  install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
 
-# Install AppArmor profiles
-install_data('system/apparmor/zyl-wam',           install_dir: get_option('sysconfdir') / 'apparmor.d')
-install_data('system/apparmor/zyl-compositor',    install_dir: get_option('sysconfdir') / 'apparmor.d')
-install_data('system/apparmor/zyl-app-default',   install_dir: get_option('sysconfdir') / 'apparmor.d')
+# AppArmor profiles. zyl-apparmor.service loads every /etc/apparmor.d/zyl-* and
+# stops the boot on a parser error, so a profile whose binary this profile does
+# not build must not be installed.
+_apparmor = ['system/apparmor/zyl-wam',
+             'system/apparmor/zyl-compositor',
+             'system/apparmor/zyl-app-default']
+foreach svc : ['audio', 'bluetooth', 'camera', 'credential', 'telephony']
+  if zyl_services.contains(svc)
+    _apparmor += 'system/apparmor/zyl-' + svc
+  endif
+endforeach
+install_data(_apparmor, install_dir: get_option('sysconfdir') / 'apparmor.d')
 
 # Tests
 subdir('tests')

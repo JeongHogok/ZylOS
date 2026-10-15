@@ -20,7 +20,7 @@ jobs:
             gtk4 webkitgtk-6.0 json-glib \
             hwdata libdisplay-info \
             seatd \
-            openssl libseccomp libzip curl gpsd \
+            openssl libzip curl gpsd \
             python nodejs dbus
       - name: Build wlroots from source
         run: |

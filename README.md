@@ -20,7 +20,7 @@
 - **클립보드 API**: 앱 간 텍스트/mimeType 공유 (clipboard.js 서비스)
 - **앱별 i18n**: 공유 엔진(shared/i18n.js) + 앱별 번역 데이터 (ko/en/ja/zh/es)
 - **7계층 보안**: iframe sandbox + CSP + 권한 체크 + 파일 보호 + 도메인 화이트리스트 + 앱 워치독 + Verified Boot
-- **네이티브 보안**: OpenSSL AES-256-GCM 크리덴셜, 앱 봉인(스토어·프로비저닝된 개발자 서명, 파일마다 SHA-256), libseccomp BPF (3프로필 — 구현만, 아직 어떤 프로세스에도 적용되지 않음), dm-verity
+- **네이티브 보안**: OpenSSL AES-256-GCM 크리덴셜, 앱 봉인(스토어·프로비저닝된 개발자 서명, 파일마다 SHA-256), WebKitGTK 샌드박스(bubblewrap+seccomp), AppArmor, dm-verity
 - **네이티브 에뮬레이터**: Tauri 2.x (Rust) — IPC 라우터 + 컴포지터, aes-gcm 암호화
 - **A/B OTA**: 원자적 시스템 업데이트 + RSA-2048 서명 검증 + 자동 롤백
 - **Verified Boot**: FIT 이미지 서명 + dm-verity (rootfs 무결성)
@@ -47,7 +47,7 @@
 | **IPC** | D-Bus | C 서비스 간 통신 (~22개 D-Bus 데몬) |
 | **앱 프레임워크** | HTML/CSS/JS (ES5) | 시스템 앱 22개 |
 | **HAL** | C (sysfs, wpa_supplicant, BlueZ, PipeWire) | 하드웨어 추상화 (9개 구현체) |
-| **샌드박싱** | namespace + libseccomp BPF (3프로필 46규칙) + cgroup v2 — 구현만, 아직 어떤 프로세스에도 적용되지 않음 | 앱 격리 |
+| **샌드박싱** | WebKitGTK 샌드박스 (bubblewrap + seccomp) + AppArmor | 앱 격리는 WebKit, 데몬 격리는 AppArmor |
 | **크리덴셜** | OpenSSL AES-256-GCM + PBKDF2-HMAC-SHA256 | 인증 정보 암호화 |
 | **패키징** | .zpkg + 봉인(.zyl-seal, RSA-SHA256) — 스토어 키 또는 프로비저닝된 개발자 키 | 앱 배포/검증 |
 | **업데이트** | A/B 파티션 + RSA-2048 서명 검증 | 원자적 OTA |
@@ -92,7 +92,6 @@
 | nfc | org.zylos.NfcService | NFC 태그 읽기/쓰기 |
 | notification | org.zylos.Notification | 알림 생성/조회/채널 관리 |
 | power | org.zylos.PowerManager | Doze 상태머신, CPU 거버너, 웨이크락 |
-| sandbox | (라이브러리) | namespace + libseccomp BPF + cgroup v2 — 아직 어떤 프로세스에도 적용되지 않음 |
 | sensors | org.zylos.SensorService | 가속도계, 자이로, 근접, 조도 |
 | telemetry | org.zylos.Telemetry | 익명 사용 통계 수집 |
 | telephony | org.zylos.Telephony | ModemManager 통합, 통화/SMS |
@@ -195,7 +194,7 @@
 sudo apt install -y \
   meson ninja-build pkg-config \
   libglib2.0-dev libjson-glib-dev \
-  libseccomp-dev libzip-dev \
+  libzip-dev \
   libssl-dev libcurl4-openssl-dev \
   gcc-riscv64-linux-gnu g++-riscv64-linux-gnu
 ```
@@ -289,9 +288,9 @@ ninja -C builddir-riscv
 | 크리덴셜 암호화 | **AES-256-GCM** + PBKDF2-HMAC-SHA256 (100,000회) | OpenSSL EVP API |
 | 앱 패키지 서명 | **RSA-2048+SHA-256 실검증** | OpenSSL EVP, libzip |
 | OTA 서명 검증 | **RSA-2048+SHA-256 실검증** | OpenSSL EVP |
-| seccomp 필터 | libseccomp BPF — 3프로필, 46개 규칙 (구현만, 아직 어떤 프로세스에도 적용되지 않음) | DEFAULT/STRICT/PERMISSIVE |
+| 앱 프로세스 격리 | **WebKitGTK 샌드박스** — bubblewrap 네임스페이스 + seccomp | webkitgtk-6.0 은 상시 ON |
 | Verified Boot | **FIT 이미지 서명 + dm-verity** | gen-boot-keys.sh + sign-image.sh |
-| 앱 격리 | namespace + cgroup v2 + 앱별 UID (구현만, 아직 어떤 프로세스에도 적용되지 않음) | 앱 데이터는 앱별 컨테이너 |
+| 데몬 격리 | **AppArmor + systemd 하드닝** | 파서 오류면 부팅 중단 (fail closed) |
 | 런타임 퍼미션 | **ZylPermissionDialog** | 위험 권한 사용자 승인 필수 |
 
 ### 알려진 제한사항
@@ -307,7 +306,6 @@ ninja -C builddir-riscv
 | 라이브러리 | 용도 |
 |-----------|------|
 | openssl | AES-256-GCM, RSA-2048, SHA-256 |
-| libseccomp | seccomp BPF 샌드박스 |
 | libzip | .zpkg 패키지 해제 |
 | json-glib | JSON 파싱 |
 | glib-2.0, gio-2.0 | D-Bus IPC, 유틸리티 |

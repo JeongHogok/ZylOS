@@ -26,7 +26,7 @@ RUN pacman-key --init && \
       gtk4 webkitgtk-6.0 json-glib \
       hwdata libdisplay-info \
       seatd \
-      openssl libseccomp libzip curl gpsd \
+      openssl libzip curl gpsd \
       python && \
     # Build wlroots from source (pinned version)
     git clone --depth 1 --branch 0.18.2 \
