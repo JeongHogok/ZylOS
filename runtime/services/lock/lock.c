@@ -240,7 +240,7 @@ static void on_lock_bus(GDBusConnection *conn, const gchar *name, gpointer data)
 int main(int argc, char *argv[]) {
     (void)argc; (void)argv;
     lock_load(&g_lock);
-    g_bus_own_name(G_BUS_TYPE_SESSION, "org.zylos.Lock", G_BUS_NAME_OWNER_FLAGS_NONE,
+    g_bus_own_name(G_BUS_TYPE_SYSTEM, "org.zylos.Lock", G_BUS_NAME_OWNER_FLAGS_NONE,
                    on_lock_bus, NULL, NULL, NULL, NULL);
     GMainLoop *loop = g_main_loop_new(NULL, FALSE);
     g_main_loop_run(loop);

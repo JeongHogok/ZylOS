@@ -344,7 +344,7 @@ ZylDisplayService *zyl_display_create(void) {
     load_modes(svc);
 
     /* Register D-Bus name */
-    svc->dbus_owner_id = g_bus_own_name(G_BUS_TYPE_SESSION,
+    svc->dbus_owner_id = g_bus_own_name(G_BUS_TYPE_SYSTEM,
         ZYL_DISPLAY_DBUS_NAME, G_BUS_NAME_OWNER_FLAGS_NONE,
         on_display_bus_acquired, NULL, NULL, svc, NULL);
 

@@ -184,7 +184,8 @@ static void handle_alarm_method(GDBusConnection      *conn,
         const gchar *tag, *app_id, *title;
         guint64      trigger_at, interval_ms;
         gboolean     repeating;
-        g_variant_get(params, "(&stts&sb&s)",
+        /* (s tag, t trigger_at, t interval_ms, s app_id, b repeating, s title) */
+        g_variant_get(params, "(&stt&sb&s)",
                       &tag, &trigger_at, &interval_ms, &app_id, &repeating,
                       &title);
 
@@ -395,7 +396,7 @@ ZylAlarmService *zyl_alarm_service_create(void) {
 
     g_svc = svc;
 
-    svc->dbus_owner_id = g_bus_own_name(G_BUS_TYPE_SESSION,
+    svc->dbus_owner_id = g_bus_own_name(G_BUS_TYPE_SYSTEM,
         ZYL_ALARM_DBUS_NAME,
         G_BUS_NAME_OWNER_FLAGS_NONE,
         on_alarm_bus_acquired,

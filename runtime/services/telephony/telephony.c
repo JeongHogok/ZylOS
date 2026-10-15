@@ -55,7 +55,7 @@ struct ZylTelephonyService {
 
     /* D-Bus */
     GDBusConnection *system_bus;     /* ModemManager는 system bus */
-    GDBusConnection *session_bus;    /* Zyl 서비스는 session bus */
+    GDBusConnection *zyl_bus;        /* Zyl 서비스 버스 = 시스템 버스 */
     guint dbus_owner_id;
     guint mm_signal_sub;             /* ModemManager 시그널 구독 */
     guint mm_sms_sub;                /* SMS 시그널 구독 */
@@ -137,8 +137,8 @@ static void transition_call_state(ZylTelephonyService *svc,
               number ? number : "");
 
     /* D-Bus 시그널 */
-    if (svc->session_bus) {
-        g_dbus_connection_emit_signal(svc->session_bus, NULL,
+    if (svc->zyl_bus) {
+        g_dbus_connection_emit_signal(svc->zyl_bus, NULL,
             ZYL_TELEPHONY_DBUS_PATH,
             ZYL_TELEPHONY_DBUS_NAME,
             "CallStateChanged",
@@ -394,8 +394,8 @@ static void on_mm_sms_added(GDBusConnection *conn,
     g_message("[Telephony] SMS received from %s: %.40s...", from, body);
 
     /* D-Bus 시그널 */
-    if (svc->session_bus) {
-        g_dbus_connection_emit_signal(svc->session_bus, NULL,
+    if (svc->zyl_bus) {
+        g_dbus_connection_emit_signal(svc->zyl_bus, NULL,
             ZYL_TELEPHONY_DBUS_PATH,
             ZYL_TELEPHONY_DBUS_NAME,
             "SmsReceived",
@@ -424,11 +424,11 @@ static void process_cbm(ZylTelephonyService *svc, const char *path) {
     const ZylCbsAlert *a = zyl_cbs_store_receive(svc->cbs,
         cbm_uint(svc, path, "Channel"), cbm_uint(svc, path, "MessageCode"),
         cbm_uint(svc, path, "Update"), text, (int64_t)(now_ms() / 1000));
-    if (a && svc->session_bus) {
+    if (a && svc->zyl_bus) {
         g_message("[Telephony] Emergency alert %" G_GUINT64_FORMAT ": %s (channel %u)",
                   a->id, zyl_cbs_category_name(a->category), a->channel);
         /* The WAM brings up the alerts app on this signal */
-        g_dbus_connection_emit_signal(svc->session_bus, NULL,
+        g_dbus_connection_emit_signal(svc->zyl_bus, NULL,
             ZYL_TELEPHONY_DBUS_PATH, ZYL_TELEPHONY_DBUS_NAME, "EmergencyAlert",
             g_variant_new("(tsus)", (guint64)a->id, zyl_cbs_category_name(a->category),
                           a->channel, a->text), NULL);
@@ -803,7 +803,7 @@ static void on_telephony_bus_acquired(GDBusConnection *conn, const gchar *name,
                                        gpointer data) {
     (void)name;
     ZylTelephonyService *svc = data;
-    svc->session_bus = conn;
+    svc->zyl_bus = conn;
 
     GDBusNodeInfo *info = g_dbus_node_info_new_for_xml(telephony_introspection_xml, NULL);
     if (info && info->interfaces && info->interfaces[0]) {
@@ -843,8 +843,8 @@ ZylTelephonyService *zyl_telephony_create(void) {
         }
     }
 
-    /* Zyl D-Bus (session bus) 등록 */
-    svc->dbus_owner_id = g_bus_own_name(G_BUS_TYPE_SESSION,
+    /* Zyl D-Bus (시스템 버스) 등록 */
+    svc->dbus_owner_id = g_bus_own_name(G_BUS_TYPE_SYSTEM,
         ZYL_TELEPHONY_DBUS_NAME, G_BUS_NAME_OWNER_FLAGS_NONE,
         on_telephony_bus_acquired, NULL, NULL, svc, NULL);
 

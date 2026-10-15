@@ -349,6 +349,26 @@ _e2e_notification = executable('e2e-notification',
   '../runtime/services/notification/notification.c',
   include_directories: include_directories('../runtime/services/notification'),
   dependencies: [gio_dep, json_glib_dep], c_args: ['-DNOTIF_PERSIST_DIR="@0@/notifications"'.format(_e2e)])
+# Test: the Zyl service bus — services own their names on the system bus and
+# reach each other across it under the shipped policy. The services had been
+# asking for the session bus while their units (Type=dbus + BusName=) waited on
+# the system bus: on a device every service would sit in "activating" forever.
+_bus = '/tmp/zyl-bus-test'
+_bus_alarm = executable('bus-alarm',
+  '../runtime/services/alarm/alarm.c',
+  include_directories: include_directories('../runtime/services/alarm'),
+  dependencies: [gio_dep, json_glib_dep],
+  c_args: ['-D_GNU_SOURCE', '-DALARM_PERSIST_DIR="@0@/alarms"'.format(_bus)])
+_bus_notification = executable('bus-notification',
+  '../runtime/services/notification/notification.c',
+  include_directories: include_directories('../runtime/services/notification'),
+  dependencies: [gio_dep, json_glib_dep],
+  c_args: ['-DNOTIF_PERSIST_DIR="@0@/notifications"'.format(_bus)])
+test('dbus-policy', find_program('test_dbus_policy.sh'),
+  args: [_bus_alarm, _bus_notification,
+         meson.project_source_root() / 'system' / 'dbus-1' / 'zyl-os.conf'],
+  timeout: 60, is_parallel: false)
+
 test('store-e2e', find_program('store_e2e.sh'),
   args: [_e2e_appstore, _e2e_appdata, _e2e_fs, _e2e_notification,
          meson.project_source_root() / 'tools' / 'build-store.py'],

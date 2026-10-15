@@ -145,7 +145,7 @@ ZylCameraService *zyl_camera_create(void) {
     cam->fd = -1;
     cam->streaming = false;
 
-    cam->dbus_owner_id = g_bus_own_name(G_BUS_TYPE_SESSION,
+    cam->dbus_owner_id = g_bus_own_name(G_BUS_TYPE_SYSTEM,
         ZYL_CAMERA_DBUS_NAME, G_BUS_NAME_OWNER_FLAGS_NONE,
         on_cam_bus, NULL, NULL, cam, NULL);
 

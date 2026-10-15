@@ -196,7 +196,7 @@ int main(int argc, char *argv[]) {
     zyl_partition_info_free(info);
     g_supported = zyl_updater_supported(g_u);
 
-    g_bus_own_name(G_BUS_TYPE_SESSION, "org.zylos.Updater", G_BUS_NAME_OWNER_FLAGS_NONE,
+    g_bus_own_name(G_BUS_TYPE_SYSTEM, "org.zylos.Updater", G_BUS_NAME_OWNER_FLAGS_NONE,
                    on_updater_bus, NULL, NULL, NULL, NULL);
     g_timeout_add_seconds(CONFIRM_AFTER_S, confirm_boot, NULL);
     GMainLoop *loop = g_main_loop_new(NULL, FALSE);

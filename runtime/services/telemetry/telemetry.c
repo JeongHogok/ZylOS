@@ -283,7 +283,7 @@ int main(int argc, char *argv[]) {
         purge_collected_data();
     }
 
-    g_bus_own_name(G_BUS_TYPE_SESSION,
+    g_bus_own_name(G_BUS_TYPE_SYSTEM,
         "org.zylos.Telemetry", G_BUS_NAME_OWNER_FLAGS_NONE,
         on_telemetry_bus, NULL, NULL, NULL, NULL);
 

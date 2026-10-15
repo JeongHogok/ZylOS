@@ -176,6 +176,11 @@ install_data('system/recovery/recovery.sh',       install_dir: get_option('datad
 install_data('system/recovery/factory-reset.sh',  install_dir: get_option('datadir') / 'zyl-os' / 'recovery', install_mode: 'rwxr-xr-x')
 install_data('system/recovery/recovery.service',  install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
 
+# The service bus policy: who may own and call org.zylos.* on the system bus.
+# Without it the daemons cannot take their names once the bus denies by default.
+install_data('system/dbus-1/zyl-os.conf',
+             install_dir: get_option('datadir') / 'dbus-1' / 'system.d')
+
 # AppArmor profiles. zyl-apparmor.service loads every /etc/apparmor.d/zyl-* and
 # stops the boot on a parser error, so a profile whose binary this profile does
 # not build must not be installed.

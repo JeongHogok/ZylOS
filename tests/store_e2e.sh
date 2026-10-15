@@ -4,7 +4,7 @@
 #
 # 역할: 앱스토어 종단 테스트 — 설치부터 삭제까지, 앱이 남기는 것이 없는지
 # 수행범위: 스토어 키·TLS 인증서 생성 → tools/build-store.py 로 봉인된 패키지·서명된
-#           카탈로그 → 로컬 HTTPS 서버 → 사설 세션 버스의 appstore·appdata·fs·
+#           카탈로그 → 로컬 HTTPS 서버 → 사설 시스템 버스의 appstore·appdata·fs·
 #           notification 데몬(테스트 경로로 빌드) → 카탈로그, 설치, 앱이 데이터·
 #           파일·알림·웹 저장소를 만들고 → 삭제 → 기기 쪽 어디에도 앱 흔적 없음.
 #           변조된 패키지·서명 안 맞는 카탈로그·개발자가 봉인한 카탈로그 앱은 거부.
@@ -74,11 +74,14 @@ for i in $(seq 50); do curl -sf "https://127.0.0.1:$PORT/catalog.json" >/dev/nul
 dbus-run-session -- bash -s "$APPSTORE" "$APPDATA" "$FS" "$NOTIF" "$R" "$ID" "$TOOL" <<'BUS'
 set -euo pipefail
 APPSTORE=$1 APPDATA=$2 FS=$3 NOTIF=$4 R=$5 ID=$6 TOOL=$7
+# Zyl services live on the system bus; the private bus dbus-run-session made
+# plays that part here (no system bus in a build container)
+export DBUS_SYSTEM_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS"
 "$APPSTORE" & "$APPDATA" & "$FS" & "$NOTIF" &
 for n in AppStore AppData FileSystem Notification; do
-  for i in $(seq 50); do gdbus introspect --session -d org.zylos.$n -o /org/zylos/$n >/dev/null 2>&1 && break; sleep 0.1; done
+  for i in $(seq 50); do gdbus introspect --system -d org.zylos.$n -o /org/zylos/$n >/dev/null 2>&1 && break; sleep 0.1; done
 done
-call() { gdbus call --session -d "org.zylos.$1" -o "/org/zylos/$1" -m "org.zylos.$1.$2" "${@:3}"; }
+call() { gdbus call --system -d "org.zylos.$1" -o "/org/zylos/$1" -m "org.zylos.$1.$2" "${@:3}"; }
 fail() { echo "✗ $*"; exit 1; }
 
 call AppStore GetCatalog | grep -q "'state': <'ok'>" || fail "catalog not ok"

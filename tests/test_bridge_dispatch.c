@@ -381,7 +381,7 @@ static void test_args_missing_or_wrong_type_names_the_argument(void) {
     g_clear_error(&err);
 }
 
-/* ── service.request end to end over a private session bus ──
+/* ── service.request end to end over a private system bus ──
    A real GDBus service with a typed method, called through dispatch exactly
    as an app would. Before the fix this returned InvalidArgs for '(s)'. */
 static gboolean e2e_seen_enabled;
@@ -409,8 +409,10 @@ static void test_service_request_reaches_typed_dbus_method(void) {
     }
     GTestDBus *bus = g_test_dbus_new(G_TEST_DBUS_NONE);
     g_test_dbus_up(bus);
+    /* Zyl services live on the system bus; the private bus plays that part */
+    g_setenv("DBUS_SYSTEM_BUS_ADDRESS", g_test_dbus_get_bus_address(bus), TRUE);
 
-    GDBusConnection *conn = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, NULL);
+    GDBusConnection *conn = g_bus_get_sync(G_BUS_TYPE_SYSTEM, NULL, NULL);
     assert(conn);
     GDBusNodeInfo *info = g_dbus_node_info_new_for_xml(
         "<node><interface name='org.zylos.Telemetry'><method name='SetEnabled'>"
@@ -541,6 +543,8 @@ static void test_events_only_from_the_services_own_name(void) {
     if (!g_find_program_in_path("dbus-daemon")) { printf("SKIP (no dbus-daemon) "); return; }
     GTestDBus *bus = g_test_dbus_new(G_TEST_DBUS_NONE);
     g_test_dbus_up(bus);
+    /* Zyl services live on the system bus; the private bus plays that part */
+    g_setenv("DBUS_SYSTEM_BUS_ADDRESS", g_test_dbus_get_bus_address(bus), TRUE);
     const char *addr = g_test_dbus_get_bus_address(bus);
     GDBusConnectionFlags f = G_DBUS_CONNECTION_FLAGS_AUTHENTICATION_CLIENT |
                              G_DBUS_CONNECTION_FLAGS_MESSAGE_BUS_CONNECTION;

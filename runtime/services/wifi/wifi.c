@@ -34,7 +34,7 @@ extern ZylCaptiveResult zyl_captive_portal_check(void);
 #define MAX_NETWORKS 64
 
 struct ZylWifiService {
-    GDBusConnection *session_bus;
+    GDBusConnection *zyl_bus;
     guint dbus_owner_id;
 };
 
@@ -140,9 +140,9 @@ static GVariant *set_hotspot(bool on, const char *ssid, const char *passphrase) 
 
 static void after_connect(ZylWifiService *svc) {
     ZylCaptiveResult captive = zyl_captive_portal_check();
-    if (captive.status == ZYL_NETWORK_CAPTIVE_PORTAL_STATUS && svc->session_bus) {
+    if (captive.status == ZYL_NETWORK_CAPTIVE_PORTAL_STATUS && svc->zyl_bus) {
         /* Apps and the UI show the portal's sign-in page */
-        g_dbus_connection_emit_signal(svc->session_bus, NULL, ZYL_WIFI_DBUS_PATH,
+        g_dbus_connection_emit_signal(svc->zyl_bus, NULL, ZYL_WIFI_DBUS_PATH,
             ZYL_WIFI_DBUS_NAME, "CaptivePortalDetected",
             g_variant_new("(s)", captive.portal_url), NULL);
     }
@@ -224,7 +224,7 @@ static void on_wifi_bus(GDBusConnection *conn, const gchar *name,
                          gpointer data) {
     ZylWifiService *svc = data;
     (void)name;
-    svc->session_bus = conn;
+    svc->zyl_bus = conn;
     GDBusNodeInfo *info = g_dbus_node_info_new_for_xml(
         wifi_introspection_xml, NULL);
     if (info && info->interfaces && info->interfaces[0]) {
@@ -239,7 +239,7 @@ static void on_wifi_bus(GDBusConnection *conn, const gchar *name,
 
 ZylWifiService *zyl_wifi_create(void) {
     ZylWifiService *svc = g_new0(ZylWifiService, 1);
-    svc->dbus_owner_id = g_bus_own_name(G_BUS_TYPE_SESSION,
+    svc->dbus_owner_id = g_bus_own_name(G_BUS_TYPE_SYSTEM,
         ZYL_WIFI_DBUS_NAME, G_BUS_NAME_OWNER_FLAGS_NONE,
         on_wifi_bus, NULL, NULL, svc, NULL);
     return svc;

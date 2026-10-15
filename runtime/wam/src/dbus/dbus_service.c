@@ -123,7 +123,7 @@ guint zyl_dbus_service_start(const ZylDbusMethodEntry *dispatch_table,
     g_ctx.table     = dispatch_table;
     g_ctx.user_data = user_data;
 
-    return g_bus_own_name(G_BUS_TYPE_SESSION,
+    return g_bus_own_name(G_BUS_TYPE_SYSTEM,
         WAM_DBUS_NAME,
         G_BUS_NAME_OWNER_FLAGS_NONE,
         on_bus_acquired, on_name_acquired, on_name_lost,
