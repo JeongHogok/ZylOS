@@ -37,8 +37,8 @@ profile zyl-bluetooth /usr/bin/zyl-bluetooth {
   /sys/devices/**/bluetooth/**            r,
 
   # Persistent pairing / bonding data
-  owner /var/lib/bluetooth/**             rw,
-  owner /var/lib/zyl-os/bluetooth/**      rw,
+  owner /var/lib/bluetooth/**             rwk,
+  owner /var/lib/zyl-os/bluetooth/**      rwk,
 
   # Shared OS resources (read-only)
   /usr/share/zyl-os/**                    r,

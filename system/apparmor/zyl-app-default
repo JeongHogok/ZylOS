@@ -16,22 +16,22 @@ profile zyl-app-default {
   /usr/share/zyl-os/**              r,
 
   # App's own data directory (owner-only)
-  owner /data/apps/@{profile_name}/**   rw,
+  owner /data/apps/@{profile_name}/**   rwk,
 
   # Shared app resources (read-only)
   /usr/share/zyl-os/apps/**         r,
 
   # Temporary files scoped to the app
-  owner /tmp/zyl-app-@{profile_name}-** rw,
+  owner /tmp/zyl-app-@{profile_name}-** rwk,
 
   # Cache scoped to the app
-  owner /var/cache/zyl-os/apps/@{profile_name}/** rw,
+  owner /var/cache/zyl-os/apps/@{profile_name}/** rwk,
 
   # GPU access for rendering
   /dev/dri/**                       rw,
 
   # Wayland socket (read-write for display)
-  owner /run/user/*/wayland-*       rw,
+  owner /run/user/*/wayland-*       rwk,
 
   # D-Bus session: only org.zylos.* allowed
   dbus (send) bus=session
