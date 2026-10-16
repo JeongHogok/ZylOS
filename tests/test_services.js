@@ -2986,6 +2986,41 @@ var userTests = (function () {
 })();
 
 /* ═══════════════════════════════════════════════════════
+   App content policy (real apps/system/sandbox.js, isolated) — the same
+   strings tests/test_app_scheme.c expects of the device's zyl_app_scheme_csp
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ ZylSandbox content policy');
+
+(function () {
+  var vm = require('vm');
+  var ctx = { window: {} };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'apps', 'system',
+                     'sandbox.js'), 'utf8'), ctx);
+  var S = ctx.window.ZylSandbox;
+
+  test('a user app without the network: its own files, nothing out', function () {
+    assert.strictEqual(S.getContentPolicy(false, ['camera']),
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+      "img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; " +
+      "font-src 'self'; frame-src 'self'; object-src 'none'");
+  });
+
+  test('with the network: https/wss out, never plain http, never remote or inline code', function () {
+    assert.strictEqual(S.getContentPolicy(false, ['network']),
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+      "img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; " +
+      "font-src 'self' https:; frame-src 'self'; object-src 'none'");
+  });
+
+  test('a system app holding network and webview', function () {
+    assert.strictEqual(S.getContentPolicy(true, ['network', 'webview']),
+      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; " +
+      "img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; " +
+      "font-src 'self' https:; frame-src 'self' https:; object-src 'none'");
+  });
+})();
+
+/* ═══════════════════════════════════════════════════════
    Wait for all async tests and report
    ═══════════════════════════════════════════════════════ */
 Promise.all([settingsTests, displayTests, inputTests, sensorsTests,

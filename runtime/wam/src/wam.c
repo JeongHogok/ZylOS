@@ -520,7 +520,18 @@ static void on_app_request(WebKitURISchemeRequest *req, gpointer user_data) {
     if (ok) {
         GBytes *bytes = g_bytes_new_take(data, len);
         GInputStream *in = g_memory_input_stream_new_from_bytes(bytes);
-        webkit_uri_scheme_request_finish(req, in, (gint64)len, zyl_app_scheme_mime(file));
+        /* The policy rides on every response, so it binds from the first byte
+           of the document and each worker script — not after the page ran */
+        char *csp = zyl_app_scheme_csp(m->is_system, zyl_bridge_app_holds(m, "network"),
+                                       zyl_bridge_app_holds(m, "webview"));
+        SoupMessageHeaders *headers = soup_message_headers_new(SOUP_MESSAGE_HEADERS_RESPONSE);
+        soup_message_headers_append(headers, "Content-Security-Policy", csp);
+        WebKitURISchemeResponse *resp = webkit_uri_scheme_response_new(in, (gint64)len);
+        webkit_uri_scheme_response_set_content_type(resp, zyl_app_scheme_mime(file));
+        webkit_uri_scheme_response_set_http_headers(resp, headers);
+        webkit_uri_scheme_request_finish_with_response(req, resp);
+        g_object_unref(resp);
+        g_free(csp);
         g_object_unref(in);
         g_bytes_unref(bytes);
     } else {
@@ -656,21 +667,14 @@ static GtkWidget *webkit_create_webview(ZylWebEngine   *self,
     webkit_user_content_manager_add_script(ucm, ff_script);
     webkit_user_script_unref(ff_script);
 
-    /* H10: Content Security Policy injection via user script */
-    const char *csp_script =
-        "var meta = document.createElement('meta');"
-        "meta.httpEquiv = 'Content-Security-Policy';"
-        "meta.content = \"default-src 'self'; script-src 'self' 'unsafe-inline';"
-        " style-src 'self' 'unsafe-inline'; img-src 'self' data:;\";"
-        "document.head.appendChild(meta);";
-
-    WebKitUserScript *csp_user_script = webkit_user_script_new(
-        csp_script,
-        WEBKIT_USER_CONTENT_INJECT_ALL_FRAMES,
-        WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_END,
-        NULL, NULL);
-    webkit_user_content_manager_add_script(ucm, csp_user_script);
-    webkit_user_script_unref(csp_user_script);
+    /* What it may reach is its CSP (on_app_request). An app with the network
+       reaches a server as a native app does: no CORS. Safe because its network
+       session — cookies included — is its own, nobody else's credentials ride
+       along. A change in Settings closes the app (on_permissions_changed). */
+    if (zyl_bridge_app_holds(manifest, "network")) {
+        const char *const any_https[] = { "https://*/*", NULL };
+        webkit_web_view_set_cors_allowlist(webview, any_https);
+    }
 
     g_object_unref(settings);
     return GTK_WIDGET(webview);
@@ -948,6 +952,15 @@ static void on_service_event(const char *service, const char *signal,
     }
 }
 
+/* The user changed a running app's permissions in Settings. What it may reach
+   came with its documents (CSP, CORS), so it closes, as Android stops an app
+   whose permission was revoked; it opens with the new rules next time */
+static void on_permissions_changed(const char *app_id, gpointer user_data) {
+    ZylWam *wam = user_data;
+    ZylAppManifest *m = g_hash_table_lookup(wam->manifests, app_id);
+    if (m && !m->is_system && wam->iface.get_instance(&wam->iface, app_id)) wam_close(wam, app_id);
+}
+
 static void subscribe_service_events(ZylWam *wam) {
     GError *err = NULL;
     g_event_bus = g_bus_get_sync(G_BUS_TYPE_SYSTEM, NULL, &err);
@@ -957,7 +970,7 @@ static void subscribe_service_events(ZylWam *wam) {
         return;
     }
     zyl_bridge_subscribe_service_events(g_event_bus, on_service_event, wam);
-    zyl_bridge_watch_revocations(g_event_bus);
+    zyl_bridge_watch_revocations(g_event_bus, on_permissions_changed, wam);
 }
 
 /* The first screen: setup until it is done, then the lock screen. A device

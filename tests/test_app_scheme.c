@@ -3,7 +3,8 @@
  *
  * 역할: 앱 출처 zyl-app:// 해석(runtime/wam/src/scheme) 단위 테스트
  * 수행범위: 앱 파일·OS 코드(/shared/·/keyboard/), .. ·절대 경로·밖을 가리키는 심볼릭
- *           링크·디렉터리·없는 파일 거부, MIME, 진입 URI
+ *           링크·디렉터리·없는 파일 거부, MIME, 진입 URI, 권한에 따른 CSP
+ *           (apps/system/sandbox.js 와 같은 문자열 — test_services.js 가 같은 기대값)
  * 의존방향: app_scheme.c, glib
  * SOLID: SRP — 앱이 자기 디렉터리와 OS 공용 코드 밖을 읽지 못함을 검증
  * ────────────────────────────────────────────────────────── */
@@ -68,6 +69,37 @@ static void test_mime_and_uri(void) {
     g_free(u);
 }
 
+/* The same strings test_services.js expects of sandbox.js getContentPolicy */
+static void same_csp(gboolean system, gboolean network, gboolean webview, const char *want) {
+    char *got = zyl_app_scheme_csp(system, network, webview);
+    if (strcmp(got, want) != 0) printf("\n    got  %s\n    want %s\n", got, want);
+    assert(strcmp(got, want) == 0);
+    g_free(got);
+}
+
+static void test_csp_follows_permissions(void) {
+    /* A user-installed app without the network: its own files, nothing out */
+    same_csp(FALSE, FALSE, FALSE,
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; "
+        "font-src 'self'; frame-src 'self'; object-src 'none'");
+    /* With it: https/wss out, still never plain http, never remote or inline code */
+    same_csp(FALSE, TRUE, FALSE,
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; "
+        "font-src 'self' https:; frame-src 'self'; object-src 'none'");
+    /* A system app (its pages have inline script) holding both */
+    same_csp(TRUE, TRUE, TRUE,
+        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; "
+        "font-src 'self' https:; frame-src 'self' https:; object-src 'none'");
+    /* Whatever the permissions: no eval, no remote script */
+    char *all = zyl_app_scheme_csp(TRUE, TRUE, TRUE);
+    assert(!strstr(all, "eval"));
+    assert(strstr(all, "script-src 'self' 'unsafe-inline';"));
+    g_free(all);
+}
+
 int main(void) {
     printf("=== app scheme tests ===\n");
     assert(system("rm -rf " ROOT_) == 0);
@@ -87,6 +119,7 @@ int main(void) {
     RUN_TEST(test_app_and_shared_files);
     RUN_TEST(test_nothing_outside);
     RUN_TEST(test_mime_and_uri);
+    RUN_TEST(test_csp_follows_permissions);
     assert(system("rm -rf " ROOT_) == 0);
     printf("=== %d/%d passed ===\n", tests_pass, tests_run);
     return tests_pass == tests_run ? 0 : 1;

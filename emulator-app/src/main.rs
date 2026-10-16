@@ -65,6 +65,7 @@ fn main() {
             commands::store::store_commit,
             commands::store::store_discard,
             commands::store::store_remove,
+            commands::store::store_app_policy,
             // Settings commands
             commands::settings::load_settings,
             commands::settings::save_settings,

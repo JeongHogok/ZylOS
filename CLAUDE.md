@@ -95,6 +95,12 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
   `CategoryChanged` 로 따라간다). 시스템 앱의 권한은 끌 수 없다.
   첫 사용 동의 창은 없다 — 넣는다면 자리는 이 두 게이트이고, 그리는 쪽은 앱 화면에
   OS 공용 코드(인텐트 선택 시트와 같은 방식)다
+- 앱이 닿을 수 있는 곳은 OS 가 권한으로 만든 CSP 가 정한다 — 기기 `app_scheme.c` 의
+  `zyl_app_scheme_csp`(WAM 이 모든 응답 헤더로), 에뮬레이터 `sandbox.js` 의
+  `getContentPolicy`(같은 문자열, `test_app_scheme.c`·`test_services.js`). 코드는 앱 자기
+  파일에서만 — 바깥 스크립트·eval 을 열지 말고, 제3자 앱에 인라인 스크립트를 열지 말 것
+  (네트워크와 합치면 받아 온 코드가 돌아 봉인을 건너뛴다). `network` 는 https/wss 만.
+  권한이 바뀐 앱은 실행 중이면 닫는다 — CSP 는 문서와 함께 오므로
 - 부트 정책은 `board/bpi-f3/u-boot-env.txt` 단일 출처(`tests/test_boot_env.sh`),
   부트로더는 `tools/build-bootloader.sh` 로만 빌드·서명. 저장소·USB·파일이 부팅을
   바꾸는 경로를 되살리지 말 것. eFuse 굽기는 기본 off(`--burn-rotpk` 일 때만)

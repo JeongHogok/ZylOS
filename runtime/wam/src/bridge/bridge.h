@@ -109,11 +109,18 @@ typedef void (*ZylBridgeEventFn)(const char *service, const char *signal,
 void zyl_bridge_subscribe_service_events(GDBusConnection *bus,
                                          ZylBridgeEventFn fn, gpointer user_data);
 
+typedef void (*ZylBridgeAppFn)(const char *app_id, gpointer user_data);
+
 /* Follow the user's permission revocations (the settings service's
  * "app_permissions" category): read them now, and again whenever that
  * category changes. Without this the device ignores a permission the user
- * switched off in Settings — only the emulator applied it. */
-void zyl_bridge_watch_revocations(GDBusConnection *conn);
+ * switched off in Settings — only the emulator applied it. changed is called
+ * for each app whose list changed (what its documents were given is stale). */
+void zyl_bridge_watch_revocations(GDBusConnection *conn, ZylBridgeAppFn changed, gpointer data);
+
+/* Does the app hold the permission now: system apps hold all, a user-installed
+ * app what it declared, minus the reserved and what the user switched off */
+gboolean zyl_bridge_app_holds(const ZylAppManifest *m, const char *perm);
 
 /* window.postMessage of {type:"service.event", service, event, data}, or NULL */
 char *zyl_bridge_service_event_script(const ZylAppManifest *manifest,
