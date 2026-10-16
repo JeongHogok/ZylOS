@@ -9,6 +9,9 @@
 
 gio_dep = dependency('gio-2.0')
 json_glib_dep = dependency('json-glib-1.0')
+# The shared runtime code (runtime/lib): tests compile its sources themselves
+# so their own -D paths apply, and need its headers for what they include
+_lib_inc = include_directories('../runtime/lib')
 
 # Test: gesture detection algorithm
 # Self-contained — replicates gesture_detect() logic to avoid wlroots deps
@@ -134,7 +137,7 @@ test('lock',
 test('updater',
   executable('test-updater',
     'test_updater.c',
-    include_directories: include_directories('../runtime/hal', '../runtime/services/updater'),
+    include_directories: [include_directories('../runtime/hal', '../runtime/services/updater'), _lib_inc],
     dependencies: [gio_dep, json_glib_dep, dependency('openssl', version: '>=1.1.1')],
   ),
   workdir: meson.project_source_root(),
@@ -212,7 +215,8 @@ test('hal-power',
 test('fs-service',
   executable('test-fs-service',
     'test_fs_service.c',
-    '../runtime/services/appdata/container.c',
+    '../runtime/lib/container.c',
+    include_directories: _lib_inc,
     dependencies: [gio_dep],
     c_args: ['-DZYL_TEST'],
   )
@@ -242,7 +246,8 @@ test('clipboard-network',
 test('appdata',
   executable('test-appdata',
     'test_appdata.c',
-    '../runtime/services/appdata/container.c',
+    '../runtime/lib/container.c',
+    include_directories: _lib_inc,
     dependencies: [gio_dep],
     c_args: ['-DZYL_TEST'],
   )
@@ -291,9 +296,9 @@ test('manifest-scan',
 _openssl_dep = dependency('openssl', version: '>=1.1.1')
 _libzip_dep = dependency('libzip')
 _store_src = ['../runtime/services/appstore/store_catalog.c', '../runtime/services/appstore/store_package.c',
-              '../runtime/services/appstore/app_seal.c', '../runtime/services/appdata/container.c',
-              '../runtime/services/updater/ota_verify.c', '../runtime/hal/hal_board.c']
-_store_inc = include_directories('../runtime/hal')
+              '../runtime/lib/app_seal.c', '../runtime/lib/container.c',
+              '../runtime/lib/ota_verify.c', '../runtime/hal/hal_board.c']
+_store_inc = [include_directories('../runtime/hal'), _lib_inc]
 
 # Test: catalog validation, versions, safe unpacking (.., absolute, links),
 # app.json must be the catalog's app, update swap, removal leaves nothing
@@ -310,7 +315,7 @@ test('store',
 # every file exactly as sealed
 test('app-seal',
   executable('test-app-seal', 'test_app_seal.c',
-    '../runtime/services/appstore/app_seal.c', '../runtime/services/updater/ota_verify.c',
+    '../runtime/lib/app_seal.c', '../runtime/lib/ota_verify.c',
     dependencies: [gio_dep, json_glib_dep, _openssl_dep],
   ),
   workdir: meson.project_source_root(),
@@ -349,11 +354,11 @@ _e2e_appstore = executable('e2e-appstore',
            '-DZYL_SYSTEM_APPS_DIR="@0@/system"'.format(_e2e), '-DZYL_CONTAINERS_ROOT="@0@/appdata"'.format(_e2e),
            '-DZYL_FILES_ROOT="@0@/files"'.format(_e2e), '-DZYL_SYSFS_ROOT="@0@/sys"'.format(_e2e)])
 _e2e_appdata = executable('e2e-appdata',
-  '../runtime/services/appdata/appdata.c', '../runtime/services/appdata/container.c',
-  dependencies: [gio_dep], c_args: ['-DZYL_APPDATA_ROOT="@0@/appdata"'.format(_e2e)])
+  '../runtime/services/appdata/appdata.c', '../runtime/lib/container.c',
+  include_directories: _lib_inc, dependencies: [gio_dep], c_args: ['-DZYL_APPDATA_ROOT="@0@/appdata"'.format(_e2e)])
 _e2e_fs = executable('e2e-fs',
-  '../runtime/services/fs/fs.c', '../runtime/services/appdata/container.c',
-  dependencies: [gio_dep], c_args: ['-DZYL_FILES_ROOT="@0@/files"'.format(_e2e),
+  '../runtime/services/fs/fs.c', '../runtime/lib/container.c',
+  include_directories: _lib_inc, dependencies: [gio_dep], c_args: ['-DZYL_FILES_ROOT="@0@/files"'.format(_e2e),
                                     '-DZYL_CONTAINERS_ROOT="@0@/appdata"'.format(_e2e)])
 _e2e_notification = executable('e2e-notification',
   '../runtime/services/notification/notification.c',

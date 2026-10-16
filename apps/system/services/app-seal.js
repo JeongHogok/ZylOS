@@ -2,7 +2,7 @@
 // [Clean Architecture] Domain Layer - Service Module
 //
 // Role: App seal — a store-installed app's code is what was signed
-// Scope: the rules of runtime/services/appstore/app_seal.c: .zyl-seal/seal.json
+// Scope: the rules of runtime/lib/app_seal.c: .zyl-seal/seal.json
 //        (every file's SHA-256) signed by the store's key, or by a developer key
 //        that a store-signed certificate (expiry, revocation) and provisioning
 //        profile (app id pattern, this device's ID, expiry) allow; the files

@@ -115,6 +115,10 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 | 버스 접근 권한 | `system/dbus-1/zyl-os.conf` | dbus-daemon, `tests/test_dbus_policy.sh` |
 | 서비스 권한 정책 | `apps/system/permissions.js` | `bridge.c`(verify-all 이 대조) |
 | 교차 툴체인 | `tools/cross/<arch>.ini` | 보드의 `board_cross_file` |
+| 둘 이상이 컴파일하는 C 코드 (앱 컨테이너·봉인·서명 검증) | `runtime/lib/` | appdata·fs·appstore·updater·WAM (`zyl_*_dep`) |
+
+서비스 디렉터리는 다른 서비스의 라이브러리가 되지 않는다 — 함께 쓰는 코드는
+`runtime/lib/` 로 옮기고 각 쪽이 그 의존성을 링크한다.
 
 서비스는 **시스템 버스**를 쓴다 — 유닛이 `Type=dbus` + `BusName=` 이므로 systemd 가
 기다리는 버스가 시스템 버스고, 로그인 세션이 없는 기기 부팅에는 세션 버스가 없다.

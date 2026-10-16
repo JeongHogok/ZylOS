@@ -9,7 +9,7 @@
  * ────────────────────────────────────────────────────────── */
 
 #include "app_seal.h"
-#include "../updater/ota_verify.h"
+#include "ota_verify.h"
 
 #include <string.h>
 #include <sys/stat.h>

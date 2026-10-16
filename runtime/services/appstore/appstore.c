@@ -33,8 +33,8 @@
 #include "store_package.h"
 #include "app_seal.h"
 #include "hal.h"
-#include "../appdata/container.h"
-#include "../updater/ota_verify.h"
+#include "container.h"
+#include "ota_verify.h"
 
 #ifndef ZYL_STORE_CONFIG
 #define ZYL_STORE_CONFIG "/etc/zyl-os/store.json"

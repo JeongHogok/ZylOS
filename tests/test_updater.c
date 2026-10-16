@@ -21,7 +21,7 @@
 #define ZYL_OTA_KEY   DIR_ "/ota.pem"
 /* One unit: the board's Boot HAL pointed at scratch partitions, and the updater */
 #include "../runtime/hal/hal_boot.c"
-#include "../runtime/services/updater/ota_verify.c"
+#include "../runtime/lib/ota_verify.c"
 #include "../runtime/services/updater/ota_install.c"
 #include "../runtime/services/updater/updater.c"
 #include <openssl/pem.h>

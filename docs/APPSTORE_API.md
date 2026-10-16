@@ -60,7 +60,7 @@ Every package carries its **seal** in `.zyl-seal/`:
 ```
 
 `files` lists every other file of the app with its SHA-256 — exactly those,
-nothing more (`runtime/services/appstore/app_seal.c`).
+nothing more (`runtime/lib/app_seal.c`).
 
 ## Signatures
 

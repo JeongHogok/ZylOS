@@ -8,7 +8,7 @@
  * ────────────────────────────────────────────────────────── */
 
 #include "store_catalog.h"
-#include "../appdata/container.h"
+#include "container.h"
 #include <json-glib/json-glib.h>
 #include <string.h>
 
