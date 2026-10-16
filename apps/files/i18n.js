@@ -27,7 +27,10 @@
     'files.rename_error': '\uC774\uB984 \uBCC0\uACBD\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4',
     'files.mkdir_success': '\uD3F4\uB354\uAC00 \uC0DD\uC131\uB418\uC5C8\uC2B5\uB2C8\uB2E4',
     'files.mkdir_error': '\uD3F4\uB354 \uC0DD\uC131\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4',
-    'files.nav_error': '\uD3F4\uB354\uB97C \uC5F4 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4'
+    'files.nav_error': '\uD3F4\uB354\uB97C \uC5F4 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4',
+    'files.pick_title': '\ud30c\uc77c \uc120\ud0dd',
+    'files.pick_cancel': '\ucde8\uc18c',
+    'files.received': '\ubc1b\uc740 \ud30c\uc77c'
   });
 
   zylI18n.addTranslations('en', {
@@ -48,7 +51,10 @@
     'files.rename_error': 'Failed to rename file',
     'files.mkdir_success': 'Folder created',
     'files.mkdir_error': 'Failed to create folder',
-    'files.nav_error': 'Cannot open folder'
+    'files.nav_error': 'Cannot open folder',
+    'files.pick_title': 'Choose a file',
+    'files.pick_cancel': 'Cancel',
+    'files.received': 'File received'
   });
 
   zylI18n.addTranslations('ja', {
@@ -69,7 +75,10 @@
     'files.rename_error': '\u540D\u524D\u306E\u5909\u66F4\u306B\u5931\u6557\u3057\u307E\u3057\u305F',
     'files.mkdir_success': '\u30D5\u30A9\u30EB\u30C0\u3092\u4F5C\u6210\u3057\u307E\u3057\u305F',
     'files.mkdir_error': '\u30D5\u30A9\u30EB\u30C0\u306E\u4F5C\u6210\u306B\u5931\u6557\u3057\u307E\u3057\u305F',
-    'files.nav_error': '\u30D5\u30A9\u30EB\u30C0\u3092\u958B\u3051\u307E\u305B\u3093'
+    'files.nav_error': '\u30D5\u30A9\u30EB\u30C0\u3092\u958B\u3051\u307E\u305B\u3093',
+    'files.pick_title': '\u30d5\u30a1\u30a4\u30eb\u3092\u9078\u629e',
+    'files.pick_cancel': '\u30ad\u30e3\u30f3\u30bb\u30eb',
+    'files.received': '\u30d5\u30a1\u30a4\u30eb\u3092\u53d7\u3051\u53d6\u308a\u307e\u3057\u305f'
   });
 
   zylI18n.addTranslations('zh', {
@@ -90,7 +99,10 @@
     'files.rename_error': '\u91CD\u547D\u540D\u5931\u8D25',
     'files.mkdir_success': '\u6587\u4EF6\u5939\u5DF2\u521B\u5EFA',
     'files.mkdir_error': '\u521B\u5EFA\u6587\u4EF6\u5939\u5931\u8D25',
-    'files.nav_error': '\u65E0\u6CD5\u6253\u5F00\u6587\u4EF6\u5939'
+    'files.nav_error': '\u65E0\u6CD5\u6253\u5F00\u6587\u4EF6\u5939',
+    'files.pick_title': '\u9009\u62e9\u6587\u4ef6',
+    'files.pick_cancel': '\u53d6\u6d88',
+    'files.received': '\u5df2\u6536\u5230\u6587\u4ef6'
   });
 
   zylI18n.addTranslations('es', {
@@ -111,6 +123,9 @@
     'files.rename_error': 'Error al renombrar archivo',
     'files.mkdir_success': 'Carpeta creada',
     'files.mkdir_error': 'Error al crear carpeta',
-    'files.nav_error': 'No se puede abrir la carpeta'
+    'files.nav_error': 'No se puede abrir la carpeta',
+    'files.pick_title': 'Elige un archivo',
+    'files.pick_cancel': 'Cancelar',
+    'files.received': 'Archivo recibido'
   });
 })();
