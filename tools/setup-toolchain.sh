@@ -71,9 +71,10 @@ elif [ "$OS" = "Linux" ]; then
         sudo apt install -y debootstrap fdisk e2fsprogs systemd dbus
 
         info "QEMU RISC-V 설치..."
-        # qemu-system-riscv64 는 qemu-system-misc 안에 있다.
-        # binfmt 는 다른 아키텍처 rootfs 조립(2단계 부트스트랩)에 필요하다
-        sudo apt install -y qemu-system-misc qemu-user-static binfmt-support
+        # qemu-system-riscv64 는 qemu-system-misc 안에 있다. qemu-user-static
+        # 은 다른 아키텍처 rootfs 조립(2단계 부트스트랩)에 쓰이고, 등록은
+        # systemd-binfmt 가 한다 (systemd 없는 컨테이너면 직접 호출)
+        sudo apt install -y qemu-system-misc qemu-user-static
 
         info "wlroots 빌드 의존성 설치..."
         sudo apt install -y \

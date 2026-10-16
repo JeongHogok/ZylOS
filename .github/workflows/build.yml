@@ -195,14 +195,20 @@ jobs:
             libegl-dev:riscv64 libgles-dev:riscv64 libdisplay-info-dev:riscv64 \
             libseat-dev:riscv64 libgps-dev:riscv64 libwlroots-0.18-dev:riscv64 \
             debootstrap systemd systemd-sysv fdisk e2fsprogs dbus ca-certificates \
-            qemu-user-static binfmt-support qemu-system-misc
+            qemu-user-static qemu-system-misc
       - name: Register the riscv64 binfmt handler
         run: |
           mountpoint -q /proc/sys/fs/binfmt_misc \
-            || mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc
-          update-binfmts --enable qemu-riscv64 || true
-          test -f /proc/sys/fs/binfmt_misc/qemu-riscv64 \
-            || { echo "✗ riscv64 binfmt 핸들러가 없다 — 2단계 부트스트랩이 불가능하다"; exit 1; }
+            || mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc || true
+          # 데비안은 binfmt 등록을 systemd 로 옮겼다 — 컨테이너에는 systemd 가
+          # 돌지 않으니 그 도구를 직접 불러 /usr/lib/binfmt.d/*.conf 를 읽힌다
+          /usr/lib/systemd/systemd-binfmt || true
+          # 조건은 등록 흔적이 아니라 실행 여부다 — 호스트 커널에 이미 등록된
+          # 핸들러(F 플래그)로 돌아가는 환경에서는 컨테이너에 흔적이 없다
+          echo 'int main(void){return 0;}' > /tmp/rv-probe.c
+          riscv64-linux-gnu-gcc -static /tmp/rv-probe.c -o /tmp/rv-probe
+          /tmp/rv-probe \
+            || { echo "✗ riscv64 바이너리를 실행할 수 없다 — 2단계 부트스트랩이 불가능하다"; exit 1; }
       - name: Cross-build (board=generic-riscv64, profile=phone)
         run: |
           meson setup builddir-rv64 --prefix=/usr \
