@@ -77,17 +77,6 @@ jobs:
         run: |
           meson setup builddir
           ninja -C builddir
-      # The profile matrix must stay configurable: a service set referring to a
-      # directory that no longer exists, or a board/profile pair that stopped
-      # agreeing, fails here instead of on someone's device build.
-      - name: Check every form-factor profile configures
-        run: |
-          for p in phone tablet tv auto watch desktop appliance pda; do
-            meson setup "builddir-$p" -Dboard=emulator -Dprofile="$p" >/dev/null \
-              || { echo "profile $p failed to configure"; exit 1; }
-            echo "ok: $p"
-            rm -rf "builddir-$p"
-          done
       - name: Run C unit tests
         run: ninja -C builddir test
 

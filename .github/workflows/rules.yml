@@ -1,0 +1,38 @@
+# ──────────────────────────────────────────────────────────
+# [Clean Architecture] Infrastructure Layer - CI
+#
+# 역할: 프로젝트 규칙(CLAUDE.md)의 기계 검사 — tests/verify-all.sh
+# 수행범위: apps 규칙, 에뮬레이터 규칙, JS↔C 사본 대조(권한 표·허용 도메인·
+#           기기 D-Bus 메서드), 유닛·tmpfiles·AppArmor 정합, 기술부채
+# 의존방향: bash, grep/find, python3
+# SOLID: SRP — 이 관심사만. 어떤 경로가 이 검사를 부르는지는 아래 paths 가
+#        유일한 출처다 (원격 PR 과 tools/ci-local.sh 가 같은 목록을 읽는다)
+# ──────────────────────────────────────────────────────────
+name: Project rules
+# PR 은 paths 에 걸린 변경이 있을 때만, main 은 머지마다 전부 돈다
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - 'apps/**'
+      - 'emulator-app/src/**'
+      - 'emulator-app/ui/**'
+      - 'runtime/**'
+      - 'system/**'
+      - 'board/**'
+      - 'tools/**'
+      - 'tests/*.sh'
+      - 'meson.build'
+      - '.github/workflows/rules.yml'
+# 같은 PR 에 새 커밋이 오면 이전 커밋의 런은 취소한다. main 은 끝까지 검증한다
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  verify-all:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Project rules
+        run: bash tests/verify-all.sh

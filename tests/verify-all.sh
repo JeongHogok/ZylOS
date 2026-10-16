@@ -3,7 +3,7 @@
 # [Clean Architecture] Infrastructure Layer - Verification
 # 역할: 전체 코드베이스 품질 검증 (CA, SOLID, i18n, 기술부채)
 # 수행범위: apps/emulator-app/runtime/system/tests 전 영역 자동 검출
-# 의존방향: grep/find/cargo, 프로젝트 소스 전체
+# 의존방향: grep/find/python3, 프로젝트 소스 전체 (CI: rules.yml)
 # SOLID: SRP — 코드베이스 검증만 담당
 # ──────────────────────────────────────────────────────────
 
@@ -229,15 +229,7 @@ for rsfile in $(find "$ROOT/emulator-app/src" -name '*.rs' 2>/dev/null); do
 done
 if [ -n "$MISSING_RS" ]; then warn "Rust CA 헤더 누락:\n$MISSING_RS"; else pass "Rust 파일 CA 헤더 존재"; fi
 
-# B3: Rust 컴파일 체크
-if command -v cargo >/dev/null 2>&1 && [ -f "$ROOT/emulator-app/Cargo.toml" ]; then
-  if cd "$ROOT/emulator-app" && cargo check 2>&1 | tail -1 | grep -q 'Finished'; then
-    pass "Rust cargo check 통과"
-  else
-    fail "Rust cargo check 실패"
-  fi
-  cd "$ROOT"
-fi
+# Rust 가 컴파일되는지는 emulator.yml 의 test-emulator 가 본다 (Tauri 개발 패키지가 있는 잡)
 
 # ═════════════════════════════════════════════════════════════
 # [C] runtime/ — 실기기 서비스 (C)
