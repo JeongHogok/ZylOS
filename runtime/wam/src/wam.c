@@ -144,7 +144,6 @@ static ZylAppInstance *wam_open(ZylWam *wam, const char *app_id) {
    bar, a banner for a new notification, or the whole screen (panel,
    recents). The shell says which; the surface's input region follows, so
    touches outside it reach the app below ─── */
-#define WAM_PANEL_BAR_PX    36    /* the compositor's statusbar_height_px */
 #define WAM_PANEL_BANNER_PX 136
 
 static ZylAppInstance *system_ui(ZylWam *wam) {
@@ -156,7 +155,7 @@ static void wam_set_panel(ZylWam *wam, ZylPanelMode mode) {
     if (!ui || !ui->webview_widget || mode == ZYL_PANEL_NONE) return;
     wam->panel = mode;
     zyl_lifecycle_panel_input(ui, mode == ZYL_PANEL_FULL ? 0 :
-                                  mode == ZYL_PANEL_BANNER ? WAM_PANEL_BANNER_PX : WAM_PANEL_BAR_PX);
+                                  mode == ZYL_PANEL_BANNER ? WAM_PANEL_BANNER_PX : ZYL_SHELL_BAR_PX);
     JsonObject *d = json_object_new();
     json_object_set_string_member(d, "mode", mode == ZYL_PANEL_FULL ? "full" :
                                              mode == ZYL_PANEL_BANNER ? "banner" : "bar");
@@ -172,7 +171,7 @@ static void wam_start_system_ui(ZylWam *wam) {
     ZylAppInstance *ui = zyl_lifecycle_launch_panel(&wam->iface, &wam->engine, ZYL_SHELL_SYSTEM_UI);
     if (!ui) return;
     wam->panel = ZYL_PANEL_BAR;
-    zyl_lifecycle_panel_input(ui, WAM_PANEL_BAR_PX);
+    zyl_lifecycle_panel_input(ui, ZYL_SHELL_BAR_PX);
 }
 
 /* Home, and where an app the user leaves goes: the lock screen while locked */

@@ -33,6 +33,7 @@
 #include "ipc/os_bus.h"
 #include "output/output.h"
 #include "view/view.h"
+#include "shell.h"   /* ZYL_SHELL_BAR_PX */
 
 /* ─── Utility: monotonic clock in milliseconds ─── */
 uint32_t zyl_now_ms(void)
@@ -50,7 +51,7 @@ struct zyl_config zyl_config_defaults(void)
         .swipe_from_bottom_px = 40,
         .swipe_from_top_px    = 40,
         .swipe_from_side_px   = 24,
-        .statusbar_height_px  = 36,
+        .statusbar_height_px  = ZYL_SHELL_BAR_PX,
     };
 }
 

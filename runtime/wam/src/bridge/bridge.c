@@ -1163,7 +1163,7 @@ static void handle_service_request(const char *type, gpointer msg_obj,
            app_id, service, method, route->dbus_name, dbus_method);
 
     GError *err = NULL;
-    GDBusConnection *session = g_bus_get_sync(G_BUS_TYPE_SYSTEM, NULL, &err);
+    GDBusConnection *bus = g_bus_get_sync(G_BUS_TYPE_SYSTEM, NULL, &err);
     if (err) {
         g_warning("Bridge: system bus error: %s", err->message);
         zyl_bridge_reply_error(reply_ctx, "dbus unavailable");
@@ -1178,7 +1178,7 @@ static void handle_service_request(const char *type, gpointer msg_obj,
     call->app_id = g_strdup(app_id);
     call->is_system = manifest->is_system;
     call->reply  = *reply_ctx;
-    call->conn   = session;   /* g_bus_get_sync returned a ref; the call owns it */
+    call->conn   = bus;   /* g_bus_get_sync returned a ref; the call owns it */
     JsonNode *params_node = json_object_get_member(msg, "params");
     if (params_node && JSON_NODE_HOLDS_OBJECT(params_node))
         call->params = json_object_ref(json_node_get_object(params_node));
@@ -1189,7 +1189,7 @@ static void handle_service_request(const char *type, gpointer msg_obj,
         service_call_invoke(call, cached);
         return;
     }
-    g_dbus_connection_call(session,
+    g_dbus_connection_call(bus,
         route->dbus_name, route->dbus_path,
         "org.freedesktop.DBus.Introspectable", "Introspect", NULL,
         G_VARIANT_TYPE("(s)"), G_DBUS_CALL_FLAGS_NONE, 5000, NULL,
