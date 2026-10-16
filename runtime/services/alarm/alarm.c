@@ -30,8 +30,6 @@
 #endif
 #define ALARM_PERSIST_FILE ALARM_PERSIST_DIR "/alarms.json"
 
-/* ─── 내부 상수 ─── */
-#define MAX_ALARMS 256
 
 /* ─── 내부 알람 레코드 ─── */
 typedef struct {
@@ -40,7 +38,7 @@ typedef struct {
 
 /* ─── 서비스 구조체 ─── */
 struct ZylAlarmService {
-    AlarmEntry       entries[MAX_ALARMS];
+    AlarmEntry       entries[ZYL_ALARM_MAX];
     int              count;
 
     /* One wall-clock timer, at the earliest alarm (rearm) */
@@ -372,7 +370,7 @@ static void alarm_persist_load(ZylAlarmService *svc) {
     guint n = json_array_get_length(arr);
     uint64_t now = now_ms();
 
-    for (guint i = 0; i < n && svc->count < MAX_ALARMS; i++) {
+    for (guint i = 0; i < n && svc->count < ZYL_ALARM_MAX; i++) {
         JsonNode *anode = json_array_get_element(arr, i);
         if (!JSON_NODE_HOLDS_OBJECT(anode)) continue;
         JsonObject *ao = json_node_get_object(anode);
@@ -462,6 +460,12 @@ void zyl_alarm_service_destroy(ZylAlarmService *svc) {
 
 int zyl_alarm_set(ZylAlarmService *svc, const ZylAlarm *alarm) {
     if (!svc || !alarm || !alarm->tag || alarm->tag[0] == '\0') return -1;
+    if (alarm->repeating && (alarm->interval_ms < ZYL_ALARM_MIN_INTERVAL_MS ||
+                             alarm->interval_ms > ZYL_ALARM_MAX_INTERVAL_MS)) {
+        g_warning("[Alarm] %s: repeat interval %llu ms out of range", alarm->app_id ? alarm->app_id : "",
+                  (unsigned long long)alarm->interval_ms);
+        return -1;
+    }
 
     /* 같은 앱의 같은 tag — 기존 알람 갱신 (다른 앱의 것은 건드리지 않는다) */
     AlarmEntry *entry = NULL;
@@ -478,8 +482,15 @@ int zyl_alarm_set(ZylAlarmService *svc, const ZylAlarm *alarm) {
         g_free(entry->alarm.title);
     } else {
         /* 새 슬롯 */
-        if (svc->count >= MAX_ALARMS) {
-            g_warning("[Alarm] Max alarms (%d) reached", MAX_ALARMS);
+        if (svc->count >= ZYL_ALARM_MAX) {
+            g_warning("[Alarm] Max alarms (%d) reached", ZYL_ALARM_MAX);
+            return -1;
+        }
+        int own = 0;
+        for (int i = 0; i < svc->count; i++)
+            if (g_strcmp0(svc->entries[i].alarm.app_id, alarm->app_id ? alarm->app_id : "") == 0) own++;
+        if (own >= ZYL_ALARM_MAX_PER_APP) {
+            g_warning("[Alarm] %s holds its %d alarms", alarm->app_id ? alarm->app_id : "", ZYL_ALARM_MAX_PER_APP);
             return -1;
         }
         entry = &svc->entries[svc->count++];

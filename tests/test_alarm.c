@@ -56,6 +56,34 @@ int main(void) {
     printf("  test_an_alarm_is_its_apps_tag                              PASS\n");
     zyl_alarm_service_destroy(svc);
 
+    /* A repeat wakes the device at most each minute, at least yearly; no app
+       holds every slot */
+    assert(system("rm -f " ROOT_ "/alarms.json") == 0);
+    svc = zyl_alarm_service_create();
+    ZylAlarm r = { .tag = (char *)"r", .trigger_at = now_ms() + 3600000, .app_id = (char *)"com.example.a",
+                   .repeating = true };
+    const uint64_t bad[] = { 0, 1, ZYL_ALARM_MIN_INTERVAL_MS - 1, ZYL_ALARM_MAX_INTERVAL_MS + 1, UINT64_MAX };
+    for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); i++) {
+        r.interval_ms = bad[i];
+        assert(zyl_alarm_set(svc, &r) == -1);
+    }
+    r.interval_ms = ZYL_ALARM_MIN_INTERVAL_MS;
+    assert(zyl_alarm_set(svc, &r) == 0);
+    r.interval_ms = 0;                                            /* one-shot: no interval needed */
+    r.repeating = false;
+    assert(zyl_alarm_set(svc, &r) == 0);
+    char tag[16];
+    for (int i = 1; i < ZYL_ALARM_MAX_PER_APP; i++) {             /* "r" is one of them */
+        g_snprintf(tag, sizeof(tag), "t%d", i);
+        add(svc, tag, "com.example.a");
+    }
+    ZylAlarm more = { .tag = (char *)"one-more", .trigger_at = now_ms() + 3600000, .app_id = (char *)"com.example.a" };
+    assert(zyl_alarm_set(svc, &more) == -1);                      /* its share is full … */
+    assert(zyl_alarm_set(svc, &r) == 0);                          /* … replacing its own is not adding */
+    add(svc, "wake", "com.zylos.clock");                          /* … and other apps still set theirs */
+    zyl_alarm_service_destroy(svc);
+    printf("  test_limits_keep_any_app_from_flooding_the_device         PASS\n");
+
     /* Due ones ring; the timer follows the earliest; none is no timer */
     assert(system("rm -f " ROOT_ "/alarms.json") == 0);           /* not the alarms above */
     svc = zyl_alarm_service_create();
@@ -84,7 +112,7 @@ int main(void) {
            zyl_alarm_cancel(svc, "com.zylos.clock", "daily") == 0);
     assert(timerfd_gettime(svc->tfd, &its) == 0 && !its.it_value.tv_sec && !its.it_value.tv_nsec);
     zyl_alarm_service_destroy(svc);
-    printf("  test_due_alarms_ring_and_the_timer_follows_the_earliest    PASS\n=== 3/3 passed ===\n");
+    printf("  test_due_alarms_ring_and_the_timer_follows_the_earliest    PASS\n=== 4/4 passed ===\n");
     assert(system("rm -rf " ROOT_) == 0);
     return 0;
 }

@@ -27,6 +27,12 @@
 #define ZYL_ALARM_DBUS_NAME   "org.zylos.AlarmService"
 #define ZYL_ALARM_DBUS_PATH   "/org/zylos/AlarmService"
 
+/* ─── 한도 — 에뮬레이터 apps/system/services/alarm.js 와 같은 값(verify-all C5c) ─── */
+#define ZYL_ALARM_MAX              1024           /* 기기 전체 */
+#define ZYL_ALARM_MAX_PER_APP      128            /* 한 앱이 전부를 갖지 못하게 */
+#define ZYL_ALARM_MIN_INTERVAL_MS  60000ULL       /* 반복: 1분보다 잦게 기기를 깨우지 않는다 */
+#define ZYL_ALARM_MAX_INTERVAL_MS  31622400000ULL /* 반복: 366일 — 다음 시각 계산이 넘치지 않게 */
+
 /* ─── 알람 레코드 ─── */
 typedef struct {
     char    *tag;           /* 앱이 지정한 유니크 식별자 */
@@ -50,6 +56,7 @@ void             zyl_alarm_service_destroy(ZylAlarmService *svc);
 
 /**
  * 알람을 등록하거나 같은 앱의 같은 tag 알람을 갱신한다 — 알람은 (app_id, tag).
+ * 반복 간격이 한도 밖이거나, 새 알람이 기기·그 앱의 한도를 넘으면 거부한다.
  * 반환: 0 성공, -1 실패
  */
 int zyl_alarm_set(ZylAlarmService *svc, const ZylAlarm *alarm);

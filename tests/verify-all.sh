@@ -442,6 +442,26 @@ else
   pass "네트워크 허용 도메인(network.c) = sandbox.js"
 fi
 
+# C5c: 알람 한도가 alarm.h 와 같은지 — 기기가 권위, alarm.js 는 사본. 어긋나면 에뮬레이터에서
+#      되는 알람이 기기에서 거부된다
+ALARM_DRIFT=$(python3 - "$ROOT" <<'PYCHK'
+import re, sys
+root = sys.argv[1]
+h = dict(re.findall(r'#define\s+ZYL_ALARM_(MAX|MAX_PER_APP|MIN_INTERVAL_MS|MAX_INTERVAL_MS)\s+(\d+)',
+                    open(root + '/runtime/services/alarm/alarm.h').read()))
+names = {'MAX': 'MAX_ALARMS', 'MAX_PER_APP': 'MAX_PER_APP',
+         'MIN_INTERVAL_MS': 'MIN_INTERVAL_MS', 'MAX_INTERVAL_MS': 'MAX_INTERVAL_MS'}
+js = dict(re.findall(r'var\s+(\w+)\s*=\s*(\d+);', open(root + '/apps/system/services/alarm.js').read()))
+bad = [k for k in names if k not in h or js.get(names[k]) != h[k]]
+print(('h=%s js=%s' % (h, {names[k]: js.get(names[k]) for k in names})) if bad or len(h) != 4 else '')
+PYCHK
+)
+if [ -n "$ALARM_DRIFT" ]; then
+  fail "알람 한도가 alarm.h 와 다름: $ALARM_DRIFT"
+else
+  pass "알람 한도(alarm.js) = alarm.h"
+fi
+
 # C5: 앱의 서비스 호출이 실기기 D-Bus 메서드와 맞는지 (래칫)
 #     브릿지는 params 의 멤버를 서비스 인트로스펙션의 인자 이름으로 채운다.
 #     메서드나 인자가 없으면 에뮬레이터에서는 되고 기기에서는 실패한다.

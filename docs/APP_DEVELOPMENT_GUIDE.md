@@ -216,6 +216,8 @@ ZylBridge.onServiceEvent('notification', 'NotificationPosted', function (d) {
   앱이 떠 있지 않으면 등록 때 준 제목·본문의 알림이 뜨고, 누르면 앱이 열린다. 끝점은 앱마다
   하나이고 다시 등록해도 같다. 내용은 서버를 지나가므로 민감하면 암호화하거나 신호만 보낸다.
 - **알람** (`notification` 권한) — 정한 시각. 기기가 절전 중이어도 깨워서 울린다(벽시계 타이머).
+  반복 간격은 1분~366일, 한 앱에 128개까지(같은 `tag` 는 덮어쓰므로 셈에 더해지지 않는다) —
+  그 밖은 `set` 이 `false` 다(한도는 `runtime/services/alarm/alarm.h`).
 
 ### 웹 플랫폼이 묻는 것 — 카메라·마이크·위치·파일
 

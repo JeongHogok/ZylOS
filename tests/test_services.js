@@ -2456,6 +2456,28 @@ var alarmTests = (function () {
           return clear(t);
         });
     }),
+    asyncTest('limits as the device: a repeat at most each minute, no app holds every slot', function () {
+      var t = make();
+      var later = Date.now() + 3600000;
+      var bad = [0, 1, 59999, 31622400001, -1].map(function (ms) {
+        return t.svc.set({ tag: 'r' + ms, triggerAt: later, intervalMs: ms, appId: 'a', repeating: true });
+      });
+      return Promise.all(bad).then(function (r) {
+        assert.deepStrictEqual(r, [false, false, false, false, false]);
+        var mine = [];
+        for (var i = 0; i < 128; i++) mine.push(t.svc.set({ tag: 't' + i, triggerAt: later, appId: 'a' }));
+        return Promise.all(mine);
+      }).then(function () {
+        return Promise.all([
+          t.svc.set({ tag: 'one-more', triggerAt: later, appId: 'a' }),
+          t.svc.set({ tag: 't0', triggerAt: later, appId: 'a', title: 'replaced' }),
+          t.svc.set({ tag: 'wake', triggerAt: later, appId: 'com.zylos.clock' })
+        ]);
+      }).then(function (r) {
+        assert.deepStrictEqual(r, [false, true, true]);
+        return clear(t);
+      });
+    }),
     asyncTest('a cancelled alarm never fires; the same tag replaces, not adds', function () {
       var t = make();
       return t.svc.set({ tag: 'x', triggerAt: soon(5), appId: 'a', title: 'first' })
