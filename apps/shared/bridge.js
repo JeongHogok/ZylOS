@@ -337,6 +337,8 @@ var ZylBridge = (function () {
      ═══════════════════════════════════════════════════════════ */
   var _intentListener = null;
   var _pendingIntent = null;   /* arrived before the app listened */
+  var _resultListener = null;
+  var _pendingResult = null;   /* a pick's answer that arrived before the app listened */
 
   function tr(key) {
     return (typeof zylI18n !== 'undefined') ? zylI18n.t(key) : key;
@@ -396,13 +398,18 @@ var ZylBridge = (function () {
       EDIT:    'zyl.intent.action.EDIT',
       DIAL:    'zyl.intent.action.DIAL',
       CAPTURE: 'zyl.intent.action.CAPTURE',
-      SEARCH:  'zyl.intent.action.SEARCH'
+      SEARCH:  'zyl.intent.action.SEARCH',
+      /* Ask the user to choose (a file …) on an OS screen; the answer comes to onResult */
+      PICK:    'zyl.intent.action.PICK'
     },
-    /* { action, data, mimeType, extras } (implicit) or { targetApp, ... } (explicit) */
+    /* { action, data, mimeType, extras, files } (implicit) or { targetApp, ... }
+       (explicit). files: paths in this app's files the handler gets copies of.
+       requestCode: this app's own label, given back with a PICK's answer */
     startActivity: function (intent) {
       sendToSystem({ type: 'intent.start', intent: intent });
     },
-    /* fn({ action, data, mimeType, extras, sourceApp }) — the intent this app was opened for */
+    /* fn({ action, data, mimeType, extras, files, sourceApp }) — the intent this
+       app was opened for; files are paths in this app's own files */
     onIntent: function (fn) {
       _intentListener = fn;
       if (_pendingIntent) {
@@ -410,6 +417,21 @@ var ZylBridge = (function () {
         _pendingIntent = null;
         fn(it);
       }
+    },
+    /* fn({ requestCode, files }) — the answer to a PICK this app started (files
+       empty: the user chose nothing). It may come after the app was reloaded */
+    onResult: function (fn) {
+      _resultListener = fn;
+      if (_pendingResult) {
+        var r = _pendingResult;
+        _pendingResult = null;
+        fn(r);
+      }
+    },
+    /* The handler of a PICK answers it: files are paths in this app's files */
+    setResult: function (intent, result) {
+      sendToSystem({ type: 'intent.result', token: intent && intent.resultToken,
+                     files: (result && result.files) || [] });
     }
   };
   ZylIntentApi.startIntent = ZylIntentApi.startActivity;
@@ -439,6 +461,8 @@ var ZylBridge = (function () {
       if (_intentListener) _intentListener(msg.data); else _pendingIntent = msg.data;
     } else if (msg.type === 'intent.choose' && msg.data) {
       showIntentChoice(msg.data);
+    } else if (msg.type === 'intent.result' && msg.data) {
+      if (_resultListener) _resultListener(msg.data); else _pendingResult = msg.data;
     } else if (msg.type === 'intent.none') {
       intentSheet(tr('intent.no_app'), [{ label: tr('intent.ok'), value: null }], function () {});
     }

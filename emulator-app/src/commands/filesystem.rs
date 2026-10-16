@@ -2,7 +2,8 @@
 // [Clean Architecture] Infrastructure Layer - Adapter
 //
 // 역할: 가상 파일시스템 접근 Tauri 커맨드
-// 수행범위: 마운트 포인트 기준 디렉토리/파일 읽기, 쓰기, 사용량 조회
+// 수행범위: 마운트 포인트 기준 디렉토리/파일 읽기, 쓰기, 사용량 조회, 앱이 건네는
+//           파일을 받는 앱의 루트로 복사(OS 전용 — fs.c Handoff 와 같은 규칙)
 // 의존방향: state (mount_point), resource/disk_image (get_usage)
 // SOLID: SRP — 파일시스템 I/O만 담당, LSP — 모든 커맨드 동일 에러 포맷
 //
@@ -223,6 +224,66 @@ fn base64_encode(data: &[u8]) -> String {
     result
 }
 
+/// A file one app hands another (an intent's files, a pick): a copy in the
+/// receiver's root — its Inbox, or Downloads when it is a system app (the
+/// user's files). Same rules as runtime/services/fs/fs.c Handoff.
+const MAX_HANDOFF: usize = 10;
+const MAX_HANDOFF_BYTES: u64 = 64 * 1024 * 1024;
+
+/// "a.jpg", else "a (1).jpg", "a (2).jpg" … — what is not taken in dir
+fn free_name(dir: &Path, name: &str) -> Option<String> {
+    let (stem, ext) = match name.rfind('.') {
+        Some(i) if i > 0 => (&name[..i], &name[i..]),
+        _ => (name, ""),
+    };
+    (0..1000)
+        .map(|i| if i == 0 { name.to_string() } else { format!("{} ({}){}", stem, i, ext) })
+        .find(|n| !dir.join(n).exists())
+}
+
+/// One file: its path in the receiver's root, or None
+fn handoff_one(from_root: &Path, rel: &str, to_root: &Path, into: &str) -> Option<String> {
+    let src = safe_path(from_root, rel).ok()?.canonicalize().ok()?;
+    let meta = fs::metadata(&src).ok()?;
+    if !meta.is_file() || meta.len() > MAX_HANDOFF_BYTES {
+        return None;
+    }
+    let dir = to_root.join(into);
+    fs::create_dir_all(&dir).ok()?;
+    let name = free_name(&dir, src.file_name()?.to_str()?)?;
+    fs::copy(&src, dir.join(&name)).ok()?;
+    Some(format!("{}/{}", into, name))
+}
+
+/// The paths the receiver gets, in order ("" for one that could not be given);
+/// the same root (system app to system app) needs no copy. The OS's alone:
+/// apps/system/services/fs.js _handoff, which apps cannot call
+#[tauri::command]
+pub fn fs_handoff(
+    from: Option<String>,
+    paths: Vec<String>,
+    to: Option<String>,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<Vec<String>, String> {
+    let app_state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
+    let same = from == to;
+    let into = if to.is_some() { "Inbox" } else { "Downloads" };
+    let from_root = files_root(&app_state, from)?;
+    let to_root = files_root(&app_state, to)?;
+    Ok(paths
+        .iter()
+        .take(MAX_HANDOFF)
+        .map(|p| {
+            if same {
+                safe_path(&from_root, p).ok().filter(|f| f.exists()).map(|_| p.clone())
+            } else {
+                handoff_one(&from_root, p, &to_root, into)
+            }
+            .unwrap_or_default()
+        })
+        .collect())
+}
+
 /// 파일 쓰기
 #[tauri::command]
 pub fn fs_write_file(
@@ -390,4 +451,27 @@ pub fn fs_get_usage(state: State<'_, Mutex<AppState>>) -> Result<StorageUsage, S
         available,
         percent,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn handoff_copies_into_the_receivers_root_never_over_a_file() {
+        let root = std::env::temp_dir().join(format!("zyl-handoff-{}", std::process::id()));
+        let (user, app) = (root.join("user"), root.join("app"));
+        fs::create_dir_all(user.join("Pictures")).unwrap();
+        fs::create_dir_all(&app).unwrap();
+        fs::write(user.join("Pictures/cat.jpg"), "meow").unwrap();
+        fs::write(root.join("secret"), "x").unwrap();
+        assert_eq!(handoff_one(&user, "Pictures/cat.jpg", &app, "Inbox").as_deref(), Some("Inbox/cat.jpg"));
+        assert_eq!(fs::read_to_string(app.join("Inbox/cat.jpg")).unwrap(), "meow");
+        assert_eq!(handoff_one(&user, "Pictures/cat.jpg", &app, "Inbox").as_deref(), Some("Inbox/cat (1).jpg"));
+        assert_eq!(handoff_one(&user, "../secret", &app, "Inbox"), None);
+        assert_eq!(handoff_one(&user, "Pictures", &app, "Inbox"), None);
+        assert_eq!(handoff_one(&user, "Pictures/none.jpg", &app, "Inbox"), None);
+        assert_eq!(handoff_one(&user, "settings.json", &app, "Inbox"), None);
+        let _ = fs::remove_dir_all(&root);
+    }
 }

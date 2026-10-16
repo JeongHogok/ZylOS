@@ -224,6 +224,11 @@ window.ZylSystemServices = (function () {
       }).catch(function () { /* audio settings load failed — use defaults */ });
     }
 
+    /* Intents hand files over through the file service (apps/system/intent.js) */
+    if (typeof ZylIntent !== 'undefined' && ZylIntent.useHandoff && serviceMap.fs) {
+      ZylIntent.useHandoff(serviceMap.fs._handoff);
+    }
+
     /* Pre-load app list */
     if (serviceMap.apps && serviceMap.apps.getInstalled) {
       serviceMap.apps.getInstalled();

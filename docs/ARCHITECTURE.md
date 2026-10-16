@@ -59,7 +59,8 @@ JS, 기기에서는 `runtime/` 의 C 다(`apps/system/` 은 기기 이미지에 
 | 규칙 | 에뮬레이터 (JS) | 기기 (C) | 같음을 지키는 것 |
 |---|---|---|---|
 | 셸 정책 | `apps/system/shell.js` | `runtime/wam/src/shell/` | `tests/test_shell.c` 와 `tests/test_services.js` 의 같은 시나리오 |
-| 인텐트 해석 | `apps/system/intent.js` | `runtime/wam/src/intent/` | `tests/test_intent.c`, `tests/test_services.js` |
+| 인텐트 해석 (PICK 은 시스템 앱만, 건넬 파일) | `apps/system/intent.js` | `runtime/wam/src/intent/` (선택·PICK 대기는 `wam.c`) | `tests/test_intent.c`, `tests/test_services.js` |
+| 앱 사이 파일 건네기 (받는 앱 루트로 복사) | `apps/system/services/fs.js` `_handoff` → `filesystem.rs` | `runtime/services/fs/fs.c` 의 `Handoff` 인터페이스 | `tests/test_fs_service.c`, `filesystem.rs` 테스트 |
 | 서비스·메서드 권한, 받을 수 있는 이벤트 | `apps/system/permissions.js` (권위) | `runtime/wam/src/bridge/bridge.c` 의 표 | `tests/verify-all.sh` 가 표를 대조 |
 | 네트워크 허용 도메인 | `apps/system/sandbox.js` (권위) | `runtime/services/network/network.c` | `tests/verify-all.sh` |
 | 앱의 CSP (권한 → 닿는 곳) | `apps/system/sandbox.js` 의 `getContentPolicy` | `runtime/wam/src/scheme/app_scheme.c` 의 `zyl_app_scheme_csp` | `tests/test_app_scheme.c`, `tests/test_services.js` (같은 문자열) |

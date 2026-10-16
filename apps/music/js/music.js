@@ -737,8 +737,9 @@
   loadPlaylists();
   /* Another app asked to play an audio file here (app.json "intents") */
   ZylIntent.onIntent(function (intent) {
-    if (intent.action !== ZylIntent.ACTION.VIEW || !intent.data) return;
-    var path = String(intent.data).replace(/^\/+/, '');
+    var file = (intent.files || [])[0];
+    if (intent.action !== ZylIntent.ACTION.VIEW || !file) return;
+    var path = String(file).replace(/^\/+/, '');
     var index = -1;
     for (var i = 0; i < tracks.length; i++) if (tracks[i].path === path) index = i;
     if (index === -1) {

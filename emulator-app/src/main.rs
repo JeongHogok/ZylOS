@@ -48,6 +48,7 @@ fn main() {
             commands::filesystem::fs_mkdir,
             commands::filesystem::fs_remove,
             commands::filesystem::fs_rename,
+            commands::filesystem::fs_handoff,
             commands::filesystem::fs_get_usage,
             // OS image commands
             commands::os_image::list_os_images,

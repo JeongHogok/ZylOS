@@ -619,7 +619,8 @@
       shareBtn.addEventListener('click', function () {
         if (!currentViewingFile) return;
         var imagePath = currentViewingPath || ('Pictures/' + (currentViewingPrefix ? currentViewingPrefix : '') + currentViewingFile);
-        ZylIntent.startActivity({ action: ZylIntent.ACTION.SEND, data: imagePath, mimeType: 'image/*' });
+        /* The receiver gets its own copy (the OS hands files over) */
+        ZylIntent.startActivity({ action: ZylIntent.ACTION.SEND, mimeType: 'image/*', files: [imagePath] });
       });
       viewerEl.appendChild(shareBtn);
     }
@@ -831,8 +832,9 @@
 
   /* Another app asked to open an image or video here (app.json "intents") */
   ZylIntent.onIntent(function (intent) {
-    if (intent.action !== ZylIntent.ACTION.VIEW || !intent.data) return;
-    var path = String(intent.data).replace(/^\/+/, '');
+    var file = (intent.files || [])[0];
+    if (intent.action !== ZylIntent.ACTION.VIEW || !file) return;
+    var path = String(file).replace(/^\/+/, '');
     if (path.indexOf('Pictures/') === 0) openViewer(path.slice('Pictures/'.length));
     else openViewer(path, '', path);
   });

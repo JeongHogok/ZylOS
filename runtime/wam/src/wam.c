@@ -81,6 +81,9 @@ static int iface_count_instances(ZylAppInterface *self) {
  *  Intents (rule 9): an app starts one, the WAM decides which app gets it
  *  (intent/intent.c). Several → the starting app shows the choice and
  *  reports the pick, which must be one offered; none → it says so.
+ *  Files it hands over reach the handler as its own copy (the file
+ *  service's Handoff). A PICK's handler answers with intent.result, which
+ *  goes back to the app that asked — the same way, files copied.
  * ════════════════════════════════════════════════════════════════ */
 
 typedef struct {
@@ -88,6 +91,7 @@ typedef struct {
     char       *source;
     GPtrArray  *targets;   /* owned ids */
     JsonObject *intent;    /* what the handler gets */
+    char       *request_code;
 } IntentChoice;
 
 static IntentChoice g_choice;   /* the one open choice */
@@ -98,6 +102,24 @@ static void choice_clear(void) {
     g_clear_pointer(&g_choice.source, g_free);
     g_clear_pointer(&g_choice.targets, g_ptr_array_unref);
     g_clear_pointer(&g_choice.intent, json_object_unref);
+    g_clear_pointer(&g_choice.request_code, g_free);
+}
+
+/* The one PICK waiting for its answer: only its handler may give it */
+typedef struct {
+    char *token;
+    char *requester;
+    char *handler;
+    char *request_code;
+} PendingResult;
+
+static PendingResult g_result;
+
+static void result_clear(void) {
+    g_clear_pointer(&g_result.token, g_free);
+    g_clear_pointer(&g_result.requester, g_free);
+    g_clear_pointer(&g_result.handler, g_free);
+    g_clear_pointer(&g_result.request_code, g_free);
 }
 
 static void post_to(WebKitWebView *webview, const char *type, JsonNode *data) {
@@ -380,12 +402,12 @@ static void wam_handle_app_launch(const char        *type,
     }
 }
 
-/* Launch the handler and hand it the intent once its page is there */
-static void launch_with_intent(ZylWam *wam, const char *app_id, JsonObject *intent) {
+/* Bring the app forward and hand it the message once its page is there */
+static void launch_with(ZylWam *wam, const char *app_id, const char *type, JsonObject *payload) {
     gboolean running = wam->iface.get_instance(&wam->iface, app_id) != NULL;
     ZylAppInstance *inst = wam_open(wam, app_id);
     if (!inst || !inst->webview_widget) return;
-    char *script = zyl_intent_post_script("intent", zyl_intent_object_node(json_object_ref(intent)));
+    char *script = zyl_intent_post_script(type, zyl_intent_object_node(json_object_ref(payload)));
     WebKitWebView *webview = WEBKIT_WEB_VIEW(inst->webview_widget);
     if (running) {
         webkit_web_view_evaluate_javascript(webview, script, -1, NULL, NULL, NULL, NULL, NULL);
@@ -393,6 +415,91 @@ static void launch_with_intent(ZylWam *wam, const char *app_id, JsonObject *inte
     } else {
         g_signal_connect(webview, "load-changed", G_CALLBACK(deliver_when_loaded), script);
     }
+}
+
+/* Whose files an app's paths are: "" for a system app (the user's), else its container */
+static const char *container_of(ZylWam *wam, const char *app_id) {
+    ZylAppManifest *m = app_id ? g_hash_table_lookup(wam->manifests, app_id) : NULL;
+    return !app_id || (m && m->is_system) ? "" : app_id;
+}
+
+typedef struct {
+    ZylWam     *wam;
+    char       *target;
+    char       *type;
+    JsonObject *payload;
+} Delivery;
+
+static void delivery_free(Delivery *d) {
+    g_free(d->target);
+    g_free(d->type);
+    json_object_unref(d->payload);
+    g_free(d);
+}
+
+static void on_handed(GObject *src, GAsyncResult *res, gpointer data) {
+    Delivery *d = data;
+    GError *err = NULL;
+    GVariant *r = g_dbus_connection_call_finish(G_DBUS_CONNECTION(src), res, &err);
+    JsonArray *got = json_array_new();
+    if (r) {
+        GVariantIter *it = NULL;
+        const gchar *path;
+        g_variant_get(r, "(as)", &it);
+        while (g_variant_iter_next(it, "&s", &path))
+            if (*path) json_array_add_string_element(got, path);
+        g_variant_iter_free(it);
+        g_variant_unref(r);
+    } else {
+        g_warning("WAM: files for %s not handed over: %s", d->target, err->message);
+        g_error_free(err);
+    }
+    json_object_set_array_member(d->payload, "files", got);
+    launch_with(d->wam, d->target, d->type, d->payload);
+    delivery_free(d);
+}
+
+/* Deliver to target what from_app sent; the files it named become target's
+   own copies first (nothing to copy between two system apps: one root) */
+static void deliver(ZylWam *wam, const char *from_app, const char *target,
+                    const char *type, JsonObject *payload) {
+    JsonArray *files = json_object_get_array_member(payload, "files");
+    const char *from = container_of(wam, from_app), *to = container_of(wam, target);
+    if (!files || json_array_get_length(files) == 0 || strcmp(from, to) == 0) {
+        launch_with(wam, target, type, payload);
+        return;
+    }
+    if (!g_event_bus) {                    /* nobody to copy them: none, never a stranger's path */
+        json_object_set_array_member(payload, "files", json_array_new());
+        launch_with(wam, target, type, payload);
+        return;
+    }
+    GVariantBuilder paths;
+    g_variant_builder_init(&paths, G_VARIANT_TYPE("as"));
+    for (guint i = 0; i < json_array_get_length(files); i++)
+        g_variant_builder_add(&paths, "s", json_array_get_string_element(files, i));
+    Delivery *d = g_new0(Delivery, 1);
+    d->wam = wam;
+    d->target = g_strdup(target);
+    d->type = g_strdup(type);
+    d->payload = json_object_ref(payload);
+    g_dbus_connection_call(g_event_bus, "org.zylos.FileSystem", "/org/zylos/FileSystem",
+        "org.zylos.FileSystem.Handoff", "Handoff", g_variant_new("(sass)", from, &paths, to),
+        G_VARIANT_TYPE("(as)"), G_DBUS_CALL_FLAGS_NONE, 30000, NULL, on_handed, d);
+}
+
+/* The handler gets the intent; a PICK waits for its answer, from that handler only */
+static void hand_over(ZylWam *wam, const char *source, const char *target,
+                      JsonObject *intent, const char *request_code) {
+    if (g_strcmp0(json_object_get_string_member_with_default(intent, "action", ""), ZYL_INTENT_PICK) == 0) {
+        result_clear();
+        g_result.token = g_strdup_printf("r%u", g_next_token++);
+        g_result.requester = g_strdup(source);
+        g_result.handler = g_strdup(target);
+        g_result.request_code = g_strdup(request_code ? request_code : "");
+        json_object_set_string_member(intent, "resultToken", g_result.token);
+    }
+    deliver(wam, source, target, "intent", intent);
 }
 
 static void wam_handle_intent_start(const char        *type,
@@ -408,17 +515,19 @@ static void wam_handle_intent_start(const char        *type,
     JsonObject *intent = json_node_get_object(in);
 
     GPtrArray *targets = zyl_intent_resolve(wam->manifests, manifest->id, intent);
-    JsonObject *deliver = zyl_intent_deliverable(intent, manifest->id);
+    JsonObject *handed = zyl_intent_deliverable(intent, manifest->id);
+    const char *request_code = json_object_get_string_member_with_default(intent, "requestCode", "");
     if (targets->len == 0) {
         post_to(reply_ctx->webview, "intent.none", zyl_intent_object_node(json_object_new()));
     } else if (targets->len == 1) {
-        launch_with_intent(wam, g_ptr_array_index(targets, 0), deliver);
+        hand_over(wam, manifest->id, g_ptr_array_index(targets, 0), handed, request_code);
     } else {
         choice_clear();
         g_choice.token = g_strdup_printf("%u", g_next_token++);
         g_choice.source = g_strdup(manifest->id);
         g_choice.targets = g_ptr_array_new_with_free_func(g_free);
-        g_choice.intent = json_object_ref(deliver);
+        g_choice.intent = json_object_ref(handed);
+        g_choice.request_code = g_strdup(request_code);
         JsonArray *choices = json_array_new();
         for (guint i = 0; i < targets->len; i++) {
             const char *id = g_ptr_array_index(targets, i);
@@ -434,7 +543,7 @@ static void wam_handle_intent_start(const char        *type,
         json_object_set_array_member(data, "choices", choices);
         post_to(reply_ctx->webview, "intent.choose", zyl_intent_object_node(data));
     }
-    json_object_unref(deliver);
+    json_object_unref(handed);
     g_ptr_array_unref(targets);
 }
 
@@ -453,14 +562,41 @@ static void wam_handle_intent_chosen(const char        *type,
         strcmp(token, g_choice.token) != 0 || strcmp(manifest->id, g_choice.source) != 0) return;
     for (guint i = 0; i < g_choice.targets->len; i++) {
         if (strcmp(g_ptr_array_index(g_choice.targets, i), app_id) != 0) continue;
-        char *target = g_strdup(app_id);
+        char *target = g_strdup(app_id), *source = g_strdup(g_choice.source);
+        char *request_code = g_strdup(g_choice.request_code);
         JsonObject *intent = json_object_ref(g_choice.intent);
         choice_clear();
-        launch_with_intent(wam, target, intent);
+        hand_over(wam, source, target, intent, request_code);
         json_object_unref(intent);
+        g_free(request_code);
+        g_free(source);
         g_free(target);
         return;
     }
+}
+
+/* A PICK's answer: only the pending one's handler, with its token. The app
+   that asked gets { requestCode, files } — its own copies — and comes back */
+static void wam_handle_intent_result(const char        *type,
+                                     gpointer           msg_obj,
+                                     ZylAppManifest    *manifest,
+                                     ZylBridgeReplyCtx *reply_ctx,
+                                     gpointer           user_data) {
+    (void)type; (void)reply_ctx;
+    ZylWam *wam = user_data;
+    JsonObject *msg = msg_obj;
+    const char *token = json_object_get_string_member_with_default(msg, "token", NULL);
+    if (!manifest || !token || !g_result.token || strcmp(token, g_result.token) != 0 ||
+        strcmp(manifest->id, g_result.handler) != 0) return;
+    JsonObject *result = json_object_new();
+    json_object_set_string_member(result, "requestCode", g_result.request_code);
+    json_object_set_array_member(result, "files", zyl_intent_files(msg));
+    char *requester = g_strdup(g_result.requester), *handler = g_strdup(g_result.handler);
+    result_clear();
+    deliver(wam, handler, requester, "intent.result", result);
+    json_object_unref(result);
+    g_free(handler);
+    g_free(requester);
 }
 
 /* ════════════════════════════════════════════════════════════════
@@ -1075,6 +1211,7 @@ int main(int argc, char *argv[]) {
     zyl_bridge_register_handler("app.launch", wam_handle_app_launch, &wam);
     zyl_bridge_register_handler("intent.start",  wam_handle_intent_start,  &wam);
     zyl_bridge_register_handler("intent.chosen", wam_handle_intent_chosen, &wam);
+    zyl_bridge_register_handler("intent.result", wam_handle_intent_result, &wam);
     zyl_bridge_register_handler("unlock",            wam_handle_unlock,     &wam);
     zyl_bridge_register_handler("setup.done",        wam_handle_setup_done, &wam);
     zyl_bridge_register_handler("navigation.handled", wam_handle_navigation, &wam);

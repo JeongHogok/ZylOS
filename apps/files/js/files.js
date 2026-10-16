@@ -353,6 +353,8 @@
         if (file.type === 'folder') {
           var newPath = currentPath === '/' ? '/' + file.name : currentPath + '/' + file.name;
           navigateTo(newPath);
+        } else if (picking) {
+          endPick([pathOf(file)]);
         }
       });
 
@@ -491,8 +493,9 @@
           }
         });
       } else if (action === 'share') {
-        var shareTitle = typeof zylI18n !== 'undefined' ? zylI18n.t('files.share_title') : 'Share';
-        showConfirmModal(shareTitle, contextTarget.name, function () {});
+        /* The OS asks the user which app, and gives it its own copy */
+        ZylIntent.startActivity({ action: ZylIntent.ACTION.SEND, mimeType: mimeOf(contextTarget.name),
+                                  files: [pathOf(contextTarget)] });
       }
 
       hideContextMenu();
@@ -567,26 +570,70 @@
     });
   }
 
-  /* ─── Open a file in whichever app opens its type (rule 9: the OS decides) ─── */
-  function openFileWithApp(file) {
-    if (!file || !file.name) return;
-    var ext = file.name.split('.').pop().toLowerCase();
+  function mimeOf(name) {
+    var ext = name.split('.').pop().toLowerCase();
     var imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
     var audioExts = ['mp3', 'ogg', 'wav', 'flac', 'aac'];
     var videoExts = ['mp4', 'mov', 'webm', 'mkv', 'avi'];
     var textExts  = ['txt', 'md', 'log', 'json', 'xml', 'csv'];
-
-    var mimeType = 'application/octet-stream';
-    if (imageExts.indexOf(ext) !== -1) mimeType = 'image/*';
-    else if (videoExts.indexOf(ext) !== -1) mimeType = 'video/*';
-    else if (audioExts.indexOf(ext) !== -1) mimeType = 'audio/*';
-    else if (textExts.indexOf(ext) !== -1) mimeType = 'text/plain';
-    else if (ext === 'zpkg') mimeType = 'application/x-zyl-package';   /* the App Store installs it */
-
-    /* Relative to the user's files, as the fs service names them */
-    var filePath = (currentPath === '/' ? '' : currentPath.replace(/^\/+/, '') + '/') + file.name;
-    ZylIntent.startActivity({ action: ZylIntent.ACTION.VIEW, data: filePath, mimeType: mimeType });
+    if (imageExts.indexOf(ext) !== -1) return 'image/*';
+    if (videoExts.indexOf(ext) !== -1) return 'video/*';
+    if (audioExts.indexOf(ext) !== -1) return 'audio/*';
+    if (textExts.indexOf(ext) !== -1) return 'text/plain';
+    if (ext === 'zpkg') return 'application/x-zyl-package';   /* the App Store installs it */
+    return 'application/octet-stream';
   }
+
+  /* Relative to the user's files, as the fs service names them */
+  function pathOf(file) {
+    return (currentPath === '/' ? '' : currentPath.replace(/^\/+/, '') + '/') + file.name;
+  }
+
+  /* ─── Open a file in whichever app opens its type (rule 9: the OS decides).
+     The file goes as files: an app that is not a system app gets its own copy ─── */
+  function openFileWithApp(file) {
+    if (!file || !file.name) return;
+    ZylIntent.startActivity({ action: ZylIntent.ACTION.VIEW, mimeType: mimeOf(file.name), files: [pathOf(file)] });
+  }
+
+  /* ─── Another app asked: choose a file for it (PICK), or keep what it sent (SEND) ─── */
+  var picking = null;
+  var pickBar = document.getElementById('pick-bar');
+
+  function endPick(files) {
+    if (!picking) return;
+    ZylIntent.setResult(picking, { files: files });   /* the OS copies it to the app that asked */
+    picking = null;
+    pickBar.classList.add('hidden');
+  }
+
+  document.getElementById('btn-pick-cancel').addEventListener('click', function () { endPick([]); });
+
+  ZylIntent.onIntent(function (intent) {
+    if (intent.action === ZylIntent.ACTION.PICK) {
+      if (picking) endPick([]);                       /* an older ask the user left */
+      picking = intent;
+      pickBar.classList.remove('hidden');
+      return;
+    }
+    if (intent.action !== ZylIntent.ACTION.SEND) return;
+    var got = intent.files || [];
+    if (got.length) {
+      /* From an app: copies in Downloads already. From a system app: where they are */
+      var dir = got[0].split('/').slice(0, -1).join('/');
+      fileSystem = {};
+      navigateTo(dir ? '/' + dir : '/');
+      if (typeof ZylToast !== 'undefined') ZylToast.success(ti('files.received'));
+    } else if (intent.data) {
+      /* Text an app shared: kept as a text file in Downloads */
+      var name = 'Downloads/shared-' + Date.now() + '.txt';
+      ZylBridge.requestService('fs', 'writeFile', { path: name, content: String(intent.data) }).then(function () {
+        fileSystem = {};
+        navigateTo('/Downloads');
+        if (typeof ZylToast !== 'undefined') ZylToast.success(ti('files.received'));
+      });
+    }
+  });
 
   /* ─── Init ─── */
   navigateTo('/');

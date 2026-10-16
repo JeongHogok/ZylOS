@@ -139,6 +139,27 @@ body {
 }
 
 /* ─── Breadcrumb ─── */
+#pick-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--accent, #3b82f6);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+#btn-pick-cancel {
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.2);
+  color: inherit;
+  font: inherit;
+}
+
 #breadcrumb {
   display: flex;
   align-items: center;

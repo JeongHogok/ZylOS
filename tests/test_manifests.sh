@@ -50,7 +50,7 @@ if 'launcher' in m and not isinstance(m['launcher'], bool):
 # What the app opens (apps/system/intent.js, runtime/wam/src/intent): known
 # actions, a type/subtype mime (subtype may be *)
 import re
-ACTIONS = {'VIEW', 'SEND', 'EDIT', 'DIAL', 'CAPTURE', 'SEARCH'}
+ACTIONS = {'VIEW', 'SEND', 'EDIT', 'DIAL', 'CAPTURE', 'SEARCH', 'PICK'}
 for it in m.get('intents', []):
     if not isinstance(it, dict) or it.get('action', '').replace('zyl.intent.action.', '', 1) not in ACTIONS \
             or not it['action'].startswith('zyl.intent.action.') \

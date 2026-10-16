@@ -398,8 +398,9 @@
      opens as itself; any other text file opens as a new note with its text,
      saved into Notes only if the user saves it */
   ZylIntent.onIntent(function (intent) {
-    if (intent.action !== ZylIntent.ACTION.VIEW || !intent.data) return;
-    var path = String(intent.data).replace(/^\/+/, '');
+    var file = (intent.files || [])[0];
+    if (intent.action !== ZylIntent.ACTION.VIEW || !file) return;
+    var path = String(file).replace(/^\/+/, '');
     var name = path.split('/').pop();
     if (path === 'Documents/Notes/' + name) {
       openNote(name);

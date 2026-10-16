@@ -131,14 +131,19 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 ### 9. Intent 시스템 경계 규칙
 
 - 앱 간 직접 함수 호출 금지 → 반드시 `ZylIntent.startActivity()` 경유
-  (명시적: `{ targetApp }`, 암시적: `{ action, mimeType, data, extras }`)
+  (명시적: `{ targetApp }`, 암시적: `{ action, mimeType, data, extras, files }`)
 - 인텐트 필터는 `app.json` 의 `intents` 로 선언 (`[{ action, mimeType }]`) —
   실행 중이 아닌 앱도 고를 수 있어야 하므로 런타임 등록이 아님.
   `tests/test_manifests.sh` 가 검증
 - 받는 쪽은 `ZylIntent.onIntent(fn)`. 처리하지 않는 action 은 선언하지 않는다
 - 해석은 OS 만: 에뮬레이터 `apps/system/intent.js`, 기기 `runtime/wam/src/intent`
   (같은 규칙). `sourceApp` 은 OS 가 채운다
-- 인텐트 데이터 전달은 `extras` 객체로만 (DOM 공유 금지)
+- 인텐트 데이터 전달은 `data`(텍스트·URL)·`extras` 객체·`files`(파일)로만 (DOM 공유 금지).
+  파일 경로를 `data` 에 싣지 말 것 — `files` 는 OS 가 받는 앱의 사본(`Inbox/`, 시스템 앱이면
+  `Downloads/`)으로 바꿔 건넨다(기기 `fs.c` 의 `Handoff`, 에뮬레이터 `fs._handoff`).
+  앱 브리지로 부를 수 있는 복사 경로를 만들지 말 것
+- 사용자의 파일을 앱에 주는 길은 PICK 뿐 — 처리 앱은 시스템 앱만(OS 화면에서 고름),
+  답(`intent.result`)은 대기 중인 그 처리 앱만, 받는 앱에는 사본으로
 - 암시적 인텐트 resolve가 0개면 "앱 없음" 다이얼로그, 복수면 앱 선택 다이얼로그
   (시작한 앱 화면에 OS 공용 코드 `shared/bridge.js` 가 그림, 고른 앱은 제시된 것만)
 
