@@ -203,6 +203,29 @@ for appdir in "$ROOT/apps"/*/; do
 done
 pass "앱 매니페스트 검사 완료"
 
+# 시스템 앱: 기기에서는 이미지에 들어간 앱(meson.build 의 install_subdir)이, 에뮬레이터에서는
+# permissions.js 의 SYSTEM_APPS 가 시스템 앱이다. 두 집합과 apps/ 의 앱이 같아야 한다 —
+# 어긋나면 한쪽에서만 시스템 권한을 받는 앱이 생긴다
+SYSAPP_DRIFT=$(python3 - "$ROOT" <<'PYCHK'
+import json, os, re, sys
+root = sys.argv[1]
+src = open(os.path.join(root, 'apps/system/permissions.js')).read()
+m = re.search(r'var SYSTEM_APPS = \[(.*?)\]', src, re.S)
+listed = set(re.findall(r"'([^']+)'", m.group(1))) if m else set()
+def app_id(d):
+    return json.load(open(os.path.join(root, 'apps', d, 'app.json')))['id']
+dirs = [d for d in os.listdir(os.path.join(root, 'apps'))
+        if os.path.isfile(os.path.join(root, 'apps', d, 'app.json'))]
+in_tree = {app_id(d) for d in dirs}
+meson = open(os.path.join(root, 'meson.build')).read()
+installed = {app_id(d) for d in re.findall(r"install_subdir\('apps/([^']+)'", meson) if d in dirs}
+for name, ids in (('SYSTEM_APPS', listed), ('meson.build 설치 목록', installed)):
+    for i in sorted(in_tree - ids): print('%s 에 없음: %s' % (name, i))
+    for i in sorted(ids - in_tree): print('%s 에만 있음: %s' % (name, i))
+PYCHK
+)
+if [ -n "$SYSAPP_DRIFT" ]; then fail "시스템 앱 집합이 어긋남:\n$SYSAPP_DRIFT"; else pass "시스템 앱 = apps/ = 이미지 설치 목록 = SYSTEM_APPS"; fi
+
 # ═════════════════════════════════════════════════════════════
 # [B] emulator-app/ — 에뮬레이터 영역
 # ═════════════════════════════════════════════════════════════
