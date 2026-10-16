@@ -167,6 +167,55 @@ jobs:
       - name: Boot it in QEMU and run the self test
         run: bash tools/run-qemu.sh --image out/image/zyl-os-emulator-phone.img --builddir builddir --check --timeout 600
 
+  # ─── riscv64: same architecture and HAL backend as the device, no board ───
+  # The emulator board builds for the host arch with the HAL emulator backend,
+  # so it cannot see what breaks on riscv64. This lane cross-builds, assembles
+  # a riscv64 rootfs (2-stage debootstrap through binfmt) and boots it.
+  qemu-boot-riscv64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    container:
+      image: debian:trixie
+      # privileged: binfmt_misc 등록이 필요하다 — 2단계 부트스트랩이 riscv64
+      # 바이너리를 호스트에서 실행한다
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install cross toolchain, riscv64 libraries, image and QEMU tools
+        run: |
+          dpkg --add-architecture riscv64
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            meson ninja-build pkgconf python3 binutils \
+            crossbuild-essential-riscv64 libglib2.0-dev-bin wayland-protocols hwdata \
+            libglib2.0-dev:riscv64 libjson-glib-dev:riscv64 libgtk-4-dev:riscv64 \
+            libwebkitgtk-6.0-dev:riscv64 libssl-dev:riscv64 libcurl4-openssl-dev:riscv64 \
+            libzip-dev:riscv64 libwayland-dev:riscv64 libxkbcommon-dev:riscv64 \
+            libpixman-1-dev:riscv64 libinput-dev:riscv64 libdrm-dev:riscv64 \
+            libegl-dev:riscv64 libgles-dev:riscv64 libdisplay-info-dev:riscv64 \
+            libseat-dev:riscv64 libgps-dev:riscv64 libwlroots-0.18-dev:riscv64 \
+            debootstrap systemd systemd-sysv fdisk e2fsprogs dbus ca-certificates \
+            qemu-user-static binfmt-support qemu-system-misc
+      - name: Register the riscv64 binfmt handler
+        run: |
+          mountpoint -q /proc/sys/fs/binfmt_misc \
+            || mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc
+          update-binfmts --enable qemu-riscv64 || true
+          test -f /proc/sys/fs/binfmt_misc/qemu-riscv64 \
+            || { echo "✗ riscv64 binfmt 핸들러가 없다 — 2단계 부트스트랩이 불가능하다"; exit 1; }
+      - name: Cross-build (board=generic-riscv64, profile=phone)
+        run: |
+          meson setup builddir-rv64 --prefix=/usr \
+            --cross-file tools/cross/riscv64.ini \
+            -Dboard=generic-riscv64 -Dprofile=phone
+          ninja -C builddir-rv64
+      - name: Build the riscv64 disk image
+        run: bash tools/build-image.sh --builddir builddir-rv64 --out out/rv64 --with-kernel
+      - name: Boot it in QEMU and run the self test
+        run: |
+          bash tools/run-qemu.sh --image out/rv64/zyl-os-generic-riscv64-phone.img \
+            --builddir builddir-rv64 --check --timeout 1800
+
   # ─── Integration tests ───
   test-integration:
     runs-on: ubuntu-24.04

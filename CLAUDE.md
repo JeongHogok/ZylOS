@@ -109,6 +109,7 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 | 서비스 집합 | `meson.build` 의 `zyl_profile_extras` | 생성되는 `zyl-os.target` |
 | 버스 접근 권한 | `system/dbus-1/zyl-os.conf` | dbus-daemon, `tests/test_dbus_policy.sh` |
 | 서비스 권한 정책 | `apps/system/permissions.js` | `bridge.c`(verify-all 이 대조) |
+| 교차 툴체인 | `tools/cross/<arch>.ini` | 보드의 `board_cross_file` |
 
 서비스는 **시스템 버스**를 쓴다 — 유닛이 `Type=dbus` + `BusName=` 이므로 systemd 가
 기다리는 버스가 시스템 버스고, 로그인 세션이 없는 기기 부팅에는 세션 버스가 없다.
@@ -219,7 +220,9 @@ tools/run-qemu.sh --image out/image/zyl-os-emulator-phone.img \
                   --builddir builddir --check                  # 부팅 + 자기점검
 ```
 자기점검은 유닛·버스·정책·앱 디렉터리·`/data` 와 화면 체인(DRM → Wayland 소켓
-→ WAM 이 띄운 앱)까지 본다. CI 의 `qemu-boot` 잡이 매 커밋 같은 일을 한다.
+→ WAM 이 띄운 앱)까지 본다. riscv64(실기기와 같은 아키텍처·HAL 백엔드)로도 같은 레인을 돌린다 — 교차 빌드
+(`--cross-file tools/cross/riscv64.ini -Dboard=generic-riscv64`) + binfmt 2단계
+부트스트랩. CI 의 `qemu-boot`·`qemu-boot-riscv64` 잡이 매 커밋 같은 일을 한다.
 이 레인이 **검증하지 않는 것**:
 U-Boot·서명 FIT·dm-verity·A/B 전환(부트로더 빌드와 `tools/sign-image.sh`·
 `tests/test_boot_env.sh` 소관), SoC 고유 경로(GPU·모뎀·ISP·eFuse).
