@@ -2,17 +2,6 @@
 
 이 파일은 AI 어시스턴트와 모든 개발자가 반드시 따라야 하는 프로젝트 규칙입니다.
 
-## 코드베이스 현황 (2026-10-15)
-
-- **파일 수**: 528개 (`git ls-files`)
-- **LoC**: ~74,600줄 (추적 중인 .c .h .js .css .html .rs .sh .py)
-- **C 서비스 디렉토리**: 32개 (runtime/services/, 전부 D-Bus 데몬)
-- **systemd 서비스**: 35개 (system/*.service — 서비스 32 + wam·compositor·apparmor)
-- **JS 서비스 모듈**: 33개 (apps/system/services/)
-- **HAL 구현체**: 15개 (runtime/hal/)
-- **시스템 앱**: 22개 (apps/, shared 포함)
-- **에뮬레이터**: Tauri 2.x (Rust), aes-gcm 암호화
-
 ## 아키텍처 경계 — 절대 규칙
 
 ### 1. OS 이미지(apps/)는 에뮬레이터(emulator-app/)에 절대 의존하지 않는다
@@ -205,8 +194,7 @@ tools/ci-local.sh                 # main 대비 바뀐 것(커밋 안 한 것 �
 tools/ci-local.sh --dry-run       # 무엇이 걸리는지만
 tools/ci-local.sh lint-js fuzz    # 잡 이름으로 골라서 / --all 은 전부
 ```
-워크플로는 관심사별로 나뉘어 있고(web·native·image·riscv64·docker·licenses·emulator·
-bootloader), **각 워크플로의 `pull_request.paths` 가 "어떤 변경이 이 검사를
+워크플로는 관심사별로 나뉘어 있고(`.github/workflows/`), **각 워크플로의 `pull_request.paths` 가 "어떤 변경이 이 검사를
 부르는가" 의 유일한 출처**다 — 원격 PR 과 `ci-local.sh` 가 같은 목록을 읽는다
 (`tests/test_ci_select.sh` 가 규칙을 검증). 새 검사를 넣으면 그 검사가 읽는
 경로를 그 워크플로의 paths 에 함께 적을 것.
@@ -218,25 +206,17 @@ bootloader), **각 워크플로의 `pull_request.paths` 가 "어떤 변경이 �
 ```bash
 bash tests/verify-all.sh
 ```
-11개 섹션에서 다음을 검사합니다:
-- **[1] OS 이미지 독립성** — Tauri 참조, postMessage 직접호출, 에뮬레이터 참조
-- **[2] ES5 호환성** — let/const/arrow function
-- **[3] i18n 완전성** — 하드코딩 문자열, 5개 언어 키 균등
-- **[4] Clean Architecture 헤더** — 모든 JS/CSS 파일
-- **[5] CSS 렌더링 호환** — backdrop-filter 폴백
-- **[6] Mock/Demo 금지** — 가짜 데이터 키워드
-- **[7] 앱 매니페스트** — app.json 필수 필드
-- **[8] 에뮬레이터 규칙** — 비즈니스 로직 금지, Rust 빌드
-- **[9] runtime/ C 코드** — TODO/FIXME, 빈 함수, CA 헤더
-- **[10] systemd 서비스** — unit 파일 존재
-- **[11] 전체 기술부채** — TODO 수, console.log, 하드코딩 비밀
+규칙 문서(이 파일)의 기계 검사다 — apps/ 규칙(OS 독립성·ES5·i18n·헤더·CSS 폴백·
+Mock 금지·매니페스트), 에뮬레이터 규칙, runtime/ C 품질과 JS↔C 사본 대조(권한 표·
+허용 도메인·기기 D-Bus 메서드), system/ 정합(유닛·tmpfiles·AppArmor), 전체 기술부채.
+무엇을 어떻게 보는지는 스크립트가 출처다. 규칙을 추가하면 verify-all 에 검사도 추가할 것.
 
 ### 개별 검증
 ```bash
 bash tests/check-os-independence.sh  # OS 이미지만
 bash tests/test_js_syntax.sh         # JS 문법
 bash tests/test_manifests.sh         # app.json
-bash tests/test_image_profiles.sh    # 폼팩터 8종이 이미지로 성립하는지 (meson 필요)
+bash tests/test_image_profiles.sh    # 모든 폼팩터가 이미지로 성립하는지 (meson 필요)
 node tests/perf/run.js               # 앱 성능 예산 (Chrome 필요, CI 'perf' 잡)
 ```
 
@@ -265,8 +245,9 @@ GPU 없이 측정해 `tests/perf/budgets.json` 과 비교한다. 의도된 변�
 바뀌면 `node tests/perf/run.js --update` 로 예산을 갱신하고 그 이유를 커밋에 적는다.
 예산을 올리는 것으로 회귀를 덮지 말 것.
 
-### Git Pre-Commit Hook
-커밋 시 자동으로 apps/ 변경분에 대해 검사 실행:
-- Tauri 참조 차단
-- postMessage 직접 호출 차단
-- ES5 위반 차단
+### 커밋 전 훅
+```bash
+git config core.hooksPath tools/hooks   # 클론마다 한 번
+```
+커밋할 때 `tests/check-os-independence.sh`(Tauri 참조·postMessage 직접 호출·ES5·
+CSS 폴백)를 돌려 위반이면 커밋을 막는다. 같은 검사를 verify-all 이 CI 에서 다시 한다.

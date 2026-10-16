@@ -1,0 +1,7 @@
+#!/bin/sh
+# [Clean Architecture] Infrastructure Layer - Git Hook
+# 역할: 커밋 전에 OS 이미지 독립성 검사(Tauri 참조·postMessage 직접 호출·ES5·CSS 폴백)를 돌린다
+# 수행범위: tests/check-os-independence.sh 실행만. 켜기: git config core.hooksPath tools/hooks
+# 의존방향: tests/check-os-independence.sh
+# SOLID: SRP — 검사는 스크립트에, 훅은 부르기만
+exec bash "$(git rev-parse --show-toplevel)/tests/check-os-independence.sh"
