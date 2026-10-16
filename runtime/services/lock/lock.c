@@ -9,7 +9,7 @@
  * SOLID: SRP — 잠금 자격 증명만. 화면은 lockscreen, 설정 UI 는 settings 앱
  *
  * PIN 은 설정 저장소·앱 메시지·에뮬레이터 어디에도 평문으로 가지 않는다.
- * 4자리 PIN 은 해시만으로 오프라인 대입을 막을 수 없으므로 실제 방어선은
+ * 6자리 PIN 은 해시만으로 오프라인 대입을 막을 수 없으므로 실제 방어선은
  * 실패 대기와 /data/lock 접근 제한(root, 0600)이다.
  * shortcut: 하드웨어 키(TEE) 결합 없음 — 보드에 TEE 가 생기면 PIN 검증을 옮길 것
  * ────────────────────────────────────────────────────────── */
@@ -76,7 +76,7 @@ static bool lock_save(const LockState *s) {
 /* ─── PIN hashing ─── */
 static bool pin_format_ok(const char *pin) {
     size_t n = strlen(pin);
-    if (n < 4 || n > 16) return false;
+    if (n != 6) return false;   /* 화면 키패드와 같은 길이 — UI 와 서비스가 어긋나지 않게 */
     for (size_t i = 0; i < n; i++) if (pin[i] < '0' || pin[i] > '9') return false;
     return true;
 }

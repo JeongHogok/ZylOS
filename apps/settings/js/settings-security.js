@@ -80,8 +80,8 @@
       var curInput = document.getElementById('current-pin-input');
       var newInput = document.getElementById('new-pin-input');
       var newPin = newInput ? newInput.value : '';
-      /* The pad and lock screen take four digits */
-      if (!/^\d{4}$/.test(newPin)) {
+      /* The pad and lock screen take six digits */
+      if (!/^\d{6}$/.test(newPin)) {
         showPinMessage(core.t('settings.pin_format'), '#ef4444');
         return;
       }

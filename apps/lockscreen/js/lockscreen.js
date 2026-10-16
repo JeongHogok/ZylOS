@@ -185,11 +185,11 @@
    * ════════════════════════════════════════════ */
   document.querySelectorAll('.num-btn[data-num]').forEach(function (btn) {
     btn.addEventListener('click', function () {
-      if (enteredPin.length >= 4) return;
+      if (enteredPin.length >= 6) return;
       enteredPin += btn.dataset.num;
       updateDots();
 
-      if (enteredPin.length === 4) {
+      if (enteredPin.length === 6) {
         setTimeout(verifyPin, 250);
       }
     });

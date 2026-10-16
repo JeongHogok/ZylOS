@@ -24,48 +24,50 @@ static void reset(void) {
     lock_load(&s);
 }
 
-/* A long PIN on purpose: the stored line ends in 96 random hex characters, and
-   a 4-digit PIN turns up inside them by chance about once in 725 runs — this
-   test went red on CI for exactly that, with nothing wrong in the code. */
-#define LONG_PIN "4821096372"
+/* A specific 6-digit PIN: the stored line ends in 96 random hex characters, so
+ * this exact sequence turns up inside them by chance about once in 180,000 runs
+ * — a 4-digit PIN did so once in 725 and went red on CI with nothing wrong. */
+#define PIN6 "482109"
 
 static void test_pin_is_stored_only_as_a_salted_hash(void) {
-    assert(*lock_set_pin(&s, "", LONG_PIN, T) == '\0');
+    assert(*lock_set_pin(&s, "", PIN6, T) == '\0');
     char *file = NULL;
     g_assert_true(g_file_get_contents(ZYL_LOCK_FILE, &file, NULL, NULL));
-    assert(!strstr(file, LONG_PIN) && strstr(file, "pbkdf2-sha256$"));
+    assert(!strstr(file, PIN6) && strstr(file, "pbkdf2-sha256$"));
     g_free(file);
     LockState other = {0};
-    assert(hash_pin(LONG_PIN, other.hash, sizeof(other.hash)));
+    assert(hash_pin(PIN6, other.hash, sizeof(other.hash)));
     assert(strcmp(other.hash, s.hash) != 0);              /* fresh salt each time */
 }
 
-static void test_format_is_digits_four_to_sixteen(void) {
-    assert(strcmp(lock_set_pin(&s, "", "123", T), "format") == 0);
-    assert(strcmp(lock_set_pin(&s, "", "12a4", T), "format") == 0);
-    assert(*lock_set_pin(&s, "", "1234567890123456", T) == '\0');
+static void test_format_is_exactly_six_digits(void) {
+    assert(strcmp(lock_set_pin(&s, "", "12345", T), "format") == 0);     /* too short */
+    assert(strcmp(lock_set_pin(&s, "", "1234567", T), "format") == 0);   /* too long */
+    assert(strcmp(lock_set_pin(&s, "", "4821", T), "format") == 0);      /* the old 4-digit */
+    assert(strcmp(lock_set_pin(&s, "", "12a456", T), "format") == 0);    /* not all digits */
+    assert(*lock_set_pin(&s, "", "123456", T) == '\0');
 }
 
 static void test_right_pin_unlocks_wrong_pin_does_not(void) {
-    lock_set_pin(&s, "", "4821", T);
-    assert(lock_check(&s, "0000", T) == CHECK_WRONG);
-    assert(lock_check(&s, "4821", T) == CHECK_OK);
+    lock_set_pin(&s, "", "482109", T);
+    assert(lock_check(&s, "000000", T) == CHECK_WRONG);
+    assert(lock_check(&s, "482109", T) == CHECK_OK);
     assert(s.failures == 0);
 }
 
 static void test_failures_make_the_user_wait_and_survive_restart(void) {
-    lock_set_pin(&s, "", "4821", T);
-    for (int i = 0; i < 4; i++) assert(lock_check(&s, "0000", T) == CHECK_WRONG);
+    lock_set_pin(&s, "", "482109", T);
+    for (int i = 0; i < 4; i++) assert(lock_check(&s, "000000", T) == CHECK_WRONG);
     assert(retry_after_ms(&s, T) == 0);                    /* four are free */
-    assert(lock_check(&s, "0000", T) == CHECK_WRONG);
+    assert(lock_check(&s, "000000", T) == CHECK_WRONG);
     assert(retry_after_ms(&s, T) == 30000);
     lock_load(&s);                                         /* reboot */
     assert(retry_after_ms(&s, T + 10) == 20000);
     /* While waiting even the right PIN is not tried — no oracle, no count */
     guint before = s.failures;
-    assert(lock_check(&s, "4821", T + 10) == CHECK_WAIT);
+    assert(lock_check(&s, "482109", T + 10) == CHECK_WAIT);
     assert(s.failures == before);
-    assert(lock_check(&s, "4821", T + 31) == CHECK_OK);
+    assert(lock_check(&s, "482109", T + 31) == CHECK_OK);
 }
 
 static void test_wait_doubles_and_is_capped(void) {
@@ -77,19 +79,19 @@ static void test_wait_doubles_and_is_capped(void) {
 }
 
 static void test_change_and_remove_need_the_current_pin(void) {
-    lock_set_pin(&s, "", "4821", T);
-    assert(strcmp(lock_set_pin(&s, "1111", "5555", T), "wrong_pin") == 0);
-    assert(*lock_set_pin(&s, "4821", "5555", T) == '\0');
-    assert(lock_check(&s, "5555", T) == CHECK_OK);
-    assert(strcmp(lock_set_pin(&s, "4821", "", T), "wrong_pin") == 0);
-    assert(*lock_set_pin(&s, "5555", "", T) == '\0');      /* removed */
+    lock_set_pin(&s, "", "482109", T);
+    assert(strcmp(lock_set_pin(&s, "111111", "555555", T), "wrong_pin") == 0);
+    assert(*lock_set_pin(&s, "482109", "555555", T) == '\0');
+    assert(lock_check(&s, "555555", T) == CHECK_OK);
+    assert(strcmp(lock_set_pin(&s, "482109", "", T), "wrong_pin") == 0);
+    assert(*lock_set_pin(&s, "555555", "", T) == '\0');      /* removed */
     assert(s.hash[0] == '\0');
 }
 
 int main(void) {
     printf("=== Zyl OS Lock Credential Tests ===\n");
     RUN_TEST(test_pin_is_stored_only_as_a_salted_hash);
-    RUN_TEST(test_format_is_digits_four_to_sixteen);
+    RUN_TEST(test_format_is_exactly_six_digits);
     RUN_TEST(test_right_pin_unlocks_wrong_pin_does_not);
     RUN_TEST(test_failures_make_the_user_wait_and_survive_restart);
     RUN_TEST(test_wait_doubles_and_is_capped);

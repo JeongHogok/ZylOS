@@ -126,7 +126,7 @@
     function setPin(p) {
       var now = nowS();
       var pin = String((p && p.pin) || '');
-      if (pin && !/^\d{4,16}$/.test(pin)) {
+      if (pin && !/^\d{6}$/.test(pin)) {
         return load().then(function (st) { return result(false, 'format', st, now); });
       }
       return load().then(function (st) {
