@@ -68,6 +68,14 @@
       return state[category];
     }
 
+    /* Permissions the user turned off for an app (app_permissions: appId →
+       "perm,perm") are refused by the permission gate from now on — the
+       device WAM follows the same key through the settings CategoryChanged */
+    function applyRevoked(appId, value) {
+      if (typeof ZylPermissions === 'undefined') return;
+      ZylPermissions.setAppOverride(appId, String(value || '').split(',').filter(Boolean));
+    }
+
     return {
       get:    function (p) { return getSetting(p.category); },
       update: function (p) {
@@ -75,9 +83,17 @@
         if (p.category === 'security' && p.key === 'pin') {
           return Promise.reject(new Error('the PIN belongs to the lock service'));
         }
-        return updateSetting(p.category, p.key, p.value);
+        var updated = updateSetting(p.category, p.key, p.value);
+        if (p.category === 'app_permissions') applyRevoked(p.key, p.value);
+        return updated;
       },
-      _loadFromBackend: _loadFromBackend,
+      _loadFromBackend: function () {
+        return _loadFromBackend().then(function (s) {
+          var perms = s.app_permissions || {};
+          Object.keys(perms).forEach(function (appId) { applyRevoked(appId, perms[appId]); });
+          return s;
+        });
+      },
       /* A key gone, not set to null (the backend removes it from settings.json) */
       _removeSetting: function (category, key) {
         if (state[category]) delete state[category][key];

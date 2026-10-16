@@ -522,13 +522,12 @@
 
     var result = ZylServices.handleRequest(msg.service, msg.method, msg.params || {}, callerAppId);
 
-    /* ── settings.update side effects ── */
-    if (msg.service === 'settings' && msg.method === 'update') {
-      var p = msg.params || {};
-      applySettingSideEffect(p.category, p.key, p.value);
-    }
-
     function sendResponse(data) {
+      /* A setting the OS accepted shows on the emulated screen — never one it refused */
+      if (msg.service === 'settings' && msg.method === 'update' && data && !data.error) {
+        var p = msg.params || {};
+        applySettingSideEffect(p.category, p.key, p.value);
+      }
       var response = JSON.stringify({
         type: 'service.response',
         service: msg.service,
@@ -599,15 +598,6 @@
       broadcastToCurrentApp('system.setTimeZone', { timeZone: _currentTimeZone });
       postToSystemUi('system.setTimeZone', { timeZone: _currentTimeZone });
       syslog('Time zone: ' + _currentTimeZone, 'sys');
-    }
-
-    /* ── 앱 권한 변경 → 권한 시스템 업데이트 ── */
-    if (category === 'app_permissions') {
-      syslog('App permissions updated: ' + key, 'sys');
-      if (typeof ZylPermissions !== 'undefined' && ZylPermissions.setAppOverride) {
-        var revoked = String(value || '').split(',').filter(Boolean);
-        ZylPermissions.setAppOverride(key, revoked);
-      }
     }
   }
 

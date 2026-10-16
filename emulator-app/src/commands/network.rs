@@ -2,9 +2,10 @@
 // [Clean Architecture] Infrastructure Layer - Adapter
 //
 // 역할: HTTP fetch 프록시
-// 수행범위: 도메인 화이트리스트 기반 HTTP 프록시 (Rust 레벨 강제)
+// 수행범위: 가져오기와 호스트 보호(루프백·IP 리터럴 차단)만. 어느 도메인을 허락할지는
+//           OS 의 apps/system/sandbox.js 가 정한다 (기기 network.c 와 같은 목록)
 // 의존방향: std::process::Command (curl)
-// SOLID: SRP — 도메인 검증과 가져오기만
+// SOLID: SRP — 호스트 보호와 가져오기만
 //
 // 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
 // 에뮬레이터는 실제 디바이스 구동 환경 제공이 목적이며, OS 이미지 영역의 콘텐츠를 포함하지 않는다
@@ -12,23 +13,7 @@
 
 use std::process::Command;
 
-/// Hostname suffix allowlist. A request is permitted iff its parsed hostname
-/// equals one of these entries OR ends with ".<entry>".
-const ALLOWED_DOMAINS: &[&str] = &[
-    // Weather services used by Zyl OS weather app
-    "wttr.in",
-    "api.open-meteo.com",
-    // IP geolocation used by location service
-    "ipinfo.io",
-    // Zyl update / app-store endpoints
-    "updates.zylos.dev",
-    "store.zylos.dev",
-    // OpenStreetMap tile/nominatim (maps app)
-    "tile.openstreetmap.org",
-    "nominatim.openstreetmap.org",
-];
-
-/// Validate a URL against the domain whitelist and block unsafe targets.
+/// Block targets on the developer's host and network.
 /// Returns Ok(hostname) or Err(human-readable reason).
 fn validate_fetch_url(url: &str) -> Result<String, String> {
     // Scheme check
@@ -95,28 +80,13 @@ fn validate_fetch_url(url: &str) -> Result<String, String> {
         ));
     }
 
-    // Domain allowlist check
-    let permitted = ALLOWED_DOMAINS.iter().any(|&allowed| {
-        hostname == allowed || hostname.ends_with(&format!(".{}", allowed))
-    });
-
-    if !permitted {
-        return Err(format!(
-            "Domain '{}' is not on the http_fetch allowlist. \
-             Contact the OS service team to add it.",
-            hostname
-        ));
-    }
-
     Ok(hostname)
 }
 
 /// Fetch a URL via curl (non-blocking).
 ///
-/// The domain whitelist is enforced at the Rust command boundary. Callers
-/// that invoke this command directly (bypassing sandbox.js) still receive the
-/// same domain restrictions. IP literals and loopback are blocked to prevent
-/// SSRF against the host.
+/// The OS has already checked the domain (sandbox.js). IP literals and
+/// loopback are blocked here to prevent SSRF against the host.
 ///
 /// Runs curl in a background thread via std::thread::spawn so the Tauri main
 /// thread (and therefore the entire WebView) is never blocked by slow networks.
@@ -167,26 +137,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_allowed_domain_exact() {
-        assert!(validate_fetch_url("https://wttr.in/Seoul").is_ok());
-    }
-
-    #[test]
-    fn test_allowed_domain_subdomain() {
-        assert!(validate_fetch_url("https://tile.openstreetmap.org/path").is_ok());
-    }
-
-    #[test]
-    fn test_allowed_ipinfo() {
-        assert!(validate_fetch_url("https://ipinfo.io/json").is_ok());
-    }
-
-    #[test]
-    fn test_blocked_unlisted_domain() {
-        let err = validate_fetch_url("https://evil.com/payload");
-        assert!(err.is_err(), "unlisted domain must be blocked");
-        let msg = err.unwrap_err();
-        assert!(msg.contains("allowlist"), "should mention allowlist");
+    fn test_public_hostname_passes() {
+        // Which domains an app may reach is the OS's (sandbox.js), not the container's
+        assert!(validate_fetch_url("https://api.open-meteo.com/v1/forecast").is_ok());
     }
 
     #[test]
@@ -228,13 +181,6 @@ mod tests {
         let long_url = format!("https://wttr.in/{}", "a".repeat(2048));
         let err = validate_fetch_url(&long_url);
         assert!(err.is_err());
-    }
-
-    #[test]
-    fn test_subdomain_of_unlisted_domain_blocked() {
-        // sub.evil.com should NOT be allowed just because evil.com contains wttr.in as substring
-        let err = validate_fetch_url("https://not-wttr.in/data");
-        assert!(err.is_err(), "subdomain of unlisted domain must be blocked");
     }
 
     #[test]
