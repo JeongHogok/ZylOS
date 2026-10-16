@@ -73,7 +73,9 @@ window.ZylPermissions = (function () {
     'appdata':       [],
     /* An app's server reaching it through the OS's one push connection */
     'push':          ['push'],
-    'power':         []
+    'power':         [],
+    /* Embedding a web content view is the OS's browser only (reserved) */
+    'webcontent':    ['webcontent']
   };
 
   /* Methods that reach past the caller's own, checked after the service rule:
@@ -144,7 +146,8 @@ window.ZylPermissions = (function () {
     { service: 'location',     event: 'GeofenceEnter', readAll: null },
     { service: 'location',     event: 'GeofenceExit',  readAll: null },
     { service: 'alarm',        event: 'AlarmTriggered', readAll: null },
-    { service: 'push',         event: 'PushReceived',   readAll: null }
+    { service: 'push',         event: 'PushReceived',   readAll: null },
+    { service: 'webcontent',   event: null,             readAll: null }
   ];
 
   /* App-declared permissions from app.json */
@@ -167,7 +170,8 @@ window.ZylPermissions = (function () {
     'system',             /* settings writes, telemetry consent */
     'credential',         /* keychain */
     'app.manage',         /* install / uninstall other apps */
-    'notification.read'   /* read every app's notifications */
+    'notification.read',  /* read every app's notifications */
+    'webcontent'          /* embed an OS-owned web content view (the browser) */
   ];
 
   function grantableFromDeclaration(perms) {
@@ -184,7 +188,7 @@ window.ZylPermissions = (function () {
     'audio', 'app.manage', 'app.list', 'app.launch',
     'location', 'network', 'webview', 'downloads', 'bookmarks',
     'input', 'i18n', 'battery', 'time', 'auth', 'wallpaper', 'gallery',
-    'contacts', 'messaging', 'telephony', 'push'
+    'contacts', 'messaging', 'telephony', 'push', 'webcontent'
   ];
 
   /**

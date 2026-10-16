@@ -682,6 +682,26 @@ static void test_alarm_events_are_the_apps_own(void) {
     g_variant_unref(theirs);
 }
 
+/* The web content view is the OS's browser only: webcontent is reserved, so a
+   third-party app cannot call it or hear its events even if it declares it. The
+   browser (system) can, and its view's events reach it. */
+static void test_webcontent_is_the_browsers(void) {
+    const char *none[] = { NULL };
+    const char *declares[] = { "webcontent", NULL };   /* reserved: not granted */
+    ZylAppManifest app = perm_manifest("com.example.app", FALSE, none);
+    ZylAppManifest sneaky = perm_manifest("com.example.sneaky", FALSE, declares);
+    ZylAppManifest browser = perm_manifest("com.zylos.browser", TRUE, none);
+    assert(!app_may_call(&app, "webcontent"));
+    assert(!app_may_call(&sneaky, "webcontent"));            /* reserved, declaration ignored */
+    assert(app_may_call(&browser, "webcontent"));
+    GVariant *ev = g_variant_ref_sink(g_variant_new("(sss)", "main", "com.zylos.browser", "https://example.com/"));
+    assert(!zyl_bridge_service_event_script(&sneaky, "webcontent", "UrlChanged", ev));
+    char *s = zyl_bridge_service_event_script(&browser, "webcontent", "UrlChanged", ev);
+    assert(s);
+    g_free(s);
+    g_variant_unref(ev);
+}
+
 /* The bridge script: the manifest's strings go in as JS string literals, in
    one pass (a value is never read again for tokens), into the top frame only */
 static void test_bridge_script_takes_manifest_strings_as_text(void) {
@@ -851,6 +871,7 @@ int main(void)
     RUN_TEST(test_policy_user_revocation_takes_the_service_away);
     RUN_TEST(test_policy_revocation_list_is_comma_separated);
     RUN_TEST(test_alarm_events_are_the_apps_own);
+    RUN_TEST(test_webcontent_is_the_browsers);
     RUN_TEST(test_power_actions_are_system_only);
     RUN_TEST(test_app_holds_follows_declaration_and_revocation);
     RUN_TEST(test_revocation_reload_names_only_changed_apps);

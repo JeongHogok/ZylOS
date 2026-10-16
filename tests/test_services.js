@@ -1468,13 +1468,13 @@ console.log('\n■ ZylPermissions');
     { id: 'com.zylos.settings', permissions: [] },
     { id: 'com.evil.app', permissions: ['system', 'credential',
                                         'app.manage', 'notification.read',
-                                        'camera', 'network'] },
+                                        'webcontent', 'camera', 'network'] },
     { id: 'com.zylos.settings', permissions: ['camera'] }   /* ID spoof */
   ]);
 
   test('a third-party app cannot declare itself system permissions', function () {
     var got = P.getEffectivePermissions('com.evil.app');
-    ['system', 'credential', 'app.manage', 'notification.read'].forEach(function (r) {
+    ['system', 'credential', 'app.manage', 'notification.read', 'webcontent'].forEach(function (r) {
       assert.strictEqual(got.indexOf(r), -1, r + ' must not be grantable by declaration');
     });
   });

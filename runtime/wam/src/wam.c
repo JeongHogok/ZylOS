@@ -1069,6 +1069,274 @@ static void dbus_switch_app(GVariant *params, GDBusMethodInvocation *inv, gpoint
     g_dbus_method_invocation_return_value(inv, NULL);
 }
 
+/* ════════════════════════════════════════════════════════════════
+ *  Web content views (org.zylos.WebContent)
+ *  The OS owns the web page, not the browser. Each content view is its own
+ *  bridge-less WebKitWebView — its own web process, no token, no
+ *  navigator.system — so a renderer exploit has no OS reach and nothing to
+ *  steal. The browser (chrome) drives it only through this service and hears
+ *  url/title/loading back; it never touches the content's DOM. One view per
+ *  app for now (the view_id is carried for future tabs). It lives in the
+ *  owning app's window box, so its lifecycle follows the app's.
+ * ════════════════════════════════════════════════════════════════ */
+
+/* owner id and view id ride on the content WebKitWebView for the signals */
+static void content_emit(WebKitWebView *v, const char *signal, GVariant *tail) {
+    const char *view_id = g_object_get_data(G_OBJECT(v), "zyl-view-id");
+    const char *owner   = g_object_get_data(G_OBJECT(v), "zyl-owner");
+    GVariantBuilder b;
+    g_variant_builder_init(&b, G_VARIANT_TYPE_TUPLE);
+    g_variant_builder_add(&b, "s", view_id ? view_id : "");
+    g_variant_builder_add(&b, "s", owner ? owner : "");
+    GVariantIter it;
+    g_variant_iter_init(&it, tail);
+    GVariant *child;
+    while ((child = g_variant_iter_next_value(&it))) {
+        g_variant_builder_add_value(&b, child);
+        g_variant_unref(child);
+    }
+    g_variant_ref_sink(tail);
+    g_variant_unref(tail);
+    zyl_dbus_webcontent_emit(signal, g_variant_builder_end(&b));
+}
+
+static void on_content_uri(GObject *obj, GParamSpec *ps, gpointer d) {
+    (void)ps; (void)d;
+    WebKitWebView *v = WEBKIT_WEB_VIEW(obj);
+    const char *uri = webkit_web_view_get_uri(v);
+    content_emit(v, "UrlChanged", g_variant_new("(s)", uri ? uri : ""));
+}
+
+static void on_content_title(GObject *obj, GParamSpec *ps, gpointer d) {
+    (void)ps; (void)d;
+    WebKitWebView *v = WEBKIT_WEB_VIEW(obj);
+    const char *t = webkit_web_view_get_title(v);
+    content_emit(v, "TitleChanged", g_variant_new("(s)", t ? t : ""));
+}
+
+static void on_content_load(WebKitWebView *v, WebKitLoadEvent ev, gpointer d) {
+    (void)d;
+    if (ev == WEBKIT_LOAD_STARTED)
+        content_emit(v, "LoadingChanged", g_variant_new("(b)", TRUE));
+    else if (ev == WEBKIT_LOAD_FINISHED) {
+        content_emit(v, "LoadingChanged", g_variant_new("(b)", FALSE));
+        content_emit(v, "NavStateChanged", g_variant_new("(bb)",
+            webkit_web_view_can_go_back(v), webkit_web_view_can_go_forward(v)));
+    }
+}
+
+/* A content view reaches only https (and about:blank) — never zyl-app, file,
+   data or plain http. It has no bridge, so it cannot call the OS regardless. */
+static gboolean on_content_decide_policy(WebKitWebView *v, WebKitPolicyDecision *decision,
+                                         WebKitPolicyDecisionType type, gpointer d) {
+    (void)v; (void)d;
+    if (type == WEBKIT_POLICY_DECISION_TYPE_NEW_WINDOW_ACTION) {
+        webkit_policy_decision_ignore(decision);
+        return TRUE;
+    }
+    if (type != WEBKIT_POLICY_DECISION_TYPE_NAVIGATION_ACTION) return FALSE;
+    WebKitNavigationAction *a = webkit_navigation_policy_decision_get_navigation_action(
+        WEBKIT_NAVIGATION_POLICY_DECISION(decision));
+    const char *uri = webkit_uri_request_get_uri(webkit_navigation_action_get_request(a));
+    if (uri && (g_ascii_strncasecmp(uri, "https://", 8) == 0 ||
+                g_str_has_prefix(uri, "about:"))) return FALSE;
+    webkit_policy_decision_ignore(decision);
+    return TRUE;
+}
+
+/* A web page gets no camera, microphone or anything else through the OS */
+static gboolean on_content_permission(WebKitWebView *v, WebKitPermissionRequest *req, gpointer d) {
+    (void)v; (void)d;
+    webkit_permission_request_deny(req);
+    return TRUE;
+}
+
+static gboolean content_webkit_dirs(const char *owner, char **data, char **cache) {
+    char *base = g_build_filename(WAM_CONTAINERS, owner, "webcontent", NULL);
+    *data = g_build_filename(base, "data", NULL);
+    *cache = g_build_filename(base, "cache", NULL);
+    g_free(base);
+    if (g_mkdir_with_parents(*data, 0700) == 0 && g_mkdir_with_parents(*cache, 0700) == 0) return TRUE;
+    g_clear_pointer(data, g_free);
+    g_clear_pointer(cache, g_free);
+    return FALSE;
+}
+
+/* The content WebKitWebView: like an app view minus the bridge, the form-factor
+   script, the zyl-app scheme and the own-origin lock; https only, deny grants.
+   Its own session keeps the browser's cookies/logins (persistent profile), in
+   the browser's container so uninstall and factory reset take it (rule 12). */
+static WebKitWebView *create_content_webview(const char *owner, const char *view_id) {
+    WebKitSettings *settings = webkit_settings_new();
+    webkit_settings_set_enable_javascript(settings, TRUE);
+    webkit_settings_set_enable_developer_extras(settings, FALSE);
+    webkit_settings_set_hardware_acceleration_policy(settings,
+        WEBKIT_HARDWARE_ACCELERATION_POLICY_ALWAYS);
+    webkit_settings_set_allow_file_access_from_file_urls(settings, FALSE);
+    webkit_settings_set_allow_universal_access_from_file_urls(settings, FALSE);
+
+    char *data_dir = NULL, *cache_dir = NULL;
+    gboolean persistent = content_webkit_dirs(owner, &data_dir, &cache_dir);
+#ifdef ZYL_USE_WEBKIT2GTK
+    WebKitWebsiteDataManager *store = persistent
+        ? webkit_website_data_manager_new("base-data-directory", data_dir,
+                                          "base-cache-directory", cache_dir, NULL)
+        : webkit_website_data_manager_new_ephemeral();
+    WebKitWebContext *ctx = webkit_web_context_new_with_website_data_manager(store);
+    webkit_web_context_set_sandbox_enabled(ctx, TRUE);
+    webkit_web_context_set_tls_errors_policy(ctx, WEBKIT_TLS_ERRORS_POLICY_FAIL);
+    WebKitWebView *v = WEBKIT_WEB_VIEW(g_object_new(WEBKIT_TYPE_WEB_VIEW, "web-context", ctx, NULL));
+    g_object_unref(ctx);
+    g_object_unref(store);
+#else
+    WebKitNetworkSession *session = persistent
+        ? webkit_network_session_new(data_dir, cache_dir)
+        : webkit_network_session_new_ephemeral();
+    webkit_network_session_set_tls_errors_policy(session, WEBKIT_TLS_ERRORS_POLICY_FAIL);
+    WebKitWebView *v = WEBKIT_WEB_VIEW(g_object_new(WEBKIT_TYPE_WEB_VIEW, "network-session", session, NULL));
+    g_object_unref(session);
+#endif
+    g_free(data_dir);
+    g_free(cache_dir);
+    webkit_web_view_set_settings(v, settings);
+    g_object_unref(settings);
+
+    g_object_set_data_full(G_OBJECT(v), "zyl-owner", g_strdup(owner), g_free);
+    g_object_set_data_full(G_OBJECT(v), "zyl-view-id", g_strdup(view_id), g_free);
+    g_signal_connect(v, "notify::uri", G_CALLBACK(on_content_uri), NULL);
+    g_signal_connect(v, "notify::title", G_CALLBACK(on_content_title), NULL);
+    g_signal_connect(v, "load-changed", G_CALLBACK(on_content_load), NULL);
+    g_signal_connect(v, "decide-policy", G_CALLBACK(on_content_decide_policy), NULL);
+    g_signal_connect(v, "permission-request", G_CALLBACK(on_content_permission), NULL);
+    g_signal_connect(v, "run-file-chooser", G_CALLBACK(on_file_chooser), NULL);
+    return v;
+}
+
+/* The caller's content view, created on first Open and packed below its chrome */
+static ZylAppInstance *content_owner(ZylWam *wam, const char *caller) {
+    return caller && *caller ? wam->iface.get_instance(&wam->iface, caller) : NULL;
+}
+
+static void wc_reply(GDBusMethodInvocation *inv) {
+    g_dbus_method_invocation_return_value(inv, NULL);
+}
+
+static void dbus_wc_open(GVariant *params, GDBusMethodInvocation *inv, gpointer data) {
+    ZylWam *wam = data;
+    const char *caller, *view_id, *url;
+    g_variant_get(params, "(&s&s&s)", &caller, &view_id, &url);
+    ZylAppInstance *inst = content_owner(wam, caller);
+    if (inst) {
+        if (!inst->content_view) {
+            inst->content_view = GTK_WIDGET(create_content_webview(caller, view_id));
+            gtk_widget_set_vexpand(inst->content_view, TRUE);
+            gtk_widget_set_visible(inst->content_view, FALSE);  /* Show reveals it */
+            gtk_box_append(GTK_BOX(inst->content_box), inst->content_view);
+        }
+        if (url && g_ascii_strncasecmp(url, "https://", 8) == 0)
+            webkit_web_view_load_uri(WEBKIT_WEB_VIEW(inst->content_view), url);
+    }
+    wc_reply(inv);
+}
+
+/* The one live content view of the caller (single view per app) */
+static WebKitWebView *wc_view(ZylWam *wam, GVariant *params, const char **view_id_out) {
+    const char *caller, *view_id;
+    g_variant_get(params, "(&s&s)", &caller, &view_id);
+    if (view_id_out) *view_id_out = view_id;
+    ZylAppInstance *inst = content_owner(wam, caller);
+    return inst && inst->content_view ? WEBKIT_WEB_VIEW(inst->content_view) : NULL;
+}
+
+static void dbus_wc_navigate(GVariant *params, GDBusMethodInvocation *inv, gpointer data) {
+    ZylWam *wam = data;
+    const char *caller, *view_id, *url;
+    g_variant_get(params, "(&s&s&s)", &caller, &view_id, &url);
+    ZylAppInstance *inst = content_owner(wam, caller);
+    WebKitWebView *v = inst && inst->content_view ? WEBKIT_WEB_VIEW(inst->content_view) : NULL;
+    if (v && url && g_ascii_strncasecmp(url, "https://", 8) == 0)
+        webkit_web_view_load_uri(v, url);
+    wc_reply(inv);
+}
+
+static void dbus_wc_back(GVariant *params, GDBusMethodInvocation *inv, gpointer data) {
+    WebKitWebView *v = wc_view(data, params, NULL);
+    if (v && webkit_web_view_can_go_back(v)) webkit_web_view_go_back(v);
+    wc_reply(inv);
+}
+static void dbus_wc_forward(GVariant *params, GDBusMethodInvocation *inv, gpointer data) {
+    WebKitWebView *v = wc_view(data, params, NULL);
+    if (v && webkit_web_view_can_go_forward(v)) webkit_web_view_go_forward(v);
+    wc_reply(inv);
+}
+static void dbus_wc_reload(GVariant *params, GDBusMethodInvocation *inv, gpointer data) {
+    WebKitWebView *v = wc_view(data, params, NULL);
+    if (v) webkit_web_view_reload(v);
+    wc_reply(inv);
+}
+static void dbus_wc_stop(GVariant *params, GDBusMethodInvocation *inv, gpointer data) {
+    WebKitWebView *v = wc_view(data, params, NULL);
+    if (v) webkit_web_view_stop_loading(v);
+    wc_reply(inv);
+}
+
+static void dbus_wc_show(GVariant *params, GDBusMethodInvocation *inv, gpointer data) {
+    ZylWam *wam = data;
+    const char *caller, *view_id;
+    gint32 x, y, w, h;
+    g_variant_get(params, "(&s&siiii)", &caller, &view_id, &x, &y, &w, &h);
+    ZylAppInstance *inst = content_owner(wam, caller);
+    if (inst && inst->content_view) {
+        /* Content fills below the chrome's toolbar strip (height y); the chrome
+           webview shrinks to that strip. (x, w, h are carried for future split
+           layouts; a phone page is full width below the toolbar.) */
+        gtk_widget_set_vexpand(inst->webview_widget, FALSE);
+        gtk_widget_set_size_request(inst->webview_widget, -1, y > 0 ? y : 1);
+        gtk_widget_set_visible(inst->content_view, TRUE);
+    }
+    wc_reply(inv);
+}
+
+static void dbus_wc_hide(GVariant *params, GDBusMethodInvocation *inv, gpointer data) {
+    ZylWam *wam = data;
+    const char *caller, *view_id;
+    g_variant_get(params, "(&s&s)", &caller, &view_id);
+    ZylAppInstance *inst = content_owner(wam, caller);
+    if (inst && inst->content_view) {
+        gtk_widget_set_visible(inst->content_view, FALSE);
+        gtk_widget_set_size_request(inst->webview_widget, -1, -1);
+        gtk_widget_set_vexpand(inst->webview_widget, TRUE);   /* chrome fills again */
+    }
+    wc_reply(inv);
+}
+
+static void dbus_wc_close(GVariant *params, GDBusMethodInvocation *inv, gpointer data) {
+    ZylWam *wam = data;
+    const char *caller, *view_id;
+    g_variant_get(params, "(&s&s)", &caller, &view_id);
+    ZylAppInstance *inst = content_owner(wam, caller);
+    if (inst && inst->content_view) {
+        gtk_box_remove(GTK_BOX(inst->content_box), inst->content_view);
+        inst->content_view = NULL;
+        gtk_widget_set_size_request(inst->webview_widget, -1, -1);
+        gtk_widget_set_vexpand(inst->webview_widget, TRUE);
+    }
+    wc_reply(inv);
+}
+
+static const ZylDbusMethodEntry webcontent_methods[] = {
+    { "Open",      dbus_wc_open     },
+    { "Navigate",  dbus_wc_navigate },
+    { "GoBack",    dbus_wc_back     },
+    { "GoForward", dbus_wc_forward  },
+    { "Reload",    dbus_wc_reload   },
+    { "Stop",      dbus_wc_stop     },
+    { "Show",      dbus_wc_show     },
+    { "Hide",      dbus_wc_hide     },
+    { "Close",     dbus_wc_close    },
+    { NULL, NULL }
+};
+
 static const ZylDbusMethodEntry dbus_methods[] = {
     { "Launch",      dbus_launch      },
     { "Close",       dbus_close       },
@@ -1340,7 +1608,7 @@ int main(int argc, char *argv[]) {
     zyl_bridge_register_handler("recents.close",     wam_handle_recents_close, &wam);
 
     /* Start D-Bus service */
-    wam.dbus_owner_id = zyl_dbus_service_start(dbus_methods, &wam);
+    wam.dbus_owner_id = zyl_dbus_service_start(dbus_methods, webcontent_methods, &wam);
 
     /* GTK application */
     wam.app = G_APPLICATION(gtk_application_new("org.zylos.wam",

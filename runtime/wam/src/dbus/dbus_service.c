@@ -52,6 +52,71 @@ static const char *introspection_xml =
     "      <arg type='s' name='app_id'/>"
     "    </signal>"
     "  </interface>"
+    "  <interface name='" WAM_WEBCONTENT_IFACE "'>"
+    "    <method name='Open'>"
+    "      <arg type='s' name='caller' direction='in'/>"
+    "      <arg type='s' name='view_id' direction='in'/>"
+    "      <arg type='s' name='url' direction='in'/>"
+    "    </method>"
+    "    <method name='Navigate'>"
+    "      <arg type='s' name='caller' direction='in'/>"
+    "      <arg type='s' name='view_id' direction='in'/>"
+    "      <arg type='s' name='url' direction='in'/>"
+    "    </method>"
+    "    <method name='GoBack'>"
+    "      <arg type='s' name='caller' direction='in'/>"
+    "      <arg type='s' name='view_id' direction='in'/>"
+    "    </method>"
+    "    <method name='GoForward'>"
+    "      <arg type='s' name='caller' direction='in'/>"
+    "      <arg type='s' name='view_id' direction='in'/>"
+    "    </method>"
+    "    <method name='Reload'>"
+    "      <arg type='s' name='caller' direction='in'/>"
+    "      <arg type='s' name='view_id' direction='in'/>"
+    "    </method>"
+    "    <method name='Stop'>"
+    "      <arg type='s' name='caller' direction='in'/>"
+    "      <arg type='s' name='view_id' direction='in'/>"
+    "    </method>"
+    "    <method name='Show'>"
+    "      <arg type='s' name='caller' direction='in'/>"
+    "      <arg type='s' name='view_id' direction='in'/>"
+    "      <arg type='i' name='x' direction='in'/>"
+    "      <arg type='i' name='y' direction='in'/>"
+    "      <arg type='i' name='w' direction='in'/>"
+    "      <arg type='i' name='h' direction='in'/>"
+    "    </method>"
+    "    <method name='Hide'>"
+    "      <arg type='s' name='caller' direction='in'/>"
+    "      <arg type='s' name='view_id' direction='in'/>"
+    "    </method>"
+    "    <method name='Close'>"
+    "      <arg type='s' name='caller' direction='in'/>"
+    "      <arg type='s' name='view_id' direction='in'/>"
+    "    </method>"
+    "    <signal name='UrlChanged'>"
+    "      <arg type='s' name='view_id'/>"
+    "      <arg type='s' name='owner'/>"
+    "      <arg type='s' name='url'/>"
+    "    </signal>"
+    "    <signal name='TitleChanged'>"
+    "      <arg type='s' name='view_id'/>"
+    "      <arg type='s' name='owner'/>"
+    "      <arg type='s' name='title'/>"
+    "    </signal>"
+    "    <signal name='LoadingChanged'>"
+    "      <arg type='s' name='view_id'/>"
+    "      <arg type='s' name='owner'/>"
+    "      <arg type='b' name='loading'/>"
+    "    </signal>"
+    "    <signal name='NavStateChanged'>"
+    "      <arg type='s' name='view_id'/>"
+    "      <arg type='s' name='owner'/>"
+    "      <arg type='b' name='can_back'/>"
+    "      <arg type='b' name='can_forward'/>"
+    "    </signal>"
+    "  </interface>"
     "</node>";
 
 /* ─── Module-level state ─── */
@@ -61,7 +126,8 @@ typedef struct {
     GDBusConnection          *connection;
 } DbusCtx;
 
-static DbusCtx g_ctx;
+static DbusCtx g_ctx;      /* WebAppManager interface */
+static DbusCtx g_ctx_wc;   /* WebContent interface */
 
 /* ─── Dispatch via table lookup ─── */
 static void handle_method_call(GDBusConnection       *connection,
@@ -100,17 +166,28 @@ static void on_bus_acquired(GDBusConnection *connection,
     DbusCtx *ctx = user_data;
     ctx->connection = connection;
 
+    g_ctx_wc.connection = connection;
+
     GDBusNodeInfo *node_info =
         g_dbus_node_info_new_for_xml(introspection_xml, NULL);
 
+    /* interfaces[0] = WebAppManager (apps), interfaces[1] = WebContent.
+       Each object carries its own DbusCtx so the dispatcher picks the right
+       table — the two interfaces share method names (Close, GoBack). */
     g_dbus_connection_register_object(connection,
         WAM_DBUS_PATH,
         node_info->interfaces[0],
         &vtable,
         ctx, NULL, NULL);
 
+    g_dbus_connection_register_object(connection,
+        WAM_WEBCONTENT_PATH,
+        node_info->interfaces[1],
+        &vtable,
+        &g_ctx_wc, NULL, NULL);
+
     g_dbus_node_info_unref(node_info);
-    g_message("D-Bus registered: %s", WAM_DBUS_NAME);
+    g_message("D-Bus registered: %s (+ %s)", WAM_DBUS_NAME, WAM_WEBCONTENT_IFACE);
 }
 
 static void on_name_acquired(GDBusConnection *conn, const gchar *name,
@@ -126,14 +203,26 @@ static void on_name_lost(GDBusConnection *conn, const gchar *name,
 }
 
 /* ─── Public: start the service ─── */
-guint zyl_dbus_service_start(const ZylDbusMethodEntry *dispatch_table,
+guint zyl_dbus_service_start(const ZylDbusMethodEntry *app_table,
+                             const ZylDbusMethodEntry *webcontent_table,
                              gpointer                  user_data) {
-    g_ctx.table     = dispatch_table;
-    g_ctx.user_data = user_data;
+    g_ctx.table        = app_table;
+    g_ctx.user_data    = user_data;
+    g_ctx_wc.table     = webcontent_table;
+    g_ctx_wc.user_data = user_data;
 
     return g_bus_own_name(G_BUS_TYPE_SYSTEM,
         WAM_DBUS_NAME,
         G_BUS_NAME_OWNER_FLAGS_NONE,
         on_bus_acquired, on_name_acquired, on_name_lost,
         &g_ctx, NULL);
+}
+
+void zyl_dbus_webcontent_emit(const char *signal_name, GVariant *params) {
+    if (!g_ctx_wc.connection || !signal_name) {
+        if (params) { g_variant_ref_sink(params); g_variant_unref(params); }
+        return;
+    }
+    g_dbus_connection_emit_signal(g_ctx_wc.connection, NULL,
+        WAM_WEBCONTENT_PATH, WAM_WEBCONTENT_IFACE, signal_name, params, NULL);
 }

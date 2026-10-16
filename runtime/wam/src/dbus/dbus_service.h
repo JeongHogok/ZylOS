@@ -15,6 +15,11 @@
 #define WAM_DBUS_NAME "org.zylos.WebAppManager"
 #define WAM_DBUS_PATH "/org/zylos/WebAppManager"
 
+/* A second interface on the same bus name: the OS-owned web content view the
+   browser drives (navigate/back/...) but never touches the content's DOM. */
+#define WAM_WEBCONTENT_IFACE "org.zylos.WebContent"
+#define WAM_WEBCONTENT_PATH  "/org/zylos/WebContent"
+
 /*
  * Signature for a single D-Bus method implementation.
  *
@@ -33,14 +38,21 @@ typedef struct {
 } ZylDbusMethodEntry;
 
 /*
- * Start D-Bus service.
+ * Start D-Bus service. Both tables share one bus name and one connection;
+ * each is dispatched only for its own object path/interface.
  *
- * dispatch_table      - NULL-terminated array of ZylDbusMethodEntry
- * user_data           - forwarded to every handler
+ * app_table         - WebAppManager methods (NULL-terminated), path WAM_DBUS_PATH
+ * webcontent_table  - WebContent methods (NULL-terminated), path WAM_WEBCONTENT_PATH
+ * user_data         - forwarded to every handler
  *
  * Returns the bus-owner ID (for g_bus_unown_name on shutdown).
  */
-guint zyl_dbus_service_start(const ZylDbusMethodEntry *dispatch_table,
+guint zyl_dbus_service_start(const ZylDbusMethodEntry *app_table,
+                             const ZylDbusMethodEntry *webcontent_table,
                              gpointer                  user_data);
+
+/* Emit a signal on the WebContent interface (WAM_WEBCONTENT_PATH). params is
+   consumed (floating refs are sunk). No-op before the bus is acquired. */
+void zyl_dbus_webcontent_emit(const char *signal_name, GVariant *params);
 
 #endif /* ZYL_WAM_DBUS_SERVICE_H */

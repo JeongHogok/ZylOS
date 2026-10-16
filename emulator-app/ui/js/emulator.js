@@ -42,6 +42,7 @@
   var frameEl         = document.getElementById('device-frame');
   var controlEl       = document.getElementById('control-panel');
   var appFrame        = document.getElementById('app-frame');
+  var contentFrame    = document.getElementById('content-frame');
   var systemFrame     = document.getElementById('system-frame');
   var viewport        = document.getElementById('app-viewport');
   var logEl           = document.getElementById('sys-log');
@@ -542,7 +543,18 @@
   function handleServiceRequest(msg, source, callerAppId) {
     if (!msg.service || !msg.method) return;
 
-    var result = ZylServices.handleRequest(msg.service, msg.method, msg.params || {}, callerAppId);
+    /* The web content view is the compositor's, as the WAM drives it on the
+       device — never a logic-only service module. Permission is the shared
+       OS rule (webcontent is reserved → the browser only). */
+    var result;
+    if (msg.service === 'webcontent') {
+      result = (typeof ZylPermissions !== 'undefined' &&
+                !ZylPermissions.checkPermission(callerAppId, 'webcontent', msg.method))
+        ? { error: 'Permission denied', service: 'webcontent', method: msg.method }
+        : handleWebContent(msg.method, msg.params || {}, callerAppId);
+    } else {
+      result = ZylServices.handleRequest(msg.service, msg.method, msg.params || {}, callerAppId);
+    }
 
     function sendResponse(data) {
       /* A setting the OS accepted shows on the emulated screen — never one it refused */
@@ -574,6 +586,61 @@
     } else {
       sendResponse(result);
     }
+  }
+
+  /* ═══ Web content view (webcontent) — the compositor drives #content-frame ═══
+     Mirrors the device, where the WAM owns a bridge-less WebKitWebView. The
+     emulator is an approximation: a cross-origin iframe, so the OS cannot read
+     the page's real url/title/favicon or truly go back/forward (same limit the
+     old in-document iframe had). It knows only the URL it navigated to. */
+  var _contentOwner = '';
+  var _contentView = 'main';
+  var _contentUrl = '';
+  function webContentEmit(event, value) {
+    deliverEvent('webcontent', event, [_contentView, _contentOwner, value]);
+  }
+  function handleWebContent(method, p, callerAppId) {
+    var url = p && p.url;
+    switch (method) {
+      case 'open':
+      case 'navigate':
+        if (typeof url === 'string' && /^https:\/\//i.test(url)) {
+          _contentOwner = callerAppId || '';
+          _contentView = (p && p.view_id) || 'main';
+          _contentUrl = url;
+          contentFrame.src = url;
+          webContentEmit('LoadingChanged', true);
+          webContentEmit('UrlChanged', url);   /* only the URL we set is knowable */
+        }
+        break;
+      case 'reload':
+        if (_contentUrl) { contentFrame.src = _contentUrl; webContentEmit('LoadingChanged', true); }
+        break;
+      case 'goBack': case 'goForward': case 'stop':
+        break;   /* cross-origin: not truly possible in the emulator */
+      case 'show':
+        contentFrame.style.display = 'block';
+        appFrame.style.height = ((p && p.y) || 0) + 'px';
+        contentFrame.style.top = ((p && p.y) || 0) + 'px';
+        contentFrame.style.height = 'calc(100% - ' + ((p && p.y) || 0) + 'px)';
+        break;
+      case 'hide':
+        contentFrame.style.display = 'none';
+        appFrame.style.height = '100%';
+        break;
+      case 'close':
+        contentFrame.style.display = 'none';
+        contentFrame.src = 'about:blank';
+        appFrame.style.height = '100%';
+        _contentUrl = '';
+        break;
+    }
+    return { ok: true };
+  }
+  if (contentFrame) {
+    contentFrame.addEventListener('load', function () {
+      if (_contentUrl) webContentEmit('LoadingChanged', false);
+    });
   }
 
   /* ── Apply real side effects when a setting changes ── */
