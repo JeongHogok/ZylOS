@@ -6,7 +6,9 @@
  *           명시적 base64)·폴더 만들기·삭제·이름 바꾸기. 경로는 루트 상대:
  *           ".." 거부, 보호 경로(settings.json, .credentials, .system — 에뮬레이터
  *           filesystem.rs·apps/system/security.js 와 같은 규칙) 거부, 실제 경로가
- *           루트 밖이면(심볼릭 링크) 거부. 숨김(.으로 시작, lost+found)은 목록에서 뺌
+ *           루트 밖이면(심볼릭 링크) 거부. 숨김(.으로 시작, lost+found)은 목록에서 뺌.
+ *           OS 전용 인터페이스 Handoff: 인텐트로 건네는 파일을 받는 앱의 루트(Inbox,
+ *           시스템 앱이면 Downloads)로 복사 — 앱 브리지에는 길이 없다
  * 의존방향: gio/gio.h (D-Bus), glib (파일)
  * SOLID: SRP — 사용자 파일 접근만. 앱별 권한은 WAM 브리지(fs → storage/files.*)
  * ────────────────────────────────────────────────────────── */
@@ -225,6 +227,83 @@ static void ensure_layout(void) {
     }
 }
 
+/* ─── Handoff: a file one app gives another (an intent's files, a pick) ───
+   The OS copies what the sender named, in the sender's root, into the
+   receiver's: an app's Inbox, or the user's Downloads for a system app. The
+   receiver gets its own copy, never a path into someone else's files. */
+#define MAX_HANDOFF 10
+
+static const char *handoff_dir(const char *to_container) {
+    return to_container && *to_container ? "Inbox" : "Downloads";
+}
+
+/* "a.jpg", else "a (1).jpg", "a (2).jpg" … — what is not taken in dir */
+static char *free_name(const char *dir, const char *name) {
+    const char *dot = strrchr(name, '.');
+    size_t stem = dot && dot != name ? (size_t)(dot - name) : strlen(name);
+    const char *ext = name + stem;
+    char *out = g_strdup(name);
+    for (int i = 1; i < 1000; i++) {
+        char *p = g_build_filename(dir, out, NULL);
+        bool taken = g_file_test(p, G_FILE_TEST_EXISTS);
+        g_free(p);
+        if (!taken) return out;
+        g_free(out);
+        out = g_strdup_printf("%.*s (%d)%s", (int)stem, name, i, ext);
+    }
+    g_free(out);
+    return NULL;
+}
+
+/* One file: its path in the receiver's root, or NULL */
+static char *handoff(const char *from_root, const char *rel, const char *to_root, const char *into) {
+    char *src = resolve(from_root, rel);
+    struct stat st;
+    char *out = NULL;
+    if (src && stat(src, &st) == 0 && S_ISREG(st.st_mode) && st.st_size <= MAX_READ) {
+        char *dir = g_build_filename(to_root, into, NULL);
+        char *base = g_path_get_basename(src);
+        char *name = g_mkdir_with_parents(dir, 0700) == 0 ? free_name(dir, base) : NULL;
+        gchar *data = NULL;
+        gsize len = 0;
+        if (name && g_file_get_contents(src, &data, &len, NULL)) {
+            char *dst = g_build_filename(dir, name, NULL);
+            if (g_file_set_contents_full(dst, data, (gssize)len, G_FILE_SET_CONTENTS_CONSISTENT, 0600, NULL))
+                out = g_build_filename(into, name, NULL);
+            g_free(dst);
+        }
+        g_free(data);
+        g_free(name);
+        g_free(base);
+        g_free(dir);
+    }
+    g_free(src);
+    return out;
+}
+
+/* The paths the receiver gets, in order ("" for one that could not be given);
+   the same root (system app to system app) needs no copy */
+static GVariant *handoff_all(const char *from, const char *const *paths, const char *to) {
+    GVariantBuilder out;
+    g_variant_builder_init(&out, G_VARIANT_TYPE("as"));
+    char *from_root = root_for(from), *to_root = root_for(to);
+    for (int i = 0; paths && paths[i] && i < MAX_HANDOFF; i++) {
+        char *got = NULL;
+        if (g_strcmp0(from, to) == 0) {
+            char *own = from_root ? resolve(from_root, paths[i]) : NULL;
+            got = own ? g_strdup(paths[i]) : NULL;
+            g_free(own);
+        } else if (from_root && to_root) {
+            got = handoff(from_root, paths[i], to_root, handoff_dir(to));
+        }
+        g_variant_builder_add(&out, "s", got ? got : "");
+        g_free(got);
+    }
+    g_free(from_root);
+    g_free(to_root);
+    return g_variant_builder_end(&out);
+}
+
 #ifndef ZYL_TEST
 /* ─── D-Bus ─── */
 static const char *fs_xml =
@@ -269,6 +348,16 @@ static const char *fs_xml =
     "      <arg type='s' name='old_path' direction='in'/>"
     "      <arg type='s' name='new_path' direction='in'/>"
     "      <arg type='b' name='renamed' direction='out'/>"
+    "    </method>"
+    "  </interface>"
+    /* The OS's alone (the WAM delivering an intent): the bridge routes apps
+       to org.zylos.FileSystem only, so no app can name another's files */
+    "  <interface name='org.zylos.FileSystem.Handoff'>"
+    "    <method name='Handoff'>"
+    "      <arg type='s' name='from_container' direction='in'/>"
+    "      <arg type='as' name='paths' direction='in'/>"
+    "      <arg type='s' name='to_container' direction='in'/>"
+    "      <arg type='as' name='handed' direction='out'/>"
     "    </method>"
     "  </interface>"
     "</node>";
@@ -334,10 +423,23 @@ static void handle(GDBusConnection *c, const gchar *sender, const gchar *path, c
 
 static const GDBusInterfaceVTable vtable = { .method_call = handle };
 
+static void handle_handoff(GDBusConnection *c, const gchar *sender, const gchar *path, const gchar *iface,
+                           const gchar *method, GVariant *params, GDBusMethodInvocation *inv, gpointer data) {
+    (void)c; (void)sender; (void)path; (void)iface; (void)method; (void)data;
+    const gchar *from = NULL, *to = NULL;
+    const gchar **paths = NULL;
+    g_variant_get(params, "(&s^a&s&s)", &from, &paths, &to);
+    g_dbus_method_invocation_return_value(inv, g_variant_new("(@as)", handoff_all(from, paths, to)));
+    g_free(paths);
+}
+
+static const GDBusInterfaceVTable handoff_vtable = { .method_call = handle_handoff };
+
 static void on_bus(GDBusConnection *conn, const gchar *name, gpointer data) {
     (void)name; (void)data;
     GDBusNodeInfo *info = g_dbus_node_info_new_for_xml(fs_xml, NULL);
     g_dbus_connection_register_object(conn, "/org/zylos/FileSystem", info->interfaces[0], &vtable, NULL, NULL, NULL);
+    g_dbus_connection_register_object(conn, "/org/zylos/FileSystem", info->interfaces[1], &handoff_vtable, NULL, NULL, NULL);
     g_dbus_node_info_unref(info);
 }
 
