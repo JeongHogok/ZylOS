@@ -100,11 +100,16 @@ static void test_app_info_is_what_apps_see(void) {
     assert(ff && g_variant_n_children(ff) == 2);
     g_variant_unref(ff);
     g_variant_unref(notes);
-    /* System UI says so in its manifest and stays out of the launcher */
+    /* System UI says so in its manifest and stays out of the launcher (read at
+       scan time: the WAM's app switching uses it too) */
+    g_hash_table_destroy(t);
     f = fopen(ROOT "/system/lockscreen/app.json", "w");
     fprintf(f, "{\"id\":\"com.zylos.lockscreen\",\"name\":\"Lock\",\"version\":\"1.0.0\","
                "\"entry\":\"index.html\",\"launcher\":false}");
     fclose(f);
+    t = scan();
+    assert(!((ZylAppManifest *)g_hash_table_lookup(t, "com.zylos.lockscreen"))->launcher);
+    assert(((ZylAppManifest *)g_hash_table_lookup(t, "com.example.notes"))->launcher);
     GVariant *lock = g_variant_ref_sink(zyl_manifest_app_info(g_hash_table_lookup(t, "com.zylos.lockscreen")));
     assert(g_variant_lookup(lock, "launcher", "b", &launcher) && !launcher);
     assert(g_variant_lookup(lock, "system", "b", &sys) && sys);

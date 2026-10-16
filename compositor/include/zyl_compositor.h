@@ -162,17 +162,11 @@ struct zyl_server {
 
     /* Mobile state */
     struct zyl_view *active_view;
-    bool  home_screen_visible;
     int   screen_width;
     int   screen_height;
 
-    /* Gesture → IPC signal dispatch (narrow stub interface).
-     *
-     * Coordinator follow-up required:
-     *   Wire gesture_signal_fn to an actual D-Bus / GLib or Unix-socket
-     *   sender in main.c after the event-loop integration is resolved.
-     *   Until then the field defaults to NULL and the built-in log
-     *   fallback in emit_compositor_signal() is used.
+    /* Gesture → IPC: main.c wires the WAM navigation sender
+     * (ipc/wam_nav.c). NULL leaves only the log line.
      *
      * Signature: fn(server, signal_name, detail_or_NULL)
      */

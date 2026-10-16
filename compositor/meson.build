@@ -2,7 +2,7 @@
 # Layer: System / Compositor
 # Role: Build the wlroots-based Wayland compositor
 # Scope: Compile compositor sources, link wlroots + Wayland deps
-# Dependency direction: depends on wlroots, wayland-server, xkbcommon, pixman
+# Dependency direction: depends on wlroots, wayland-server, xkbcommon, pixman, gio
 # SOLID: Single-responsibility — only compositor build logic
 
 # wlroots dependency (0.18+)
@@ -30,11 +30,14 @@ compositor_deps = [
   wayland_server,
   xkbcommon,
   pixman,
+  # Gestures reach the WAM over the system bus (src/ipc/wam_nav.c)
+  dependency('gio-2.0'),
 ]
 
 compositor_sources = files(
   'src/main.c',
   'src/input/gesture.c',
+  'src/ipc/wam_nav.c',
   'src/output/output.c',
   'src/view/view.c',
 )

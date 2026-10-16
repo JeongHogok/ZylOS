@@ -1180,6 +1180,127 @@ console.log('\n■ ZylIntent');
 })();
 
 /* ═══════════════════════════════════════════════════════
+   Shell policy (real shell.js, isolated) — same scenarios as
+   runtime/wam/src/shell (tests/test_shell.c)
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ ZylShell');
+
+(function () {
+  var vm = require('vm');
+  var HOME = 'com.zylos.home', LOCK = 'com.zylos.lockscreen', SETUP = 'com.zylos.oobe';
+  function shell() {
+    var ctx = { window: {} };
+    vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'apps', 'system', 'shell.js'), 'utf8'), ctx);
+    return ctx.window.ZylShell;
+  }
+  /* Show what the policy said, as the container does */
+  function show(S, app) { if (app) S.shown(app); }
+
+  test('setup holds the device', function () {
+    var S = shell();
+    assert.strictEqual(S.boot(false), SETUP);
+    show(S, SETUP);
+    assert.ok(S.mayLaunch(SETUP));
+    assert.ok(S.mayLaunch('com.zylos.phone'));                     /* an emergency call */
+    assert.ok(!S.mayLaunch(HOME));
+    assert.ok(!S.mayLaunch(LOCK));
+    assert.ok(!S.mayLaunch('com.zylos.settings'));
+    assert.ok(!S.mayLaunch(undefined));
+    assert.strictEqual(S.home(), null);
+    assert.ok(!S.navigable());
+    assert.ok(!S.mayClose(SETUP));
+    assert.strictEqual(S.lock(), null);                              /* setup never locks */
+    assert.strictEqual(S.unlock(LOCK), null);
+    show(S, HOME);
+    assert.strictEqual(S.screenOn(), SETUP);                         /* back to setup */
+  });
+
+  test('only setup finishes setup', function () {
+    var S = shell();
+    show(S, S.boot(false));
+    assert.strictEqual(S.setupDone('com.example.app'), null);
+    assert.strictEqual(S.setupDone(LOCK), null);
+    assert.strictEqual(S.setupDone(SETUP), HOME);
+    show(S, HOME);
+    assert.ok(S.navigable());                                        /* just set up: not locked */
+    assert.ok(S.mayLaunch('com.zylos.settings'));
+    assert.ok(!S.mayLaunch(SETUP));                                  /* not again */
+    assert.strictEqual(S.setupDone(SETUP), null);
+  });
+
+  test('locked shows only the lock screen', function () {
+    var S = shell();
+    assert.strictEqual(S.boot(true), LOCK);
+    show(S, LOCK);
+    assert.ok(S.mayLaunch(LOCK));
+    assert.ok(S.mayLaunch('com.zylos.camera'));                     /* the shortcut */
+    assert.ok(S.mayLaunch('com.zylos.alerts'));
+    assert.ok(!S.mayLaunch(HOME));
+    assert.ok(!S.mayLaunch('com.zylos.gallery'));                   /* not from the camera either */
+    assert.ok(!S.mayLaunch(SETUP));
+    assert.ok(!S.navigable());
+    assert.ok(!S.mayClose(LOCK));
+    assert.strictEqual(S.home(), null);                              /* already there */
+    show(S, 'com.zylos.camera');
+    assert.strictEqual(S.home(), LOCK);                              /* leaving it: the lock screen */
+    assert.strictEqual(S.screenOn(), null);                          /* a call/alert/camera stays */
+  });
+
+  test('only the lock screen unlocks', function () {
+    var S = shell();
+    show(S, S.boot(true));
+    assert.strictEqual(S.unlock('com.zylos.camera'), null);
+    assert.strictEqual(S.unlock('com.example.app'), null);
+    assert.strictEqual(S.unlock(undefined), null);
+    assert.ok(!S.navigable());
+    assert.strictEqual(S.unlock(LOCK, 'com.zylos.messages'), 'com.zylos.messages');
+    assert.ok(S.navigable());
+    assert.strictEqual(S.unlock(LOCK), null);                        /* not locked */
+  });
+
+  test('unlock opens home unless an app may open', function () {
+    var S = shell();
+    show(S, S.boot(true));
+    assert.strictEqual(S.unlock(LOCK), HOME);
+    show(S, S.lock());
+    assert.strictEqual(S.unlock(LOCK, ''), HOME);
+    show(S, S.lock());
+    assert.strictEqual(S.unlock(LOCK, SETUP), HOME);                 /* never setup again */
+    show(S, S.lock());
+    assert.strictEqual(S.unlock(LOCK, LOCK), HOME);
+  });
+
+  test('unlocked: home, close and lock', function () {
+    var S = shell();
+    show(S, S.boot(true));
+    show(S, S.unlock(LOCK));
+    assert.strictEqual(S.home(), null);                              /* already home */
+    show(S, 'com.zylos.notes');
+    assert.strictEqual(S.home(), HOME);
+    assert.ok(!S.mayLaunch(LOCK));                                   /* only by locking */
+    assert.ok(!S.mayClose(HOME));
+    assert.ok(S.mayClose(LOCK));
+    assert.ok(S.mayClose(SETUP));
+    assert.ok(S.mayClose('com.zylos.notes'));
+    assert.strictEqual(S.screenOn(), null);                          /* unlocked: nothing to cover */
+    assert.strictEqual(S.lock(), LOCK);
+    assert.ok(!S.navigable());
+    assert.strictEqual(S.screenOn(), LOCK);                          /* not shown yet: cover it */
+    show(S, LOCK);
+    assert.strictEqual(S.lock(), null);                              /* already in front */
+    assert.strictEqual(S.screenOn(), null);
+  });
+
+  test('the same apps as the device policy (shell.c)', function () {
+    var js = fs.readFileSync(path.join(__dirname, '..', 'apps', 'system', 'shell.js'), 'utf8');
+    var c = fs.readFileSync(path.join(__dirname, '..', 'runtime', 'wam', 'src', 'shell', 'shell.c'), 'utf8') +
+            fs.readFileSync(path.join(__dirname, '..', 'runtime', 'wam', 'src', 'shell', 'shell.h'), 'utf8');
+    function ids(text) { return (text.match(/com\.zylos\.[a-z]+/g) || []).filter(function (v, i, a) { return a.indexOf(v) === i; }).sort(); }
+    assert.deepStrictEqual(ids(js), ids(c));
+  });
+})();
+
+/* ═══════════════════════════════════════════════════════
    Permission policy — reserved permissions (real permissions.js, isolated)
    ═══════════════════════════════════════════════════════ */
 console.log('\n■ ZylPermissions');

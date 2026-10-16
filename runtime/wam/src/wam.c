@@ -2,9 +2,12 @@
  * [Clean Architecture] Application Layer - Service
  *
  * 역할: WAM(Web App Manager) 메인 서비스 — 모듈 조립 및 WebKitGTK 구현
- * 수행범위: manifest, lifecycle, bridge, D-Bus 모듈 연결, ZylWebEngine/ZylAppInterface vtable 구현
+ * 수행범위: manifest, lifecycle, bridge, D-Bus 모듈 연결, ZylWebEngine/ZylAppInterface vtable 구현,
+ *           셸 정책(shell.h)을 따라 앞에 올 앱 띄우기 — 부팅 시 설정/잠금 화면,
+ *           화면 꺼짐 잠금, 홈·뒤로·앱 전환(전원/하드웨어 키, 컴포지터 제스처)
  * 의존방향: wam.h, manifest.h, lifecycle.h, bridge.h, dbus_service.h, oom.h, intent.h,
- *           app_scheme.h, app_seal.h (user apps run only as sealed), hal.h (device ID)
+ *           shell.h, app_scheme.h, app_seal.h (user apps run only as sealed), hal.h (device ID),
+ *           power.h·input.h (the power and input services' D-Bus contract values)
  * SOLID: SRP — 모듈 조립과 WebKitGTK 바인딩만 담당
  * ────────────────────────────────────────────────────────── */
 
@@ -14,6 +17,8 @@
 #include "scheme/app_scheme.h"
 #include "../../services/appdata/container.h"
 #include "../../services/appstore/app_seal.h"
+#include "../../services/power/power.h"
+#include "../../services/input/input.h"
 #include "hal.h"
 
 #include <sys/stat.h>
@@ -30,6 +35,8 @@
 
 static ZylWam       *g_wam = NULL;
 static ZylOomKiller *g_oom = NULL;
+static GDBusConnection *g_event_bus;   /* held for the WAM's lifetime: the
+                                          subscriptions die with the connection */
 
 /* ════════════════════════════════════════════════════════════════
  *  ZylAppInterface implementation (backed by GHashTable lookups)
@@ -70,41 +77,6 @@ static int iface_count_instances(ZylAppInterface *self) {
  *  WAM-specific handlers for app lifecycle are registered below.
  * ════════════════════════════════════════════════════════════════ */
 
-static void wam_handle_app_close(const char        *type,
-                                 gpointer           msg_obj,
-                                 ZylAppManifest    *manifest,
-                                 ZylBridgeReplyCtx *reply_ctx,
-                                 gpointer           user_data) {
-    (void)type; (void)msg_obj; (void)reply_ctx;
-    ZylWam *wam = user_data;
-    if (manifest && manifest->id)
-        zyl_lifecycle_close(&wam->iface, manifest->id);
-}
-
-static void wam_handle_app_launch(const char        *type,
-                                  gpointer           msg_obj,
-                                  ZylAppManifest    *manifest,
-                                  ZylBridgeReplyCtx *reply_ctx,
-                                  gpointer           user_data) {
-    (void)type; (void)manifest;
-    ZylWam *wam = user_data;
-    JsonObject *obj = msg_obj;
-    if (json_object_has_member(obj, "appId")) {
-        const char *target = json_object_get_string_member(obj, "appId");
-        ZylAppInstance *inst = zyl_lifecycle_launch(&wam->iface, &wam->engine, target);
-        /* Acknowledge launch to JS if a callback was requested */
-        if (reply_ctx && reply_ctx->callback_id >= 0) {
-            zyl_bridge_respond(reply_ctx->webview, reply_ctx->callback_id,
-                               inst ? "{\"ok\":true}" : "{\"error\":true,\"message\":\"launch failed\"}");
-        }
-    } else {
-        /* Missing appId — resolve the promise with an error so it doesn't leak */
-        if (reply_ctx && reply_ctx->callback_id >= 0) {
-            zyl_bridge_reply_error(reply_ctx, "missing appId");
-        }
-    }
-}
-
 /* ════════════════════════════════════════════════════════════════
  *  Intents (rule 9): an app starts one, the WAM decides which app gets it
  *  (intent/intent.c). Several → the starting app shows the choice and
@@ -141,10 +113,175 @@ static void deliver_when_loaded(WebKitWebView *webview, WebKitLoadEvent ev, gpoi
     g_free(script);
 }
 
+/* ════════════════════════════════════════════════════════════════
+ *  Shell: which app is in front is the policy's (shell/shell.c — the same
+ *  rules as the emulator's apps/system/shell.js). Everything that brings an
+ *  app forward goes through wam_open (asks) or wam_show (the policy chose).
+ * ════════════════════════════════════════════════════════════════ */
+
+/* Bring the app the policy chose to the front; NULL app: stay */
+static ZylAppInstance *wam_show(ZylWam *wam, const char *app_id) {
+    if (!app_id) return NULL;
+    gboolean running = wam->iface.get_instance(&wam->iface, app_id) != NULL;
+    ZylAppInstance *inst = zyl_lifecycle_launch(&wam->iface, &wam->engine, app_id);
+    if (!inst) return NULL;
+    if (!running) zyl_oom_on_app_launched(g_oom, app_id);
+    zyl_oom_on_app_foreground(g_oom, app_id);
+    zyl_shell_shown(&wam->shell, app_id);
+    return inst;
+}
+
+/* An app, a notification, an intent or a service wants this app in front */
+static ZylAppInstance *wam_open(ZylWam *wam, const char *app_id) {
+    if (!zyl_shell_may_launch(&wam->shell, app_id)) {
+        g_message("WAM: %s not now (setup or locked)", app_id ? app_id : "(none)");
+        return NULL;
+    }
+    return wam_show(wam, app_id);
+}
+
+/* Home, and where an app the user leaves goes: the lock screen while locked */
+static void wam_go_home(ZylWam *wam) {
+    wam_show(wam, zyl_shell_home(&wam->shell));
+}
+
+/* Never what the policy keeps; the front app going hands the screen to home */
+static void wam_close(ZylWam *wam, const char *app_id) {
+    if (!app_id || !zyl_shell_may_close(&wam->shell, app_id)) return;
+    gboolean front = strcmp(wam->shell.top, app_id) == 0;
+    zyl_lifecycle_close(&wam->iface, app_id);
+    zyl_oom_on_app_closed(g_oom, app_id);
+    if (front) wam_go_home(wam);
+}
+
+/* Back goes to the app in front first (navigation.back, as in the emulator).
+   It answers navigation.handled (stays) or navigation.exit; no answer in time
+   is an exit — a hung app must not trap the user. */
+#define WAM_BACK_ANSWER_MS 300
+
+static gboolean back_unanswered(gpointer data) {
+    ZylWam *wam = data;
+    wam->back_timer = 0;
+    wam_go_home(wam);
+    return G_SOURCE_REMOVE;
+}
+
+static void wam_go_back(ZylWam *wam) {
+    if (wam->back_timer) return;
+    ZylAppInstance *inst = wam->iface.get_instance(&wam->iface, wam->shell.top);
+    if (!inst || !inst->webview_widget) { wam_go_home(wam); return; }
+    post_to(WEBKIT_WEB_VIEW(inst->webview_widget), "navigation.back",
+            zyl_intent_object_node(json_object_new()));
+    wam->back_timer = g_timeout_add(WAM_BACK_ANSWER_MS, back_unanswered, wam);
+}
+
+/* Only the answer of the app that was asked counts */
+static void wam_handle_navigation(const char        *type,
+                                  gpointer           msg_obj,
+                                  ZylAppManifest    *manifest,
+                                  ZylBridgeReplyCtx *reply_ctx,
+                                  gpointer           user_data) {
+    (void)msg_obj; (void)reply_ctx;
+    ZylWam *wam = user_data;
+    if (!manifest || !wam->back_timer || strcmp(manifest->id, wam->shell.top) != 0) return;
+    g_source_remove(wam->back_timer);
+    wam->back_timer = 0;
+    if (strcmp(type, "navigation.exit") == 0) wam_go_home(wam);
+}
+
+static gint compare_ids(gconstpointer a, gconstpointer b) {
+    return strcmp(*(const char *const *)a, *(const char *const *)b);
+}
+
+/* The next (direction > 0) or previous running app the user returns to —
+   system UI ("launcher": false) is not one, as in the emulator's recents */
+static void wam_switch_app(ZylWam *wam, int direction) {
+    if (!zyl_shell_navigable(&wam->shell)) return;
+    GPtrArray *ids = g_ptr_array_new();
+    GHashTableIter it;
+    gpointer key, value;
+    g_hash_table_iter_init(&it, wam->instances);
+    while (g_hash_table_iter_next(&it, &key, &value)) {
+        ZylAppInstance *inst = value;
+        if (inst->manifest && inst->manifest->launcher) g_ptr_array_add(ids, key);
+    }
+    g_ptr_array_sort(ids, compare_ids);
+    int at = -1;
+    for (guint i = 0; i < ids->len; i++)
+        if (strcmp(g_ptr_array_index(ids, i), wam->shell.top) == 0) at = (int)i;
+    int n = (int)ids->len;
+    if (n >= 2 && at >= 0) {
+        char *next = g_strdup(g_ptr_array_index(ids, ((at + (direction > 0 ? 1 : -1)) % n + n) % n));
+        wam_open(wam, next);
+        g_free(next);
+    }
+    g_ptr_array_unref(ids);
+}
+
+/* Only the lock screen unlocks; it opens what the user was opening, or home */
+static void wam_handle_unlock(const char        *type,
+                              gpointer           msg_obj,
+                              ZylAppManifest    *manifest,
+                              ZylBridgeReplyCtx *reply_ctx,
+                              gpointer           user_data) {
+    (void)type; (void)reply_ctx;
+    ZylWam *wam = user_data;
+    const char *app_id = json_object_get_string_member_with_default(msg_obj, "appId", NULL);
+    const char *to = manifest ? zyl_shell_unlock(&wam->shell, manifest->id, app_id) : NULL;
+    if (!to) {
+        g_warning("WAM: unlock from %s refused", manifest ? manifest->id : "(unknown)");
+        return;
+    }
+    g_message("WAM: unlocked");
+    if (!wam_show(wam, to)) wam_go_home(wam);   /* that app is gone: home */
+}
+
+/* Only setup finishes setup; then home, unlocked (the user just set it up) */
+static void wam_handle_setup_done(const char        *type,
+                                  gpointer           msg_obj,
+                                  ZylAppManifest    *manifest,
+                                  ZylBridgeReplyCtx *reply_ctx,
+                                  gpointer           user_data) {
+    (void)type; (void)msg_obj; (void)reply_ctx;
+    ZylWam *wam = user_data;
+    wam_show(wam, manifest ? zyl_shell_setup_done(&wam->shell, manifest->id) : NULL);
+}
+
+/* An app closes itself — the bridge names it, never the message */
+static void wam_handle_app_close(const char        *type,
+                                 gpointer           msg_obj,
+                                 ZylAppManifest    *manifest,
+                                 ZylBridgeReplyCtx *reply_ctx,
+                                 gpointer           user_data) {
+    (void)type; (void)msg_obj; (void)reply_ctx;
+    if (manifest) wam_close(user_data, manifest->id);
+}
+
+static void wam_handle_app_launch(const char        *type,
+                                  gpointer           msg_obj,
+                                  ZylAppManifest    *manifest,
+                                  ZylBridgeReplyCtx *reply_ctx,
+                                  gpointer           user_data) {
+    (void)type; (void)manifest;
+    ZylWam *wam = user_data;
+    const char *target = json_object_get_string_member_with_default(msg_obj, "appId", NULL);
+    if (!target) {
+        /* Missing appId — resolve the promise with an error so it doesn't leak */
+        if (reply_ctx && reply_ctx->callback_id >= 0) zyl_bridge_reply_error(reply_ctx, "missing appId");
+        return;
+    }
+    ZylAppInstance *inst = wam_open(wam, target);
+    /* Acknowledge launch to JS if a callback was requested */
+    if (reply_ctx && reply_ctx->callback_id >= 0) {
+        zyl_bridge_respond(reply_ctx->webview, reply_ctx->callback_id,
+                           inst ? "{\"ok\":true}" : "{\"error\":true,\"message\":\"launch failed\"}");
+    }
+}
+
 /* Launch the handler and hand it the intent once its page is there */
 static void launch_with_intent(ZylWam *wam, const char *app_id, JsonObject *intent) {
     gboolean running = wam->iface.get_instance(&wam->iface, app_id) != NULL;
-    ZylAppInstance *inst = zyl_lifecycle_launch(&wam->iface, &wam->engine, app_id);
+    ZylAppInstance *inst = wam_open(wam, app_id);
     if (!inst || !inst->webview_widget) return;
     char *script = zyl_intent_post_script("intent", zyl_intent_object_node(json_object_ref(intent)));
     WebKitWebView *webview = WEBKIT_WEB_VIEW(inst->webview_widget);
@@ -455,18 +592,13 @@ static void dbus_launch(GVariant *params, GDBusMethodInvocation *inv,
     ZylWam *wam = user_data;
     const gchar *app_id;
     g_variant_get(params, "(&s)", &app_id);
-    ZylAppInstance *inst = zyl_lifecycle_launch(&wam->iface,
-                                               &wam->engine, app_id);
+    ZylAppInstance *inst = wam_open(wam, app_id);
     if (inst) {
         int count = zyl_lifecycle_get_running_count(&wam->iface);
         if (count > WAM_MAX_APPS_WARN) {
             g_warning("Memory pressure: %d apps running (threshold %d)",
                       count, WAM_MAX_APPS_WARN);
         }
-
-        /* OOM: 앱 등록 + 포그라운드 설정 + 즉시 압박 체크 */
-        zyl_oom_on_app_launched(g_oom, app_id);
-        zyl_oom_on_app_foreground(g_oom, app_id);
         zyl_oom_check_pressure(g_oom);
     }
     g_dbus_method_invocation_return_value(inv,
@@ -478,8 +610,7 @@ static void dbus_close(GVariant *params, GDBusMethodInvocation *inv,
     ZylWam *wam = user_data;
     const gchar *app_id;
     g_variant_get(params, "(&s)", &app_id);
-    zyl_lifecycle_close(&wam->iface, app_id);
-    zyl_oom_on_app_closed(g_oom, app_id);
+    wam_close(wam, app_id);
     g_dbus_method_invocation_return_value(inv, NULL);
 }
 
@@ -488,7 +619,12 @@ static void dbus_suspend(GVariant *params, GDBusMethodInvocation *inv,
     ZylWam *wam = user_data;
     const gchar *app_id;
     g_variant_get(params, "(&s)", &app_id);
-    zyl_lifecycle_suspend(&wam->iface, app_id);
+    /* Hiding is closing for the policy: never the lock screen while locked */
+    if (zyl_shell_may_close(&wam->shell, app_id)) {
+        gboolean front = strcmp(wam->shell.top, app_id) == 0;
+        zyl_lifecycle_suspend(&wam->iface, app_id);
+        if (front) wam_go_home(wam);
+    }
     g_dbus_method_invocation_return_value(inv, NULL);
 }
 
@@ -497,9 +633,12 @@ static void dbus_resume(GVariant *params, GDBusMethodInvocation *inv,
     ZylWam *wam = user_data;
     const gchar *app_id;
     g_variant_get(params, "(&s)", &app_id);
-    zyl_lifecycle_resume(&wam->iface, app_id);
-    /* OOM: resume된 앱을 포그라운드로 전환 */
-    zyl_oom_on_app_foreground(g_oom, app_id);
+    /* Resuming shows it: only what may be in front now */
+    if (zyl_shell_may_launch(&wam->shell, app_id) && wam->iface.get_instance(&wam->iface, app_id)) {
+        zyl_lifecycle_resume(&wam->iface, app_id);
+        zyl_oom_on_app_foreground(g_oom, app_id);
+        zyl_shell_shown(&wam->shell, app_id);
+    }
     g_dbus_method_invocation_return_value(inv, NULL);
 }
 
@@ -549,6 +688,27 @@ static void dbus_list_running(GVariant *params, GDBusMethodInvocation *inv,
         g_variant_new("(asi)", &builder, count));
 }
 
+/* Navigation from the compositor's gestures (the bus lets only root and the
+   WAM call here); what happens is the policy's */
+static void dbus_go_home(GVariant *params, GDBusMethodInvocation *inv, gpointer user_data) {
+    (void)params;
+    wam_go_home(user_data);
+    g_dbus_method_invocation_return_value(inv, NULL);
+}
+
+static void dbus_go_back(GVariant *params, GDBusMethodInvocation *inv, gpointer user_data) {
+    (void)params;
+    wam_go_back(user_data);
+    g_dbus_method_invocation_return_value(inv, NULL);
+}
+
+static void dbus_switch_app(GVariant *params, GDBusMethodInvocation *inv, gpointer user_data) {
+    gint32 direction = 1;
+    g_variant_get(params, "(i)", &direction);
+    wam_switch_app(user_data, direction);
+    g_dbus_method_invocation_return_value(inv, NULL);
+}
+
 static const ZylDbusMethodEntry dbus_methods[] = {
     { "Launch",      dbus_launch      },
     { "Close",       dbus_close       },
@@ -557,6 +717,9 @@ static const ZylDbusMethodEntry dbus_methods[] = {
     { "ListApps",    dbus_list_apps   },
     { "GetInstalled", dbus_get_installed },
     { "ListRunning", dbus_list_running },
+    { "GoHome",      dbus_go_home     },
+    { "GoBack",      dbus_go_back     },
+    { "SwitchApp",   dbus_switch_app  },
     { NULL, NULL }
 };
 
@@ -588,10 +751,7 @@ static void on_store_event(ZylWam *wam, const char *signal, GVariant *params) {
     g_variant_get(params, "(&s)", &id);
     ZylAppManifest *known = g_hash_table_lookup(wam->manifests, id);
     if (known && known->is_system) return;             /* never a system app */
-    if (wam->iface.get_instance(&wam->iface, id)) {
-        zyl_lifecycle_close(&wam->iface, id);
-        zyl_oom_on_app_closed(g_oom, id);
-    }
+    if (wam->iface.get_instance(&wam->iface, id)) wam_close(wam, id);
     g_hash_table_remove(wam->manifests, id);
     g_hash_table_remove(wam->seals, id);
     if (strcmp(signal, "AppInstalled") == 0) {
@@ -616,20 +776,46 @@ static void on_store_event(ZylWam *wam, const char *signal, GVariant *params) {
     }
 }
 
+static void power_call(const char *method) {
+    if (!g_event_bus) return;
+    g_dbus_connection_call(g_event_bus, "org.zylos.PowerManager", "/org/zylos/PowerManager",
+        "org.zylos.PowerManager", method, NULL, NULL, G_DBUS_CALL_FLAGS_NONE, -1, NULL, NULL, NULL);
+}
+
+/* The shell's part of the device's events: the screen going off locks (the
+   lock screen goes up while it is dark, so nothing shows when it comes back);
+   the keys are the user's navigation */
+static void on_shell_event(ZylWam *wam, const char *service, const char *signal, GVariant *params) {
+    if (strcmp(service, "power") == 0 && strcmp(signal, "StateChanged") == 0 &&
+        g_variant_is_of_type(params, G_VARIANT_TYPE("(ii)"))) {
+        gint32 was, now;
+        g_variant_get(params, "(ii)", &was, &now);
+        gboolean on = now == ZYL_POWER_STATE_ACTIVE || now == ZYL_POWER_STATE_DIM;
+        if (on == wam->screen_on) return;
+        wam->screen_on = on;
+        wam_show(wam, on ? zyl_shell_screen_on(&wam->shell) : zyl_shell_lock(&wam->shell));
+    } else if (strcmp(service, "input") == 0 && strcmp(signal, "HardwareKeyPressed") == 0 &&
+               g_variant_is_of_type(params, G_VARIANT_TYPE("(i)"))) {
+        gint32 key;
+        g_variant_get(params, "(i)", &key);
+        switch (key) {
+        case ZYL_KEY_POWER: power_call(wam->screen_on ? "ScreenOff" : "ScreenOn"); break;
+        case ZYL_KEY_HOME:  wam_go_home(wam); break;
+        case ZYL_KEY_BACK:  wam_go_back(wam); break;
+        case ZYL_KEY_MENU:  wam_switch_app(wam, 1); break;
+        default: break;
+        }
+    }
+}
+
 static void on_service_event(const char *service, const char *signal,
                              GVariant *params, gpointer user_data) {
     ZylWam *wam = user_data;
     if (strcmp(service, "appstore") == 0) on_store_event(wam, signal, params);
+    on_shell_event(wam, service, signal, params);
     const char *show = app_to_show(service, signal, params);
-    if (show) {
-        gboolean running = wam->iface.get_instance(&wam->iface, show) != NULL;
-        if (zyl_lifecycle_launch(&wam->iface, &wam->engine, show)) {
-            if (!running) zyl_oom_on_app_launched(g_oom, show);
-            zyl_oom_on_app_foreground(g_oom, show);
-        } else {
-            g_warning("WAM: %s.%s needs %s, which could not start", service, signal, show);
-        }
-    }
+    if (show && !wam_open(wam, show))
+        g_warning("WAM: %s.%s needs %s, which could not start", service, signal, show);
     GHashTableIter it;
     gpointer key, value;
     g_hash_table_iter_init(&it, wam->instances);
@@ -644,9 +830,6 @@ static void on_service_event(const char *service, const char *signal,
     }
 }
 
-static GDBusConnection *g_event_bus;   /* held for the WAM's lifetime: the
-                                          subscriptions die with the connection */
-
 static void subscribe_service_events(ZylWam *wam) {
     GError *err = NULL;
     g_event_bus = g_bus_get_sync(G_BUS_TYPE_SYSTEM, NULL, &err);
@@ -657,6 +840,35 @@ static void subscribe_service_events(ZylWam *wam) {
     }
     zyl_bridge_subscribe_service_events(g_event_bus, on_service_event, wam);
     zyl_bridge_watch_revocations(g_event_bus);
+}
+
+/* The first screen: setup until it is done, then the lock screen. A device
+   whose settings cannot be read starts locked, never open. */
+static void on_setup_state(GObject *src, GAsyncResult *res, gpointer data) {
+    ZylWam *wam = data;
+    GError *err = NULL;
+    GVariant *r = g_dbus_connection_call_finish(G_DBUS_CONNECTION(src), res, &err);
+    gboolean done = TRUE;
+    if (r) {
+        GVariant *d = g_variant_get_child_value(r, 0);
+        if (!g_variant_lookup(d, "oobe_completed", "b", &done)) done = FALSE;
+        g_variant_unref(d);
+        g_variant_unref(r);
+    } else {
+        g_warning("WAM: setup state unknown (%s) — starting locked", err ? err->message : "no reply");
+        g_clear_error(&err);
+    }
+    wam_show(wam, zyl_shell_boot(&wam->shell, done));
+}
+
+static void read_setup_state(ZylWam *wam) {
+    if (!g_event_bus) {
+        wam_show(wam, zyl_shell_boot(&wam->shell, TRUE));
+        return;
+    }
+    g_dbus_connection_call(g_event_bus, "org.zylos.Settings", "/org/zylos/Settings",
+        "org.zylos.Settings", "Get", g_variant_new("(s)", "system"), G_VARIANT_TYPE("(a{sv})"),
+        G_DBUS_CALL_FLAGS_NONE, 5000, NULL, on_setup_state, wam);
 }
 
 /* ════════════════════════════════════════════════════════════════
@@ -685,12 +897,8 @@ static void on_activate(GApplication *app, gpointer user_data) {
     zyl_manifest_scan_dir(wam->manifests, WAM_USER_DIR, FALSE);
     seal_user_apps(wam);
 
-    /* Auto-launch home screen */
-    (void)zyl_lifecycle_launch(&wam->iface, &wam->engine, "com.zylos.home");
-    zyl_oom_on_app_launched(g_oom, "com.zylos.home");
-    zyl_oom_on_app_foreground(g_oom, "com.zylos.home");
-
     subscribe_service_events(wam);
+    read_setup_state(wam);
 
     g_message("WAM activated, %d apps registered",
               g_hash_table_size(wam->manifests));
@@ -703,6 +911,9 @@ static void on_activate(GApplication *app, gpointer user_data) {
 int main(int argc, char *argv[]) {
     ZylWam wam = {0};
     g_wam = &wam;
+    /* Locked until the settings say otherwise: nothing opens before boot */
+    (void)zyl_shell_boot(&wam.shell, TRUE);
+    wam.screen_on = TRUE;
 
     /* Hash tables */
     wam.manifests = g_hash_table_new_full(g_str_hash, g_str_equal,
@@ -731,6 +942,10 @@ int main(int argc, char *argv[]) {
     zyl_bridge_register_handler("app.launch", wam_handle_app_launch, &wam);
     zyl_bridge_register_handler("intent.start",  wam_handle_intent_start,  &wam);
     zyl_bridge_register_handler("intent.chosen", wam_handle_intent_chosen, &wam);
+    zyl_bridge_register_handler("unlock",            wam_handle_unlock,     &wam);
+    zyl_bridge_register_handler("setup.done",        wam_handle_setup_done, &wam);
+    zyl_bridge_register_handler("navigation.handled", wam_handle_navigation, &wam);
+    zyl_bridge_register_handler("navigation.exit",   wam_handle_navigation, &wam);
 
     /* Start D-Bus service */
     wam.dbus_owner_id = zyl_dbus_service_start(dbus_methods, &wam);

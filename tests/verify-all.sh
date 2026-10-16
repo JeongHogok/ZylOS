@@ -63,11 +63,10 @@ if [ -n "$HITS" ]; then fail "Arrow function (=>) 발견"; else pass "Arrow func
 section "apps/ — i18n 완전성"
 
 # A5: 하드코딩 영어 탐지 (notification body, textContent에서 영어 문장)
-# Heuristic: Find strings like textContent = 'Some English' (3+ words)
-HITS=$(grep -rn "textContent\s*=\s*['\"]" "$ROOT/apps" --include='*.js' 2>/dev/null \
-  | grep -v 'zylI18n\|\.t(' | grep -v '^\s*//' | grep -v "textContent = ''" \
-  | grep -v "textContent = '--'" | grep -v 'escapeHtml\|initial\|displayName\|timeStr\|dayName' \
-  | grep -v "'0:00'\|'00:00'\|'\\\\u00'" | grep -v 'icon\|emoji\|label\|temp\|maxTemp\|minTemp' || true)
+# 영어 단어가 둘 이상 이어지는 문자열 리터럴만 잡는다 — 기호('×', '/'),
+# 숫자 형식('00:00'), 접두어('v' + 버전)는 번역할 말이 아니다
+HITS=$(grep -rnE "(textContent|innerText|title|placeholder)\s*=\s*['\"][A-Za-z]+[ ,.!?:]+[A-Za-z]+" \
+  "$ROOT/apps" --include='*.js' 2>/dev/null | grep -v 'zylI18n\|\.t(' | grep -v '^\s*//' || true)
 if [ -n "$HITS" ]; then
   warn "i18n 미적용 의심 (영어 하드코딩 가능):\n$(echo "$HITS" | head -5)"
 else

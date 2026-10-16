@@ -86,10 +86,12 @@ cargo tauri build
 **Rust 백엔드 보호**:
 - `settings.json`, `.credentials/`, `.system/` 파일 접근을 Rust 레벨에서 차단
 
-### OOBE 완료 체크 + 격리
-- 부팅 시 `settings.json`의 `oobe_completed` 플래그 확인
-- 미완료 시 OOBE 앱을 먼저 실행, 완료 후 홈 화면으로 진입
-- OOBE 격리: 최근 앱(Recents)에서 제외, 네비게이션(홈/백) 차단, 전원 토글 시 잠금 없음
+### 셸 정책 (OOBE·잠금·홈·최근 앱) — OS 의 것
+- 어느 앱이 앞에 올지는 OS 의 `apps/system/shell.js`(ZylShell)가 정하고 에뮬레이터는
+  그 답대로 띄우기만 한다. 기기 WAM 은 `runtime/wam/src/shell/` 로 같은 규칙을 따른다
+- 부팅: 설정 서비스의 `system.oobe_completed` 가 없으면 OOBE, 있으면 잠금 화면
+- OOBE 중에는 OOBE 만, 잠금 중에는 잠금 화면만 (전화·긴급 경보·카메라 바로가기는 그 위에)
+- 잠금 해제는 잠금 화면만, 설정 완료(`setup.done`)는 OOBE 만 — 보낸 앱은 OS 가 판단
 
 ### 가상 키보드
 - OS 이미지의 `apps/keyboard/`를 에뮬레이터 컴포지터가 마운트

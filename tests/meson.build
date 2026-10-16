@@ -259,6 +259,16 @@ test('intent',
   )
 )
 
+# Test: shell policy — what may be in front during setup and while locked,
+# who unlocks and who finishes setup (same rules as apps/system/shell.js)
+test('shell',
+  executable('test-shell',
+    'test_shell.c',
+    '../runtime/wam/src/shell/shell.c',
+    dependencies: [gio_dep],
+  )
+)
+
 # Test: app origins zyl-app:// — an app reads its own files and the OS shared
 # code, nothing else (.., links out, directories)
 test('app-scheme',

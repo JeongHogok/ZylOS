@@ -23,6 +23,7 @@ typedef struct {
     char **permissions; /* Requested permissions (NULL-terminated) */
     int n_permissions;
     gboolean is_system; /* TRUE for system apps */
+    gboolean launcher;  /* "launcher": false — system UI, not an app one returns to */
     /* What the app opens ("intents"): pairs, NULL-terminated, same length */
     char **intent_actions;
     char **intent_mimes;

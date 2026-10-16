@@ -85,6 +85,11 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 ### 8. 보안 원칙
 
 - 시스템앱 판별은 OS 화이트리스트(`ZylPermissions.SYSTEM_APPS`)가 유일한 권위
+- 어느 앱이 앞에 올지(OOBE·잠금 화면·홈·최근 앱·앱 전환)는 OS 만 정한다: 에뮬레이터
+  `apps/system/shell.js`, 기기 `runtime/wam/src/shell` (같은 규칙, `tests/test_shell.c`
+  ·`test_services.js` 가 같은 시나리오로 검증). 에뮬레이터·컴포지터는 그 답대로 띄우기만
+  하고 앱 id 로 분기하지 않는다. 앞에 앱을 올리는 새 경로는 반드시 그 판단을 거칠 것.
+  잠금 해제는 잠금 화면, 설정 완료는 OOBE 가 보낸 것만 — 보낸 앱은 OS 가 말한다
 - 앱이 스스로를 시스템앱으로 선언하는 것을 신뢰하지 않음
 - `settings.json`, `.credentials/`, `.system/`은 보호 경로
 - 서비스 권한 체크는 OS 레이어에서만 수행

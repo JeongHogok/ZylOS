@@ -39,6 +39,7 @@ wam_sources = files(
   'src/dbus/dbus_service.c',
   'src/oom/oom.c',
   'src/intent/intent.c',
+  'src/shell/shell.c',
   'src/scheme/app_scheme.c',
   '../services/appdata/container.c',
   '../services/appstore/app_seal.c',
