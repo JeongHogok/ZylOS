@@ -175,12 +175,11 @@ static void test_read_reply_stays_under_the_bus_limit(void) {
 /* An app cannot fill /data to the last block: the root-reserved part and a
    margin stay for the OS — writes and hand-offs past it are refused */
 static void test_apps_leave_the_os_its_room(void) {
-    struct statvfs v;
-    assert(statvfs(ZYL_FILES_ROOT, &v) == 0);
-    guint64 avail = (guint64)v.f_bavail * v.f_frsize;
     assert(write_file(ZYL_FILES_ROOT, "Documents/a.txt", "hello", NULL));
     guint64 saved = keep_free;
-    keep_free = avail;                                   /* as if the disk were full */
+    /* as if the disk were full — not the space measured now: tests run side by
+       side and another may free some meanwhile */
+    keep_free = G_MAXUINT64 / 2;
     assert(!write_file(ZYL_FILES_ROOT, "Documents/b.txt", "hello", NULL));
     assert(!g_file_test(ZYL_FILES_ROOT "/Documents/b.txt", G_FILE_TEST_EXISTS));
     char *got = handoff(ZYL_FILES_ROOT, "Documents/a.txt", ZYL_CONTAINERS_ROOT "/x", "Inbox");
