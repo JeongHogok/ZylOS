@@ -2,7 +2,7 @@
  * [Clean Architecture] Domain Layer - Service
  *
  * 역할: 앱 출처 이름 해석 (app_scheme.h)
- * 수행범위: 경로 → 파일, 확장자 → MIME, 진입 URI
+ * 수행범위: 경로 → 파일, 확장자 → MIME, 진입 URI, 앱의 CSP
  * 의존방향: app_scheme.h
  * SOLID: SRP — 해석만
  * ────────────────────────────────────────────────────────── */
@@ -84,4 +84,14 @@ const char *zyl_app_scheme_mime(const char *file) {
 
 char *zyl_app_scheme_uri(const char *app_id, const char *entry) {
     return g_strdup_printf(ZYL_APP_SCHEME "://%s/%s", app_id, entry && *entry ? entry : "index.html");
+}
+
+char *zyl_app_scheme_csp(gboolean system, gboolean network, gboolean webview) {
+    const char *web = network ? " https:" : "";
+    return g_strdup_printf(
+        "default-src 'self'; script-src 'self'%s; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob:%s; media-src 'self' blob:%s; connect-src 'self'%s; "
+        "font-src 'self'%s; frame-src 'self'%s; object-src 'none'",
+        system ? " 'unsafe-inline'" : "", web, web, network ? " https: wss:" : "",
+        web, webview ? " https:" : "");
 }
