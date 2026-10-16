@@ -252,6 +252,26 @@ var ZylBridge = (function () {
     });
   }
 
+  /* ─── Push: the app's server reaching it through the OS's one connection ───
+     registerPush(title, body) → Promise<endpoint>: give the endpoint to your
+     server (it POSTs/PUTs there — UnifiedPush). title/body, your translated
+     words, are the notification the user sees when a message comes while the
+     app is not running; tapping it opens the app. Needs the "push" permission */
+  function registerPush(title, body) {
+    return requestService('push', 'register', { title: title || '', body: body || '' });
+  }
+
+  function unregisterPush() {
+    return requestService('push', 'unregister', {});
+  }
+
+  /* fn({ message }) — a message from the app's server while the app runs */
+  function onPush(fn) {
+    onServiceEvent('push', 'PushReceived', function (d) {
+      if (d && d.length >= 3) fn({ message: d[2] });
+    });
+  }
+
   /* fn({ id, actionId }) — the user pressed an action of this app's notification
      (the OS brought the app forward for it; the notification is gone) */
   function onNotificationAction(fn) {
@@ -612,5 +632,8 @@ var ZylBridge = (function () {
     closeApp: closeApp,
     notify: notify,
     onNotificationAction: onNotificationAction,
+    registerPush: registerPush,
+    unregisterPush: unregisterPush,
+    onPush: onPush,
   };
 })();

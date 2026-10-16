@@ -71,6 +71,8 @@ window.ZylPermissions = (function () {
     'clipboard':     [],
     /* Every app has its own, named by the OS's caller — never another's */
     'appdata':       [],
+    /* An app's server reaching it through the OS's one push connection */
+    'push':          ['push'],
     'power':         []
   };
 
@@ -110,7 +112,8 @@ window.ZylPermissions = (function () {
     { service: 'notification', event: null,            readAll: 'notification.read' },
     { service: 'location',     event: 'GeofenceEnter', readAll: null },
     { service: 'location',     event: 'GeofenceExit',  readAll: null },
-    { service: 'alarm',        event: 'AlarmTriggered', readAll: null }
+    { service: 'alarm',        event: 'AlarmTriggered', readAll: null },
+    { service: 'push',         event: 'PushReceived',   readAll: null }
   ];
 
   /* App-declared permissions from app.json */
@@ -150,7 +153,7 @@ window.ZylPermissions = (function () {
     'audio', 'app.manage', 'app.list', 'app.launch',
     'location', 'network', 'webview', 'downloads', 'bookmarks',
     'input', 'i18n', 'battery', 'time', 'auth', 'wallpaper', 'gallery',
-    'contacts', 'messaging', 'telephony'
+    'contacts', 'messaging', 'telephony', 'push'
   ];
 
   /**

@@ -613,6 +613,7 @@ static const ServiceRoute SERVICE_ROUTES[] = {
     {"clipboard",    "org.zylos.Clipboard",          "/org/zylos/Clipboard",          "org.zylos.Clipboard"},
     {"network",      "org.zylos.Network",            "/org/zylos/Network",            "org.zylos.Network"},
     {"appdata",      "org.zylos.AppData",            "/org/zylos/AppData",            "org.zylos.AppData"},
+    {"push",         "org.zylos.Push",               "/org/zylos/Push",               "org.zylos.Push"},
     {"appstore",     "org.zylos.AppStore",           "/org/zylos/AppStore",           "org.zylos.AppStore"},
     {"alarm",        "org.zylos.AlarmService",       "/org/zylos/AlarmService",       "org.zylos.AlarmService"},
     {NULL, NULL, NULL, NULL}
@@ -678,6 +679,7 @@ static const ServicePermission SERVICE_PERMISSIONS[] = {
     {"clipboard",     {NULL}},
     /* Every app has its own, named by the bridge's caller — never another's */
     {"appdata",       {NULL}},
+    {"push",          {"push", NULL}},
     {"power",         {NULL}},
     {NULL, {NULL}}
 };
@@ -918,6 +920,7 @@ static const struct { const char *service, *signal, *read_all; } OWNED_EVENTS[] 
     {"location",     "GeofenceEnter", NULL},
     {"location",     "GeofenceExit",  NULL},
     {"alarm",        "AlarmTriggered", NULL},
+    {"push",         "PushReceived",   NULL},
     {NULL, NULL, NULL}
 };
 

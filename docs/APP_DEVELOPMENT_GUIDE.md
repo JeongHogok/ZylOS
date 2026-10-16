@@ -198,6 +198,25 @@ ZylBridge.onServiceEvent('notification', 'NotificationPosted', function (d) {
 - 이벤트는 그 서비스를 **부를 수 있는 앱에게만** 가고, 한 앱의 것에 관한 이벤트는 그 주인에게만
   간다 (`OWNED_EVENTS`, [SECURITY.md §3](SECURITY.md#3-권한)).
 
+### 화면에 없을 때 — 푸시와 알람
+
+앱이 화면에 없으면 실행이 이어진다고 기대하지 않는다 — 기기는 메모리가 모자라면 뒤의 앱부터
+닫고, 화면이 꺼지고 얼마 뒤 절전에 들어가며, 에뮬레이터는 앞의 앱 하나만 페이지가 살아 있다.
+앱마다 서버 연결을 붙들지 않는다. 화면에 없는 앱에 닿는 길은 둘이다.
+
+- **푸시** (`push` 권한) — 앱 서버가 보내는 것. OS 가 서버 연결 하나로 모든 앱의 것을 받는다
+  ([PUSH_SERVER.md](PUSH_SERVER.md)).
+
+  ```javascript
+  ZylBridge.registerPush(zylI18n.t('myapp.push_title'), zylI18n.t('myapp.push_body'))
+    .then(function (endpoint) { /* 내 서버에 끝점을 준다 — 서버는 거기에 POST/PUT */ });
+  ZylBridge.onPush(function (m) { /* 떠 있을 때: m.message — 보통 "가져갈 것이 있다"는 신호 */ });
+  ```
+
+  앱이 떠 있지 않으면 등록 때 준 제목·본문의 알림이 뜨고, 누르면 앱이 열린다. 끝점은 앱마다
+  하나이고 다시 등록해도 같다. 내용은 서버를 지나가므로 민감하면 암호화하거나 신호만 보낸다.
+- **알람** (`notification` 권한) — 정한 시각. 기기가 절전 중이어도 깨워서 울린다(벽시계 타이머).
+
 ### 웹 플랫폼이 묻는 것 — 카메라·마이크·위치·파일
 
 - `getUserMedia` 의 카메라·마이크는 앱의 `camera`·`microphone` 권한으로 OS 가 정한다(묻는 창

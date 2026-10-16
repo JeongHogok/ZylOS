@@ -101,6 +101,9 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
   파일에서만 — 바깥 스크립트·eval 을 열지 말고, 제3자 앱에 인라인 스크립트를 열지 말 것
   (네트워크와 합치면 받아 온 코드가 돌아 봉인을 건너뛴다). `network` 는 https/wss 만.
   권한이 바뀐 앱은 실행 중이면 닫는다 — CSP 는 문서와 함께 오므로
+- 화면에 없는 앱에 닿는 길은 푸시(`org.zylos.Push`, 서버 연결 하나)와 알람(절전 중에도
+  깨움)뿐 — 앱마다 지속 연결이나 백그라운드 실행 장치를 새로 만들지 말 것. 푸시 토픽은
+  ntfy 의 UnifiedPush 꼴(`up`+12자)이어야 서버가 앱 서버가 아닌 기기 쪽 한도로 센다
 - 부트 정책은 `board/bpi-f3/u-boot-env.txt` 단일 출처(`tests/test_boot_env.sh`),
   부트로더는 `tools/build-bootloader.sh` 로만 빌드·서명. 저장소·USB·파일이 부팅을
   바꾸는 경로를 되살리지 말 것. eFuse 굽기는 기본 off(`--burn-rotpk` 일 때만)
@@ -119,6 +122,7 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 | 서비스 권한 정책 | `apps/system/permissions.js` | `bridge.c`(verify-all 이 대조) |
 | 교차 툴체인 | `tools/cross/<arch>.ini` | 보드의 `board_cross_file` |
 | 둘 이상이 컴파일하는 C 코드 (앱 컨테이너·봉인·서명 검증) | `runtime/lib/` | appdata·fs·appstore·updater·WAM (`zyl_*_dep`) |
+| 푸시 서버 주소 | `system/push.json` | `zyl-push`(`/etc/zyl-os`), 에뮬레이터 `push.rs`(include_str) |
 | 사용자 루트·소유자 uid·소유자 파일 트리 | `runtime/lib/users.h` | user·fs·appstore, 에뮬레이터 `user.js`(test_services 대조) |
 
 서비스 디렉터리는 다른 서비스의 라이브러리가 되지 않는다 — 함께 쓰는 코드는

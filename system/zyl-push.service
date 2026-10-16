@@ -1,0 +1,28 @@
+[Unit]
+Description=Zyl OS Push Service (one connection to the push server for every app)
+After=dbus.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=dbus
+BusName=org.zylos.Push
+ExecStart=/usr/bin/zyl-push
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=5
+
+# Reaches the push server (curl), keeps its registrations
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+ReadWritePaths=/data/push
+
+[Install]
+WantedBy=zyl-os.target
