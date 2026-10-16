@@ -5,7 +5,8 @@
  * 수행범위: 모델·SoC·메모리·커널(Board HAL), OS 버전·보안 패치 수준(이미지의
  *           release — meson 이 apps/system/release.js 에서), 화면 해상도(Display
  *           HAL), 호스트 이름, 가동 시간, 기기 ID(Board HAL — 개발 빌드
- *           프로비저닝 프로필에 등록하는 값)
+ *           프로비저닝 프로필에 등록하는 값. 초기화로도 안 바뀌는 칩 ID 라 GetInfo
+ *           에 싣지 않고 GetDeviceId 로만 — 브리지가 시스템 앱에만 연다)
  * 의존방향: hal.h (Board·Display HAL), gio/gio.h (D-Bus)
  * SOLID: SRP — 기기 정보 조회만
  * ────────────────────────────────────────────────────────── */
@@ -30,6 +31,9 @@ static const char *device_xml =
     "  <interface name='org.zylos.Device'>"
     "    <method name='GetInfo'>"
     "      <arg type='a{sv}' name='info' direction='out'/>"
+    "    </method>"
+    "    <method name='GetDeviceId'>"
+    "      <arg type='a{sv}' name='id' direction='out'/>"
     "    </method>"
     "    <method name='GetUptime'>"
     "      <arg type='x' name='seconds' direction='out'/>"
@@ -61,6 +65,17 @@ static GVariant *info_variant(void) {
     g_variant_builder_add(&d, "{sv}", "build", g_variant_new_string(ZYL_OS_VERSION));
     g_variant_builder_add(&d, "{sv}", "resolution", g_variant_new_string(resolution));
     g_variant_builder_add(&d, "{sv}", "hostname", g_variant_new_string(host));
+    return g_variant_new("(a{sv})", &d);
+}
+
+/* The chip's own ID survives a factory reset: a tracking ID across apps and
+   reinstalls if every app could read it, so it is its own method, the system's
+   (bridge METHOD_PERMISSIONS) — Settings shows it for provisioning profiles */
+static GVariant *device_id_variant(void) {
+    ZylBoardInfo b;
+    zyl_hal_board()->get(&b);
+    GVariantBuilder d;
+    g_variant_builder_init(&d, G_VARIANT_TYPE("a{sv}"));
     g_variant_builder_add(&d, "{sv}", "deviceId", g_variant_new_string(b.device_id));
     return g_variant_new("(a{sv})", &d);
 }
@@ -70,6 +85,8 @@ static void handle(GDBusConnection *c, const gchar *sender, const gchar *path, c
     (void)c; (void)sender; (void)path; (void)iface; (void)params; (void)data;
     if (g_strcmp0(method, "GetInfo") == 0) {
         g_dbus_method_invocation_return_value(inv, info_variant());
+    } else if (g_strcmp0(method, "GetDeviceId") == 0) {
+        g_dbus_method_invocation_return_value(inv, device_id_variant());
     } else if (g_strcmp0(method, "GetUptime") == 0) {
         struct sysinfo si;
         gint64 up = sysinfo(&si) == 0 ? si.uptime : 0;

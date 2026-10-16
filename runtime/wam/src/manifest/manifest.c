@@ -148,7 +148,7 @@ GVariant *zyl_manifest_app_info(const ZylAppManifest *m) {
     g_variant_builder_add(&d, "{sv}", "permissions", string_array(obj, "permissions"));
     g_variant_builder_add(&d, "{sv}", "formFactors", string_array(obj, "formFactors"));
     g_variant_builder_add(&d, "{sv}", "iconSvg", g_variant_new_string(text_member(obj, "iconSvg", "")));
-    g_variant_builder_add(&d, "{sv}", "launcher", g_variant_new_boolean(m->launcher));
+    g_variant_builder_add(&d, "{sv}", "launcher", g_variant_new_boolean(zyl_manifest_in_launcher(m)));
     g_free(name_key);
     g_object_unref(p);
     g_free(path);

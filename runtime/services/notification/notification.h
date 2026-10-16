@@ -166,14 +166,17 @@ ZylDndState zyl_notification_get_dnd(ZylNotificationService *service);
 
 /* ── Channel Operations ───────────────────────────────────── */
 
-/** Register (or update) a notification channel. */
+/** Register (or update) one of app_id's notification channels — an app's
+    channels are its own and filter only its notifications. */
 void zyl_notification_channel_register(ZylNotificationService *service,
+                                       const char             *app_id,
                                        const char             *id,
                                        const char             *name,
                                        int                     importance);
 
-/** Enable or disable a channel. */
+/** Enable or disable one of app_id's channels. */
 void zyl_notification_channel_set_enabled(ZylNotificationService *service,
+                                          const char             *app_id,
                                           const char             *channel_id,
                                           bool                    enabled);
 

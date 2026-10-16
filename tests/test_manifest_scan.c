@@ -116,6 +116,21 @@ static void test_app_info_is_what_apps_see(void) {
     assert(g_variant_lookup(lock, "system", "b", &sys) && sys);
     g_variant_unref(lock);
     g_hash_table_destroy(t);
+
+    /* A third-party app saying it would hide from home, settings and recents —
+       everywhere the user could remove it or turn its permissions off */
+    f = fopen(ROOT "/user/notes/app.json", "w");
+    fprintf(f, "{\"id\":\"com.example.notes\",\"name\":\"Notes\",\"version\":\"2.1.0\","
+               "\"entry\":\"index.html\",\"launcher\":false}");
+    fclose(f);
+    t = scan();
+    ZylAppManifest *hidden = g_hash_table_lookup(t, "com.example.notes");
+    assert(zyl_manifest_in_launcher(hidden));
+    notes = g_variant_ref_sink(zyl_manifest_app_info(hidden));
+    assert(g_variant_lookup(notes, "launcher", "b", &launcher) && launcher);
+    g_variant_unref(notes);
+    assert(!zyl_manifest_in_launcher(g_hash_table_lookup(t, "com.zylos.lockscreen")));
+    g_hash_table_destroy(t);
 }
 
 static ZylAppManifest *parse_raw(const char *json) {

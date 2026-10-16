@@ -264,8 +264,8 @@ static void test_channel_disabled_drops_notification(void)
     ZylNotificationService *svc = zyl_notification_service_create();
 
     /* Register a channel and disable it */
-    zyl_notification_channel_register(svc, "muted", "Muted Channel", 2);
-    zyl_notification_channel_set_enabled(svc, "muted", false);
+    zyl_notification_channel_register(svc, "com.zylos.test", "muted", "Muted Channel", 2);
+    zyl_notification_channel_set_enabled(svc, "com.zylos.test", "muted", false);
 
     /* Try to post on the disabled channel */
     uint64_t id = zyl_notification_post(svc,
@@ -291,7 +291,7 @@ static void test_channel_importance_zero_drops(void)
     ZylNotificationService *svc = zyl_notification_service_create();
 
     /* Register a channel with importance 0 */
-    zyl_notification_channel_register(svc, "silent", "Silent Channel", 0);
+    zyl_notification_channel_register(svc, "com.zylos.test", "silent", "Silent Channel", 0);
 
     uint64_t id = zyl_notification_post(svc,
         "com.zylos.test", "silent", "Should Drop", "Body",
@@ -309,7 +309,7 @@ static void test_channel_enabled_allows_notification(void)
     ZylNotificationService *svc = zyl_notification_service_create();
 
     /* Register an enabled channel */
-    zyl_notification_channel_register(svc, "alerts", "Alerts", 2);
+    zyl_notification_channel_register(svc, "com.zylos.test", "alerts", "Alerts", 2);
 
     uint64_t id = zyl_notification_post(svc,
         "com.zylos.test", "alerts", "Alert", "Body",
@@ -320,23 +320,120 @@ static void test_channel_enabled_allows_notification(void)
     zyl_notification_service_destroy(svc);
 }
 
+/* ── Test: a channel is its own app's ───────────────────────
+   One table keyed by the bare id let any app register "alarm" or "default" at
+   importance 0 and drop every other app's notifications. */
+
+static void test_channel_is_the_apps_own(void)
+{
+    ZylNotificationService *svc = zyl_notification_service_create();
+
+    zyl_notification_channel_register(svc, "com.evil.app", "default", "x", 0);
+    zyl_notification_channel_register(svc, "com.evil.app", "alarm", "x", 0);
+
+    /* Another app's notifications on those channel ids still arrive */
+    assert(zyl_notification_post(svc, "com.zylos.messages", "default", "Hi", "b",
+                                 NULL, ZYL_NOTIFICATION_PRIORITY_DEFAULT) > 0);
+    assert(zyl_notification_post(svc, "com.zylos.clock", "alarm", "Wake", "b",
+                                 NULL, ZYL_NOTIFICATION_PRIORITY_URGENT) > 0);
+    /* ...while the app's own channel filters its own */
+    assert(zyl_notification_post(svc, "com.evil.app", "default", "x", "b",
+                                 NULL, ZYL_NOTIFICATION_PRIORITY_DEFAULT) == 0);
+
+    /* Enabling or disabling names the app too */
+    zyl_notification_channel_register(svc, "com.zylos.messages", "chat", "Chat", 2);
+    zyl_notification_channel_set_enabled(svc, "com.evil.app", "chat", false);
+    assert(zyl_notification_post(svc, "com.zylos.messages", "chat", "Hi", "b",
+                                 NULL, ZYL_NOTIFICATION_PRIORITY_DEFAULT) > 0);
+
+    /* Removing the app takes its channels: a reinstall starts unfiltered */
+    zyl_notification_forget_app(svc, "com.evil.app");
+    assert(zyl_notification_post(svc, "com.evil.app", "default", "x", "b",
+                                 NULL, ZYL_NOTIFICATION_PRIORITY_DEFAULT) > 0);
+
+    zyl_notification_service_destroy(svc);
+}
+
+/* ── Test: one app's notifications are bounded ──────────────
+   GetActive returns them all in one D-Bus reply; past the bus limit the
+   service's connection drops and the process exits. */
+
+static void test_notifications_are_bounded(void)
+{
+    ZylNotificationService *svc = zyl_notification_service_create();
+
+    char *huge = g_strnfill(1 << 20, 'x');
+    ZylNotifAction acts[5] = {
+        { "a", "1" }, { "b", "2" }, { "c", "3" }, { "d", "4" }, { "e", "5" } };
+    uint64_t id = zyl_notification_post_with_actions(svc, "com.zylos.test", "", huge, huge,
+        huge, ZYL_NOTIFICATION_PRIORITY_DEFAULT, acts, 5);
+    assert(id > 0);
+    ZylNotification *list = NULL;
+    int count = 0;
+    zyl_notification_get_active(svc, &list, &count);
+    assert(count == 1);
+    assert(g_utf8_strlen(list[0].title, -1) == 128);
+    assert(g_utf8_strlen(list[0].body, -1) == 1024);
+    assert(strlen(list[0].icon) <= 64);
+    assert(list[0].num_actions == 3);
+    for (int i = 0; i < count; i++) zyl_notification_free(&list[i]);
+    g_free(list);
+
+    /* Cut on a character, not a byte: the D-Bus string stays UTF-8 */
+    char *wide = g_strnfill(0, 0);
+    for (int i = 0; i < 200; i++) { char *t = g_strconcat(wide, "\xea\xb0\x80", NULL); g_free(wide); wide = t; }
+    id = zyl_notification_post(svc, "com.zylos.test", "", wide, "", NULL,
+                               ZYL_NOTIFICATION_PRIORITY_DEFAULT);
+    assert(id > 0);
+    zyl_notification_get_active(svc, &list, &count);
+    for (int i = 0; i < count; i++) {
+        assert(g_utf8_validate(list[i].title, -1, NULL));
+        zyl_notification_free(&list[i]);
+    }
+    g_free(list);
+
+    /* 50 per app, then refused; another app is not affected */
+    for (int i = count; i < 50; i++)
+        assert(zyl_notification_post(svc, "com.zylos.test", "", "t", "b", NULL,
+                                     ZYL_NOTIFICATION_PRIORITY_DEFAULT) > 0);
+    assert(zyl_notification_post(svc, "com.zylos.test", "", "t", "b", NULL,
+                                 ZYL_NOTIFICATION_PRIORITY_DEFAULT) == 0);
+    assert(zyl_notification_post(svc, "com.zylos.other", "", "t", "b", NULL,
+                                 ZYL_NOTIFICATION_PRIORITY_DEFAULT) > 0);
+
+    /* Channels are bounded too: the 33rd new one is refused */
+    for (int i = 0; i < 40; i++) {
+        char cid[16];
+        snprintf(cid, sizeof(cid), "c%d", i);
+        zyl_notification_channel_register(svc, "com.zylos.other", cid, "n", 0);
+    }
+    assert(zyl_notification_post(svc, "com.zylos.other", "c31", "t", "b", NULL,
+                                 ZYL_NOTIFICATION_PRIORITY_DEFAULT) == 0);   /* registered */
+    assert(zyl_notification_post(svc, "com.zylos.other", "c32", "t", "b", NULL,
+                                 ZYL_NOTIFICATION_PRIORITY_DEFAULT) > 0);    /* refused */
+
+    g_free(wide);
+    g_free(huge);
+    zyl_notification_service_destroy(svc);
+}
+
 /* ── Test: re-enable channel allows posting again ─────────── */
 
 static void test_channel_re_enable(void)
 {
     ZylNotificationService *svc = zyl_notification_service_create();
 
-    zyl_notification_channel_register(svc, "toggle", "Toggle Channel", 2);
+    zyl_notification_channel_register(svc, "com.zylos.test", "toggle", "Toggle Channel", 2);
 
     /* Disable */
-    zyl_notification_channel_set_enabled(svc, "toggle", false);
+    zyl_notification_channel_set_enabled(svc, "com.zylos.test", "toggle", false);
     uint64_t id1 = zyl_notification_post(svc,
         "com.zylos.test", "toggle", "Blocked", "Body",
         NULL, ZYL_NOTIFICATION_PRIORITY_DEFAULT);
     assert(id1 == 0);
 
     /* Re-enable */
-    zyl_notification_channel_set_enabled(svc, "toggle", true);
+    zyl_notification_channel_set_enabled(svc, "com.zylos.test", "toggle", true);
     uint64_t id2 = zyl_notification_post(svc,
         "com.zylos.test", "toggle", "Allowed", "Body",
         NULL, ZYL_NOTIFICATION_PRIORITY_DEFAULT);
@@ -458,6 +555,8 @@ int main(void)
     RUN_TEST(test_channel_importance_zero_drops);
     RUN_TEST(test_channel_enabled_allows_notification);
     RUN_TEST(test_channel_re_enable);
+    RUN_TEST(test_channel_is_the_apps_own);
+    RUN_TEST(test_notifications_are_bounded);
     RUN_TEST(test_unknown_channel_allows_posting);
     RUN_TEST(test_null_service_safety);
 

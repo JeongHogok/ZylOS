@@ -533,6 +533,85 @@ static void test_service_request_reaches_typed_dbus_method(void) {
     g_object_unref(bus);
 }
 
+/* One D-Bus name, two objects: the WAM answers apps on /org/zylos/WebAppManager
+   and webcontent on /org/zylos/WebContent, each introspecting only its own
+   interface. A cache per name made whichever came second "unknown method" —
+   the home's app list first, then the browser could not load a page. */
+static int two_obj_calls;
+
+static void two_obj_method(GDBusConnection *c, const char *sender, const char *path,
+                           const char *iface, const char *method, GVariant *params,
+                           GDBusMethodInvocation *inv, gpointer data) {
+    (void)c; (void)sender; (void)path; (void)iface; (void)method; (void)params; (void)data;
+    two_obj_calls++;
+    g_dbus_method_invocation_return_value(inv, NULL);
+}
+
+static void two_obj_call(WebKitWebView *view, ZylAppManifest *m, const char *service,
+                         const char *method, int cb) {
+    char *msg = g_strdup_printf("{\"type\":\"service.request\",\"service\":\"%s\","
+                                "\"method\":\"%s\",\"params\":{},\"callbackId\":%d}",
+                                service, method, cb);
+    char want[32];
+    snprintf(want, sizeof(want), "_zylCb_%d", cb);
+    reset_webview(view);
+    zyl_bridge_dispatch(view, m, msg);
+    e2e_wait_reply(view);
+    assert(view->last_script && strstr(view->last_script, want));
+    assert(!strstr(view->last_script, "error"));
+    g_free(msg);
+}
+
+static void test_one_bus_name_two_objects_both_answer(void) {
+    if (!g_find_program_in_path("dbus-daemon")) {
+        printf("SKIP (no dbus-daemon) ");
+        return;
+    }
+    GTestDBus *bus = g_test_dbus_new(G_TEST_DBUS_NONE);
+    g_test_dbus_up(bus);
+    g_setenv("DBUS_SYSTEM_BUS_ADDRESS", g_test_dbus_get_bus_address(bus), TRUE);
+
+    GDBusConnection *conn = g_bus_get_sync(G_BUS_TYPE_SYSTEM, NULL, NULL);
+    assert(conn);
+    GDBusNodeInfo *info = g_dbus_node_info_new_for_xml(
+        "<node><interface name='org.zylos.WebAppManager'><method name='GetInstalled'/></interface>"
+        "<interface name='org.zylos.WebContent'><method name='Show'/></interface></node>", NULL);
+    static const GDBusInterfaceVTable vt = { two_obj_method, NULL, NULL, {0} };
+    guint r1 = g_dbus_connection_register_object(conn, "/org/zylos/WebAppManager",
+        info->interfaces[0], &vt, NULL, NULL, NULL);
+    guint r2 = g_dbus_connection_register_object(conn, "/org/zylos/WebContent",
+        info->interfaces[1], &vt, NULL, NULL, NULL);
+    assert(r1 > 0 && r2 > 0);
+    GVariant *r = g_dbus_connection_call_sync(conn, "org.freedesktop.DBus",
+        "/org/freedesktop/DBus", "org.freedesktop.DBus", "RequestName",
+        g_variant_new("(su)", "org.zylos.WebAppManager", 0), NULL,
+        G_DBUS_CALL_FLAGS_NONE, -1, NULL, NULL);
+    assert(r);
+    g_variant_unref(r);
+
+    WebKitWebView view = {0};
+    ZylAppManifest manifest = make_manifest();
+    manifest.is_system = TRUE;
+    zyl_bridge_init();
+
+    two_obj_calls = 0;
+    two_obj_call(&view, &manifest, "apps", "getInstalled", 21);    /* caches apps */
+    two_obj_call(&view, &manifest, "webcontent", "show", 22);      /* its own object */
+    two_obj_call(&view, &manifest, "apps", "getInstalled", 23);    /* both cached */
+    two_obj_call(&view, &manifest, "webcontent", "show", 24);
+    assert(two_obj_calls == 4);
+
+    zyl_bridge_cleanup();
+    reset_webview(&view);
+    free_manifest_members(&manifest);
+    g_dbus_connection_unregister_object(conn, r1);
+    g_dbus_connection_unregister_object(conn, r2);
+    g_dbus_node_info_unref(info);
+    g_object_unref(conn);
+    g_test_dbus_down(bus);
+    g_object_unref(bus);
+}
+
 /* An update changing only some fields gets the request as it came */
 static void test_args_params_object_is_the_whole_request(void) {
     expect_args("Update", "{\"id\":\"c_1\",\"starred\":true}",
@@ -872,6 +951,7 @@ int main(void)
     RUN_TEST(test_policy_revocation_list_is_comma_separated);
     RUN_TEST(test_alarm_events_are_the_apps_own);
     RUN_TEST(test_webcontent_is_the_browsers);
+    RUN_TEST(test_one_bus_name_two_objects_both_answer);
     RUN_TEST(test_power_actions_are_system_only);
     RUN_TEST(test_app_holds_follows_declaration_and_revocation);
     RUN_TEST(test_revocation_reload_names_only_changed_apps);

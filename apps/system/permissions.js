@@ -93,6 +93,8 @@ window.ZylPermissions = (function () {
     'notification.invokeAction':      ['notification.read'],
     'notification.setDndMode':        ['system'],
     'notification.setChannelEnabled': ['system'],
+    /* The chip's ID outlives a factory reset — a tracking ID if every app read it */
+    'device.getDeviceId':             ['system'],
     /* The device's power is the OS's: any app may read it, only system apps
        turn the screen, sleep, shut down or reboot it, or hold it awake */
     'power.screenOff':                ['system'],

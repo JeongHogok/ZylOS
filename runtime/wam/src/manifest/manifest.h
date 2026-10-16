@@ -23,11 +23,22 @@ typedef struct {
     char **permissions; /* Requested permissions (NULL-terminated) */
     int n_permissions;
     gboolean is_system; /* TRUE for system apps */
-    gboolean launcher;  /* "launcher": false — system UI, not an app one returns to */
+    gboolean launcher;  /* app.json "launcher" as written — read it through
+                           zyl_manifest_in_launcher, which honours it for system apps only */
     /* What the app opens ("intents"): pairs, NULL-terminated, same length */
     char **intent_actions;
     char **intent_mimes;
 } ZylAppManifest;
+
+/*
+ * Whether the app is one the user sees and returns to (home, settings' app list,
+ * recents, app switching). "launcher": false is system UI's (lock screen, status
+ * bar): a third-party app saying it would hide from every place the user could
+ * remove it or turn its permissions off, so only a system app may.
+ */
+static inline gboolean zyl_manifest_in_launcher(const ZylAppManifest *m) {
+    return m->launcher || !m->is_system;
+}
 
 /*
  * Parse an app.json manifest from the given app directory.

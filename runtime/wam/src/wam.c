@@ -268,7 +268,7 @@ static void wam_switch_app(ZylWam *wam, int direction) {
     g_hash_table_iter_init(&it, wam->instances);
     while (g_hash_table_iter_next(&it, &key, &value)) {
         ZylAppInstance *inst = value;
-        if (inst->manifest && inst->manifest->launcher) g_ptr_array_add(ids, key);
+        if (inst->manifest && zyl_manifest_in_launcher(inst->manifest)) g_ptr_array_add(ids, key);
     }
     g_ptr_array_sort(ids, compare_ids);
     int at = -1;
@@ -294,7 +294,7 @@ static void post_recents(ZylWam *wam) {
     g_hash_table_iter_init(&it, wam->instances);
     while (g_hash_table_iter_next(&it, &key, &value)) {
         ZylAppInstance *inst = value;
-        if (inst->manifest && inst->manifest->launcher) g_ptr_array_add(ids, key);
+        if (inst->manifest && zyl_manifest_in_launcher(inst->manifest)) g_ptr_array_add(ids, key);
     }
     g_ptr_array_sort(ids, compare_ids);
     JsonArray *apps = json_array_new();

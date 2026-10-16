@@ -26,6 +26,7 @@
         if (list && list.length > 0) {
           _cache = list.map(function (m) {
             var appName = (m.id || '').split('.').pop();
+            var system = SYSTEM_APPS.indexOf(m.id) !== -1;
             return {
               id: m.id,
               name: m.name || appName,
@@ -34,12 +35,14 @@
               color: m.color || 'icon-blue',
               version: m.version || '1.0.0',
               description: m.description || '',
-              system: (SYSTEM_APPS.indexOf(m.id) !== -1),
+              system: system,
               permissions: m.permissions || [],
               formFactors: m.formFactors || [],
               iconSvg: m.iconSvg || '',
-              /* false for system UI (lock screen, status bar, setup, home, keyboard) */
-              launcher: m.launcher !== false,
+              /* false for system UI (lock screen, status bar, setup, home, keyboard);
+                 only a system app may say so — a third-party app would hide from
+                 every place the user could remove it (manifest.h zyl_manifest_in_launcher) */
+              launcher: !system || m.launcher !== false,
               intents: Array.isArray(m.intents) ? m.intents : [],
               entry: m.entry || 'index.html',
               /* 'store': installed from the app store, served as zyl-app://<id>/ */

@@ -88,7 +88,7 @@ myapp/
 | `permissions` | 앱이 부를 서비스에 필요한 권한 이름 (5장). 없으면 권한 없음 |
 | `formFactors` | 이 앱이 맞춰 만든 폼팩터 ID 목록, `["*"]` 은 전부. 유효한 ID는 `PROFILES`. 목록 밖의 기기에서는 홈 화면에 나오지 않는다. 늘 적는다 — 없으면 OS 는 전부로 보고, 저장소 앱은 `tests/test_manifests.sh` 가 요구한다 |
 | `intents` | 이 앱이 열어 주는 것 `[{ action, mimeType }]` (7장). `action` 은 `ZylIntent.ACTION` 의 값, `mimeType` 은 `type/subtype`(subtype 은 `*` 가능) |
-| `launcher` | `false` 면 런처·최근 앱에 나오지 않는다 (시스템 UI용). 기본 `true` |
+| `launcher` | `false` 면 런처·최근 앱에 나오지 않는다 (시스템 UI용 — 시스템 앱만 따른다. 제3자 앱이 숨으면 사용자가 지우거나 권한을 끌 곳이 없어진다). 기본 `true` |
 | `iconSvg` | 아이콘. 24×24 `viewBox` 안의 SVG **path 데이터**(`d` 값) — `<svg>` 요소가 아니다 |
 | `color` | 아이콘 바탕. `apps/home/css/home.css` 의 `.icon-*` 클래스 이름 |
 | `description`·`developer`·`category` | 스토어 카탈로그에 실린다 (`tools/build-store.py`) |
@@ -152,6 +152,10 @@ ZylBridge.notify(zylI18n.t('myapp.done_title'), zylI18n.t('myapp.done_body'), { 
 
 `notify` 는 `notification` 서비스 요청이다. 올린 앱은 OS 가 정한다 — 제3자 앱이 `appId`
 를 무엇으로 주든 자기 이름으로 올라간다.
+
+한 앱이 띄워 둘 수 있는 알림은 **50개**까지다(51번째는 거부 — 지운 만큼 다시 올릴 수
+있다). 제목은 128자, 본문은 1024자, 액션은 3개까지만 남고 넘는 것은 잘린다. 채널
+(`channel`)은 그 앱의 것이라 다른 앱의 같은 이름 채널과 섞이지 않는다.
 
 **액션 버튼** — `actions: [{ label, actionId }]`(라벨은 앱이 번역해서). 사용자가 누르면 OS 가
 그 앱을 앞으로 띄우고(떠 있지 않았으면 실행해서, 페이지가 뜬 뒤) 알려 주며, 알림은 끝난다.
@@ -466,4 +470,4 @@ cd myapp
 | 앱이 목록에 없거나 열리지 않음 | `<id> refused: …` — 봉인·인증서·프로필 문제 (사유는 APPSTORE_API.md) |
 | 일부 파일만 안 읽힘 | `<id>/<경로> is not as sealed — not served` — 앱이 등록된 뒤 바뀐 파일 |
 | 응답이 늦게 reject | 시간 초과 — 서비스 이름·메서드 이름 확인 |
-| 홈 화면에 안 보임 | `formFactors` 에 이 기기의 폼팩터가 없음, 또는 `launcher: false` |
+| 홈 화면에 안 보임 | `formFactors` 에 이 기기의 폼팩터가 없음 |
