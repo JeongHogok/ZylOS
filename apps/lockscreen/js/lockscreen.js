@@ -185,11 +185,11 @@
    * ════════════════════════════════════════════ */
   document.querySelectorAll('.num-btn[data-num]').forEach(function (btn) {
     btn.addEventListener('click', function () {
-      if (enteredPin.length >= 4) return;
+      if (enteredPin.length >= 6) return;
       enteredPin += btn.dataset.num;
       updateDots();
 
-      if (enteredPin.length === 4) {
+      if (enteredPin.length === 6) {
         setTimeout(verifyPin, 250);
       }
     });
@@ -334,8 +334,9 @@
       '<div class="lock-notif-icon">' + escapeHtml(n.icon || '🔔') + '</div>' +
       '<div class="lock-notif-text">' +
         '<div class="lock-notif-app">' + escapeHtml(n.appName || n.appId || '') + '</div>' +
-        '<div class="lock-notif-title">' + escapeHtml(n.title || '') + '</div>' +
-        '<div class="lock-notif-body">' + escapeHtml(n.body || '') + '</div>' +
+        /* The content stays off the lock screen — the app and that there is a
+           notification, not what it says, until the device is unlocked */
+        '<div class="lock-notif-title">' + escapeHtml(zylI18n.t('lock.notif_hidden')) + '</div>' +
       '</div>' +
       '<div class="lock-notif-time">' + escapeHtml(zylI18n.t('time.just_now')) + '</div>';
 

@@ -182,7 +182,7 @@
     var confirmPin = document.getElementById('pin-confirm').value;
     var msg = document.getElementById('pin-msg');
 
-    if (pin.length !== 4 || !/^\d{4}$/.test(pin)) {
+    if (pin.length !== 6 || !/^\d{6}$/.test(pin)) {
       msg.textContent = (typeof zylI18n !== 'undefined') ? zylI18n.t('oobe.pin_format') : 'PIN must be 4 digits';
       msg.style.color = '#ef4444';
       return;

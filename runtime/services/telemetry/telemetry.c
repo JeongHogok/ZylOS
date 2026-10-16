@@ -24,7 +24,7 @@
 #endif
 #include <gio/gio.h>
 
-#define TELEMETRY_ENDPOINT  "https://telemetry.zylos.dev/v1/report"
+#define TELEMETRY_ENDPOINT  "https://telemetry.zyl-os.com/v1/report"
 /* Overridable so tests run against a scratch directory */
 #ifndef TELEMETRY_DIR
 #define TELEMETRY_DIR       "/data/telemetry"

@@ -629,6 +629,11 @@ fi
 # ═════════════════════════════════════════════════════════════
 section "전체 — 기술부채 + 코드 위생"
 
+# E-domain: Zyl 서버 주소는 우리가 가진 zyl-os.com 한 도메인만. 등록 안 된 주소
+#           (zyl-os.dev·zylos.dev)를 박으면 누가 선점해 기기 트래픽을 받을 수 있다
+DOMAIN_HITS=$(grep -rnE "zyl-?os\.dev" "$ROOT/runtime" "$ROOT/system" "$ROOT/apps" "$ROOT/emulator-app" 2>/dev/null || true)
+if [ -n "$DOMAIN_HITS" ]; then fail "등록 안 된 도메인 (zyl-os.com 으로):\n$DOMAIN_HITS"; else pass "Zyl 서버 주소는 zyl-os.com 뿐"; fi
+
 # E0: OS 버전·보안 패치 수준은 apps/system/release.js 하나에서 온다
 #     meson 도 불일치 시 빌드를 거부하지만, meson 은 CI 빌드에서만 돈다.
 REL_VER=$(python3 "$ROOT/tools/release_info.py" version 2>&1)

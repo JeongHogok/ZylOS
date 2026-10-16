@@ -854,7 +854,7 @@ var lockTests = (function () {
   }
   function fail(svc, n) {
     var p = Promise.resolve();
-    for (var i = 0; i < n; i++) p = p.then(function () { return svc.verifyPin({ pin: '0000' }); });
+    for (var i = 0; i < n; i++) p = p.then(function () { return svc.verifyPin({ pin: '000000' }); });
     return p;
   }
 
@@ -864,22 +864,22 @@ var lockTests = (function () {
       return t.svc.verifyPin({ pin: '' }).then(function (r) {
         assert.strictEqual(r.ok, true);
         assert.strictEqual(r.hasPin, false);
-        /* A long PIN on purpose: the stored hash is random hex, and a 4-digit
-           PIN turns up inside it by chance about once in 725 runs */
-        return t.svc.setPin({ current: '', pin: '4821096372' });
+        /* A specific PIN: the stored hash is random hex, and this exact
+           6-digit sequence turns up inside it by chance about 1 in 180,000 runs */
+        return t.svc.setPin({ current: '', pin: '482109' });
       }).then(function (r) {
         assert.strictEqual(r.ok, true);
-        assert.ok(JSON.stringify(t.store).indexOf('4821096372') === -1);
+        assert.ok(JSON.stringify(t.store).indexOf('482109') === -1);
         assert.ok(/^pbkdf2-sha256\$/.test(t.store.lock.hash));
-        return t.svc.verifyPin({ pin: '4821096372' });
+        return t.svc.verifyPin({ pin: '482109' });
       }).then(function (r) { assert.strictEqual(r.ok, true); });
     }),
     asyncTest('five failures make the user wait, even for the right PIN', function () {
       var t = make();
-      return t.svc.setPin({ current: '', pin: '4821' }).then(function () {
+      return t.svc.setPin({ current: '', pin: '482109' }).then(function () {
         return fail(t.svc, 5);
       }).then(function () {
-        return t.svc.verifyPin({ pin: '4821' });
+        return t.svc.verifyPin({ pin: '482109' });
       }).then(function (r) {
         assert.strictEqual(r.ok, false);
         assert.strictEqual(r.reason, 'locked_out');
@@ -888,14 +888,17 @@ var lockTests = (function () {
     }),
     asyncTest('changing or removing needs the current PIN; format is checked', function () {
       var t = make();
-      return t.svc.setPin({ current: '', pin: '12a4' }).then(function (r) {
+      return t.svc.setPin({ current: '', pin: '12a456' }).then(function (r) {
         assert.strictEqual(r.reason, 'format');
-        return t.svc.setPin({ current: '', pin: '4821' });
+        return t.svc.setPin({ current: '', pin: '1234' });     /* 4 digits: the old length is rejected */
+      }).then(function (r) {
+        assert.strictEqual(r.reason, 'format');
+        return t.svc.setPin({ current: '', pin: '482109' });
       }).then(function () {
-        return t.svc.setPin({ current: '1111', pin: '' });
+        return t.svc.setPin({ current: '111111', pin: '' });
       }).then(function (r) {
         assert.strictEqual(r.reason, 'wrong_pin');
-        return t.svc.setPin({ current: '4821', pin: '' });
+        return t.svc.setPin({ current: '482109', pin: '' });
       }).then(function (r) {
         assert.strictEqual(r.ok, true);
         assert.strictEqual(r.hasPin, false);
