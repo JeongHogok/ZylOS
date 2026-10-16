@@ -74,8 +74,8 @@ endif
 if not _wam_webkit.found()
   _wam_webkit = dependency('webkit2gtk-4.0', required: false)
 endif
+subdir('runtime/lib')   # code more than one of them compiles (containers, seals, signatures, JSON) — HAL too
 subdir('runtime/hal')   # before the WAM and services: both take hardware facts from it
-subdir('runtime/lib')   # code more than one of them compiles (containers, seals, signatures)
 if _wam_webkit.found()
   subdir('runtime/wam')
 else

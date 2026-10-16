@@ -294,7 +294,8 @@
       lockoutUntil = Date.now() + r.retryAfterMs;
       startLockoutCountdown();     /* shows "try again in N s" */
     } else {
-      pinError.textContent = zylI18n.t('lock.wrong_pin');
+      /* 'storage': the OS could not count the try, so it did not make one */
+      pinError.textContent = zylI18n.t(r && r.reason === 'storage' ? 'lock.storage_full' : 'lock.wrong_pin');
       pinError.classList.add('show');
     }
     var dots = document.getElementById('pin-dots');

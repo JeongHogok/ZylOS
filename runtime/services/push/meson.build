@@ -1,3 +1,3 @@
 gio = dependency('gio-2.0')
 json_glib = dependency('json-glib-1.0')
-executable('zyl-push', 'push.c', dependencies: [gio, json_glib], install: true)
+executable('zyl-push', 'push.c', dependencies: [gio, json_glib, zyl_json_dep], install: true)

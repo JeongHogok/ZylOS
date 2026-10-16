@@ -3,7 +3,7 @@ json_glib = dependency('json-glib-1.0')
 gio = dependency('gio-2.0')
 
 executable('zyl-updater', 'updaterd.c', 'updater.c', 'ota_install.c',
-  dependencies: [openssl, json_glib, gio, zyl_hal_dep, zyl_ota_verify_dep],
+  dependencies: [openssl, json_glib, gio, zyl_hal_dep, zyl_ota_verify_dep, zyl_json_dep],
   install: true,
 )
 

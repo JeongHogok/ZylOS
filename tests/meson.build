@@ -8,7 +8,8 @@
 # ──────────────────────────────────────────────────────────
 
 gio_dep = dependency('gio-2.0')
-json_glib_dep = dependency('json-glib-1.0')
+# json-glib and the one way runtime/ reads its string members (runtime/lib/zyl_json.h)
+json_glib_dep = [dependency('json-glib-1.0'), zyl_json_dep]
 # The shared runtime code (runtime/lib): tests compile its sources themselves
 # so their own -D paths apply, and need its headers for what they include
 _lib_inc = include_directories('../runtime/lib')

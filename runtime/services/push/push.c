@@ -15,6 +15,7 @@
 #include <gio/gio.h>
 #include <glib-unix.h>
 #include <json-glib/json-glib.h>
+#include "zyl_json.h"
 #include <signal.h>
 #include <string.h>
 #include <sys/random.h>
@@ -110,13 +111,15 @@ static gboolean push_parse_line(const char *line, char **id, char **topic, char 
     if (line && json_parser_load_from_data(p, line, -1, NULL)) {
         JsonNode *root = json_parser_get_root(p);
         JsonObject *o = root && JSON_NODE_HOLDS_OBJECT(root) ? json_node_get_object(root) : NULL;
-        const char *ev = o ? json_object_get_string_member_with_default(o, "event", "") : "";
-        const char *i = o ? json_object_get_string_member_with_default(o, "id", "") : "";
-        const char *t = o ? json_object_get_string_member_with_default(o, "topic", "") : "";
+        /* zyl_json_str: a member of another type ("id": 123) is "" — json-glib's
+           own getter gave NULL, and one such line crashed this service again on
+           every reconnect (the server resends what was not taken) */
+        const char *ev = zyl_json_str(o, "event", ""), *i = zyl_json_str(o, "id", "");
+        const char *t = zyl_json_str(o, "topic", "");
         if (strcmp(ev, "message") == 0 && *i && *t) {
             *id = g_strdup(i);
             *topic = g_strdup(t);
-            *message = g_strdup(o ? json_object_get_string_member_with_default(o, "message", "") : "");
+            *message = g_strdup(zyl_json_str(o, "message", ""));
             ok = TRUE;
         }
     }
@@ -140,7 +143,7 @@ static char *config_url(const char *path) {
     if (json_parser_load_from_file(p, path, NULL)) {
         JsonNode *root = json_parser_get_root(p);
         if (root && JSON_NODE_HOLDS_OBJECT(root)) {
-            const char *u = json_object_get_string_member_with_default(json_node_get_object(root), "url", "");
+            const char *u = zyl_json_str(json_node_get_object(root), "url", "");
             if (g_str_has_prefix(u, "https://")) {
                 g_free(url);
                 url = g_strdup(u);
@@ -197,7 +200,7 @@ static void state_load(Push *ps) {
         JsonObject *o = root && JSON_NODE_HOLDS_OBJECT(root) ? json_node_get_object(root) : NULL;
         if (o) {
             g_free(ps->since);
-            ps->since = g_strdup(json_object_get_string_member_with_default(o, "since", ""));
+            ps->since = g_strdup(zyl_json_str(o, "since", ""));
             JsonNode *apps = json_object_get_member(o, "apps");
             JsonObject *a = apps && JSON_NODE_HOLDS_OBJECT(apps) ? json_node_get_object(apps) : NULL;
             GList *ids = a ? json_object_get_members(a) : NULL;
@@ -205,12 +208,12 @@ static void state_load(Push *ps) {
                 JsonNode *n = json_object_get_member(a, l->data);
                 if (!JSON_NODE_HOLDS_OBJECT(n)) continue;
                 JsonObject *r = json_node_get_object(n);
-                const char *topic = json_object_get_string_member_with_default(r, "topic", "");
+                const char *topic = zyl_json_str(r, "topic", "");
                 if (!*topic) continue;
                 PushReg *reg = g_new0(PushReg, 1);
                 reg->topic = g_strdup(topic);
-                reg->title = g_strdup(json_object_get_string_member_with_default(r, "title", ""));
-                reg->body = g_strdup(json_object_get_string_member_with_default(r, "body", ""));
+                reg->title = g_strdup(zyl_json_str(r, "title", ""));
+                reg->body = g_strdup(zyl_json_str(r, "body", ""));
                 g_hash_table_replace(ps->regs, g_strdup(l->data), reg);
             }
             g_list_free(ids);

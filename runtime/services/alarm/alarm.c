@@ -24,6 +24,7 @@
 #include <gio/gio.h>
 #include <glib-unix.h>
 #include <json-glib/json-glib.h>
+#include "zyl_json.h"
 
 #ifndef ALARM_PERSIST_DIR
 #define ALARM_PERSIST_DIR  "/data/alarms"
@@ -386,15 +387,12 @@ static void alarm_persist_load(ZylAlarmService *svc) {
         if (!repeating && trigger < now) continue;
 
         ZylAlarm alarm = {0};
-        alarm.tag = g_strdup(json_object_has_member(ao, "tag") ?
-                             json_object_get_string_member(ao, "tag") : "");
+        alarm.tag = g_strdup(zyl_json_str(ao, "tag", ""));
         alarm.trigger_at = trigger;
         alarm.interval_ms = interval;
-        alarm.app_id = g_strdup(json_object_has_member(ao, "app_id") ?
-                                json_object_get_string_member(ao, "app_id") : "");
+        alarm.app_id = g_strdup(zyl_json_str(ao, "app_id", ""));
         alarm.repeating = repeating;
-        alarm.title = g_strdup(json_object_has_member(ao, "title") ?
-                               json_object_get_string_member(ao, "title") : "");
+        alarm.title = g_strdup(zyl_json_str(ao, "title", ""));
 
         /* For repeating alarms that fired while service was down,
            advance trigger_at to the next future occurrence */

@@ -134,7 +134,7 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 | 버스 접근 권한 | `system/dbus-1/zyl-os.conf` | dbus-daemon, `tests/test_dbus_policy.sh` |
 | 서비스 권한 정책 | `apps/system/permissions.js` | `bridge.c`(verify-all 이 대조) |
 | 교차 툴체인 | `tools/cross/<arch>.ini` | 보드의 `board_cross_file` |
-| 둘 이상이 컴파일하는 C 코드 (앱 컨테이너·봉인·서명 검증) | `runtime/lib/` | appdata·fs·appstore·updater·WAM (`zyl_*_dep`) |
+| 둘 이상이 컴파일하는 C 코드 (앱 컨테이너·봉인·서명 검증·JSON 문자열 읽기 `zyl_json_str`) | `runtime/lib/` | appdata·fs·appstore·updater·WAM·HAL·서비스 (`zyl_*_dep`) |
 | 푸시 서버 주소 | `system/push.json` | `zyl-push`(`/etc/zyl-os`), 에뮬레이터 `push.rs`(include_str) |
 | 사용자 루트·소유자 uid·소유자 파일 트리 | `runtime/lib/users.h` | user·fs·appstore, 에뮬레이터 `user.js`(test_services 대조) |
 

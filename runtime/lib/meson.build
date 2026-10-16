@@ -4,7 +4,8 @@
 #       service directory serving as another's library
 # Scope: app containers (appdata, fs, appstore, WAM), OTA/package signature
 #        checks (updater, appstore, seals), app seals (appstore, WAM), where
-#        users and their files live (user, fs, appstore)
+#        users and their files live (user, fs, appstore), reading JSON strings
+#        (HAL, WAM, services)
 # Dependency direction: glib, json-glib, OpenSSL; nothing of the services
 # SOLID: SRP — one small static library per concern, each with only its own deps
 
@@ -14,6 +15,10 @@ _openssl = dependency('openssl', version: '>=1.1.1')
 
 # /data/users and the owner's files (users.h): header only
 zyl_users_dep = declare_dependency(include_directories: _lib_inc)
+
+# The one way runtime/ reads a JSON string member (zyl_json.h): header only
+zyl_json_dep = declare_dependency(include_directories: _lib_inc,
+                                  dependencies: dependency('json-glib-1.0'))
 
 # /data/appdata/<app id>/ — where an app's everything lives (CLAUDE.md rule 12)
 zyl_container_dep = declare_dependency(

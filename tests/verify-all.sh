@@ -322,6 +322,16 @@ else
   pass "빈 함수 없음"
 fi
 
+# C2b: JSON 문자열 멤버는 zyl_json_str 로만 — json-glib 의 getter 는 다른 타입의 멤버에
+#      기본값이 아니라 NULL 을 돌려줘서, 앱·패키지·서버가 쓴 한 줄이 서비스를 죽였다
+RAW_JSON_STR=$(grep -rn 'json_object_get_string_member' "$ROOT/runtime" --include='*.c' --include='*.h' 2>/dev/null \
+  | grep -v 'runtime/lib/zyl_json.h' | sed "s|$ROOT/||" || true)
+if [ -n "$RAW_JSON_STR" ]; then
+  fail "JSON 문자열 멤버를 zyl_json_str(runtime/lib/zyl_json.h) 없이 읽음:\n$RAW_JSON_STR"
+else
+  pass "JSON 문자열 멤버는 zyl_json_str 로만"
+fi
+
 # C3: Clean Architecture 헤더
 MISSING_C=""
 for cfile in $(find "$ROOT/runtime" -name '*.c' 2>/dev/null); do

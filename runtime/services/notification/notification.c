@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <json-glib/json-glib.h>
+#include "zyl_json.h"
 
 #ifndef NOTIF_PERSIST_DIR
 #define NOTIF_PERSIST_DIR  "/data/notifications"
@@ -735,7 +736,7 @@ static void persist_load(ZylNotificationService *service) {
 /* As bounded as a new post: a file written before the limits must not bring
    back the reply too big for the bus. A field of another type reads as "". */
 #define GETSTR(field, max) \
-    notif.field = bounded(json_object_get_string_member_with_default(nobj, #field, ""), max)
+    notif.field = bounded(zyl_json_str(nobj, #field, ""), max)
             notif.id = json_object_has_member(nobj, "id") ?
                 (uint64_t)json_object_get_int_member(nobj, "id") : 0;
             GETSTR(app_id, 255);

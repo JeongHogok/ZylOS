@@ -160,6 +160,7 @@ static int safe_exec(const char *const argv[]) {
 }
 
 #include <json-glib/json-glib.h>
+#include "zyl_json.h"
 
 static char *json_get_string(const char *json_str, const char *key) {
     if (!json_str || !key) return NULL;
@@ -176,7 +177,7 @@ static char *json_get_string(const char *json_str, const char *key) {
     JsonObject *obj = json_node_get_object(root);
     char *result = NULL;
     if (json_object_has_member(obj, key)) {
-        const char *val = json_object_get_string_member(obj, key);
+        const char *val = zyl_json_str(obj, key, NULL);
         if (val) result = strdup(val);
     }
     g_object_unref(parser);

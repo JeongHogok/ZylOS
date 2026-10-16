@@ -105,6 +105,11 @@ static void test_unpack_refuses_what_could_escape(void) {
     assert(!zyl_store_unpack(ROOT_ "/ln.zip", ROOT_ "/o4", &why));
     put(ROOT_ "/not.zip", "plain text");
     assert(!zyl_store_unpack(ROOT_ "/not.zip", ROOT_ "/o5", &why));
+
+    /* A package's app.json with members of another type is refused, not a crash
+       (json-glib's getter gave NULL for them — runtime/lib/zyl_json.h) */
+    put(ROOT_ "/out/app.json", "{\"id\":1,\"version\":[\"1.0\"],\"entry\":{}}");
+    assert(!zyl_store_check_manifest(ROOT_ "/out", "com.example.hello", "1.0", &why));
 }
 
 static void test_install_swap_and_removal_leave_nothing(void) {

@@ -28,6 +28,7 @@
 #include <glib/gstdio.h>
 #include <glib-unix.h>
 #include <json-glib/json-glib.h>
+#include "zyl_json.h"
 
 #include "store_catalog.h"
 #include "store_package.h"
@@ -64,8 +65,8 @@ static bool load_config(StoreConfig *c) {
     c->url = c->key_pem = NULL;
     if (json_parser_load_from_file(p, ZYL_STORE_CONFIG, NULL) && JSON_NODE_HOLDS_OBJECT(json_parser_get_root(p))) {
         JsonObject *o = json_node_get_object(json_parser_get_root(p));
-        const char *url = json_object_get_string_member_with_default(o, "url", "");
-        const char *key = json_object_get_string_member_with_default(o, "publicKey", "");
+        const char *url = zyl_json_str(o, "url", "");
+        const char *key = zyl_json_str(o, "publicKey", "");
         if (url && g_str_has_prefix(url, "https://") && key && *key) {
             c->url = g_strdup(url);
             c->key_pem = g_strdup(key);
@@ -86,7 +87,7 @@ static char *manifest_field(const char *dir, const char *field) {
     JsonParser *p = json_parser_new();
     char *out = NULL;
     if (json_parser_load_from_file(p, path, NULL) && JSON_NODE_HOLDS_OBJECT(json_parser_get_root(p))) {
-        const char *v = json_object_get_string_member_with_default(
+        const char *v = zyl_json_str(
             json_node_get_object(json_parser_get_root(p)), field, NULL);
         out = g_strdup(v);
     }

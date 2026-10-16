@@ -14,6 +14,7 @@
 #include <string.h>
 #include <sys/random.h>
 #include <json-glib/json-glib.h>
+#include "zyl_json.h"
 
 /* == Handler Registry Entry ================================= */
 
@@ -336,7 +337,7 @@ void zyl_bridge_dispatch(WebKitWebView    *webview,
         return;
     }
 
-    const char *type = json_object_get_string_member(msg, "type");
+    const char *type = zyl_json_str(msg, "type", NULL);
     if (!type || type[0] == '\0') {
         g_warning("Bridge: empty 'type' field from %s", app_id);
         g_object_unref(parser);
@@ -608,7 +609,7 @@ static void handle_app_launch(const char *type, gpointer msg_obj,
 
     const char *target = NULL;
     if (json_object_has_member(msg, "appId"))
-        target = json_object_get_string_member(msg, "appId");
+        target = zyl_json_str(msg, "appId", NULL);
 
     g_info("Bridge: app.launch from %s -> target=%s",
            app_id, target ? target : "(none)");
@@ -1315,8 +1316,8 @@ static void handle_service_request(const char *type, gpointer msg_obj,
         return;
     }
 
-    const char *service = json_object_get_string_member(msg, "service");
-    const char *method  = json_object_get_string_member(msg, "method");
+    const char *service = zyl_json_str(msg, "service", NULL);
+    const char *method  = zyl_json_str(msg, "method", NULL);
 
     if (!service || !method || service[0] == '\0' || method[0] == '\0') {
         zyl_bridge_reply_error(reply_ctx, "empty service or method");

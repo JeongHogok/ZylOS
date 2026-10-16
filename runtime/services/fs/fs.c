@@ -8,7 +8,9 @@
  *           filesystem.rs·apps/system/security.js 와 같은 규칙) 거부, 실제 경로가
  *           루트 밖이면(심볼릭 링크) 거부. 숨김(.으로 시작, lost+found)은 목록에서 뺌.
  *           OS 전용 인터페이스 Handoff: 인텐트로 건네는 파일을 받는 앱의 루트(Inbox,
- *           시스템 앱이면 Downloads)로 복사 — 앱 브리지에는 길이 없다
+ *           시스템 앱이면 Downloads)로 복사 — 앱 브리지에는 길이 없다.
+ *           한도: 읽기 응답은 버스 한도 아래(16MiB), 앱이 쓰는 것(쓰기·건네기)은
+ *           root 가 아닌 몫(f_bavail)까지만 — ext4 의 root 예약분은 OS 상태 몫
  * 의존방향: gio/gio.h (D-Bus), glib (파일)
  * SOLID: SRP — 사용자 파일 접근만. 앱별 권한은 WAM 브리지(fs → storage/files.*)
  * ────────────────────────────────────────────────────────── */
@@ -21,6 +23,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <gio/gio.h>
 #include <glib/gstdio.h>
 #include <glib-unix.h>
@@ -33,7 +36,29 @@
 #ifndef ZYL_CONTAINERS_ROOT
 #define ZYL_CONTAINERS_ROOT ZYL_CONTAINERS
 #endif
-#define MAX_READ (64 * 1024 * 1024)
+#define MAX_READ (64 * 1024 * 1024)   /* a file handed to another app (copied on disk) */
+/* What goes back in one D-Bus reply: the bus refuses a message over 32 MiB and
+   drops the sender — this service would exit. base64 is 4/3 of the file. */
+#define MAX_REPLY_READ (16 * 1024 * 1024)
+
+/* Apps fill /data only up to what a non-root user could (statvfs f_bavail): the
+   blocks ext4 reserves for root stay for the OS's own state — settings, the lock
+   screen's failed tries, messages — which this service, running as root, would
+   otherwise eat into. keep_free is a margin on top (a variable for the tests). */
+static guint64 keep_free = 16 * 1024 * 1024;
+
+static bool room_for(const char *path, guint64 len) {
+    struct statvfs v;
+    char *dir = g_path_get_dirname(path);
+    while (statvfs(dir, &v) != 0 && strcmp(dir, "/") != 0) {   /* nearest existing ancestor */
+        char *up = g_path_get_dirname(dir);
+        g_free(dir);
+        dir = up;
+    }
+    bool ok = statvfs(dir, &v) == 0 && (guint64)v.f_bavail * v.f_frsize >= len + keep_free;
+    g_free(dir);
+    return ok;
+}
 
 static const char *const STANDARD_DIRS[] = { "Documents", "Pictures", "Music", "Downloads", NULL };
 
@@ -146,7 +171,7 @@ static GVariant *list_dir(const char *base, const char *rel) {
 static char *read_file(const char *base, const char *rel, gsize *len) {
     char *path = resolve(base, rel), *data = NULL;
     struct stat st;
-    if (path && stat(path, &st) == 0 && S_ISREG(st.st_mode) && st.st_size <= MAX_READ)
+    if (path && stat(path, &st) == 0 && S_ISREG(st.st_mode) && st.st_size <= MAX_REPLY_READ)
         g_file_get_contents(path, &data, len, NULL);
     g_free(path);
     return data;
@@ -159,7 +184,7 @@ static bool write_file(const char *base, const char *rel, const char *content, c
     gsize len = strlen(content);
     if (g_strcmp0(encoding, "base64") == 0) bytes = g_base64_decode(content, &len);
     char *parent = g_path_get_dirname(path);
-    bool ok = g_mkdir_with_parents(parent, 0700) == 0 &&
+    bool ok = room_for(path, len) && g_mkdir_with_parents(parent, 0700) == 0 &&
               g_file_set_contents_full(path, bytes ? (const char *)bytes : content, (gssize)len,
                                        G_FILE_SET_CONTENTS_CONSISTENT, 0600, NULL);
     g_free(parent);
@@ -266,7 +291,7 @@ static char *handoff(const char *from_root, const char *rel, const char *to_root
         char *name = g_mkdir_with_parents(dir, 0700) == 0 ? free_name(dir, base) : NULL;
         gchar *data = NULL;
         gsize len = 0;
-        if (name && g_file_get_contents(src, &data, &len, NULL)) {
+        if (name && room_for(dir, (guint64)st.st_size) && g_file_get_contents(src, &data, &len, NULL)) {
             char *dst = g_build_filename(dir, name, NULL);
             if (g_file_set_contents_full(dst, data, (gssize)len, G_FILE_SET_CONTENTS_CONSISTENT, 0600, NULL))
                 out = g_build_filename(into, name, NULL);

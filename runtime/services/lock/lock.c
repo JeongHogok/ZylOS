@@ -3,7 +3,8 @@
  *
  * 역할: 화면 잠금 자격 증명 — PIN 설정·검증 (org.zylos.Lock)
  * 수행범위: PIN 을 PBKDF2-HMAC-SHA256 솔트 해시로만 저장, 상수 시간 비교,
- *           실패 누적에 따른 대기(재부팅·앱 재시작으로 초기화되지 않음),
+ *           실패 누적에 따른 대기(재부팅·앱 재시작으로 초기화되지 않음 — 시도는
+ *           PIN 을 보기 전에 디스크에 센다, 못 세면 시도도 없다),
  *           PIN 변경·제거는 현재 PIN 확인 후
  * 의존방향: gio/gio.h (D-Bus), OpenSSL (PBKDF2, RAND, CRYPTO_memcmp)
  * SOLID: SRP — 잠금 자격 증명만. 화면은 lockscreen, 설정 UI 는 settings 앱
@@ -138,21 +139,27 @@ static gint64 wait_for(guint failures) {
     return w > MAX_WAIT_S ? MAX_WAIT_S : w;
 }
 
-typedef enum { CHECK_OK, CHECK_WRONG, CHECK_WAIT } CheckResult;
+typedef enum { CHECK_OK, CHECK_WRONG, CHECK_WAIT, CHECK_STORAGE } CheckResult;
 
-/* One attempt against the stored PIN: counts failures, enforces the wait */
+/* One attempt against the stored PIN: counts failures, enforces the wait.
+   The attempt is on disk as a failure before the PIN is looked at, and with no
+   room to write it there is no attempt: a count kept only in memory (a full
+   /data — the save failing — or this service killed right after a guess) gave
+   five free guesses again on every restart */
 static CheckResult lock_check(LockState *s, const char *pin, gint64 now) {
     if (retry_after_ms(s, now)) return CHECK_WAIT;   /* not even tried: no oracle while waiting */
+    LockState tried = *s;
+    tried.failures++;
+    gint64 w = wait_for(tried.failures);
+    tried.wait_until = w ? now + w : 0;
+    if (!lock_save(&tried)) return CHECK_STORAGE;
     if (pin_matches(s->hash, pin)) {
         s->failures = 0;
         s->wait_until = 0;
-        lock_save(s);
+        lock_save(s);      /* if this fails the count stays one higher: fewer free tries, not more */
         return CHECK_OK;
     }
-    s->failures++;
-    gint64 w = wait_for(s->failures);
-    s->wait_until = w ? now + w : 0;
-    lock_save(s);
+    *s = tried;
     return CHECK_WRONG;
 }
 
@@ -163,6 +170,7 @@ static const char *lock_set_pin(LockState *s, const char *current, const char *p
         CheckResult r = lock_check(s, current, now);
         if (r == CHECK_WAIT) return "locked_out";
         if (r == CHECK_WRONG) return "wrong_pin";
+        if (r == CHECK_STORAGE) return "storage";
     }
     LockState next = *s;
     next.hash[0] = '\0';
@@ -216,7 +224,8 @@ static void handle_lock_method(GDBusConnection *conn, const gchar *sender,
         g_variant_get(params, "(&s)", &pin);
         CheckResult r = g_lock.hash[0] ? lock_check(&g_lock, pin, now) : CHECK_OK;
         g_dbus_method_invocation_return_value(inv, result_variant(r == CHECK_OK,
-            r == CHECK_OK ? "" : r == CHECK_WAIT ? "locked_out" : "wrong_pin", &g_lock, now));
+            r == CHECK_OK ? "" : r == CHECK_WAIT ? "locked_out" :
+            r == CHECK_STORAGE ? "storage" : "wrong_pin", &g_lock, now));
     } else if (g_strcmp0(method, "SetPin") == 0) {
         const gchar *current = NULL, *pin = NULL;
         g_variant_get(params, "(&s&s)", &current, &pin);

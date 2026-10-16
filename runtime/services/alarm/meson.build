@@ -3,6 +3,6 @@ json_glib = dependency('json-glib-1.0')
 
 executable('zyl-alarm',
   'alarm.c',
-  dependencies: [gio, json_glib],
+  dependencies: [gio, json_glib, zyl_json_dep],
   install: true,
 )

@@ -98,17 +98,17 @@
       return { ok: ok, reason: reason, hasPin: !!st.hash, retryAfterMs: retryAfterMs(st, now) };
     }
 
-    /* One attempt: 'ok', 'wrong' or 'wait' (not even tried while waiting) */
+    /* One attempt: 'ok', 'wrong' or 'wait' (not even tried while waiting).
+       Counted as a failure before the PIN is compared, as the device's lock.c
+       (which refuses the try when it cannot write the count) */
     function check(st, pin, now) {
       if (retryAfterMs(st, now)) return Promise.resolve('wait');
+      st.failures++;
+      var w = waitFor(st.failures);
+      st.waitUntil = w ? now + w : 0;
+      save(st);
       return matches(st.hash, String(pin || '')).then(function (ok) {
-        if (ok) { st.failures = 0; st.waitUntil = 0; }
-        else {
-          st.failures++;
-          var w = waitFor(st.failures);
-          st.waitUntil = w ? now + w : 0;
-        }
-        save(st);
+        if (ok) { st.failures = 0; st.waitUntil = 0; save(st); }
         return ok ? 'ok' : 'wrong';
       });
     }
