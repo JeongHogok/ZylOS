@@ -4,7 +4,10 @@
 // Role: Alarm service — a trigger an app registers for a future time, which
 //       fires even when that app is not running (emulator contract of
 //       runtime/services/alarm)
-// Scope: set, cancel, list, _forgetApp; timer per alarm, notification on fire
+// Scope: set, cancel, list, _forgetApp; timer per alarm, notification on fire.
+//        An alarm is its app's tag (appId — the OS's for a third-party app):
+//        another app's same tag is not replaced, cancelled or listed
+//        (same rule as runtime/services/alarm)
 // Dependency Direction: Domain -> notification service, settings service
 // SOLID: SRP — scheduling only; what an alarm means belongs to the app
 //        DIP — posts through the notification service, not the host
@@ -28,8 +31,10 @@
     var notificationSvc = deps.notificationSvc;
     var settingsSvc = deps.settingsSvc;
 
-    /* tag → { tag, triggerAt, intervalMs, appId, repeating, title, timer } */
+    /* appId + '\n' + tag → { tag, triggerAt, intervalMs, appId, repeating, title, timer } */
     var entries = {};
+
+    function keyOf(appId, tag) { return (appId || '') + '\n' + tag; }
 
     function record(e) {
       return {
@@ -43,7 +48,7 @@
     }
 
     function listRecords() {
-      return Object.keys(entries).map(function (tag) { return record(entries[tag]); });
+      return Object.keys(entries).map(function (k) { return record(entries[k]); });
     }
 
     function save() {
@@ -67,7 +72,7 @@
         e.triggerAt = Date.now() + e.intervalMs;
         arm(e);
       } else {
-        delete entries[e.tag];
+        delete entries[keyOf(e.appId, e.tag)];
       }
       save();
     }
@@ -94,15 +99,16 @@
         var now = Date.now();
         list.forEach(function (a) {
           if (!a || !a.tag) return;
-          if (entries[a.tag]) return;   /* set while loading: the live one wins */
+          if (entries[keyOf(a.appId, a.tag)]) return;   /* set while loading: the live one wins */
           /* A one-shot alarm whose time passed while the OS was down is gone */
           if (!a.repeating && a.triggerAt < now) return;
           if (a.repeating && a.intervalMs > 0 && a.triggerAt < now) {
             var periods = Math.floor((now - a.triggerAt) / a.intervalMs) + 1;
             a.triggerAt = a.triggerAt + periods * a.intervalMs;
           }
-          entries[a.tag] = record(a);
-          arm(entries[a.tag]);
+          var k = keyOf(a.appId, a.tag);
+          entries[k] = record(a);
+          arm(entries[k]);
         });
         return null;
       }).catch(function () { return null; });
@@ -112,10 +118,11 @@
     var ready = load();
 
     return {
-      /* p: { tag, triggerAt, intervalMs, appId, repeating, title } — same tag replaces */
+      /* p: { tag, triggerAt, intervalMs, appId, repeating, title } — the same
+         app's same tag replaces */
       set: function (p) {
         if (!p || !p.tag) return Promise.resolve(false);
-        var existing = entries[p.tag];
+        var existing = entries[keyOf(p.appId, String(p.tag))];
         if (existing && existing.timer) clearTimeout(existing.timer);
         var e = {
           tag: String(p.tag),
@@ -126,23 +133,27 @@
           title: p.title || '',
           timer: null
         };
-        entries[e.tag] = e;
+        entries[keyOf(e.appId, e.tag)] = e;
         arm(e);
         save();
         return Promise.resolve(true);
       },
 
+      /* p: { tag, appId } — its own alarm only */
       cancel: function (p) {
-        var e = p && entries[p.tag];
+        var k = p && keyOf(p.appId, p.tag);
+        var e = k && entries[k];
         if (!e) return Promise.resolve(false);
         if (e.timer) clearTimeout(e.timer);
-        delete entries[p.tag];
+        delete entries[k];
         save();
         return Promise.resolve(true);
       },
 
-      list: function () {
-        return Promise.resolve(listRecords());
+      /* p: { appId } — that app's alarms ('' — a system app asking for all) */
+      list: function (p) {
+        var only = p && p.appId;
+        return Promise.resolve(listRecords().filter(function (r) { return !only || r.appId === only; }));
       },
 
       /* Resolves once the stored alarms have been read and armed */
@@ -150,10 +161,10 @@
 
       /* The app was removed: its alarms go with it, memory and stored copy */
       _forgetApp: function (appId) {
-        Object.keys(entries).forEach(function (tag) {
-          if (entries[tag].appId !== appId) return;
-          if (entries[tag].timer) clearTimeout(entries[tag].timer);
-          delete entries[tag];
+        Object.keys(entries).forEach(function (k) {
+          if (entries[k].appId !== appId) return;
+          if (entries[k].timer) clearTimeout(entries[k].timer);
+          delete entries[k];
         });
         save();
       }

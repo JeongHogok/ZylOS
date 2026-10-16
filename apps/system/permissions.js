@@ -87,7 +87,18 @@ window.ZylPermissions = (function () {
     'notification.clearAll':          ['notification.read'],
     'notification.clearHistory':      ['notification.read'],
     'notification.setDndMode':        ['system'],
-    'notification.setChannelEnabled': ['system']
+    'notification.setChannelEnabled': ['system'],
+    /* The device's power is the OS's: any app may read it, only system apps
+       turn the screen, sleep, shut down or reboot it, or hold it awake */
+    'power.screenOff':                ['system'],
+    'power.screenOn':                 ['system'],
+    'power.userActivity':             ['system'],
+    'power.suspend':                  ['system'],
+    'power.shutdown':                 ['system'],
+    'power.reboot':                   ['system'],
+    'power.setBrightness':            ['system'],
+    'power.acquireWakelock':          ['system'],
+    'power.releaseWakelock':          ['system']
   };
 
   /* Events about one app's own things reach a third-party app only when they
@@ -97,7 +108,8 @@ window.ZylPermissions = (function () {
   var OWNED_EVENTS = [
     { service: 'notification', event: null,            readAll: 'notification.read' },
     { service: 'location',     event: 'GeofenceEnter', readAll: null },
-    { service: 'location',     event: 'GeofenceExit',  readAll: null }
+    { service: 'location',     event: 'GeofenceExit',  readAll: null },
+    { service: 'alarm',        event: 'AlarmTriggered', readAll: null }
   ];
 
   /* App-declared permissions from app.json */

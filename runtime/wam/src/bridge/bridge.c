@@ -695,6 +695,17 @@ static const ServicePermission METHOD_PERMISSIONS[] = {
     {"notification.clearHistory",      {"notification.read", NULL}},
     {"notification.setDndMode",        {"system", NULL}},
     {"notification.setChannelEnabled", {"system", NULL}},
+    /* The device's power is the OS's: any app may read it, only system apps
+       turn the screen, sleep, shut down or reboot it, or hold it awake */
+    {"power.screenOff",                {"system", NULL}},
+    {"power.screenOn",                 {"system", NULL}},
+    {"power.userActivity",             {"system", NULL}},
+    {"power.suspend",                  {"system", NULL}},
+    {"power.shutdown",                 {"system", NULL}},
+    {"power.reboot",                   {"system", NULL}},
+    {"power.setBrightness",            {"system", NULL}},
+    {"power.acquireWakelock",          {"system", NULL}},
+    {"power.releaseWakelock",          {"system", NULL}},
     {NULL, {NULL}}
 };
 
@@ -905,6 +916,7 @@ static const struct { const char *service, *signal, *read_all; } OWNED_EVENTS[] 
     {"notification", NULL,            "notification.read"},
     {"location",     "GeofenceEnter", NULL},
     {"location",     "GeofenceExit",  NULL},
+    {"alarm",        "AlarmTriggered", NULL},
     {NULL, NULL, NULL}
 };
 

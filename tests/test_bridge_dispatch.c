@@ -665,6 +665,36 @@ static void test_geofence_events_are_the_apps_own(void) {
     g_variant_unref(fix);
 }
 
+/* An alarm going off is its app's: another app never hears its tag */
+static void test_alarm_events_are_the_apps_own(void) {
+    const char *perms[] = { "notification", NULL };
+    ZylAppManifest app = perm_manifest("com.example.run", FALSE, perms);
+    GVariant *mine = g_variant_ref_sink(g_variant_new("(ss)", "wake", "com.example.run"));
+    GVariant *theirs = g_variant_ref_sink(g_variant_new("(ss)", "wake", "com.zylos.clock"));
+    char *s = zyl_bridge_service_event_script(&app, "alarm", "AlarmTriggered", mine);
+    assert(s);
+    g_free(s);
+    assert(!zyl_bridge_service_event_script(&app, "alarm", "AlarmTriggered", theirs));
+    g_variant_unref(mine);
+    g_variant_unref(theirs);
+}
+
+/* The device's power: any app reads it, only system apps act on it */
+static void test_power_actions_are_system_only(void) {
+    const char *none[] = { NULL };
+    ZylAppManifest app = perm_manifest("com.example.app", FALSE, none);
+    ZylAppManifest settings = perm_manifest("com.zylos.settings", TRUE, none);
+    assert(app_may_call(&app, "power"));
+    assert(app_may_call_method(&app, "power", "getState"));
+    assert(app_may_call_method(&app, "power", "getCapabilities"));
+    const char *acts[] = { "reboot", "shutdown", "suspend", "screenOff", "screenOn", "userActivity",
+                           "setBrightness", "acquireWakelock", "releaseWakelock", NULL };
+    for (int i = 0; acts[i]; i++) {
+        assert(!app_may_call_method(&app, "power", acts[i]));
+        assert(app_may_call_method(&settings, "power", acts[i]));
+    }
+}
+
 /* Users: adding, switching and removing (with the user's data) is the OS's */
 static void test_users_are_system_only(void) {
     const char *any[] = { "storage", "notification", NULL };
@@ -734,6 +764,8 @@ int main(void)
     RUN_TEST(test_policy_unreviewed_service_fails_closed);
     RUN_TEST(test_policy_user_revocation_takes_the_service_away);
     RUN_TEST(test_policy_revocation_list_is_comma_separated);
+    RUN_TEST(test_alarm_events_are_the_apps_own);
+    RUN_TEST(test_power_actions_are_system_only);
     RUN_TEST(test_app_holds_follows_declaration_and_revocation);
     RUN_TEST(test_revocation_reload_names_only_changed_apps);
     RUN_TEST(test_args_no_input_is_empty_tuple);

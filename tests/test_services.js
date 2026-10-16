@@ -1444,6 +1444,15 @@ console.log('\n■ ZylPermissions');
     });
   });
 
+  test('the device\'s power: any app reads it, only system apps act on it (as bridge.c)', function () {
+    assert.ok(P.checkPermission('com.evil.app', 'power', 'getState'));
+    ['reboot', 'shutdown', 'suspend', 'screenOff', 'screenOn', 'userActivity',
+     'setBrightness', 'acquireWakelock', 'releaseWakelock'].forEach(function (m) {
+      assert.strictEqual(P.checkPermission('com.evil.app', 'power', m), false, m);
+      assert.ok(P.checkPermission('com.zylos.settings', 'power', m), m);
+    });
+  });
+
   test('ordinary declared permissions are still granted', function () {
     var got = P.getEffectivePermissions('com.evil.app');
     assert.ok(got.indexOf('camera') !== -1);
@@ -2359,7 +2368,7 @@ var alarmTests = (function () {
   /* A still-pending alarm timer would keep the test runner alive */
   function clear(t) {
     return t.svc.list().then(function (list) {
-      return Promise.all(list.map(function (a) { return t.svc.cancel({ tag: a.tag }); }));
+      return Promise.all(list.map(function (a) { return t.svc.cancel({ tag: a.tag, appId: a.appId }); }));
     });
   }
 
@@ -2399,14 +2408,30 @@ var alarmTests = (function () {
         .then(function (r) {
           assert.strictEqual(r.length, 1);
           assert.strictEqual(r[0].title, 'second');
-          return t.svc.cancel({ tag: 'x' });
+          return t.svc.cancel({ tag: 'x', appId: 'a' });
         }).then(function (ok) {
           assert.strictEqual(ok, true);
           return after(40);
         }).then(function () {
           assert.strictEqual(t.posted.length, 0);
-          return t.svc.cancel({ tag: 'x' });
+          return t.svc.cancel({ tag: 'x', appId: 'a' });
         }).then(function (ok) { assert.strictEqual(ok, false); });
+    }),
+    /* Same rule as test_alarm.c: an alarm is its app's tag */
+    asyncTest('another app\'s same tag is not replaced, cancelled or listed', function () {
+      var t = make();
+      return t.svc.set({ tag: 'wake', triggerAt: soon(60000), appId: 'com.zylos.clock', title: 'c' })
+        .then(function () { return t.svc.set({ tag: 'wake', triggerAt: soon(60000), appId: 'com.example.evil', title: 'e' }); })
+        .then(function () { return t.svc.cancel({ tag: 'wake', appId: 'com.example.evil' }); })
+        .then(function () { return t.svc.cancel({ tag: 'wake', appId: 'com.example.evil' }); })
+        .then(function (again) {
+          assert.strictEqual(again, false);
+          return Promise.all([t.svc.list({ appId: 'com.zylos.clock' }), t.svc.list({ appId: 'com.example.evil' })]);
+        }).then(function (r) {
+          assert.deepStrictEqual(r[0].map(function (a) { return a.title; }), ['c']);
+          assert.strictEqual(r[1].length, 0);
+          return clear(t);
+        });
     }),
     asyncTest('a removed app leaves no alarm behind, in memory or stored', function () {
       var t = make();
