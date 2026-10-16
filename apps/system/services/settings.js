@@ -76,6 +76,13 @@
       ZylPermissions.setAppOverride(appId, String(value || '').split(',').filter(Boolean));
     }
 
+    /* The dangerous permissions the user allowed an app (app_grants: appId →
+       "perm,perm") — what the first-use question or Settings said yes to */
+    function applyGrants(appId, value) {
+      if (typeof ZylPermissions === 'undefined' || !ZylPermissions.setAppGrants) return;
+      ZylPermissions.setAppGrants(appId, String(value || '').split(',').filter(Boolean));
+    }
+
     return {
       get:    function (p) { return getSetting(p.category); },
       update: function (p) {
@@ -85,12 +92,14 @@
         }
         var updated = updateSetting(p.category, p.key, p.value);
         if (p.category === 'app_permissions') applyRevoked(p.key, p.value);
+        if (p.category === 'app_grants') applyGrants(p.key, p.value);
         return updated;
       },
       _loadFromBackend: function () {
         return _loadFromBackend().then(function (s) {
-          var perms = s.app_permissions || {};
+          var perms = s.app_permissions || {}, grants = s.app_grants || {};
           Object.keys(perms).forEach(function (appId) { applyRevoked(appId, perms[appId]); });
+          Object.keys(grants).forEach(function (appId) { applyGrants(appId, grants[appId]); });
           return s;
         });
       },

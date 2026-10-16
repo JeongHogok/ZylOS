@@ -288,17 +288,6 @@ static void read_modem_state(ZylTelephonyService *svc) {
         g_variant_unref(sig_qual);
     }
 
-    /* IMEI (EquipmentIdentifier) */
-    GVariant *imei = get_dbus_property(svc->system_bus,
-        MM_DBUS_NAME, active_modem_path(svc), MM_MODEM_IFACE,
-        "EquipmentIdentifier");
-    if (imei) {
-        const char *s = g_variant_get_string(imei, NULL);
-        snprintf(svc->state.imei, sizeof(svc->state.imei),
-                 "%s", s ? s : "");
-        g_variant_unref(imei);
-    }
-
     /* 접속 기술 (AccessTechnologies bitmask) */
     GVariant *tech = get_dbus_property(svc->system_bus,
         MM_DBUS_NAME, active_modem_path(svc), MM_MODEM_IFACE,
@@ -797,6 +786,9 @@ static const char *telephony_introspection_xml =
     "      <arg type='s' name='imei' direction='out'/>"
     "      <arg type='s' name='phone_number' direction='out'/>"
     "    </method>"
+    "    <method name='GetImei'>"
+    "      <arg type='s' name='imei' direction='out'/>"
+    "    </method>"
     "    <method name='GetCallState'>"
     "      <arg type='a{sv}' name='call' direction='out'/>"
     "    </method>"
@@ -881,8 +873,16 @@ static void handle_telephony_method(GDBusConnection *conn, const gchar *sender,
                            svc->state.operator_name,
                            (gint32)svc->state.network_type,
                            (gint32)svc->state.signal_strength,
-                           svc->state.imei,
+                           "",   /* the IMEI is GetImei's, the system's (bridge METHOD_PERMISSIONS) */
                            svc->state.phone_number));
+    } else if (g_strcmp0(method, "GetImei") == 0) {
+        /* The modem's hardware ID outlives a factory reset — a tracking ID if
+           every app with telephony read it; only system apps reach this */
+        GVariant *v = svc->modem_found ? get_dbus_property(svc->system_bus, MM_DBUS_NAME,
+            active_modem_path(svc), MM_MODEM_IFACE, "EquipmentIdentifier") : NULL;
+        const char *imei = v && g_variant_is_of_type(v, G_VARIANT_TYPE_STRING) ? g_variant_get_string(v, NULL) : "";
+        g_dbus_method_invocation_return_value(inv, g_variant_new("(s)", imei));
+        if (v) g_variant_unref(v);
     } else if (g_strcmp0(method, "GetCallState") == 0) {
         GVariantBuilder d;
         g_variant_builder_init(&d, G_VARIANT_TYPE("a{sv}"));

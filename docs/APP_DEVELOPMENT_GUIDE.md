@@ -172,7 +172,12 @@ ZylBridge.onNotificationAction(function (a) {
 ## 5. 권한
 
 앱은 `app.json` 의 `permissions` 로 선언하고, OS 가 **요청마다** 판정한다. 앱이 따로
-권한을 요청하는 API 는 없다.
+권한을 요청하는 API 는 없다 — 위험 권한(`camera`·`microphone`·`location`·`contacts`·`messaging`·
+`calls`·`sms`)은 그 권한이 필요한 요청을 **처음 할 때** OS 가 사용자에게 묻고(시스템 UI 의 창),
+요청은 답을 기다렸다가 허용이면 그대로 진행, 거부면 `Permission denied` 로 끝난다. 답은 남아
+다시 묻지 않는다(설정 > 앱에서 바꿀 수 있다). 앞에 있지 않은 앱의 요청은 묻지 않고 거부된다.
+전화는 셋으로 나뉜다 — `telephony` 는 망 상태(통신사·신호), `calls` 는 걸기·받기·통화 기록·
+`CallStateChanged`, `sms` 는 보내기·`SmsReceived`. 재난문자·모바일 데이터 설정·IMEI 는 OS 의 것이다.
 
 어느 서비스·메서드에 어떤 권한이 필요한지는 `apps/system/permissions.js` 의 표가 정한다 —
 읽는 법은 [SECURITY.md §3](SECURITY.md#3-권한). 예약 권한은 제3자 앱이 선언해도 주어지지
@@ -225,8 +230,9 @@ ZylBridge.onServiceEvent('notification', 'NotificationPosted', function (d) {
 
 ### 웹 플랫폼이 묻는 것 — 카메라·마이크·위치·파일
 
-- `getUserMedia` 의 카메라·마이크는 앱의 `camera`·`microphone` 권한으로 OS 가 정한다(묻는 창
-  없음, 사용자가 끄면 거부). 화면 공유·웹 알림(`Notification`)·포인터 잠금은 거부된다 —
+- `getUserMedia` 의 카메라·마이크는 앱의 `camera`·`microphone` 권한으로 OS 가 정한다 — 처음이면
+  사용자에게 묻고, 사용자가 끄면 거부(기기. 에뮬레이터에서는 프레임의 `getUserMedia` 를 OS 코드가
+  가로챌 수 없어, 권한 선언과 프레임 정책 `sandbox.js` 로만 정한다). 화면 공유·웹 알림(`Notification`)·포인터 잠금은 거부된다 —
   알림은 `ZylBridge.notify`.
 - `navigator.geolocation` 은 쓰지 않는다 — 위치는 `location` 서비스(`location` 권한).
 - 카메라·마이크·위치·센서는 **앞에 있는 동안만** 쓴다. 홈으로 가거나 화면이 잠기면 OS 가 캡처를

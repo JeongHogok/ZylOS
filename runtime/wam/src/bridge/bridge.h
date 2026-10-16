@@ -138,6 +138,25 @@ void zyl_bridge_watch_revocations(GDBusConnection *conn, ZylBridgeAppFn changed,
  * app what it declared, minus the reserved and what the user switched off */
 gboolean zyl_bridge_app_holds(const ZylAppManifest *m, const char *perm);
 
+/* First-use consent. A dangerous permission (camera, microphone, location,
+ * contacts, messaging, calls, sms) an app holds is usable only once the user
+ * said yes; the WAM asks (consent: its system UI draws the question) and calls
+ * done — answered FALSE when nobody answered (nothing is kept), manifest the
+ * app's current one (NULL: gone). A service.request waits for it. */
+typedef void (*ZylBridgeConsentDone)(gboolean allowed, gboolean answered,
+                                     ZylAppManifest *manifest, gpointer data);
+typedef void (*ZylBridgeConsentAsk)(const char *app_id, const char *perm,
+                                    ZylBridgeConsentDone done, gpointer data);
+void zyl_bridge_set_consent(ZylBridgeConsentAsk ask);
+
+/* perm, when it is the app's and still to ask the user for; else NULL (no
+ * question: not dangerous, not the app's, already allowed, a system app) */
+const char *zyl_bridge_consent_for(const ZylAppManifest *m, const char *perm);
+
+/* The user's answer, kept here at once and in settings (app_grants on yes,
+ * app_permissions on no) */
+void zyl_bridge_consent_answered(const char *app_id, const char *perm, gboolean allowed);
+
 /* May the app call service.method — the service rule and the method rule, as
    for a service.request (for a WAM message that does what a method does) */
 gboolean zyl_bridge_app_may_call(const ZylAppManifest *m, const char *service, const char *method);

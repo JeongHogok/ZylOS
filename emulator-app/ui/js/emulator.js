@@ -462,6 +462,13 @@
     }
   }
 
+  /* The OS asks the user (apps/system/consent.js): the system UI draws the
+     question over the app; its answer goes back to the OS */
+  window.addEventListener('zyl:permission-ask', function (e) {
+    postToSystemUi('permission.ask', e.detail);   /* first: the surface opens on it */
+    setPanel('full');
+  });
+
   window.addEventListener('zyl:notification-posted', function (e) {
     var n = e.detail;
     if (n) deliverEvent('notification', 'NotificationPosted', [n.id, n.appId, n.title, n.body, n.priority, n.actions || []]);
@@ -731,6 +738,10 @@
           break;
         case 'setup.done':
           show(ZylShell.setupDone(from));
+          break;
+        /* The user's answer to the OS's question — the OS takes only the system UI's */
+        case 'permission.answer':
+          ZylConsent.answer(from, msg.token, msg.allow);
           break;
         /* The system UI asks for its surface; the OS says how much */
         case 'panel.request':

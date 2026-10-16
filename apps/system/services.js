@@ -164,9 +164,23 @@ window.ZylSystemServices = (function () {
         if (m && typeof m._forgetApp === 'function') m._forgetApp(appId);
       });
       if (typeof ZylPermissions !== 'undefined' && ZylPermissions.forgetApp) ZylPermissions.forgetApp(appId);
-      if (settingsMod) settingsMod._removeSetting('app_permissions', appId);
+      if (settingsMod) {
+        settingsMod._removeSetting('app_permissions', appId);
+        settingsMod._removeSetting('app_grants', appId);
+      }
       if (appsMod) appsMod._invalidate();
       window.dispatchEvent(new CustomEvent('zyl:app-removed', { detail: appId }));
+    }
+
+    /* The user's answer to a first-use question is kept: yes in app_grants, no
+       in app_permissions (what Settings turns off) — the gate stops asking */
+    if (typeof ZylConsent !== 'undefined' && settingsMod) {
+      ZylConsent.useRecorder(function (appId, permission, allow) {
+        var cat = allow ? 'app_grants' : 'app_permissions';
+        var list = allow ? ZylPermissions.getGrants(appId) : ZylPermissions.getRevoked(appId);
+        if (list.indexOf(permission) === -1) list.push(permission);
+        settingsMod.update({ category: cat, key: appId, value: list.join(',') });
+      });
     }
 
     /* Modules with cross-dependencies */
@@ -257,6 +271,16 @@ window.ZylSystemServices = (function () {
       if (!ZylPermissions.checkPermission(appId, service, method)) {
         watchdogRelease(appId);
         return Promise.resolve({ error: 'Permission denied', service: service, method: method });
+      }
+      /* A dangerous permission the user has not answered yet: asked first (the
+         system UI's sheet, apps/system/consent.js), then this same request again */
+      var ask = ZylPermissions.consentNeeded(appId, service, method);
+      if (ask && typeof ZylConsent !== 'undefined') {
+        watchdogRelease(appId);
+        return ZylConsent.ask(appId, ask).then(function (allowed) {
+          return allowed ? handleRequest(service, method, params, appId)
+                         : { error: 'Permission denied', service: service, method: method };
+        });
       }
     }
 

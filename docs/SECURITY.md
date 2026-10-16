@@ -69,7 +69,16 @@
   `app_permissions` 범주(앱 id 마다 끈 권한의 쉼표 목록)에 쓰면, 에뮬레이터는
   `ZylPermissions.setAppOverride` 로, 기기는 WAM 이 `CategoryChanged` 시그널을 따라 다시 읽어
   다음 호출부터 거부합니다.
-- 첫 사용 때 묻는 동의 창은 없습니다. 넣을 자리는 [CLAUDE.md](../CLAUDE.md) 규칙 8.
+- **위험 권한은 처음 쓸 때 묻습니다** — 카메라·마이크·위치·연락처·메시지·전화(`calls`)·
+  문자(`sms`) (`DANGEROUS_PERMISSIONS`). 요청은 답을 기다리고, 허용이면 진행, 거부면
+  `Permission denied` 입니다. 묻는 창은 시스템 UI(`apps/statusbar`)가 그리고 그 답만 받습니다
+  (`permission.answer`, 질문마다의 토큰) — 앱 자기 화면에 그리면 브리지가 앱과 같은 JS 세계에
+  있어 앱이 스스로 허용을 보낼 수 있습니다. 앞에 있지 않은 앱의 질문은 띄우지 않고, 답이 없으면
+  2분 뒤 이번만 거부합니다. 답은 settings 에 남습니다(허용 `app_grants`, 거부 `app_permissions`) —
+  이벤트(위치 갱신·`SmsReceived` 등)도 허용된 뒤에만 갑니다. 기기는 WAM(`wam.c` 의 consent,
+  `getUserMedia` 포함), 에뮬레이터는 `apps/system/consent.js`.
+- 전화 권한은 셋입니다 — `telephony`(망 상태), `calls`(걸기·받기·통화 기록), `sms`(보내기·받기).
+  재난문자·모바일 데이터 설정·IMEI(`telephony.getImei`)는 시스템 전용입니다.
 - **사용자의 스위치는 그 일을 하는 서비스가 지킵니다.** 빠른 설정은 settings 에 쓰기만 하고,
   서비스가 그 범주를 따라갑니다(`runtime/lib/settings_follow.c`). 위치(`location.enabled`)를
   끄면 location 서비스는 공급자(GPS·Wi-Fi 조회·GeoIP)에 묻지 않고, 마지막 위치를 잊고, 앱에는

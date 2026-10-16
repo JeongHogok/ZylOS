@@ -132,10 +132,11 @@ static JsonObject *settings_update(const char *category, const char *key, JsonNo
 }
 
 /* An app was removed (org.zylos.AppStore AppRemoved): what Settings keeps for
-   it goes too — the permissions the user turned off for it (rule 12: nothing
-   of a removed app stays). TRUE when there was something to drop */
-static gboolean settings_forget_app(const char *app_id) {
-    JsonObject *perms = member_object(g_user, "app_permissions");
+   it goes too — the permissions the user turned off for it and the ones the
+   user allowed (rule 12: nothing of a removed app stays; a reinstall is asked
+   again). TRUE when category had something to drop */
+static gboolean settings_forget_app(const char *category, const char *app_id) {
+    JsonObject *perms = member_object(g_user, category);
     if (!perms || !app_id || !json_object_has_member(perms, app_id)) return FALSE;
     json_object_remove_member(perms, app_id);
     schedule_save();
@@ -225,7 +226,8 @@ static void on_app_removed(GDBusConnection *conn, const gchar *sender, const gch
     (void)conn; (void)sender; (void)path; (void)iface; (void)signal; (void)data;
     const gchar *app_id = NULL;
     g_variant_get(params, "(&s)", &app_id);
-    if (settings_forget_app(app_id)) emit_category_changed("app_permissions");
+    if (settings_forget_app("app_permissions", app_id)) emit_category_changed("app_permissions");
+    if (settings_forget_app("app_grants", app_id)) emit_category_changed("app_grants");
 }
 
 static void on_settings_bus(GDBusConnection *conn, const gchar *name, gpointer data) {

@@ -40,7 +40,6 @@ typedef struct {
     char operator_name[64];      /* 통신사 이름 */
     ZylNetworkType network_type; /* 접속 네트워크 타입 */
     int signal_strength;         /* 0-4 bars */
-    char imei[20];               /* 단말기 IMEI */
     char phone_number[20];       /* 자기 전화번호 */
 } ZylTelephonyState;
 

@@ -415,6 +415,29 @@ def c_owned():
 
 if js_owned() != c_owned():
     out.append('owned events: js=%s c=%s' % (js_owned(), c_owned()))
+
+# Events that need more than their service (calls, sms, emergency alerts)
+def js_event_perms():
+    blk = js.split('var EVENT_PERMISSIONS = [', 1)[1].split('];', 1)[0]
+    return sorted((sv, ev, tuple(sorted(re.findall(r"'([^']+)'", p)))) for sv, ev, p in re.findall(
+        r"service:\s*'([a-z]+)',\s*event:\s*'([A-Za-z]+)',\s*perms:\s*\[([^\]]*)\]", blk))
+
+def c_event_perms():
+    blk = c.split('EVENT_PERMISSIONS[] = {', 1)[1].split('{NULL, NULL, {NULL}}', 1)[0]
+    return sorted((sv, ev, tuple(sorted(re.findall(r'"([^"]+)"', p)))) for sv, ev, p in re.findall(
+        r'\{"([a-z]+)",\s*"([A-Za-z]+)",\s*\{([^}]*)\}\}', blk))
+
+if js_event_perms() != c_event_perms():
+    out.append('event permissions: js=%s c=%s' % (js_event_perms(), c_event_perms()))
+
+# What the user is asked for before first use: the OS's list, the device's copy,
+# and Settings' copy (which permissions are off until allowed)
+js_ask = sorted(re.findall(r"'([a-z.]+)'", js.split('var DANGEROUS_PERMISSIONS = [', 1)[1].split('];', 1)[0]))
+c_ask = sorted(re.findall(r'"([a-z.]+)"', c.split('DANGEROUS_PERMISSIONS[] = {', 1)[1].split('};', 1)[0]))
+st = open(root + '/apps/settings/js/settings-apps.js').read()
+st_ask = sorted(re.findall(r"'([a-z.]+)'", st.split('var ASKED_PERMISSIONS = [', 1)[1].split('];', 1)[0]))
+if not (js_ask == c_ask == st_ask) or not js_ask:
+    out.append('asked permissions: js=%s c=%s settings=%s' % (js_ask, c_ask, st_ask))
 JM, CM = js_methods(), c_methods()
 for m in sorted(set(JM) | set(CM)):
     if JM.get(m) != CM.get(m):

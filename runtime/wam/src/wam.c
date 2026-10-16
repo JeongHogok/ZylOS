@@ -397,6 +397,100 @@ static void wam_handle_panel_request(const char        *type,
     if (manifest) wam_set_panel(wam, zyl_shell_panel_mode(&wam->shell, manifest->id, mode));
 }
 
+/* ─── First-use consent: the question is the system UI's ───
+   The bridge (or WebKit's getUserMedia) needs the user's yes for a dangerous
+   permission. The system UI draws the question over the app — never the app's
+   own page, where the app could answer it itself — and only its answer counts
+   (permission.answer, its token). One question per app and permission at a
+   time; others asking the same wait for it. Unanswered in CONSENT_TIMEOUT_S it
+   is a no this time, not kept. The emulator's apps/system/consent.js is the same */
+#define CONSENT_TIMEOUT_S 120
+
+typedef struct { ZylBridgeConsentDone done; gpointer data; } ConsentWaiter;
+typedef struct {
+    char   token[ZYL_BRIDGE_TOKEN_LEN + 1];
+    char  *app_id, *perm;
+    GArray *waiters;            /* ConsentWaiter */
+    guint   timer;
+} ConsentQuestion;
+
+static GHashTable *g_questions;   /* token → ConsentQuestion */
+
+static void consent_settle(const char *token, gboolean allowed, gboolean answered) {
+    ConsentQuestion *q = g_questions ? g_hash_table_lookup(g_questions, token) : NULL;
+    if (!q) return;
+    g_hash_table_steal(g_questions, token);
+    if (q->timer) g_source_remove(q->timer);
+    ZylAppManifest *m = g_wam ? g_hash_table_lookup(g_wam->manifests, q->app_id) : NULL;
+    for (guint i = 0; i < q->waiters->len; i++) {
+        ConsentWaiter *w = &g_array_index(q->waiters, ConsentWaiter, i);
+        w->done(allowed, answered, m, w->data);
+    }
+    g_array_unref(q->waiters);
+    g_free(q->app_id);
+    g_free(q->perm);
+    g_free(q);
+}
+
+static gboolean consent_timed_out(gpointer token) {
+    ConsentQuestion *q = g_questions ? g_hash_table_lookup(g_questions, token) : NULL;
+    if (q) q->timer = 0;
+    consent_settle(token, FALSE, FALSE);
+    return G_SOURCE_REMOVE;
+}
+
+static void wam_consent_ask(const char *app_id, const char *perm, ZylBridgeConsentDone done, gpointer data) {
+    ConsentWaiter w = { done, data };
+    if (!g_questions) g_questions = g_hash_table_new(g_str_hash, g_str_equal);
+    GHashTableIter it;
+    gpointer key, value;
+    g_hash_table_iter_init(&it, g_questions);
+    while (g_hash_table_iter_next(&it, &key, &value)) {
+        ConsentQuestion *open = value;
+        if (strcmp(open->app_id, app_id) == 0 && strcmp(open->perm, perm) == 0) {
+            g_array_append_val(open->waiters, w);
+            return;
+        }
+    }
+    ZylAppInstance *ui = g_wam ? system_ui(g_wam) : NULL;
+    ConsentQuestion *q = g_new0(ConsentQuestion, 1);
+    if (!ui || !ui->webview_widget || !zyl_bridge_new_token(q->token)) {
+        g_free(q);
+        done(FALSE, FALSE, NULL, data);         /* no one to ask: not now */
+        return;
+    }
+    q->app_id = g_strdup(app_id);
+    q->perm = g_strdup(perm);
+    q->waiters = g_array_new(FALSE, FALSE, sizeof(ConsentWaiter));
+    g_array_append_val(q->waiters, w);
+    q->timer = g_timeout_add_seconds(CONSENT_TIMEOUT_S, consent_timed_out, q->token);
+    g_hash_table_insert(g_questions, q->token, q);
+    ZylAppManifest *m = g_hash_table_lookup(g_wam->manifests, app_id);
+    JsonObject *d = json_object_new();
+    json_object_set_string_member(d, "token", q->token);
+    json_object_set_string_member(d, "appId", app_id);
+    json_object_set_string_member(d, "name", m && m->name ? m->name : app_id);
+    json_object_set_string_member(d, "permission", perm);
+    /* the question first: the surface then opens on it, not on the panel */
+    post_to(WEBKIT_WEB_VIEW(ui->webview_widget), "permission.ask", zyl_intent_object_node(d));
+    wam_set_panel(g_wam, ZYL_PANEL_FULL);
+}
+
+/* The user's answer — the system UI's only, for a question still open */
+static void wam_handle_permission_answer(const char        *type,
+                                         gpointer           msg_obj,
+                                         ZylAppManifest    *manifest,
+                                         ZylBridgeReplyCtx *reply_ctx,
+                                         gpointer           user_data) {
+    (void)type; (void)reply_ctx; (void)user_data;
+    const char *token = zyl_json_str(msg_obj, "token", NULL);
+    JsonNode *allow = json_object_get_member(msg_obj, "allow");
+    if (!manifest || strcmp(manifest->id, ZYL_SHELL_SYSTEM_UI) != 0 || !token) return;
+    consent_settle(token, allow && JSON_NODE_HOLDS_VALUE(allow) &&
+                          json_node_get_value_type(allow) == G_TYPE_BOOLEAN &&
+                          json_node_get_boolean(allow), TRUE);
+}
+
 /* Closing an app from recents: the system UI's, what the shell lets close */
 static void wam_handle_recents_close(const char        *type,
                                      gpointer           msg_obj,
@@ -867,6 +961,44 @@ static gboolean app_webkit_dirs(const ZylAppManifest *m, char **data, char **cac
    as the emulator's frame policy (apps/system/sandbox.js getPolicy): camera and
    microphone by permission; everything else (geolocation, web notifications,
    pointer lock, screen capture …) is no — the OS has its own services for them */
+/* getUserMedia waiting for the user: the camera, then the microphone, each asked
+   once (wam_consent_ask); the WebKit request is answered when both are */
+typedef struct {
+    WebKitPermissionRequest *req;
+    char                    *app_id;
+    const char              *asking;        /* the one being asked now */
+    gboolean                 microphone;    /* still to ask after the camera */
+} MediaConsent;
+
+static void media_consent_done(gboolean allowed, gboolean answered, ZylAppManifest *m, gpointer data);
+
+static void media_consent_next(MediaConsent *mc, const ZylAppManifest *m) {
+    const char *ask = mc->microphone ? zyl_bridge_consent_for(m, "microphone") : NULL;
+    mc->microphone = FALSE;
+    if (ask) {
+        mc->asking = "microphone";
+        wam_consent_ask(mc->app_id, ask, media_consent_done, mc);
+        return;
+    }
+    webkit_permission_request_allow(mc->req);
+    g_object_unref(mc->req);
+    g_free(mc->app_id);
+    g_free(mc);
+}
+
+static void media_consent_done(gboolean allowed, gboolean answered, ZylAppManifest *m, gpointer data) {
+    MediaConsent *mc = data;
+    if (answered) zyl_bridge_consent_answered(mc->app_id, mc->asking, allowed);
+    if (allowed && m) {
+        media_consent_next(mc, m);
+        return;
+    }
+    webkit_permission_request_deny(mc->req);
+    g_object_unref(mc->req);
+    g_free(mc->app_id);
+    g_free(mc);
+}
+
 static gboolean on_permission_request(WebKitWebView *webview, WebKitPermissionRequest *req, gpointer data) {
     (void)webview;
     ZylAppInstance *inst = data;
@@ -881,6 +1013,20 @@ static gboolean on_permission_request(WebKitWebView *webview, WebKitPermissionRe
              (!video || zyl_bridge_app_holds(m, "camera")) &&
              (!audio || zyl_bridge_app_holds(m, "microphone")) &&
              m && (m->is_system || wam_is_front(m->id));
+        /* The first time: the user is asked (the system UI), then WebKit is answered */
+        if (ok && ((video && zyl_bridge_consent_for(m, "camera")) ||
+                   (audio && zyl_bridge_consent_for(m, "microphone")))) {
+            MediaConsent *mc = g_new0(MediaConsent, 1);
+            mc->req = g_object_ref(req);
+            mc->app_id = g_strdup(m->id);
+            mc->microphone = audio;
+            if (video && zyl_bridge_consent_for(m, "camera")) {
+                mc->asking = "camera";
+                wam_consent_ask(m->id, "camera", media_consent_done, mc);
+            } else
+                media_consent_next(mc, m);
+            return TRUE;
+        }
     } else if (WEBKIT_IS_DEVICE_INFO_PERMISSION_REQUEST(req)) {
         ok = zyl_bridge_app_holds(m, "camera") || zyl_bridge_app_holds(m, "microphone");
     }
@@ -1679,6 +1825,8 @@ int main(int argc, char *argv[]) {
     zyl_bridge_register_handler("navigation.handled", wam_handle_navigation, &wam);
     zyl_bridge_register_handler("navigation.exit",   wam_handle_navigation, &wam);
     zyl_bridge_register_handler("panel.request",     wam_handle_panel_request, &wam);
+    zyl_bridge_register_handler("permission.answer", wam_handle_permission_answer, &wam);
+    zyl_bridge_set_consent(wam_consent_ask);
     zyl_bridge_register_handler("recents.close",     wam_handle_recents_close, &wam);
 
     /* Start D-Bus service */

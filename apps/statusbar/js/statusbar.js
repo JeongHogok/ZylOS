@@ -28,6 +28,8 @@
   var brightnessEl  = document.getElementById('brightness-slider');
   var banner        = document.getElementById('notif-banner');
   var recentsEl     = document.getElementById('recents');
+  var consentEl     = document.getElementById('consent');
+  var questions     = [];   /* the OS's open questions, first shown: { token, appId, name, permission } */
   var recentsList   = document.getElementById('recents-list');
 
   /* ─── State ─── */
@@ -260,8 +262,10 @@
       setTimeout(function () { if (mode !== 'full') drawer.classList.add('hidden'); }, 350);
     }
     recentsEl.classList.toggle('hidden', !(full && showing === 'recents'));
+    consentEl.classList.toggle('hidden', !(full && showing === 'consent'));
     banner.classList.toggle('hidden', m !== 'banner');
-    if (!full) showing = 'panel';
+    /* a question still open is shown again when the surface is next full */
+    if (!full) showing = questions.length ? 'consent' : 'panel';
   }
 
   /* Pull the bar down, or tap it: the panel (the OS may say no — locked) */
@@ -498,6 +502,14 @@
           showRecents(msg.data && msg.data.apps);
           break;
 
+        /* The OS asks the user for an app's first use of a permission */
+        case 'permission.ask':
+          if (msg.data && msg.data.token) {
+            questions.push(msg.data);
+            if (questions.length === 1) showQuestion();
+          }
+          break;
+
         /* An app's camera or microphone is on (the OS mutes what is not in front) */
         case 'capture.state':
           showCapture(msg.data || {});
@@ -510,6 +522,30 @@
       }
     } catch (err) { /* ignore parse errors */ }
   });
+
+  /* ─── The OS's first-use question ─── */
+  function showQuestion() {
+    var q = questions[0];
+    if (!q) return;
+    showing = 'consent';
+    document.getElementById('consent-title').textContent =
+      zylI18n.t('consent.title').replace('{app}', q.name || q.appId);
+    document.getElementById('consent-perm').textContent = zylI18n.t('consent.perm.' + q.permission);
+    applyMode(mode);
+    document.getElementById('consent-allow').focus();
+  }
+
+  function answerQuestion(allow) {
+    var q = questions.shift();
+    if (!q) return;
+    ZylBridge.sendToSystem({ type: 'permission.answer', token: q.token, allow: allow });
+    if (questions.length) { showQuestion(); return; }
+    showing = 'panel';
+    requestMode('bar');
+  }
+
+  document.getElementById('consent-allow').addEventListener('click', function () { answerQuestion(true); });
+  document.getElementById('consent-deny').addEventListener('click', function () { answerQuestion(false); });
 
   function showCapture(d) {
     var cam = document.getElementById('sb-camera'), mic = document.getElementById('sb-mic');

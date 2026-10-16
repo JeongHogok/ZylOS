@@ -279,22 +279,22 @@ static void test_policy_user_revocation_takes_the_service_away(void)
     ZylAppManifest m = perm_manifest("com.example.cam", FALSE, perms);
     assert(app_may_call(&m, "camera"));
 
-    revocations_set("com.example.cam", "camera");
+    table_set(&revoked_table, "com.example.cam", "camera");
     assert(app_may_call(&m, "camera") == FALSE);
     assert(app_may_call(&m, "contacts"));           /* only what was switched off */
     assert(app_may_call(&m, "device"));             /* no permission required */
 
     /* Another app's revocation is not this app's */
-    revocations_set("com.example.other", "contacts");
+    table_set(&revoked_table, "com.example.other", "contacts");
     assert(app_may_call(&m, "contacts"));
 
     /* Switching it back on in Settings rewrites the list */
-    revocations_set("com.example.cam", "");
+    table_set(&revoked_table, "com.example.cam", "");
     assert(app_may_call(&m, "camera"));
 
     /* A system app is never revocable — the same rule as permissions.js */
     ZylAppManifest sys = perm_manifest("com.zylos.camera", TRUE, perms);
-    revocations_set("com.zylos.camera", "camera");
+    table_set(&revoked_table, "com.zylos.camera", "camera");
     assert(app_may_call(&sys, "camera"));
 }
 
@@ -303,7 +303,7 @@ static void test_policy_revocation_list_is_comma_separated(void)
 {
     const char *perms[] = { "camera", "contacts", "messaging", NULL };
     ZylAppManifest m = perm_manifest("com.example.many", FALSE, perms);
-    revocations_set("com.example.many", "camera, messaging");
+    table_set(&revoked_table, "com.example.many", "camera, messaging");
     assert(app_may_call(&m, "camera") == FALSE);
     assert(app_may_call(&m, "messaging") == FALSE);
     assert(app_may_call(&m, "contacts"));
@@ -318,13 +318,13 @@ static void test_app_holds_follows_declaration_and_revocation(void)
     assert(zyl_bridge_app_holds(&m, "network"));
     assert(!zyl_bridge_app_holds(&m, "camera"));        /* not declared */
     assert(!zyl_bridge_app_holds(&m, "system"));        /* reserved */
-    revocations_set("com.example.net", "network");
+    table_set(&revoked_table, "com.example.net", "network");
     assert(!zyl_bridge_app_holds(&m, "network"));
-    revocations_set("com.example.net", "");
+    table_set(&revoked_table, "com.example.net", "");
 
     const char *none[] = { NULL };
     ZylAppManifest sys = perm_manifest("com.zylos.browser", TRUE, none);
-    revocations_set("com.zylos.browser", "network");
+    table_set(&revoked_table, "com.zylos.browser", "network");
     assert(zyl_bridge_app_holds(&sys, "network"));
     assert(zyl_bridge_app_holds(&sys, "webcontent"));   /* system holds all */
     assert(!zyl_bridge_app_holds(NULL, "network"));
@@ -353,12 +353,12 @@ static void test_revocation_reload_names_only_changed_apps(void)
 {
     const char *empty[] = { NULL };
     GVariant *d = settings_dict(empty);
-    g_ptr_array_unref(revocations_load(d));                /* what earlier tests left */
+    g_ptr_array_unref(table_load(&revoked_table, d));                /* what earlier tests left */
     g_variant_unref(d);
 
     const char *start[] = { "com.a", "network", "com.b", "camera", "com.c", "", NULL };
     d = settings_dict(start);
-    GPtrArray *ids = revocations_load(d);
+    GPtrArray *ids = table_load(&revoked_table, d);
     const char *first[] = { "com.a", "com.b", NULL };    /* "" is no revocation */
     assert(names(ids, first));
     g_ptr_array_unref(ids);
@@ -366,14 +366,14 @@ static void test_revocation_reload_names_only_changed_apps(void)
 
     const char *next[] = { "com.a", "network", "com.b", "camera,contacts", "com.d", "location", NULL };
     d = settings_dict(next);
-    ids = revocations_load(d);
+    ids = table_load(&revoked_table, d);
     const char *changed[] = { "com.b", "com.d", NULL };   /* a unchanged, c still none */
     assert(names(ids, changed));
     g_ptr_array_unref(ids);
     g_variant_unref(d);
 
     d = settings_dict(empty);
-    ids = revocations_load(d);                             /* switched all back on */
+    ids = table_load(&revoked_table, d);                             /* switched all back on */
     const char *all[] = { "com.a", "com.b", "com.d", NULL };
     assert(names(ids, all));
     assert(!is_revoked("com.a", "network"));
@@ -668,13 +668,20 @@ static void test_event_reaches_only_apps_allowed_to_call_the_service(void) {
     GVariant *params = g_variant_ref_sink(g_variant_new("(sss)", "IDLE", "RINGING", "0101234"));
     const char *none[] = { NULL };
     const char *tel[] = { "telephony", NULL };
+    const char *calls[] = { "telephony", "calls", NULL };
     ZylAppManifest plain = perm_manifest("com.example.game", FALSE, none);
-    ZylAppManifest dialer = perm_manifest("com.example.dialer", FALSE, tel);
+    ZylAppManifest net = perm_manifest("com.example.signal", FALSE, tel);
+    ZylAppManifest dialer = perm_manifest("com.example.dialer", FALSE, calls);
     ZylAppManifest sys = perm_manifest("com.zylos.phone", TRUE, none);
     assert(zyl_bridge_service_event_script(&plain, "telephony", "CallStateChanged", params) == NULL);
+    /* who is calling is calls', not the network state's — and only once allowed */
+    assert(zyl_bridge_service_event_script(&net, "telephony", "CallStateChanged", params) == NULL);
+    assert(zyl_bridge_service_event_script(&dialer, "telephony", "CallStateChanged", params) == NULL);
+    table_set(&granted_table, "com.example.dialer", "calls");
     char *script = zyl_bridge_service_event_script(&dialer, "telephony", "CallStateChanged", params);
     assert(script);
     g_free(script);
+    table_set(&granted_table, "com.example.dialer", "");
     script = zyl_bridge_service_event_script(&sys, "telephony", "CallStateChanged", params);
     char *json = event_payload(script);
     JsonObject *o = json_node_get_object(json_from_string(json, NULL));
@@ -733,6 +740,7 @@ static gboolean front_is_run(const char *app_id) { return strcmp(app_id, "com.ex
 
 static void test_geofence_events_are_the_apps_own(void) {
     zyl_bridge_set_front_query(front_is_run);
+    table_set(&granted_table, "com.example.run", "location");
     const char *loc[] = { "location", NULL };
     ZylAppManifest app = perm_manifest("com.example.run", FALSE, loc);
     GVariant *mine = g_variant_ref_sink(g_variant_new("(ss)", "park", "com.example.run"));
@@ -746,6 +754,7 @@ static void test_geofence_events_are_the_apps_own(void) {
     assert(s);
     g_free(s);
     zyl_bridge_set_front_query(NULL);
+    table_set(&granted_table, "com.example.run", "");
     g_variant_unref(mine);
     g_variant_unref(theirs);
     g_variant_unref(fix);
@@ -876,6 +885,8 @@ static void test_capture_events_reach_only_the_front_app(void) {
     ZylAppManifest front = perm_manifest("com.example.chat", FALSE, loc);
     ZylAppManifest back = perm_manifest("com.example.back", FALSE, loc);
     ZylAppManifest sys = perm_manifest("com.zylos.weather", TRUE, loc);
+    table_set(&granted_table, "com.example.chat", "location");     /* the user said yes */
+    table_set(&granted_table, "com.example.back", "location");
     zyl_bridge_set_front_query(front_is_chat);
     GVariant *fix = g_variant_ref_sink(g_variant_new("(ddddddts)", 1.0, 2.0, 0.0, 0.0, 0.0, 0.0, (guint64)1, "gps"));
     GVariant *fence = g_variant_ref_sink(g_variant_new("(ss)", "home", "com.example.back"));
@@ -890,6 +901,99 @@ static void test_capture_events_reach_only_the_front_app(void) {
     g_variant_unref(fence);
     g_variant_unref(reading);
     zyl_bridge_set_front_query(NULL);
+    table_set(&granted_table, "com.example.chat", "");
+    table_set(&granted_table, "com.example.back", "");
+}
+
+/* ── First-use consent ──
+   A dangerous permission the app declared is usable once the user said yes:
+   the request waits for the WAM's question, goes on with yes, is refused with
+   no, and the answer is kept — the next request is not asked again */
+static const char *asked_app, *asked_perm;
+static ZylBridgeConsentDone asked_done;
+static gpointer asked_data;
+static int asks;
+
+static void fake_ask(const char *app_id, const char *perm, ZylBridgeConsentDone done, gpointer data) {
+    asks++;
+    asked_app = app_id;
+    asked_perm = perm;
+    asked_done = done;
+    asked_data = data;
+}
+
+static void consent_request(WebKitWebView *view, ZylAppManifest *m, const char *service,
+                            const char *method, int cb) {
+    char *msg = g_strdup_printf("{\"type\":\"service.request\",\"service\":\"%s\","
+                                "\"method\":\"%s\",\"params\":{},\"callbackId\":%d}", service, method, cb);
+    reset_webview(view);
+    zyl_bridge_dispatch(view, m, msg);
+    g_free(msg);
+}
+
+static void test_dangerous_permissions_are_asked_once(void) {
+    const char *perms[] = { "contacts", "telephony", "calls", "network", NULL };
+    ZylAppManifest app = perm_manifest("com.example.chat", FALSE, perms);
+    ZylAppManifest sys = perm_manifest("com.zylos.contacts", TRUE, perms);
+    WebKitWebView view = {0};
+    zyl_bridge_init();
+    zyl_bridge_set_front_query(front_is_chat);
+    zyl_bridge_set_consent(fake_ask);
+    asks = 0;
+
+    /* What needs asking: dangerous and declared, not yet answered; never a
+       system app's, a permission it lacks, or one that needs no asking */
+    assert(consent_needed(&app, "contacts", "list") && strcmp(consent_needed(&app, "contacts", "list"), "contacts") == 0);
+    assert(!consent_needed(&app, "telephony", "getState"));      /* telephony itself: not asked */
+    assert(strcmp(consent_needed(&app, "telephony", "dial"), "calls") == 0);
+    assert(!consent_needed(&app, "network", "fetch") && !consent_needed(&sys, "contacts", "list"));
+    assert(zyl_bridge_consent_for(&app, "contacts") && !zyl_bridge_consent_for(&app, "camera"));
+
+    /* No: refused now and kept as switched off — the next request is not asked */
+    consent_request(&view, &app, "contacts", "list", 31);
+    assert(asks == 1 && strcmp(asked_perm, "contacts") == 0 && !view.last_script);   /* waiting */
+    asked_done(FALSE, TRUE, &app, asked_data);
+    assert(view.last_script && strstr(view.last_script, "_zylCb_31") && strstr(view.last_script, "Permission denied"));
+    assert(is_revoked("com.example.chat", "contacts"));
+    consent_request(&view, &app, "contacts", "list", 32);
+    assert(asks == 1 && strstr(view.last_script, "Permission denied"));
+
+    /* Yes: the request goes on (here to a bus that is not there) and is not asked again */
+    consent_request(&view, &app, "telephony", "dial", 33);
+    assert(asks == 2 && strcmp(asked_perm, "calls") == 0);
+    asked_done(TRUE, TRUE, &app, asked_data);
+    assert(is_granted("com.example.chat", "calls"));
+    assert(view.last_script && !strstr(view.last_script, "Permission denied"));
+    assert(!consent_needed(&app, "telephony", "dial"));
+
+    /* No answer this time: refused, nothing kept */
+    table_set(&revoked_table, "com.example.chat", "");
+    consent_request(&view, &app, "contacts", "list", 34);
+    asked_done(FALSE, FALSE, &app, asked_data);
+    assert(strstr(view.last_script, "Permission denied") && !is_revoked("com.example.chat", "contacts"));
+
+    /* An app not in front is not asked: refused, nothing kept */
+    zyl_bridge_set_front_query(NULL);
+    int before = asks;
+    consent_request(&view, &app, "contacts", "list", 35);
+    assert(asks == before && strstr(view.last_script, "Permission denied"));
+
+    /* Events: only once allowed, and never asked for */
+    GVariant *sms = g_variant_ref_sink(g_variant_new("(sst)", "010", "code", (guint64)1));
+    GVariant *call = g_variant_ref_sink(g_variant_new("(sss)", "IDLE", "RINGING", "010"));
+    assert(!zyl_bridge_service_event_script(&app, "telephony", "SmsReceived", sms));     /* no sms permission */
+    char *s = zyl_bridge_service_event_script(&app, "telephony", "CallStateChanged", call);
+    assert(s);                                                                            /* calls allowed above */
+    g_free(s);
+    table_set(&granted_table, "com.example.chat", "");
+    assert(!zyl_bridge_service_event_script(&app, "telephony", "CallStateChanged", call));
+    g_variant_unref(sms);
+    g_variant_unref(call);
+
+    zyl_bridge_set_consent(NULL);
+    table_set(&revoked_table, "com.example.chat", "");
+    zyl_bridge_cleanup();
+    reset_webview(&view);
 }
 
 /* The device's power: any app reads it, only system apps act on it */
@@ -983,6 +1087,7 @@ int main(void)
     RUN_TEST(test_alarm_events_are_the_apps_own);
     RUN_TEST(test_webcontent_is_the_browsers);
     RUN_TEST(test_capture_events_reach_only_the_front_app);
+    RUN_TEST(test_dangerous_permissions_are_asked_once);
     RUN_TEST(test_one_bus_name_two_objects_both_answer);
     RUN_TEST(test_power_actions_are_system_only);
     RUN_TEST(test_app_holds_follows_declaration_and_revocation);

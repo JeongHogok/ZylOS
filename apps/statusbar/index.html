@@ -125,6 +125,19 @@
     </div>
   </div>
 
+  <!-- 첫 사용 동의: OS 가 묻는다 (permission.ask) — 앱 자기 화면이 아니라 여기서,
+       답(permission.answer)은 이 앱의 것만 받는다 -->
+  <div id="consent" class="hidden" role="dialog" aria-modal="true" aria-labelledby="consent-title">
+    <div class="consent-card">
+      <div id="consent-title" class="consent-title"></div>
+      <div id="consent-perm" class="consent-perm"></div>
+      <div class="consent-actions">
+        <button id="consent-deny" class="consent-btn" data-i18n="consent.deny">Don't allow</button>
+        <button id="consent-allow" class="consent-btn consent-primary" data-i18n="consent.allow">Allow</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 최근 앱: 실행 중인 앱은 OS 가 준다 (recents.open) -->
   <div id="recents" class="hidden">
     <div class="recents-title" data-i18n="recents.title">Recent apps</div>
