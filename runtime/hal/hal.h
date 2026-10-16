@@ -224,7 +224,7 @@ typedef struct {
 
 /* ═══════════════════════════════════════════════════════
    Boot HAL — 부트로더 환경과 A/B 슬롯 배치
-   실기기: U-Boot 환경 (fw_printenv/fw_setenv), 파티션은 board/bpi-f3/README.md
+   실기기: U-Boot 환경 (fw_printenv/fw_setenv), 슬롯 파티션은 보드의 partitions.conf
    에뮬레이터: 없음 — present() false, 시스템 업데이트·잠금 해제 비활성
    ═══════════════════════════════════════════════════════ */
 

@@ -15,11 +15,8 @@
 #include <string.h>
 #include <glib.h>
 
-/* Partition layout of board/bpi-f3/README.md; a board with another layout
-   passes its own through c_args */
-#ifndef ZYL_BLOCK_DEV
-#define ZYL_BLOCK_DEV "/dev/mmcblk0p"
-#endif
+/* Slot partitions: runtime/hal/meson.build passes them from the board's
+   partitions.conf. Without a layout there are no slots, so no Boot HAL */
 #ifndef ZYL_BOOT_DIR
 #define ZYL_BOOT_DIR  "/boot"          /* FAT boot partition (p1) */
 #endif
@@ -51,14 +48,23 @@ static bool boot_env_set(const char *name, const char *value) {
 }
 
 static bool boot_present(void) {
+#ifdef ZYL_SLOT_A_ROOTFS
     char *slot = boot_env_get("zyl_active_slot");
     bool present = slot != NULL;
     free(slot);
     return present;
+#else
+    return false;
+#endif
 }
 
-static const char *boot_slot_rootfs(char slot) { return slot == 'a' ? ZYL_BLOCK_DEV "2" : ZYL_BLOCK_DEV "4"; }
-static const char *boot_slot_verity(char slot) { return slot == 'a' ? ZYL_BLOCK_DEV "3" : ZYL_BLOCK_DEV "5"; }
+#ifdef ZYL_SLOT_A_ROOTFS
+static const char *boot_slot_rootfs(char slot) { return slot == 'a' ? ZYL_SLOT_A_ROOTFS : ZYL_SLOT_B_ROOTFS; }
+static const char *boot_slot_verity(char slot) { return slot == 'a' ? ZYL_SLOT_A_VERITY : ZYL_SLOT_B_VERITY; }
+#else
+static const char *boot_slot_rootfs(char slot) { (void)slot; return NULL; }
+static const char *boot_slot_verity(char slot) { (void)slot; return NULL; }
+#endif
 static const char *boot_dir(void) { return ZYL_BOOT_DIR; }
 
 static const ZylBootHal boot_hal = {
