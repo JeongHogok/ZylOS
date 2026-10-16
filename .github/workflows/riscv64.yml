@@ -1,8 +1,9 @@
 # ──────────────────────────────────────────────────────────
 # [Clean Architecture] Infrastructure Layer - CI
 #
-# 역할: riscv64 레인 — 실기기와 같은 arch·HAL 백엔드로 교차 빌드·조립·부팅
-# 수행범위: board/generic-riscv64 교차 빌드, 2단계 부트스트랩, QEMU 부팅 후 zyl-selftest
+# 역할: riscv64 레인 — 실기기와 같은 arch·HAL 백엔드·부팅 체인으로 교차 빌드·조립·부팅
+# 수행범위: board/generic-riscv64 교차 빌드, 2단계 부트스트랩, 부트 정책을 가진 U-Boot,
+#           서명 FIT·dm-verity·A/B 업데이트와 롤백을 QEMU 로 (tests/verified_boot.sh)
 # 의존방향: debian:trixie(privileged — binfmt), crossbuild-essential-riscv64, QEMU
 # SOLID: SRP — 이 관심사만. 어떤 경로가 이 검사를 부르는지는 아래 paths 가
 #        유일한 출처다 (원격 PR 과 tools/ci-local.sh 가 같은 목록을 읽는다)
@@ -22,9 +23,14 @@ on:
       - 'meson.build'
       - 'meson_options.txt'
       - 'tools/cross/**'
+      - 'board/boot-policy.txt'
       - 'tools/build-image.sh'
+      - 'tools/build-bootloader.sh'
+      - 'tools/sign-image.sh'
+      - 'tools/gen-boot-keys.sh'
       - 'tools/run-qemu.sh'
       - 'tools/zyl-selftest'
+      - 'tests/verified_boot.sh'
       - '.github/workflows/riscv64.yml'
 # 같은 PR 에 새 커밋이 오면 이전 커밋의 런은 취소한다. main 은 끝까지 검증한다
 concurrency:
@@ -59,7 +65,10 @@ jobs:
             libegl-dev:riscv64 libgles-dev:riscv64 libdisplay-info-dev:riscv64 \
             libseat-dev:riscv64 libgps-dev:riscv64 libwlroots-0.18-dev:riscv64 \
             debootstrap systemd systemd-sysv fdisk e2fsprogs dosfstools dbus ca-certificates \
-            qemu-user-static qemu-system-misc
+            qemu-user-static qemu-system-misc \
+            build-essential git bison flex bc libssl-dev libgnutls28-dev uuid-dev xxd \
+            python3-setuptools device-tree-compiler u-boot-tools opensbi \
+            cryptsetup-bin mtools libubootenv-tool openssl
       - name: Register the riscv64 binfmt handler
         run: |
           mountpoint -q /proc/sys/fs/binfmt_misc \
@@ -81,7 +90,12 @@ jobs:
           ninja -C builddir-rv64
       - name: Build the riscv64 disk image
         run: bash tools/build-image.sh --builddir builddir-rv64 --out out/rv64 --with-kernel
-      - name: Boot it in QEMU and run the self test
+      # The device's boot chain without a board: OpenSBI → U-Boot with the boot
+      # policy → signed FIT → dm-verity root, then an update to slot B (tried and
+      # confirmed by the OS) and a tampered update that rolls back
+      - name: Bootloader (U-Boot with the boot policy, for QEMU virt)
+        run: bash tools/build-bootloader.sh --board generic-riscv64 out/bootloader
+      - name: Verified boot, A/B update and rollback in QEMU
         run: |
-          bash tools/run-qemu.sh --image out/rv64/zyl-os-generic-riscv64-phone.img \
-            --builddir builddir-rv64 --check --timeout 1800
+          bash tests/verified_boot.sh --builddir builddir-rv64 \
+            --image out/rv64/zyl-os-generic-riscv64-phone.img --firmware out/bootloader
