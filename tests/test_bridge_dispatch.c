@@ -309,6 +309,78 @@ static void test_policy_revocation_list_is_comma_separated(void)
     assert(app_may_call(&m, "contacts"));
 }
 
+/* What the WAM gives an app's documents (CSP, CORS) asks this: system apps
+   hold everything, a user app what it declared, minus reserved and revoked */
+static void test_app_holds_follows_declaration_and_revocation(void)
+{
+    const char *perms[] = { "network", "system", NULL };
+    ZylAppManifest m = perm_manifest("com.example.net", FALSE, perms);
+    assert(zyl_bridge_app_holds(&m, "network"));
+    assert(!zyl_bridge_app_holds(&m, "webview"));       /* not declared */
+    assert(!zyl_bridge_app_holds(&m, "system"));        /* reserved */
+    revocations_set("com.example.net", "network");
+    assert(!zyl_bridge_app_holds(&m, "network"));
+    revocations_set("com.example.net", "");
+
+    const char *none[] = { NULL };
+    ZylAppManifest sys = perm_manifest("com.zylos.browser", TRUE, none);
+    revocations_set("com.zylos.browser", "network");
+    assert(zyl_bridge_app_holds(&sys, "network"));
+    assert(zyl_bridge_app_holds(&sys, "webview"));
+    assert(!zyl_bridge_app_holds(NULL, "network"));
+}
+
+static GVariant *settings_dict(const char *const *pairs)
+{
+    GVariantBuilder b;
+    g_variant_builder_init(&b, G_VARIANT_TYPE("a{sv}"));
+    for (int i = 0; pairs[i]; i += 2)
+        g_variant_builder_add(&b, "{sv}", pairs[i], g_variant_new_string(pairs[i + 1]));
+    return g_variant_ref_sink(g_variant_builder_end(&b));
+}
+
+static gboolean names(GPtrArray *ids, const char *const *want)
+{
+    guint n = 0;
+    for (; want[n]; n++)
+        if (!g_ptr_array_find_with_equal_func(ids, want[n], g_str_equal, NULL)) return FALSE;
+    return ids->len == n;
+}
+
+/* Settings rewrote app_permissions: exactly the apps whose list changed are
+   named — the WAM closes those, their documents carry the old rules */
+static void test_revocation_reload_names_only_changed_apps(void)
+{
+    const char *empty[] = { NULL };
+    GVariant *d = settings_dict(empty);
+    g_ptr_array_unref(revocations_load(d));                /* what earlier tests left */
+    g_variant_unref(d);
+
+    const char *start[] = { "com.a", "network", "com.b", "camera", "com.c", "", NULL };
+    d = settings_dict(start);
+    GPtrArray *ids = revocations_load(d);
+    const char *first[] = { "com.a", "com.b", NULL };    /* "" is no revocation */
+    assert(names(ids, first));
+    g_ptr_array_unref(ids);
+    g_variant_unref(d);
+
+    const char *next[] = { "com.a", "network", "com.b", "camera,contacts", "com.d", "location", NULL };
+    d = settings_dict(next);
+    ids = revocations_load(d);
+    const char *changed[] = { "com.b", "com.d", NULL };   /* a unchanged, c still none */
+    assert(names(ids, changed));
+    g_ptr_array_unref(ids);
+    g_variant_unref(d);
+
+    d = settings_dict(empty);
+    ids = revocations_load(d);                             /* switched all back on */
+    const char *all[] = { "com.a", "com.b", "com.d", NULL };
+    assert(names(ids, all));
+    assert(!is_revoked("com.a", "network"));
+    g_ptr_array_unref(ids);
+    g_variant_unref(d);
+}
+
 
 /* ── service.request argument marshalling (params_to_dbus_args) ──
    The bridge used to send every call as one JSON string, which no typed
@@ -593,6 +665,36 @@ static void test_geofence_events_are_the_apps_own(void) {
     g_variant_unref(fix);
 }
 
+/* An alarm going off is its app's: another app never hears its tag */
+static void test_alarm_events_are_the_apps_own(void) {
+    const char *perms[] = { "notification", NULL };
+    ZylAppManifest app = perm_manifest("com.example.run", FALSE, perms);
+    GVariant *mine = g_variant_ref_sink(g_variant_new("(ss)", "wake", "com.example.run"));
+    GVariant *theirs = g_variant_ref_sink(g_variant_new("(ss)", "wake", "com.zylos.clock"));
+    char *s = zyl_bridge_service_event_script(&app, "alarm", "AlarmTriggered", mine);
+    assert(s);
+    g_free(s);
+    assert(!zyl_bridge_service_event_script(&app, "alarm", "AlarmTriggered", theirs));
+    g_variant_unref(mine);
+    g_variant_unref(theirs);
+}
+
+/* The device's power: any app reads it, only system apps act on it */
+static void test_power_actions_are_system_only(void) {
+    const char *none[] = { NULL };
+    ZylAppManifest app = perm_manifest("com.example.app", FALSE, none);
+    ZylAppManifest settings = perm_manifest("com.zylos.settings", TRUE, none);
+    assert(app_may_call(&app, "power"));
+    assert(app_may_call_method(&app, "power", "getState"));
+    assert(app_may_call_method(&app, "power", "getCapabilities"));
+    const char *acts[] = { "reboot", "shutdown", "suspend", "screenOff", "screenOn", "userActivity",
+                           "setBrightness", "acquireWakelock", "releaseWakelock", NULL };
+    for (int i = 0; acts[i]; i++) {
+        assert(!app_may_call_method(&app, "power", acts[i]));
+        assert(app_may_call_method(&settings, "power", acts[i]));
+    }
+}
+
 /* Users: adding, switching and removing (with the user's data) is the OS's */
 static void test_users_are_system_only(void) {
     const char *any[] = { "storage", "notification", NULL };
@@ -662,6 +764,10 @@ int main(void)
     RUN_TEST(test_policy_unreviewed_service_fails_closed);
     RUN_TEST(test_policy_user_revocation_takes_the_service_away);
     RUN_TEST(test_policy_revocation_list_is_comma_separated);
+    RUN_TEST(test_alarm_events_are_the_apps_own);
+    RUN_TEST(test_power_actions_are_system_only);
+    RUN_TEST(test_app_holds_follows_declaration_and_revocation);
+    RUN_TEST(test_revocation_reload_names_only_changed_apps);
     RUN_TEST(test_args_no_input_is_empty_tuple);
     RUN_TEST(test_args_follow_signature_not_one_json_string);
     RUN_TEST(test_args_camel_case_fills_snake_case);

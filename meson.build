@@ -38,6 +38,7 @@ zyl_core_services = [
   'logger', 'display', 'input', 'power',
   'credential', 'user', 'accessibility', 'notification', 'updater', 'telemetry',
   'netstats', 'bootctl', 'settings', 'lock', 'device', 'storage', 'fs', 'clipboard', 'network', 'appdata',
+  'push',
 ]
 
 # Hardware-dependent services, added per form factor.
@@ -149,6 +150,9 @@ install_data('system/settings-defaults.json', install_dir: get_option('datadir')
 # Which store the app store uses and the key its catalog and packages are signed
 # with (empty: no store) — read by zyl-appstore and built into the emulator
 install_data('system/store.json', install_dir: get_option('sysconfdir') / 'zyl-os')
+# The push server every app's messages come through (UnifiedPush, ntfy protocol;
+# empty url: push off) — read by zyl-push and built into the emulator
+install_data('system/push.json', install_dir: get_option('sysconfdir') / 'zyl-os')
 # Service users and the /data directories units write to. Without them the
 # WAM (User=zyl-wam) and every ProtectSystem=strict unit with a /data path
 # fail before they start.

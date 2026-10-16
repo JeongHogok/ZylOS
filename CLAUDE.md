@@ -86,7 +86,7 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
   모든 앱 위의 표면으로 그린다 — 기기는 WAM 이 투명한 전체 화면 창으로(입력 영역만
   바꾼다), 에뮬레이터는 두 번째 iframe 으로. 얼마나 보일지(bar·banner·full)는 셸
   정책(`panelMode`)이 정한다. 에뮬레이터·컴포지터가 이런 UI 를 직접 그리지 말 것
-- 서비스 이벤트 중 한 앱의 것(알림, 지오펜스)은 제3자 앱에 자기 것만 간다 —
+- 서비스 이벤트 중 한 앱의 것(알림, 지오펜스, 알람)은 제3자 앱에 자기 것만 간다 —
   `permissions.js` 의 `OWNED_EVENTS` 가 권위, `bridge.c` 사본(verify-all 대조)
 - `settings.json`, `.credentials/`, `.system/`은 보호 경로
 - 서비스 권한 체크는 OS 레이어에서만 수행
@@ -95,6 +95,15 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
   `CategoryChanged` 로 따라간다). 시스템 앱의 권한은 끌 수 없다.
   첫 사용 동의 창은 없다 — 넣는다면 자리는 이 두 게이트이고, 그리는 쪽은 앱 화면에
   OS 공용 코드(인텐트 선택 시트와 같은 방식)다
+- 앱이 닿을 수 있는 곳은 OS 가 권한으로 만든 CSP 가 정한다 — 기기 `app_scheme.c` 의
+  `zyl_app_scheme_csp`(WAM 이 모든 응답 헤더로), 에뮬레이터 `sandbox.js` 의
+  `getContentPolicy`(같은 문자열, `test_app_scheme.c`·`test_services.js`). 코드는 앱 자기
+  파일에서만 — 바깥 스크립트·eval 을 열지 말고, 제3자 앱에 인라인 스크립트를 열지 말 것
+  (네트워크와 합치면 받아 온 코드가 돌아 봉인을 건너뛴다). `network` 는 https/wss 만.
+  권한이 바뀐 앱은 실행 중이면 닫는다 — CSP 는 문서와 함께 오므로
+- 화면에 없는 앱에 닿는 길은 푸시(`org.zylos.Push`, 서버 연결 하나)와 알람(절전 중에도
+  깨움)뿐 — 앱마다 지속 연결이나 백그라운드 실행 장치를 새로 만들지 말 것. 푸시 토픽은
+  ntfy 의 UnifiedPush 꼴(`up`+12자)이어야 서버가 앱 서버가 아닌 기기 쪽 한도로 센다
 - 부트 정책은 `board/boot-policy.txt`(모든 보드) + `board/<id>/u-boot-env.txt`(보드의
   상수·훅)가 단일 출처(`tests/test_boot_env.sh` 가 보드마다 실행), 부트로더는
   `tools/build-bootloader.sh` 로만 빌드·서명. 저장소가 쓸 수 있는 변수는 정책의
@@ -116,6 +125,7 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 | 서비스 권한 정책 | `apps/system/permissions.js` | `bridge.c`(verify-all 이 대조) |
 | 교차 툴체인 | `tools/cross/<arch>.ini` | 보드의 `board_cross_file` |
 | 둘 이상이 컴파일하는 C 코드 (앱 컨테이너·봉인·서명 검증) | `runtime/lib/` | appdata·fs·appstore·updater·WAM (`zyl_*_dep`) |
+| 푸시 서버 주소 | `system/push.json` | `zyl-push`(`/etc/zyl-os`), 에뮬레이터 `push.rs`(include_str) |
 | 사용자 루트·소유자 uid·소유자 파일 트리 | `runtime/lib/users.h` | user·fs·appstore, 에뮬레이터 `user.js`(test_services 대조) |
 
 서비스 디렉터리는 다른 서비스의 라이브러리가 되지 않는다 — 함께 쓰는 코드는
@@ -138,14 +148,19 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 ### 9. Intent 시스템 경계 규칙
 
 - 앱 간 직접 함수 호출 금지 → 반드시 `ZylIntent.startActivity()` 경유
-  (명시적: `{ targetApp }`, 암시적: `{ action, mimeType, data, extras }`)
+  (명시적: `{ targetApp }`, 암시적: `{ action, mimeType, data, extras, files }`)
 - 인텐트 필터는 `app.json` 의 `intents` 로 선언 (`[{ action, mimeType }]`) —
   실행 중이 아닌 앱도 고를 수 있어야 하므로 런타임 등록이 아님.
   `tests/test_manifests.sh` 가 검증
 - 받는 쪽은 `ZylIntent.onIntent(fn)`. 처리하지 않는 action 은 선언하지 않는다
 - 해석은 OS 만: 에뮬레이터 `apps/system/intent.js`, 기기 `runtime/wam/src/intent`
   (같은 규칙). `sourceApp` 은 OS 가 채운다
-- 인텐트 데이터 전달은 `extras` 객체로만 (DOM 공유 금지)
+- 인텐트 데이터 전달은 `data`(텍스트·URL)·`extras` 객체·`files`(파일)로만 (DOM 공유 금지).
+  파일 경로를 `data` 에 싣지 말 것 — `files` 는 OS 가 받는 앱의 사본(`Inbox/`, 시스템 앱이면
+  `Downloads/`)으로 바꿔 건넨다(기기 `fs.c` 의 `Handoff`, 에뮬레이터 `fs._handoff`).
+  앱 브리지로 부를 수 있는 복사 경로를 만들지 말 것
+- 사용자의 파일을 앱에 주는 길은 PICK 뿐 — 처리 앱은 시스템 앱만(OS 화면에서 고름),
+  답(`intent.result`)은 대기 중인 그 처리 앱만, 받는 앱에는 사본으로
 - 암시적 인텐트 resolve가 0개면 "앱 없음" 다이얼로그, 복수면 앱 선택 다이얼로그
   (시작한 앱 화면에 OS 공용 코드 `shared/bridge.js` 가 그림, 고른 앱은 제시된 것만)
 

@@ -10,6 +10,10 @@
     "files.write",
     "files.delete"
   ],
+  "intents": [
+    { "action": "zyl.intent.action.PICK", "mimeType": "*/*" },
+    { "action": "zyl.intent.action.SEND", "mimeType": "*/*" }
+  ],
   "formFactors": [
     "phone",
     "tablet",

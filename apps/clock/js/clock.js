@@ -281,7 +281,7 @@
 
   /* 서비스에 있는 것과 있어야 하는 것을 맞춘다 (응답에서 차이를 계산) */
   function syncAlarmService() {
-    requestService('alarm', 'list');
+    requestService('alarm', 'list', { appId: ALARM_APP_ID });
   }
 
   onServiceResponse('alarm', 'list', function (params, data) {
@@ -290,7 +290,7 @@
     for (var i = 0; i < have.length; i++) {
       var tag = (have[i] && have[i].tag) || '';
       if (tag.indexOf(ALARM_TAG) === 0 && !want[tag]) {
-        requestService('alarm', 'cancel', { tag: tag });
+        requestService('alarm', 'cancel', { tag: tag, appId: ALARM_APP_ID });
       }
     }
     Object.keys(want).forEach(function (tag) { setServiceAlarm(tag, want[tag]); });
@@ -549,7 +549,7 @@
 
   function dismissSnooze() {
     if (activeSnoozeAlarm) {
-      requestService('alarm', 'cancel', { tag: SNOOZE_TAG + activeSnoozeAlarm.id });
+      requestService('alarm', 'cancel', { tag: SNOOZE_TAG + activeSnoozeAlarm.id, appId: ALARM_APP_ID });
     }
     activeSnoozeAlarm = null;
     if (snoozeTimerId) { clearTimeout(snoozeTimerId); snoozeTimerId = null; }

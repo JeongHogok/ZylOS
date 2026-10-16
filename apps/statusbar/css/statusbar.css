@@ -373,3 +373,21 @@ body {
   text-align: center;
   padding: 40px 0;
 }
+
+/* A notification's action buttons */
+.notif-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.notif-action {
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.16);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+}

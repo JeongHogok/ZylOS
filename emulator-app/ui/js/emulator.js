@@ -78,12 +78,12 @@
     if (appId) launchApp(appId);
   }
 
-  function open(appId, intent) {
+  function open(appId, intent, result) {
     if (!ZylShell.mayLaunch(appId)) {
       syslog('[BLOCKED] ' + appId + ' — not now (setup or locked)', 'warn');
       return;
     }
-    launchApp(appId, intent);
+    launchApp(appId, intent, result);
   }
 
   /* ═══ App Lifecycle ═══ */
@@ -105,8 +105,15 @@
     maxBytes: 64 * 1024                 /* UI state — drafts, scroll, tab — not data */
   });
 
-  /* intent: what the OS resolved for this app to handle (apps/system/intent.js) */
-  function launchApp(appId, intent) {
+  /* The policy zyl-app://<id>/ serves a store app's files with (store.rs) */
+  function setServedPolicy(appId, csp) {
+    var t = window.__TAURI__;
+    return t && t.core ? t.core.invoke('store_app_policy', { appId: appId, csp: csp }) : Promise.resolve();
+  }
+
+  /* intent: what the OS resolved for this app to handle (apps/system/intent.js);
+     result: the answer to a PICK this app asked for */
+  function launchApp(appId, intent, result) {
     var app = ZylAppRegistry.getApp(appId);
     if (!app) {
       syslog('App not found: ' + appId, 'warn');
@@ -138,46 +145,60 @@
       if (gen !== _navGen) return;
 
       /* Apply OS sandbox policy before loading app */
+      var effectivePerms = (typeof ZylPermissions !== 'undefined')
+        ? ZylPermissions.getEffectivePermissions(appId) : [];
       if (typeof ZylSandbox !== 'undefined') {
         appFrame.setAttribute('sandbox', ZylSandbox.SANDBOX_FLAGS);
-        var effectivePerms = (typeof ZylPermissions !== 'undefined')
-          ? ZylPermissions.getEffectivePermissions(appId) : [];
         appFrame.setAttribute('allow', ZylSandbox.getPolicy(appId, effectivePerms));
       }
 
-      appFrame.src = appUrl;
-      _displayedApp = appId;
+      /* A store app's files carry the CSP the OS made from its permissions,
+         as the WAM serves them on the device; the image's apps are this page's */
+      var served = ZylAppRegistry.getOrigin(appId) && typeof ZylSandbox !== 'undefined'
+        ? setServedPolicy(appId, ZylSandbox.getContentPolicy(!!app.system, effectivePerms))
+        : Promise.resolve();
+      served.then(null, function (e) {
+        syslog('[ERROR] No policy for ' + appId + ': ' + e, 'warn');   /* served nothing: fails closed */
+      }).then(function () {
+        if (gen !== _navGen) return;
+        appFrame.src = appUrl;
+        _displayedApp = appId;
 
-      /* iframe 로드 에러 감지 */
-      appFrame.onerror = function () {
-        syslog('[ERROR] Failed to load: ' + appUrl, 'warn');
-      };
+        /* iframe 로드 에러 감지 */
+        appFrame.onerror = function () {
+          syslog('[ERROR] Failed to load: ' + appUrl, 'warn');
+        };
 
-      /* 앱 로드 후 상태 전달 — JS 실행 완료 대기 위해 200ms 지연 */
-      var loadAppId = appId;
-      appFrame.onload = function () {
-        syslog('[LOADED] ' + loadAppId, 'sys');
-        /* Runtime CSS is loaded by each app via <link> in its own HTML.
-           The emulator does NOT inject anything into iframes. */
-        setTimeout(function () {
-          /* Inject saved locale into every app — always send, even if 'en' */
-          var savedLocale = ZylEmuI18n.getLocale();
-          if (savedLocale) {
-            broadcastToCurrentApp('system.setLocale', { locale: savedLocale });
-          }
-          broadcastToCurrentApp('system.setTimeZone', { timeZone: _currentTimeZone });
+        /* 앱 로드 후 상태 전달 — JS 실행 완료 대기 위해 200ms 지연 */
+        var loadAppId = appId;
+        appFrame.onload = function () {
+          syslog('[LOADED] ' + loadAppId, 'sys');
+          /* Runtime CSS is loaded by each app via <link> in its own HTML.
+             The emulator does NOT inject anything into iframes. */
+          setTimeout(function () {
+            /* Inject saved locale into every app — always send, even if 'en' */
+            var savedLocale = ZylEmuI18n.getLocale();
+            if (savedLocale) {
+              broadcastToCurrentApp('system.setLocale', { locale: savedLocale });
+            }
+            broadcastToCurrentApp('system.setTimeZone', { timeZone: _currentTimeZone });
 
-          if (intent) broadcastToCurrentApp('intent', intent);
+            if (intent) broadcastToCurrentApp('intent', intent);
 
-          /* Hand back the state saved when the user left this app (one-shot:
-             leaving again saves it again) */
-          var restored = _appStates.take(loadAppId);
-          if (restored.found) {
-            broadcastToCurrentApp('lifecycle.restore', { state: restored.state });
-          }
-        }, 200);
-        appFrame.onload = null;
-      };
+            /* Hand back the state saved when the user left this app (one-shot:
+               leaving again saves it again) */
+            var restored = _appStates.take(loadAppId);
+            if (restored.found) {
+              broadcastToCurrentApp('lifecycle.restore', { state: restored.state });
+            }
+            /* After its state: the app is as the user left it, then gets what it asked for */
+            if (result) broadcastToCurrentApp('intent.result', result);
+            (_eventsAfterLoad[loadAppId] || []).forEach(function (ev) { deliverEvent(ev[0], ev[1], ev[2]); });
+            delete _eventsAfterLoad[loadAppId];
+          }, 200);
+          appFrame.onload = null;
+        };
+      });
     });
 
     /* System-only apps never appear in recents — policy from OS */
@@ -442,7 +463,25 @@
 
   window.addEventListener('zyl:notification-posted', function (e) {
     var n = e.detail;
-    if (n) deliverEvent('notification', 'NotificationPosted', [n.id, n.appId, n.title, n.body, n.priority]);
+    if (n) deliverEvent('notification', 'NotificationPosted', [n.id, n.appId, n.title, n.body, n.priority, n.actions || []]);
+  });
+
+  /* The OS: a push message for the app in front (apps/system/services/push.js) */
+  window.addEventListener('zyl:push', function (e) {
+    var p = e.detail;
+    if (p && p.appId && _displayedApp === p.appId) deliverEvent('push', 'PushReceived', [p.topic, p.appId, p.message]);
+  });
+
+  /* The OS: the user pressed a notification's action — its app comes forward
+     and gets ActionInvoked once its page is there (the WAM's app_to_show) */
+  var _eventsAfterLoad = {};   /* appId → [[service, event, data]] */
+  window.addEventListener('zyl:notification-action', function (e) {
+    var a = e.detail;
+    if (!a || !a.appId) return;
+    var ev = ['notification', 'ActionInvoked', [a.id, a.appId, a.actionId]];
+    if (_displayedApp === a.appId) { deliverEvent(ev[0], ev[1], ev[2]); return; }
+    (_eventsAfterLoad[a.appId] = _eventsAfterLoad[a.appId] || []).push(ev);
+    open(a.appId);
   });
   window.addEventListener('zyl:notification-dismissed', function (e) {
     deliverEvent('notification', 'NotificationDismissed', e.detail);
@@ -474,10 +513,11 @@
     return source === systemFrame.contentWindow ? ZylShell.systemUi() : (state.currentApp || '');
   }
 
-  /* The OS decided who handles an intent; the container launches and delivers */
+  /* The OS decided who handles an intent (or gets a pick's answer); once the
+     OS has handed the files over, the container launches and delivers */
   function runIntent(d) {
     if (!d) return;
-    if (d.launch) open(d.launch, d.intent);
+    if (d.launch) ZylIntent.deliver(d).then(function (p) { open(p.launch, p.intent, p.result); });
     else if (d.choose) broadcastToCurrentApp('intent.choose', d.choose);
     else broadcastToCurrentApp('intent.none', {});
   }
@@ -494,32 +534,6 @@
   /* ═══ System Services IPC ═══ */
   function handleServiceRequest(msg, source, callerAppId) {
     if (!msg.service || !msg.method) return;
-
-    /* Camera access: dynamically grant iframe permissions */
-    if (msg.service === 'camera' && msg.method === 'requestAccess') {
-      var hasAccess = (typeof ZylPermissions !== 'undefined')
-        ? ZylPermissions.hasPermission(callerAppId, 'camera') : false;
-      if (hasAccess && typeof ZylSandbox !== 'undefined') {
-        var perms = ZylPermissions.getEffectivePermissions(callerAppId);
-        appFrame.setAttribute('allow', ZylSandbox.getPolicy(callerAppId, perms));
-      }
-      var camResponse = JSON.stringify({
-        type: 'service.response',
-        service: msg.service,
-        method: msg.method,
-        params: msg.params || {},
-        requestId: msg.requestId || null,
-        data: { granted: hasAccess }
-      });
-      try {
-        if (source) {
-          source.postMessage(camResponse, originFor(source));
-        } else if (appFrame && appFrame.contentWindow) {
-          appFrame.contentWindow.postMessage(camResponse, frameOrigin());
-        }
-      } catch (err) { /* iframe not ready */ }
-      return;
-    }
 
     var result = ZylServices.handleRequest(msg.service, msg.method, msg.params || {}, callerAppId);
 
@@ -627,6 +641,9 @@
           break;
         case 'intent.chosen':
           runIntent(ZylIntent.choose(from, msg.token, msg.appId));
+          break;
+        case 'intent.result':
+          runIntent(ZylIntent.result(from, msg.token, msg.files));
           break;
         /* Only the lock screen unlocks, only setup finishes setup */
         case 'unlock':

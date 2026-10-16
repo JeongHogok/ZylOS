@@ -134,7 +134,8 @@
   }
 
   ZylIntent.onIntent(function (intent) {
-    if (intent.action === ZylIntent.ACTION.VIEW && intent.data) openPackage(String(intent.data));
+    var file = (intent.files || [])[0];
+    if (intent.action === ZylIntent.ACTION.VIEW && file) openPackage(String(file));
   });
 
   /* ─── Navigation ─── */

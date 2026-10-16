@@ -138,6 +138,8 @@ window.ZylShell = (function () {
     shown: shown,
     panelMode: panelMode,
     systemUi: function () { return SYSTEM_UI; },
+    /* The app in front — in the emulator the only one whose page is alive */
+    front: function () { return _top; },
     isLocked: function () { return _locked; },
     isSetup: function () { return _setup; }
   };

@@ -368,7 +368,28 @@
       item.addEventListener('click', function () { openApp(data.appId); });
     }
 
-    /* Swipe to dismiss */
+    /* Its action buttons (labels are the app's, already translated): pressing
+       one goes to the app — the OS brings it forward — and the notification is done */
+    var actions = (data.actions || []).filter(function (a) { return a && a.actionId; });
+    if (actions.length && data.id !== undefined) {
+      var row = document.createElement('div');
+      row.className = 'notif-actions';
+      actions.forEach(function (a) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'notif-action';
+        b.textContent = a.label || a.actionId;
+        b.addEventListener('click', function (e) {
+          e.stopPropagation();
+          sendServiceRequest('notification', 'invokeAction', { id: data.id, actionId: a.actionId });
+          requestMode('bar');
+        });
+        row.appendChild(b);
+      });
+      item.querySelector('.notif-content').appendChild(row);
+    }
+
+    /* Swipe to dismiss — in the service too, or it comes back from the device's store */
     var startX = 0;
     item.addEventListener('touchstart', function (e) {
       startX = e.touches[0].clientX;
@@ -378,6 +399,7 @@
       if (Math.abs(dx) > 100) {
         item.style.transform = 'translateX(' + (dx > 0 ? '100%' : '-100%') + ')';
         item.style.opacity = '0';
+        if (data.id !== undefined) sendServiceRequest('notification', 'cancel', { id: data.id, appId: '' });
         setTimeout(function () { dropNotification(item); }, 300);
       }
     });
@@ -447,7 +469,7 @@
   }, function () {});
   ZylBridge.onServiceEvent('notification', 'NotificationPosted', function (d) {
     if (!d || d.length < 4) return;
-    var n = { id: d[0], appId: d[1], title: d[2], body: d[3] };
+    var n = { id: d[0], appId: d[1], title: d[2], body: d[3], actions: d[5] || [] };
     addNotification(n);
     showBanner(n);
     /* Sound and buzz: the audio service decides (silent mode, the vibration setting) */

@@ -5,7 +5,8 @@
  * 수행범위: 루트 밖으로 못 나감(.., 절대 경로, 심볼릭 링크), 보호 경로 거부,
  *           목록(폴더 먼저·이름순, 숨김·링크 제외, 형식), 텍스트·명시적 base64
  *           쓰기·읽기, 텍스트처럼 보이는 base64 문자열은 그대로, 이름 바꾸기·
- *           삭제(루트 자체는 못 지움), 기본 폴더
+ *           삭제(루트 자체는 못 지움), 기본 폴더, 건네기(받는 앱 Inbox·시스템 앱이면
+ *           Downloads 로 복사, 이름 충돌, 같은 루트는 그대로, 루트 밖·폴더·없는 파일 거부)
  * 의존방향: runtime/services/fs/fs.c (ZYL_TEST), glib
  * SOLID: SRP — 파일 접근 정책 검증만 담당
  * ────────────────────────────────────────────────────────── */
@@ -97,6 +98,64 @@ static void test_third_party_app_gets_its_container(void) {
     g_free(mine);
 }
 
+static GVariant *give(const char *from, const char *const *paths, const char *to) {
+    return g_variant_ref_sink(handoff_all(from, paths, to));
+}
+
+static const char *nth(GVariant *v, gsize i) {
+    const char *s = NULL;
+    g_variant_get_child(v, i, "&s", &s);
+    return s;
+}
+
+/* An intent's files: the receiver gets its own copy in its own root */
+static void test_handoff_copies_into_the_receivers_root(void) {
+    assert(write_file(ZYL_FILES_ROOT, "Pictures/cat.jpg", "meow", NULL));
+    const char *one[] = { "Pictures/cat.jpg", NULL };
+    GVariant *r = give("", one, "com.example.chat");           /* user files → a third-party app */
+    assert(g_variant_n_children(r) == 1 && strcmp(nth(r, 0), "Inbox/cat.jpg") == 0);
+    char *chat = root_for("com.example.chat");
+    gsize len = 0;
+    char *got = read_file(chat, "Inbox/cat.jpg", &len);
+    assert(got && len == 4 && memcmp(got, "meow", 4) == 0);
+    g_free(got);
+    g_variant_unref(r);
+
+    r = give("", one, "com.example.chat");                     /* again: never over the first */
+    assert(strcmp(nth(r, 0), "Inbox/cat (1).jpg") == 0);
+    g_variant_unref(r);
+
+    assert(write_file(chat, "out/note.txt", "hi", NULL));      /* an app → a system app: Downloads */
+    const char *back[] = { "out/note.txt", NULL };
+    r = give("com.example.chat", back, "");
+    assert(strcmp(nth(r, 0), "Downloads/note.txt") == 0 && read_is("Downloads/note.txt", "hi"));
+    g_variant_unref(r);
+    g_free(chat);
+}
+
+static void test_handoff_same_root_and_refusals(void) {
+    assert(write_file(ZYL_FILES_ROOT, "Documents/a.txt", "a", NULL));
+    assert(symlink("/etc/passwd", ZYL_FILES_ROOT "/Documents/pw") == 0);
+    const char *paths[] = { "Documents/a.txt", "../outside", "Documents", "Documents/missing",
+                            "Documents/pw", "settings.json", NULL };
+    GVariant *r = give("", paths, "");                         /* system app → system app: as it is */
+    assert(strcmp(nth(r, 0), "Documents/a.txt") == 0);
+    assert(strcmp(nth(r, 1), "") == 0 && strcmp(nth(r, 5), "") == 0);
+    g_variant_unref(r);
+
+    r = give("", paths, "com.example.x");                      /* only a real file inside the root */
+    assert(g_variant_n_children(r) == 6 && strcmp(nth(r, 0), "Inbox/a.txt") == 0);
+    for (gsize i = 1; i < 6; i++) assert(strcmp(nth(r, i), "") == 0);
+    g_variant_unref(r);
+
+    const char *many[] = { "Documents/a.txt", "Documents/a.txt", "Documents/a.txt", "Documents/a.txt",
+                           "Documents/a.txt", "Documents/a.txt", "Documents/a.txt", "Documents/a.txt",
+                           "Documents/a.txt", "Documents/a.txt", "Documents/a.txt", NULL };
+    r = give("", many, "com.example.x");                       /* at most MAX_HANDOFF at once */
+    assert(g_variant_n_children(r) == MAX_HANDOFF);
+    g_variant_unref(r);
+}
+
 int main(void) {
     printf("=== File service ===\n");
     RUN_TEST(test_nothing_outside_the_root);
@@ -105,6 +164,8 @@ int main(void) {
     RUN_TEST(test_text_and_explicit_base64);
     RUN_TEST(test_rename_and_remove_but_never_the_root);
     RUN_TEST(test_third_party_app_gets_its_container);
+    RUN_TEST(test_handoff_copies_into_the_receivers_root);
+    RUN_TEST(test_handoff_same_root_and_refusals);
     assert(system("rm -rf " ROOT_) == 0);
     printf("Results: %d/%d passed\n", tests_pass, tests_run);
     return tests_pass == tests_run ? 0 : 1;

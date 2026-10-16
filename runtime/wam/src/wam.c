@@ -81,6 +81,9 @@ static int iface_count_instances(ZylAppInterface *self) {
  *  Intents (rule 9): an app starts one, the WAM decides which app gets it
  *  (intent/intent.c). Several → the starting app shows the choice and
  *  reports the pick, which must be one offered; none → it says so.
+ *  Files it hands over reach the handler as its own copy (the file
+ *  service's Handoff). A PICK's handler answers with intent.result, which
+ *  goes back to the app that asked — the same way, files copied.
  * ════════════════════════════════════════════════════════════════ */
 
 typedef struct {
@@ -88,6 +91,7 @@ typedef struct {
     char       *source;
     GPtrArray  *targets;   /* owned ids */
     JsonObject *intent;    /* what the handler gets */
+    char       *request_code;
 } IntentChoice;
 
 static IntentChoice g_choice;   /* the one open choice */
@@ -98,6 +102,24 @@ static void choice_clear(void) {
     g_clear_pointer(&g_choice.source, g_free);
     g_clear_pointer(&g_choice.targets, g_ptr_array_unref);
     g_clear_pointer(&g_choice.intent, json_object_unref);
+    g_clear_pointer(&g_choice.request_code, g_free);
+}
+
+/* The one PICK waiting for its answer: only its handler may give it */
+typedef struct {
+    char *token;
+    char *requester;
+    char *handler;
+    char *request_code;
+} PendingResult;
+
+static PendingResult g_result;
+
+static void result_clear(void) {
+    g_clear_pointer(&g_result.token, g_free);
+    g_clear_pointer(&g_result.requester, g_free);
+    g_clear_pointer(&g_result.handler, g_free);
+    g_clear_pointer(&g_result.request_code, g_free);
 }
 
 static void post_to(WebKitWebView *webview, const char *type, JsonNode *data) {
@@ -380,12 +402,12 @@ static void wam_handle_app_launch(const char        *type,
     }
 }
 
-/* Launch the handler and hand it the intent once its page is there */
-static void launch_with_intent(ZylWam *wam, const char *app_id, JsonObject *intent) {
+/* Bring the app forward and hand it the message once its page is there */
+static void launch_with(ZylWam *wam, const char *app_id, const char *type, JsonObject *payload) {
     gboolean running = wam->iface.get_instance(&wam->iface, app_id) != NULL;
     ZylAppInstance *inst = wam_open(wam, app_id);
     if (!inst || !inst->webview_widget) return;
-    char *script = zyl_intent_post_script("intent", zyl_intent_object_node(json_object_ref(intent)));
+    char *script = zyl_intent_post_script(type, zyl_intent_object_node(json_object_ref(payload)));
     WebKitWebView *webview = WEBKIT_WEB_VIEW(inst->webview_widget);
     if (running) {
         webkit_web_view_evaluate_javascript(webview, script, -1, NULL, NULL, NULL, NULL, NULL);
@@ -393,6 +415,91 @@ static void launch_with_intent(ZylWam *wam, const char *app_id, JsonObject *inte
     } else {
         g_signal_connect(webview, "load-changed", G_CALLBACK(deliver_when_loaded), script);
     }
+}
+
+/* Whose files an app's paths are: "" for a system app (the user's), else its container */
+static const char *container_of(ZylWam *wam, const char *app_id) {
+    ZylAppManifest *m = app_id ? g_hash_table_lookup(wam->manifests, app_id) : NULL;
+    return !app_id || (m && m->is_system) ? "" : app_id;
+}
+
+typedef struct {
+    ZylWam     *wam;
+    char       *target;
+    char       *type;
+    JsonObject *payload;
+} Delivery;
+
+static void delivery_free(Delivery *d) {
+    g_free(d->target);
+    g_free(d->type);
+    json_object_unref(d->payload);
+    g_free(d);
+}
+
+static void on_handed(GObject *src, GAsyncResult *res, gpointer data) {
+    Delivery *d = data;
+    GError *err = NULL;
+    GVariant *r = g_dbus_connection_call_finish(G_DBUS_CONNECTION(src), res, &err);
+    JsonArray *got = json_array_new();
+    if (r) {
+        GVariantIter *it = NULL;
+        const gchar *path;
+        g_variant_get(r, "(as)", &it);
+        while (g_variant_iter_next(it, "&s", &path))
+            if (*path) json_array_add_string_element(got, path);
+        g_variant_iter_free(it);
+        g_variant_unref(r);
+    } else {
+        g_warning("WAM: files for %s not handed over: %s", d->target, err->message);
+        g_error_free(err);
+    }
+    json_object_set_array_member(d->payload, "files", got);
+    launch_with(d->wam, d->target, d->type, d->payload);
+    delivery_free(d);
+}
+
+/* Deliver to target what from_app sent; the files it named become target's
+   own copies first (nothing to copy between two system apps: one root) */
+static void deliver(ZylWam *wam, const char *from_app, const char *target,
+                    const char *type, JsonObject *payload) {
+    JsonArray *files = json_object_get_array_member(payload, "files");
+    const char *from = container_of(wam, from_app), *to = container_of(wam, target);
+    if (!files || json_array_get_length(files) == 0 || strcmp(from, to) == 0) {
+        launch_with(wam, target, type, payload);
+        return;
+    }
+    if (!g_event_bus) {                    /* nobody to copy them: none, never a stranger's path */
+        json_object_set_array_member(payload, "files", json_array_new());
+        launch_with(wam, target, type, payload);
+        return;
+    }
+    GVariantBuilder paths;
+    g_variant_builder_init(&paths, G_VARIANT_TYPE("as"));
+    for (guint i = 0; i < json_array_get_length(files); i++)
+        g_variant_builder_add(&paths, "s", json_array_get_string_element(files, i));
+    Delivery *d = g_new0(Delivery, 1);
+    d->wam = wam;
+    d->target = g_strdup(target);
+    d->type = g_strdup(type);
+    d->payload = json_object_ref(payload);
+    g_dbus_connection_call(g_event_bus, "org.zylos.FileSystem", "/org/zylos/FileSystem",
+        "org.zylos.FileSystem.Handoff", "Handoff", g_variant_new("(sass)", from, &paths, to),
+        G_VARIANT_TYPE("(as)"), G_DBUS_CALL_FLAGS_NONE, 30000, NULL, on_handed, d);
+}
+
+/* The handler gets the intent; a PICK waits for its answer, from that handler only */
+static void hand_over(ZylWam *wam, const char *source, const char *target,
+                      JsonObject *intent, const char *request_code) {
+    if (g_strcmp0(json_object_get_string_member_with_default(intent, "action", ""), ZYL_INTENT_PICK) == 0) {
+        result_clear();
+        g_result.token = g_strdup_printf("r%u", g_next_token++);
+        g_result.requester = g_strdup(source);
+        g_result.handler = g_strdup(target);
+        g_result.request_code = g_strdup(request_code ? request_code : "");
+        json_object_set_string_member(intent, "resultToken", g_result.token);
+    }
+    deliver(wam, source, target, "intent", intent);
 }
 
 static void wam_handle_intent_start(const char        *type,
@@ -408,17 +515,19 @@ static void wam_handle_intent_start(const char        *type,
     JsonObject *intent = json_node_get_object(in);
 
     GPtrArray *targets = zyl_intent_resolve(wam->manifests, manifest->id, intent);
-    JsonObject *deliver = zyl_intent_deliverable(intent, manifest->id);
+    JsonObject *handed = zyl_intent_deliverable(intent, manifest->id);
+    const char *request_code = json_object_get_string_member_with_default(intent, "requestCode", "");
     if (targets->len == 0) {
         post_to(reply_ctx->webview, "intent.none", zyl_intent_object_node(json_object_new()));
     } else if (targets->len == 1) {
-        launch_with_intent(wam, g_ptr_array_index(targets, 0), deliver);
+        hand_over(wam, manifest->id, g_ptr_array_index(targets, 0), handed, request_code);
     } else {
         choice_clear();
         g_choice.token = g_strdup_printf("%u", g_next_token++);
         g_choice.source = g_strdup(manifest->id);
         g_choice.targets = g_ptr_array_new_with_free_func(g_free);
-        g_choice.intent = json_object_ref(deliver);
+        g_choice.intent = json_object_ref(handed);
+        g_choice.request_code = g_strdup(request_code);
         JsonArray *choices = json_array_new();
         for (guint i = 0; i < targets->len; i++) {
             const char *id = g_ptr_array_index(targets, i);
@@ -434,7 +543,7 @@ static void wam_handle_intent_start(const char        *type,
         json_object_set_array_member(data, "choices", choices);
         post_to(reply_ctx->webview, "intent.choose", zyl_intent_object_node(data));
     }
-    json_object_unref(deliver);
+    json_object_unref(handed);
     g_ptr_array_unref(targets);
 }
 
@@ -453,14 +562,41 @@ static void wam_handle_intent_chosen(const char        *type,
         strcmp(token, g_choice.token) != 0 || strcmp(manifest->id, g_choice.source) != 0) return;
     for (guint i = 0; i < g_choice.targets->len; i++) {
         if (strcmp(g_ptr_array_index(g_choice.targets, i), app_id) != 0) continue;
-        char *target = g_strdup(app_id);
+        char *target = g_strdup(app_id), *source = g_strdup(g_choice.source);
+        char *request_code = g_strdup(g_choice.request_code);
         JsonObject *intent = json_object_ref(g_choice.intent);
         choice_clear();
-        launch_with_intent(wam, target, intent);
+        hand_over(wam, source, target, intent, request_code);
         json_object_unref(intent);
+        g_free(request_code);
+        g_free(source);
         g_free(target);
         return;
     }
+}
+
+/* A PICK's answer: only the pending one's handler, with its token. The app
+   that asked gets { requestCode, files } — its own copies — and comes back */
+static void wam_handle_intent_result(const char        *type,
+                                     gpointer           msg_obj,
+                                     ZylAppManifest    *manifest,
+                                     ZylBridgeReplyCtx *reply_ctx,
+                                     gpointer           user_data) {
+    (void)type; (void)reply_ctx;
+    ZylWam *wam = user_data;
+    JsonObject *msg = msg_obj;
+    const char *token = json_object_get_string_member_with_default(msg, "token", NULL);
+    if (!manifest || !token || !g_result.token || strcmp(token, g_result.token) != 0 ||
+        strcmp(manifest->id, g_result.handler) != 0) return;
+    JsonObject *result = json_object_new();
+    json_object_set_string_member(result, "requestCode", g_result.request_code);
+    json_object_set_array_member(result, "files", zyl_intent_files(msg));
+    char *requester = g_strdup(g_result.requester), *handler = g_strdup(g_result.handler);
+    result_clear();
+    deliver(wam, handler, requester, "intent.result", result);
+    json_object_unref(result);
+    g_free(handler);
+    g_free(requester);
 }
 
 /* ════════════════════════════════════════════════════════════════
@@ -520,7 +656,18 @@ static void on_app_request(WebKitURISchemeRequest *req, gpointer user_data) {
     if (ok) {
         GBytes *bytes = g_bytes_new_take(data, len);
         GInputStream *in = g_memory_input_stream_new_from_bytes(bytes);
-        webkit_uri_scheme_request_finish(req, in, (gint64)len, zyl_app_scheme_mime(file));
+        /* The policy rides on every response, so it binds from the first byte
+           of the document and each worker script — not after the page ran */
+        char *csp = zyl_app_scheme_csp(m->is_system, zyl_bridge_app_holds(m, "network"),
+                                       zyl_bridge_app_holds(m, "webview"));
+        SoupMessageHeaders *headers = soup_message_headers_new(SOUP_MESSAGE_HEADERS_RESPONSE);
+        soup_message_headers_append(headers, "Content-Security-Policy", csp);
+        WebKitURISchemeResponse *resp = webkit_uri_scheme_response_new(in, (gint64)len);
+        webkit_uri_scheme_response_set_content_type(resp, zyl_app_scheme_mime(file));
+        webkit_uri_scheme_response_set_http_headers(resp, headers);
+        webkit_uri_scheme_request_finish_with_response(req, resp);
+        g_object_unref(resp);
+        g_free(csp);
         g_object_unref(in);
         g_bytes_unref(bytes);
     } else {
@@ -589,6 +736,39 @@ static gboolean app_webkit_dirs(const ZylAppManifest *m, char **data, char **cac
  *  ZylWebEngine implementation (WebKitGTK back-end)
  * ════════════════════════════════════════════════════════════════ */
 
+/* What a page asks WebKit for, decided by the app's permissions — the same
+   as the emulator's frame policy (apps/system/sandbox.js getPolicy): camera and
+   microphone by permission; everything else (geolocation, web notifications,
+   pointer lock, screen capture …) is no — the OS has its own services for them */
+static gboolean on_permission_request(WebKitWebView *webview, WebKitPermissionRequest *req, gpointer data) {
+    (void)webview;
+    ZylAppInstance *inst = data;
+    const ZylAppManifest *m = inst ? inst->manifest : NULL;
+    gboolean ok = FALSE;
+    if (WEBKIT_IS_USER_MEDIA_PERMISSION_REQUEST(req)) {
+        WebKitUserMediaPermissionRequest *media = WEBKIT_USER_MEDIA_PERMISSION_REQUEST(req);
+        gboolean video = webkit_user_media_permission_is_for_video_device(media);
+        gboolean audio = webkit_user_media_permission_is_for_audio_device(media);
+        ok = (video || audio) && !webkit_user_media_permission_is_for_display_device(media) &&
+             (!video || zyl_bridge_app_holds(m, "camera")) &&
+             (!audio || zyl_bridge_app_holds(m, "microphone"));
+    } else if (WEBKIT_IS_DEVICE_INFO_PERMISSION_REQUEST(req)) {
+        ok = zyl_bridge_app_holds(m, "camera") || zyl_bridge_app_holds(m, "microphone");
+    }
+    if (ok) webkit_permission_request_allow(req);
+    else webkit_permission_request_deny(req);
+    return TRUE;
+}
+
+/* <input type=file> would open GTK's desktop file dialog over the phone's
+   screen and hand the page a path outside its container. Apps ask the OS for
+   a file instead (ZylIntent PICK — the Files app, a copy into the app's Inbox) */
+static gboolean on_file_chooser(WebKitWebView *webview, WebKitFileChooserRequest *req, gpointer data) {
+    (void)webview; (void)data;
+    webkit_file_chooser_request_cancel(req);
+    return TRUE;
+}
+
 static GtkWidget *webkit_create_webview(ZylWebEngine   *self,
                                         ZylAppManifest *manifest,
                                         gpointer        instance_ctx) {
@@ -604,6 +784,8 @@ static GtkWidget *webkit_create_webview(ZylWebEngine   *self,
     webkit_settings_set_allow_file_access_from_file_urls(settings, FALSE);
     webkit_settings_set_allow_universal_access_from_file_urls(settings, FALSE);
     webkit_settings_set_enable_write_console_messages_to_stdout(settings, FALSE);
+    /* getUserMedia exists; whether a page gets the camera is on_permission_request's */
+    webkit_settings_set_enable_media_stream(settings, TRUE);
 
     WebKitUserContentManager *ucm = webkit_user_content_manager_new();
     g_signal_connect(ucm, "script-message-received::bridge",
@@ -656,21 +838,17 @@ static GtkWidget *webkit_create_webview(ZylWebEngine   *self,
     webkit_user_content_manager_add_script(ucm, ff_script);
     webkit_user_script_unref(ff_script);
 
-    /* H10: Content Security Policy injection via user script */
-    const char *csp_script =
-        "var meta = document.createElement('meta');"
-        "meta.httpEquiv = 'Content-Security-Policy';"
-        "meta.content = \"default-src 'self'; script-src 'self' 'unsafe-inline';"
-        " style-src 'self' 'unsafe-inline'; img-src 'self' data:;\";"
-        "document.head.appendChild(meta);";
+    /* What it may reach is its CSP (on_app_request). An app with the network
+       reaches a server as a native app does: no CORS. Safe because its network
+       session — cookies included — is its own, nobody else's credentials ride
+       along. A change in Settings closes the app (on_permissions_changed). */
+    g_signal_connect(webview, "permission-request", G_CALLBACK(on_permission_request), instance_ctx);
+    g_signal_connect(webview, "run-file-chooser", G_CALLBACK(on_file_chooser), NULL);
 
-    WebKitUserScript *csp_user_script = webkit_user_script_new(
-        csp_script,
-        WEBKIT_USER_CONTENT_INJECT_ALL_FRAMES,
-        WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_END,
-        NULL, NULL);
-    webkit_user_content_manager_add_script(ucm, csp_user_script);
-    webkit_user_script_unref(csp_user_script);
+    if (zyl_bridge_app_holds(manifest, "network")) {
+        const char *const any_https[] = { "https://*/*", NULL };
+        webkit_web_view_set_cors_allowlist(webview, any_https);
+    }
 
     g_object_unref(settings);
     return GTK_WIDGET(webview);
@@ -849,6 +1027,13 @@ static const ZylDbusMethodEntry dbus_methods[] = {
  * ════════════════════════════════════════════════════════════════ */
 
 static const char *app_to_show(const char *service, const char *signal, GVariant *params) {
+    /* The user pressed a notification's action: its app answers it, in front */
+    if (strcmp(service, "notification") == 0 && strcmp(signal, "ActionInvoked") == 0 &&
+        g_variant_is_of_type(params, G_VARIANT_TYPE("(tss)"))) {
+        const gchar *owner = NULL;
+        g_variant_get(params, "(t&s&s)", NULL, &owner, NULL);
+        return *owner ? owner : NULL;
+    }
     if (strcmp(service, "telephony") != 0) return NULL;
     if (strcmp(signal, "EmergencyAlert") == 0) return "com.zylos.alerts";
     if (strcmp(signal, "CallStateChanged") == 0 &&
@@ -932,6 +1117,8 @@ static void on_service_event(const char *service, const char *signal,
     if (strcmp(service, "appstore") == 0) on_store_event(wam, signal, params);
     on_shell_event(wam, service, signal, params);
     const char *show = app_to_show(service, signal, params);
+    /* An app started for the event gets it once its page is there, not before */
+    char *started = show && !wam->iface.get_instance(&wam->iface, show) ? g_strdup(show) : NULL;
     if (show && !wam_open(wam, show))
         g_warning("WAM: %s.%s needs %s, which could not start", service, signal, show);
     GHashTableIter it;
@@ -942,10 +1129,24 @@ static void on_service_event(const char *service, const char *signal,
         if (!inst->webview_widget) continue;
         char *script = zyl_bridge_service_event_script(inst->manifest, service, signal, params);
         if (!script) continue;
-        webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(inst->webview_widget),
-            script, -1, NULL, NULL, NULL, NULL, NULL);
+        WebKitWebView *webview = WEBKIT_WEB_VIEW(inst->webview_widget);
+        if (started && strcmp(inst->manifest->id, started) == 0) {
+            g_signal_connect(webview, "load-changed", G_CALLBACK(deliver_when_loaded), script);
+            continue;
+        }
+        webkit_web_view_evaluate_javascript(webview, script, -1, NULL, NULL, NULL, NULL, NULL);
         g_free(script);
     }
+    g_free(started);
+}
+
+/* The user changed a running app's permissions in Settings. What it may reach
+   came with its documents (CSP, CORS), so it closes, as Android stops an app
+   whose permission was revoked; it opens with the new rules next time */
+static void on_permissions_changed(const char *app_id, gpointer user_data) {
+    ZylWam *wam = user_data;
+    ZylAppManifest *m = g_hash_table_lookup(wam->manifests, app_id);
+    if (m && !m->is_system && wam->iface.get_instance(&wam->iface, app_id)) wam_close(wam, app_id);
 }
 
 static void subscribe_service_events(ZylWam *wam) {
@@ -957,7 +1158,7 @@ static void subscribe_service_events(ZylWam *wam) {
         return;
     }
     zyl_bridge_subscribe_service_events(g_event_bus, on_service_event, wam);
-    zyl_bridge_watch_revocations(g_event_bus);
+    zyl_bridge_watch_revocations(g_event_bus, on_permissions_changed, wam);
 }
 
 /* The first screen: setup until it is done, then the lock screen. A device
@@ -1062,6 +1263,7 @@ int main(int argc, char *argv[]) {
     zyl_bridge_register_handler("app.launch", wam_handle_app_launch, &wam);
     zyl_bridge_register_handler("intent.start",  wam_handle_intent_start,  &wam);
     zyl_bridge_register_handler("intent.chosen", wam_handle_intent_chosen, &wam);
+    zyl_bridge_register_handler("intent.result", wam_handle_intent_result, &wam);
     zyl_bridge_register_handler("unlock",            wam_handle_unlock,     &wam);
     zyl_bridge_register_handler("setup.done",        wam_handle_setup_done, &wam);
     zyl_bridge_register_handler("navigation.handled", wam_handle_navigation, &wam);

@@ -25,7 +25,9 @@ util-linux              # mountpoint, setpriv
 # 빠지면 데몬이 exit 127(동적 링커 실패)로 죽는다. tools/build-image.sh 가
 # 설치된 바이너리의 DT_NEEDED 를 읽어 이 목록이 모자라면 빌드를 거부한다
 libjson-glib-1.0-0      # 거의 모든 서비스 (JSON 상태·IPC)
-libcurl4t64             # network·updater·appstore (HTTP)
+libcurl4t64             # location (GeoIP 폴백, 선택적으로 링크)
+curl                    # network·appstore·updater·push 가 /usr/bin/curl 을 실행한다(셸 없이).
+                        # 없으면 그 HTTP 가 전부 ENOENT 로 실패한다 — 라이브러리만 있었다
 libzip5                 # appstore (.zpkg 해제)
 libssl3t64              # credential·appstore·updater (서명·암호화)
 libgps30t64             # location (gpsd)
@@ -33,6 +35,9 @@ libgps30t64             # location (gpsd)
 # ── 그래픽·앱 런타임 ──
 libgtk-4-1              # WAM (GTK4)
 libwebkitgtk-6.0-4      # 앱 런타임. 없으면 앱이 하나도 뜨지 않는다
+                        # (GStreamer plugins-base·good 은 이 패키지의 Depends 로 들어온다)
+gstreamer1.0-gl         # <video>·카메라 미리보기를 WebKit 이 GL 로 그리는 요소. 권장 의존이라
+                        # debootstrap 이 넣지 않는다 — 없으면 영상이 그려지지 않는다
 bubblewrap              # WebKit 웹 프로세스 샌드박스. 없으면 격리가 조용히 꺼진다
 xdg-dbus-proxy          # 같은 샌드박스의 D-Bus 필터
 libwlroots-0.18        # 컴포지터 (패키지 이름은 배포판마다 다르다)

@@ -48,6 +48,7 @@ fn main() {
             commands::filesystem::fs_mkdir,
             commands::filesystem::fs_remove,
             commands::filesystem::fs_rename,
+            commands::filesystem::fs_handoff,
             commands::filesystem::fs_get_usage,
             // OS image commands
             commands::os_image::list_os_images,
@@ -58,6 +59,8 @@ fn main() {
             commands::appdata::appdata_save,
             // Store apps on the virtual device
             commands::store::store_config,
+            commands::push::push_config,
+            commands::push::push_poll,
             commands::store::store_download,
             commands::store::store_unpack,
             commands::store::store_inspect,
@@ -65,6 +68,7 @@ fn main() {
             commands::store::store_commit,
             commands::store::store_discard,
             commands::store::store_remove,
+            commands::store::store_app_policy,
             // Settings commands
             commands::settings::load_settings,
             commands::settings::save_settings,

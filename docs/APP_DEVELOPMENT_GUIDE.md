@@ -25,9 +25,12 @@ Zyl OS 앱을 만드는 사람(제3자 앱·이 저장소의 시스템 앱)을 �
   페이지의 출처를 함께 쓴다(`apps/system/app-registry.js` 의 `getOrigin`). 어느 쪽이든 앱이
   보는 API 는 `ZylBridge` 하나다 — 앱은 자기가 기기에 있는지 에뮬레이터에 있는지 알 필요가 없다.
 - **앱 자기 파일과 OS 코드만 읽는다**: OS 코드는 `/shared/`(앱에서는 `../shared/…`)와
-  `bridge.js` 가 불러오는 화면 키보드 `/keyboard/` 이고, 이미지의 것이 나간다. 바깥 스크립트·
-  바깥 주소로의 직접 요청은 막혀 있다(CSP). 바깥 네트워크는 `network` 서비스로만 가고, 그
-  서비스가 허용하는 도메인만 열린다(`apps/system/sandbox.js` 의 `ALLOWED_DOMAINS`).
+  `bridge.js` 가 불러오는 화면 키보드 `/keyboard/` 이고, 이미지의 것이 나간다. 코드는 이
+  파일에서만 돈다(CSP): 바깥 스크립트·`eval` 은 없고, 제3자 앱은 인라인 스크립트(`<script>`
+  본문, `onclick="…"`)도 안 된다 — `<script src>` 와 `addEventListener` 를 쓴다.
+- **`network` 권한이 있으면 바깥에 직접 나간다**: `fetch`·`XMLHttpRequest`·`WebSocket` 으로
+  https/wss 만(평문 http 는 막힘), 이미지·미디어·글꼴도 https 에서. 권한이 없으면 자기 출처
+  밖으로는 아무것도 못 나간다. 자세한 규칙은 [SECURITY.md §3](SECURITY.md#3-권한).
 - **앱 파일은 읽기 전용이다**: 봉인(14장)과 다른 파일은 앱에 전달되지 않는다. 데이터는
   9장의 저장소에 둔다.
 - **흔적은 컨테이너에만 남는다**: 앱이 만드는 모든 것은 `/data/appdata/<앱 id>/` 에 있고,
@@ -150,6 +153,16 @@ ZylBridge.notify(zylI18n.t('myapp.done_title'), zylI18n.t('myapp.done_body'), { 
 `notify` 는 `notification` 서비스 요청이다. 올린 앱은 OS 가 정한다 — 제3자 앱이 `appId`
 를 무엇으로 주든 자기 이름으로 올라간다.
 
+**액션 버튼** — `actions: [{ label, actionId }]`(라벨은 앱이 번역해서). 사용자가 누르면 OS 가
+그 앱을 앞으로 띄우고(떠 있지 않았으면 실행해서, 페이지가 뜬 뒤) 알려 주며, 알림은 끝난다.
+
+```javascript
+ZylBridge.notify(title, body, { actions: [{ label: zylI18n.t('myapp.reply'), actionId: 'reply' }] });
+ZylBridge.onNotificationAction(function (a) {
+  /* a = { id, actionId } — 이 앱이 올린 알림의 것만 온다 */
+});
+```
+
 ---
 
 ## 5. 권한
@@ -185,6 +198,34 @@ ZylBridge.onServiceEvent('notification', 'NotificationPosted', function (d) {
 - 이벤트는 그 서비스를 **부를 수 있는 앱에게만** 가고, 한 앱의 것에 관한 이벤트는 그 주인에게만
   간다 (`OWNED_EVENTS`, [SECURITY.md §3](SECURITY.md#3-권한)).
 
+### 화면에 없을 때 — 푸시와 알람
+
+앱이 화면에 없으면 실행이 이어진다고 기대하지 않는다 — 기기는 메모리가 모자라면 뒤의 앱부터
+닫고, 화면이 꺼지고 얼마 뒤 절전에 들어가며, 에뮬레이터는 앞의 앱 하나만 페이지가 살아 있다.
+앱마다 서버 연결을 붙들지 않는다. 화면에 없는 앱에 닿는 길은 둘이다.
+
+- **푸시** (`push` 권한) — 앱 서버가 보내는 것. OS 가 서버 연결 하나로 모든 앱의 것을 받는다
+  ([PUSH_SERVER.md](PUSH_SERVER.md)).
+
+  ```javascript
+  ZylBridge.registerPush(zylI18n.t('myapp.push_title'), zylI18n.t('myapp.push_body'))
+    .then(function (endpoint) { /* 내 서버에 끝점을 준다 — 서버는 거기에 POST/PUT */ });
+  ZylBridge.onPush(function (m) { /* 떠 있을 때: m.message — 보통 "가져갈 것이 있다"는 신호 */ });
+  ```
+
+  앱이 떠 있지 않으면 등록 때 준 제목·본문의 알림이 뜨고, 누르면 앱이 열린다. 끝점은 앱마다
+  하나이고 다시 등록해도 같다. 내용은 서버를 지나가므로 민감하면 암호화하거나 신호만 보낸다.
+- **알람** (`notification` 권한) — 정한 시각. 기기가 절전 중이어도 깨워서 울린다(벽시계 타이머).
+
+### 웹 플랫폼이 묻는 것 — 카메라·마이크·위치·파일
+
+- `getUserMedia` 의 카메라·마이크는 앱의 `camera`·`microphone` 권한으로 OS 가 정한다(묻는 창
+  없음, 사용자가 끄면 거부). 화면 공유·웹 알림(`Notification`)·포인터 잠금은 거부된다 —
+  알림은 `ZylBridge.notify`.
+- `navigator.geolocation` 은 쓰지 않는다 — 위치는 `location` 서비스(`location` 권한).
+- `<input type=file>` 은 열리지 않는다(기기에서 데스크톱 대화창이 뜨는 대신). 파일은
+  `ZylIntent` 의 PICK 으로 받는다 (7장).
+
 ---
 
 ## 7. 인텐트 — 다른 앱과 이어지기
@@ -209,7 +250,27 @@ ZylIntent.startActivity({ targetApp: 'com.example.viewer' });
 - 받을 앱이 하나면 바로 열린다. 여럿이면 고르는 시트를, 없으면 "열 수 있는 앱 없음" 시트를
   OS 공용 코드(`bridge.js`)가 시작한 앱 화면에 그린다. 앱이 이 UI 를 만들지 않는다.
 - 시작한 앱 자신은 후보에 오르지 않는다. 사용자는 제시된 앱 중에서만 고를 수 있다.
-- 넘기는 값은 `data`(문자열)와 `extras`(JSON 으로 옮겨지는 객체)뿐이다.
+- 넘기는 값은 `data`(텍스트·URL 문자열), `extras`(JSON 으로 옮겨지는 객체), `files`(파일)뿐이다.
+
+**파일 건네기** — 파일은 `files` 에 자기 파일 기준 경로로 적는다(10개까지, 하나에 64 MiB
+까지). 받는 앱은 경로가 아니라 **자기 사본**을 받는다: OS 가 받는 앱의 `Inbox/`(시스템
+앱이면 사용자의 `Downloads/`)에 복사하고, `files` 를 그 앱 기준 경로로 바꿔 건넨다.
+
+```javascript
+ZylIntent.startActivity({ action: ZylIntent.ACTION.SEND, mimeType: 'image/*', files: ['photos/cat.jpg'] });
+```
+
+**파일 고르기(PICK)** — 사용자의 파일을 받고 싶으면 OS 화면에서 고르게 한다. 고르는 앱은
+시스템 앱뿐이고(파일 앱), 답은 `onResult` 로 온다. 고르는 동안 앱이 다시 열릴 수 있으므로
+(에뮬레이터는 앱을 바꾸면 문서가 내려간다) 답은 이벤트로 받고 `requestCode` 로 구분한다.
+
+```javascript
+ZylIntent.onResult(function (r) {
+  /* r = { requestCode, files } — files 는 이 앱의 Inbox/ 에 들어온 사본. 비면 취소 */
+  if (r.requestCode === 'attach' && r.files.length) attach(r.files[0]);
+});
+ZylIntent.startActivity({ action: ZylIntent.ACTION.PICK, mimeType: 'image/*', requestCode: 'attach' });
+```
 
 **받기**
 
@@ -220,9 +281,13 @@ ZylIntent.startActivity({ targetApp: 'com.example.viewer' });
 
 ```javascript
 ZylIntent.onIntent(function (it) {
-  /* it = { action, data, mimeType, extras, sourceApp } — sourceApp 은 OS 가 채운다 */
+  /* it = { action, data, mimeType, extras, files, sourceApp } — sourceApp 은 OS 가 채우고,
+     files 는 이 앱 기준 경로(사본) */
 });
 ```
+
+PICK 을 처리하는 쪽(시스템 앱)은 받은 인텐트로 답한다:
+`ZylIntent.setResult(it, { files: [...] })` — 대기 중인 그 하나, 그 처리 앱만 답할 수 있다.
 
 ---
 

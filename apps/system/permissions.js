@@ -71,6 +71,8 @@ window.ZylPermissions = (function () {
     'clipboard':     [],
     /* Every app has its own, named by the OS's caller — never another's */
     'appdata':       [],
+    /* An app's server reaching it through the OS's one push connection */
+    'push':          ['push'],
     'power':         []
   };
 
@@ -86,8 +88,20 @@ window.ZylPermissions = (function () {
     'notification.getGroupSummary':   ['notification.read'],
     'notification.clearAll':          ['notification.read'],
     'notification.clearHistory':      ['notification.read'],
+    'notification.invokeAction':      ['notification.read'],
     'notification.setDndMode':        ['system'],
-    'notification.setChannelEnabled': ['system']
+    'notification.setChannelEnabled': ['system'],
+    /* The device's power is the OS's: any app may read it, only system apps
+       turn the screen, sleep, shut down or reboot it, or hold it awake */
+    'power.screenOff':                ['system'],
+    'power.screenOn':                 ['system'],
+    'power.userActivity':             ['system'],
+    'power.suspend':                  ['system'],
+    'power.shutdown':                 ['system'],
+    'power.reboot':                   ['system'],
+    'power.setBrightness':            ['system'],
+    'power.acquireWakelock':          ['system'],
+    'power.releaseWakelock':          ['system']
   };
 
   /* Events about one app's own things reach a third-party app only when they
@@ -97,7 +111,9 @@ window.ZylPermissions = (function () {
   var OWNED_EVENTS = [
     { service: 'notification', event: null,            readAll: 'notification.read' },
     { service: 'location',     event: 'GeofenceEnter', readAll: null },
-    { service: 'location',     event: 'GeofenceExit',  readAll: null }
+    { service: 'location',     event: 'GeofenceExit',  readAll: null },
+    { service: 'alarm',        event: 'AlarmTriggered', readAll: null },
+    { service: 'push',         event: 'PushReceived',   readAll: null }
   ];
 
   /* App-declared permissions from app.json */
@@ -137,7 +153,7 @@ window.ZylPermissions = (function () {
     'audio', 'app.manage', 'app.list', 'app.launch',
     'location', 'network', 'webview', 'downloads', 'bookmarks',
     'input', 'i18n', 'battery', 'time', 'auth', 'wallpaper', 'gallery',
-    'contacts', 'messaging', 'telephony'
+    'contacts', 'messaging', 'telephony', 'push'
   ];
 
   /**

@@ -49,27 +49,27 @@ void             zyl_alarm_service_destroy(ZylAlarmService *svc);
 /* ─── 공개 API ─── */
 
 /**
- * 알람을 등록하거나 기존 tag의 알람을 갱신한다.
+ * 알람을 등록하거나 같은 앱의 같은 tag 알람을 갱신한다 — 알람은 (app_id, tag).
  * 반환: 0 성공, -1 실패
  */
 int zyl_alarm_set(ZylAlarmService *svc, const ZylAlarm *alarm);
 
 /**
- * tag에 해당하는 알람을 취소한다.
+ * 그 앱의 tag 알람을 취소한다 — 다른 앱의 같은 tag 는 그대로.
  * 반환: 0 성공, -1 알람 없음
  */
-int zyl_alarm_cancel(ZylAlarmService *svc, const char *tag);
+int zyl_alarm_cancel(ZylAlarmService *svc, const char *app_id, const char *tag);
 
 /* An app was removed (org.zylos.AppStore AppRemoved): all its alarms go.
    Returns how many. */
 int zyl_alarm_forget_app(ZylAlarmService *svc, const char *app_id);
 
 /**
- * 현재 등록된 모든 알람 목록을 반환한다.
+ * 그 앱의 알람 목록(app_id 가 NULL 이나 "" 이면 전부)을 반환한다.
  * *out 는 호출자가 zyl_alarm_list_free()로 해제해야 한다.
  * 반환: 0 성공, -1 실패
  */
-int zyl_alarm_list(ZylAlarmService *svc, ZylAlarm **out, int *count);
+int zyl_alarm_list(ZylAlarmService *svc, const char *app_id, ZylAlarm **out, int *count);
 
 /** zyl_alarm_list가 할당한 배열을 해제한다. */
 void zyl_alarm_list_free(ZylAlarm *alarms, int count);

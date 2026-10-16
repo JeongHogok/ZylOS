@@ -249,5 +249,6 @@ ZYL_KERNEL=… ZYL_DTB=… ZYL_INITRAMFS=… \
 - [INSTALLATION_INFORMATION.md](INSTALLATION_INFORMATION.md) — 부트로더 잠금 해제, 수정한 빌드 설치, eFuse
 - [SECURITY.md](SECURITY.md) — 부팅 체인과 OTA 검증
 - [APPSTORE_API.md](APPSTORE_API.md) — 스토어 키·카탈로그·개발자 인증서
+- [PUSH_SERVER.md](PUSH_SERVER.md) — 푸시 서버(`system/push.json` 의 주소) 운영
 - `board/<id>/README.md` — 보드별 손 작업
 - [CONTRIBUTING.md](../CONTRIBUTING.md) — 검증과 CI

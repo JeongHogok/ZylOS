@@ -19,7 +19,8 @@ echo "==============================="
 echo ""
 echo "WARNING: This will erase everything on this device:"
 echo "  users, apps and their data, saved networks and pairings, the keychain,"
-echo "  settings, call log, messages, contacts and the device's telemetry ID."
+echo "  settings, alarms, push registrations, call log, messages, contacts and the"
+echo "  device's telemetry ID."
 echo ""
 
 read -r -p "Type YES to confirm: " confirm

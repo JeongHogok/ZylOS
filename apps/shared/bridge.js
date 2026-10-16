@@ -229,6 +229,8 @@ var ZylBridge = (function () {
    * @param {string} title
    * @param {string} body
    * @param {Object} [options] - { channel, icon, priority, appId, actions }
+   *   actions: [{ label, actionId }] — label already translated by the app;
+   *   pressing one comes back to onNotificationAction
    * @returns {Promise<number|null>} notification ID
    */
   function notify(title, body, options) {
@@ -243,7 +245,39 @@ var ZylBridge = (function () {
       icon: opts.icon || '',
       priority: opts.priority || 1,
       actions: actions
-    }).then(function (r) { return r && r.id !== undefined ? r.id : null; });
+    }).then(function (r) {
+      /* The device answers with the id itself, the emulator with { id } */
+      if (typeof r === 'number') return r;
+      return r && r.id !== undefined ? r.id : null;
+    });
+  }
+
+  /* ─── Push: the app's server reaching it through the OS's one connection ───
+     registerPush(title, body) → Promise<endpoint>: give the endpoint to your
+     server (it POSTs/PUTs there — UnifiedPush). title/body, your translated
+     words, are the notification the user sees when a message comes while the
+     app is not running; tapping it opens the app. Needs the "push" permission */
+  function registerPush(title, body) {
+    return requestService('push', 'register', { title: title || '', body: body || '' });
+  }
+
+  function unregisterPush() {
+    return requestService('push', 'unregister', {});
+  }
+
+  /* fn({ message }) — a message from the app's server while the app runs */
+  function onPush(fn) {
+    onServiceEvent('push', 'PushReceived', function (d) {
+      if (d && d.length >= 3) fn({ message: d[2] });
+    });
+  }
+
+  /* fn({ id, actionId }) — the user pressed an action of this app's notification
+     (the OS brought the app forward for it; the notification is gone) */
+  function onNotificationAction(fn) {
+    onServiceEvent('notification', 'ActionInvoked', function (d) {
+      if (d && d.length >= 3) fn({ id: d[0], actionId: d[2] });
+    });
   }
 
   /* ─── Incoming Message Handler (emulator → app iframe) ─── */
@@ -337,6 +371,8 @@ var ZylBridge = (function () {
      ═══════════════════════════════════════════════════════════ */
   var _intentListener = null;
   var _pendingIntent = null;   /* arrived before the app listened */
+  var _resultListener = null;
+  var _pendingResult = null;   /* a pick's answer that arrived before the app listened */
 
   function tr(key) {
     return (typeof zylI18n !== 'undefined') ? zylI18n.t(key) : key;
@@ -396,13 +432,18 @@ var ZylBridge = (function () {
       EDIT:    'zyl.intent.action.EDIT',
       DIAL:    'zyl.intent.action.DIAL',
       CAPTURE: 'zyl.intent.action.CAPTURE',
-      SEARCH:  'zyl.intent.action.SEARCH'
+      SEARCH:  'zyl.intent.action.SEARCH',
+      /* Ask the user to choose (a file …) on an OS screen; the answer comes to onResult */
+      PICK:    'zyl.intent.action.PICK'
     },
-    /* { action, data, mimeType, extras } (implicit) or { targetApp, ... } (explicit) */
+    /* { action, data, mimeType, extras, files } (implicit) or { targetApp, ... }
+       (explicit). files: paths in this app's files the handler gets copies of.
+       requestCode: this app's own label, given back with a PICK's answer */
     startActivity: function (intent) {
       sendToSystem({ type: 'intent.start', intent: intent });
     },
-    /* fn({ action, data, mimeType, extras, sourceApp }) — the intent this app was opened for */
+    /* fn({ action, data, mimeType, extras, files, sourceApp }) — the intent this
+       app was opened for; files are paths in this app's own files */
     onIntent: function (fn) {
       _intentListener = fn;
       if (_pendingIntent) {
@@ -410,6 +451,21 @@ var ZylBridge = (function () {
         _pendingIntent = null;
         fn(it);
       }
+    },
+    /* fn({ requestCode, files }) — the answer to a PICK this app started (files
+       empty: the user chose nothing). It may come after the app was reloaded */
+    onResult: function (fn) {
+      _resultListener = fn;
+      if (_pendingResult) {
+        var r = _pendingResult;
+        _pendingResult = null;
+        fn(r);
+      }
+    },
+    /* The handler of a PICK answers it: files are paths in this app's files */
+    setResult: function (intent, result) {
+      sendToSystem({ type: 'intent.result', token: intent && intent.resultToken,
+                     files: (result && result.files) || [] });
     }
   };
   ZylIntentApi.startIntent = ZylIntentApi.startActivity;
@@ -439,6 +495,8 @@ var ZylBridge = (function () {
       if (_intentListener) _intentListener(msg.data); else _pendingIntent = msg.data;
     } else if (msg.type === 'intent.choose' && msg.data) {
       showIntentChoice(msg.data);
+    } else if (msg.type === 'intent.result' && msg.data) {
+      if (_resultListener) _resultListener(msg.data); else _pendingResult = msg.data;
     } else if (msg.type === 'intent.none') {
       intentSheet(tr('intent.no_app'), [{ label: tr('intent.ok'), value: null }], function () {});
     }
@@ -573,5 +631,9 @@ var ZylBridge = (function () {
     launch: launch,
     closeApp: closeApp,
     notify: notify,
+    onNotificationAction: onNotificationAction,
+    registerPush: registerPush,
+    unregisterPush: unregisterPush,
+    onPush: onPush,
   };
 })();

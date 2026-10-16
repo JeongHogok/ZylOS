@@ -2,7 +2,8 @@
  * [Clean Architecture] Infrastructure Layer - Test
  *
  * 역할: 알림 서비스(ZylNotificationService) 단위 테스트
- * 수행범위: post/cancel(자기 앱 것만)/clear_all/채널 필터링 기능 검증
+ * 수행범위: post/cancel(자기 앱 것만)/clear_all/채널 필터링, 액션 누르기(알림이 준
+ *           액션만, 누르면 끝난 알림) 기능 검증
  * 의존방향: notification.h (테스트 대상)
  * SOLID: SRP — 알림 서비스 로직만 테스트
  * ────────────────────────────────────────────────────────── */
@@ -391,6 +392,30 @@ static void test_cancel_only_the_apps_own(void)
     zyl_notification_service_destroy(svc);
 }
 
+/* The user pressed an action: only one the notification offered, and then it is done */
+static void test_invoke_action_only_offered_then_done(void)
+{
+    ZylNotificationService *svc = zyl_notification_service_create();
+    ZylNotifAction acts[] = { { "Reply", "reply" }, { "Mark read", "read" } };
+    uint64_t id = zyl_notification_post_with_actions(svc, "com.example.chat", "general", "Mom", "hi",
+                                                     NULL, ZYL_NOTIFICATION_PRIORITY_DEFAULT, acts, 2);
+    ZylNotification *list = NULL;
+    int count = 0;
+    zyl_notification_get_active(svc, &list, &count);
+    assert(count == 1 && list[0].num_actions == 2 && strcmp(list[0].actions[1].action_id, "read") == 0);
+    zyl_notification_free(&list[0]);
+    g_free(list);
+
+    assert(!zyl_notification_invoke_action(svc, id, "delete-all"));   /* not offered */
+    assert(!zyl_notification_invoke_action(svc, id + 99, "reply"));   /* no such notification */
+    assert(!zyl_notification_invoke_action(NULL, id, "reply"));
+    assert(zyl_notification_invoke_action(svc, id, "reply"));
+    zyl_notification_get_active(svc, &list, &count);
+    assert(count == 0);                                               /* answered: gone */
+    assert(!zyl_notification_invoke_action(svc, id, "reply"));        /* once */
+    zyl_notification_service_destroy(svc);
+}
+
 /* ── Test: NULL service pointer handling ──────────────────── */
 
 static void test_null_service_safety(void)
@@ -425,6 +450,7 @@ int main(void)
     RUN_TEST(test_cancel_removes_notification);
     RUN_TEST(test_cancel_nonexistent_id);
     RUN_TEST(test_cancel_only_the_apps_own);
+    RUN_TEST(test_invoke_action_only_offered_then_done);
     RUN_TEST(test_clear_all_removes_non_persistent);
     RUN_TEST(test_forget_app_removes_only_that_app);
     RUN_TEST(test_clear_all_empty);

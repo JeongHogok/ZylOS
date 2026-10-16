@@ -613,6 +613,7 @@ static const ServiceRoute SERVICE_ROUTES[] = {
     {"clipboard",    "org.zylos.Clipboard",          "/org/zylos/Clipboard",          "org.zylos.Clipboard"},
     {"network",      "org.zylos.Network",            "/org/zylos/Network",            "org.zylos.Network"},
     {"appdata",      "org.zylos.AppData",            "/org/zylos/AppData",            "org.zylos.AppData"},
+    {"push",         "org.zylos.Push",               "/org/zylos/Push",               "org.zylos.Push"},
     {"appstore",     "org.zylos.AppStore",           "/org/zylos/AppStore",           "org.zylos.AppStore"},
     {"alarm",        "org.zylos.AlarmService",       "/org/zylos/AlarmService",       "org.zylos.AlarmService"},
     {NULL, NULL, NULL, NULL}
@@ -678,6 +679,7 @@ static const ServicePermission SERVICE_PERMISSIONS[] = {
     {"clipboard",     {NULL}},
     /* Every app has its own, named by the bridge's caller — never another's */
     {"appdata",       {NULL}},
+    {"push",          {"push", NULL}},
     {"power",         {NULL}},
     {NULL, {NULL}}
 };
@@ -693,8 +695,20 @@ static const ServicePermission METHOD_PERMISSIONS[] = {
     {"notification.getGroupSummary",   {"notification.read", NULL}},
     {"notification.clearAll",          {"notification.read", NULL}},
     {"notification.clearHistory",      {"notification.read", NULL}},
+    {"notification.invokeAction",      {"notification.read", NULL}},
     {"notification.setDndMode",        {"system", NULL}},
     {"notification.setChannelEnabled", {"system", NULL}},
+    /* The device's power is the OS's: any app may read it, only system apps
+       turn the screen, sleep, shut down or reboot it, or hold it awake */
+    {"power.screenOff",                {"system", NULL}},
+    {"power.screenOn",                 {"system", NULL}},
+    {"power.userActivity",             {"system", NULL}},
+    {"power.suspend",                  {"system", NULL}},
+    {"power.shutdown",                 {"system", NULL}},
+    {"power.reboot",                   {"system", NULL}},
+    {"power.setBrightness",            {"system", NULL}},
+    {"power.acquireWakelock",          {"system", NULL}},
+    {"power.releaseWakelock",          {"system", NULL}},
     {NULL, {NULL}}
 };
 
@@ -733,6 +747,58 @@ static gboolean is_revoked(const char *app_id, const char *perm)
     return set && g_hash_table_contains(set, perm);
 }
 
+static gboolean same_revocations(GHashTable *a, GHashTable *b)
+{
+    guint n = a ? g_hash_table_size(a) : 0;
+    if (n != (b ? g_hash_table_size(b) : 0)) return FALSE;
+    GHashTableIter it;
+    gpointer perm;
+    if (a) {
+        g_hash_table_iter_init(&it, a);
+        while (g_hash_table_iter_next(&it, &perm, NULL))
+            if (!g_hash_table_contains(b, perm)) return FALSE;
+    }
+    return TRUE;
+}
+
+static void add_changed(GHashTable *from, GHashTable *to, GPtrArray *changed)
+{
+    if (!from) return;
+    GHashTableIter it;
+    gpointer id, set;
+    g_hash_table_iter_init(&it, from);
+    while (g_hash_table_iter_next(&it, &id, &set)) {
+        GHashTable *other = to ? g_hash_table_lookup(to, id) : NULL;
+        if (!same_revocations(set, other) &&
+            !g_ptr_array_find_with_equal_func(changed, id, g_str_equal, NULL))
+            g_ptr_array_add(changed, g_strdup(id));
+    }
+}
+
+/* The settings' a{sv} becomes the table; the ids whose list changed */
+static GPtrArray *revocations_load(GVariant *dict)
+{
+    GHashTable *old = revocations;
+    revocations = NULL;
+    GVariantIter iter;
+    const gchar *app_id = NULL;
+    GVariant *value = NULL;
+    g_variant_iter_init(&iter, dict);
+    while (g_variant_iter_next(&iter, "{&sv}", &app_id, &value)) {
+        if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING))
+            revocations_set(app_id, g_variant_get_string(value, NULL));
+        g_variant_unref(value);
+    }
+    GPtrArray *changed = g_ptr_array_new_with_free_func(g_free);
+    add_changed(old, revocations, changed);
+    add_changed(revocations, old, changed);
+    if (old) g_hash_table_destroy(old);
+    return changed;
+}
+
+static ZylBridgeAppFn revocations_changed;
+static gpointer revocations_changed_data;
+
 static void on_revocations_read(GObject *src, GAsyncResult *res, gpointer data)
 {
     (void)data;
@@ -745,16 +811,10 @@ static void on_revocations_read(GObject *src, GAsyncResult *res, gpointer data)
         return;
     }
     GVariant *dict = g_variant_get_child_value(reply, 0);
-    GVariantIter iter;
-    const gchar *app_id = NULL;
-    GVariant *value = NULL;
-    g_variant_iter_init(&iter, dict);
-    if (revocations) g_hash_table_remove_all(revocations);
-    while (g_variant_iter_next(&iter, "{&sv}", &app_id, &value)) {
-        if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING))
-            revocations_set(app_id, g_variant_get_string(value, NULL));
-        g_variant_unref(value);
-    }
+    GPtrArray *changed = revocations_load(dict);
+    for (guint i = 0; revocations_changed && i < changed->len; i++)
+        revocations_changed(g_ptr_array_index(changed, i), revocations_changed_data);
+    g_ptr_array_unref(changed);
     g_variant_unref(dict);
     g_variant_unref(reply);
 }
@@ -779,9 +839,11 @@ static void on_settings_changed(GDBusConnection *conn, const gchar *sender,
     if (g_strcmp0(category, "app_permissions") == 0) revocations_read(conn);
 }
 
-void zyl_bridge_watch_revocations(GDBusConnection *conn)
+void zyl_bridge_watch_revocations(GDBusConnection *conn, ZylBridgeAppFn changed, gpointer data)
 {
     if (!conn) return;
+    revocations_changed = changed;
+    revocations_changed_data = data;
     g_dbus_connection_signal_subscribe(conn, "org.zylos.Settings",
         "org.zylos.Settings", "CategoryChanged", "/org/zylos/Settings", NULL,
         G_DBUS_SIGNAL_FLAGS_NONE, on_settings_changed, NULL, NULL);
@@ -805,6 +867,11 @@ static gboolean manifest_holds(const ZylAppManifest *m, const char *perm) {
     for (int i = 0; i < m->n_permissions && m->permissions && m->permissions[i]; i++)
         if (strcmp(m->permissions[i], perm) == 0) return TRUE;
     return FALSE;
+}
+
+gboolean zyl_bridge_app_holds(const ZylAppManifest *m, const char *perm)
+{
+    return m && perm && (m->is_system || manifest_holds(m, perm));
 }
 
 /**
@@ -852,6 +919,8 @@ static const struct { const char *service, *signal, *read_all; } OWNED_EVENTS[] 
     {"notification", NULL,            "notification.read"},
     {"location",     "GeofenceEnter", NULL},
     {"location",     "GeofenceExit",  NULL},
+    {"alarm",        "AlarmTriggered", NULL},
+    {"push",         "PushReceived",   NULL},
     {NULL, NULL, NULL}
 };
 

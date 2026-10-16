@@ -76,7 +76,7 @@ var moduleFiles = [
   'location.js', 'telephony.js', 'contacts.js', 'messaging.js', 'usb.js',
   'user.js', 'credential.js', 'app-seal.js', 'appstore.js', 'updater.js', 'sandbox.js',
   'logger.js', 'accessibility.js', 'audio.js', 'telemetry.js', 'netstats.js', 'bootctl.js', 'lock.js',
-  'alarm.js'
+  'alarm.js', 'push.js'
 ];
 
 /* Provide window.addEventListener stub before loading modules */
@@ -389,6 +389,18 @@ var fsTests = (function () {
       ]).then(function () {
         assert.deepStrictEqual(calls, [['fs_write_file', 'com.example.app'], ['fs_read_dir', undefined],
                                        ['fs_rename', 'com.example.app']]);   /* the request cannot pick the root */
+      });
+    });
+  }).then(function () {
+    return asyncTest('handoff: the OS names both roots — the user\'s files for a system app', function () {
+      var asked = null;
+      var svc = ns.fs({ SYSTEM_APPS: ['com.zylos.files'], invoke: function (cmd, a) {
+        asked = [cmd, a];
+        return Promise.resolve(['Inbox/a.jpg', '']);
+      } });
+      return svc._handoff('com.zylos.files', ['Pictures/a.jpg', 'x'], 'com.example.chat').then(function (got) {
+        assert.deepStrictEqual(asked, ['fs_handoff', { from: null, paths: ['Pictures/a.jpg', 'x'], to: 'com.example.chat' }]);
+        assert.deepStrictEqual(got, ['Inbox/a.jpg', '']);
       });
     });
   });
@@ -1165,7 +1177,7 @@ console.log('\n■ ZylHangul');
    ═══════════════════════════════════════════════════════ */
 console.log('\n■ ZylIntent');
 
-(function () {
+var intentTests = (function () {
   var vm = require('vm');
   var ctx = { window: {}, console: console };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'apps', 'system', 'app-registry.js'), 'utf8'), ctx);
@@ -1205,6 +1217,59 @@ console.log('\n■ ZylIntent');
   test('explicit intents name an installed app', function () {
     assert.strictEqual(I.start('com.zylos.files', { targetApp: 'com.zylos.gallery' }).launch, 'com.zylos.gallery');
     assert.deepStrictEqual(plain(I.start('com.zylos.files', { targetApp: 'com.nope' })), { none: true });
+  });
+
+  /* Same scenarios as test_intent.c: who picks, what files may be */
+  var PICK = 'zyl.intent.action.PICK';
+  ctx.ZylAppRegistry.register([
+    { id: 'com.zylos.picker', name: 'Picker', system: true, intents: [{ action: PICK }] },
+    { id: 'com.example.fakepicker', name: 'Fake', intents: [{ action: PICK }] },
+    { id: 'com.example.chat', name: 'Chat' }
+  ]);
+
+  test('only a system app picks', function () {
+    assert.strictEqual(I.start('com.example.chat', { action: PICK, mimeType: 'image/png' }).launch, 'com.zylos.picker');
+    assert.deepStrictEqual(plain(I.start('com.example.chat', { action: PICK, targetApp: 'com.example.fakepicker' })),
+                           { none: true });
+  });
+
+  test('files are strings, ten at most', function () {
+    var d = I.start('com.example.chat', { targetApp: 'com.zylos.picker',
+      files: ['a', 1, '', { x: 1 }, 'b', '3', '4', '5', '6', '7', '8', '9', '10', '11'] });
+    assert.strictEqual(d.intent.files.length, 10);
+    assert.deepStrictEqual(plain(d.intent.files.slice(0, 2)), ['a', 'b']);
+    assert.deepStrictEqual(plain(I.start('com.example.chat', { targetApp: 'com.zylos.picker', files: 'x' }).intent.files), []);
+  });
+
+  test('a pick is answered once, by its handler, and goes to the app that asked', function () {
+    var d = I.start('com.example.chat', { action: PICK, requestCode: 'attach' });
+    var token = d.intent.resultToken;
+    assert.ok(token);
+    assert.strictEqual(I.result('com.example.chat', token, ['x']), null);           /* not the handler */
+    assert.strictEqual(I.result('com.zylos.picker', 'r-other', ['x']), null);       /* not its token */
+    var r = I.result('com.zylos.picker', token, ['Pictures/cat.jpg', 7]);
+    assert.strictEqual(r.launch, 'com.example.chat');
+    assert.strictEqual(r.from, 'com.zylos.picker');
+    assert.deepStrictEqual(plain(r.result), { requestCode: 'attach', files: ['Pictures/cat.jpg'] });
+    assert.strictEqual(I.result('com.zylos.picker', token, ['x']), null);           /* used up */
+  });
+
+  return asyncTest('delivery hands the files over first: the receiver gets its own paths', function () {
+    var asked = [];
+    I.useHandoff(function (from, paths, to) {
+      asked.push([from, plain(paths), to]);
+      return Promise.resolve(paths.map(function (p) { return p === 'gone' ? '' : 'Inbox/' + p.split('/').pop(); }));
+    });
+    var d = I.start('com.zylos.picker', { targetApp: 'com.example.chat', files: ['Pictures/cat.jpg', 'gone'] });
+    return I.deliver(d).then(function (p) {
+      assert.deepStrictEqual(asked, [['com.zylos.picker', ['Pictures/cat.jpg', 'gone'], 'com.example.chat']]);
+      assert.deepStrictEqual(plain(p.intent.files), ['Inbox/cat.jpg']);
+      I.useHandoff(function () { return Promise.reject(new Error('down')); });
+      return I.deliver(I.start('com.zylos.picker', { targetApp: 'com.example.chat', files: ['a'] }));
+    }).then(function (p) {
+      assert.deepStrictEqual(plain(p.intent.files), []);                            /* never the sender's path */
+      I.useHandoff(null);
+    });
   });
 })();
 
@@ -1379,6 +1444,15 @@ console.log('\n■ ZylPermissions');
     });
   });
 
+  test('the device\'s power: any app reads it, only system apps act on it (as bridge.c)', function () {
+    assert.ok(P.checkPermission('com.evil.app', 'power', 'getState'));
+    ['reboot', 'shutdown', 'suspend', 'screenOff', 'screenOn', 'userActivity',
+     'setBrightness', 'acquireWakelock', 'releaseWakelock'].forEach(function (m) {
+      assert.strictEqual(P.checkPermission('com.evil.app', 'power', m), false, m);
+      assert.ok(P.checkPermission('com.zylos.settings', 'power', m), m);
+    });
+  });
+
   test('ordinary declared permissions are still granted', function () {
     var got = P.getEffectivePermissions('com.evil.app');
     assert.ok(got.indexOf('camera') !== -1);
@@ -1484,6 +1558,30 @@ var gateTests = (function () {
          'zyl:notification-dismissed', 'zyl:notification-dismissed']);
       assert.strictEqual(events[0].detail.appId, 'com.example.chat');
       return Promise.resolve();
+    });
+  }).then(function () {
+    /* Same rule as test_notification.c: only an offered action, by the system UI; then it is done */
+    return asyncTest('an action press goes to the posting app, by the system UI only, once', function () {
+      var before = events.length;
+      return ask('notification', 'postWithActions',
+                 { title: 'Mom', actions: [{ label: 'Reply', actionId: 'reply' }] }, 'com.example.chat')
+        .then(function (r) {
+          var id = r.id;
+          return Promise.all([
+            ask('notification', 'invokeAction', { id: id, actionId: 'reply' }, 'com.example.chat'),
+            ask('notification', 'invokeAction', { id: id, actionId: 'nope' }, 'com.zylos.statusbar')
+          ]).then(function (refused) {
+            assert.strictEqual(refused[0].error, 'Permission denied');           /* not an app's own call */
+            assert.strictEqual(refused[1], false);                                 /* not offered */
+            return ask('notification', 'invokeAction', { id: id, actionId: 'reply' }, 'com.zylos.statusbar');
+          }).then(function (ok) {
+            assert.strictEqual(ok, true);
+            var pressed = events.slice(before).filter(function (e) { return e.type === 'zyl:notification-action'; });
+            assert.deepStrictEqual(JSON.parse(JSON.stringify(pressed.map(function (e) { return e.detail; }))),
+                                   [{ id: id, appId: 'com.example.chat', actionId: 'reply' }]);
+            return ask('notification', 'invokeAction', { id: id, actionId: 'reply' }, 'com.zylos.statusbar');
+          }).then(function (again) { assert.strictEqual(again, false); });           /* done: gone */
+        });
     });
   }).then(function () {
     return asyncTest('internals and what every object has are not methods', function () {
@@ -2294,7 +2392,7 @@ var alarmTests = (function () {
   /* A still-pending alarm timer would keep the test runner alive */
   function clear(t) {
     return t.svc.list().then(function (list) {
-      return Promise.all(list.map(function (a) { return t.svc.cancel({ tag: a.tag }); }));
+      return Promise.all(list.map(function (a) { return t.svc.cancel({ tag: a.tag, appId: a.appId }); }));
     });
   }
 
@@ -2334,14 +2432,30 @@ var alarmTests = (function () {
         .then(function (r) {
           assert.strictEqual(r.length, 1);
           assert.strictEqual(r[0].title, 'second');
-          return t.svc.cancel({ tag: 'x' });
+          return t.svc.cancel({ tag: 'x', appId: 'a' });
         }).then(function (ok) {
           assert.strictEqual(ok, true);
           return after(40);
         }).then(function () {
           assert.strictEqual(t.posted.length, 0);
-          return t.svc.cancel({ tag: 'x' });
+          return t.svc.cancel({ tag: 'x', appId: 'a' });
         }).then(function (ok) { assert.strictEqual(ok, false); });
+    }),
+    /* Same rule as test_alarm.c: an alarm is its app's tag */
+    asyncTest('another app\'s same tag is not replaced, cancelled or listed', function () {
+      var t = make();
+      return t.svc.set({ tag: 'wake', triggerAt: soon(60000), appId: 'com.zylos.clock', title: 'c' })
+        .then(function () { return t.svc.set({ tag: 'wake', triggerAt: soon(60000), appId: 'com.example.evil', title: 'e' }); })
+        .then(function () { return t.svc.cancel({ tag: 'wake', appId: 'com.example.evil' }); })
+        .then(function () { return t.svc.cancel({ tag: 'wake', appId: 'com.example.evil' }); })
+        .then(function (again) {
+          assert.strictEqual(again, false);
+          return Promise.all([t.svc.list({ appId: 'com.zylos.clock' }), t.svc.list({ appId: 'com.example.evil' })]);
+        }).then(function (r) {
+          assert.deepStrictEqual(r[0].map(function (a) { return a.title; }), ['c']);
+          assert.strictEqual(r[1].length, 0);
+          return clear(t);
+        });
     }),
     asyncTest('a removed app leaves no alarm behind, in memory or stored', function () {
       var t = make();
@@ -2986,13 +3100,146 @@ var userTests = (function () {
 })();
 
 /* ═══════════════════════════════════════════════════════
+   Push — same rules as runtime/services/push (tests/test_push.c, push_e2e.sh)
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ push service');
+
+var pushTests = (function () {
+  if (!global.crypto) global.crypto = require('crypto').webcrypto;
+  function make(store, url) {
+    store = store || {};
+    var asked = [], posted = [], announced = [], replies = [];
+    var svc = ns.push({
+      invoke: function (cmd, a) {
+        if (cmd === 'push_config') return Promise.resolve(JSON.stringify({ url: url === undefined ? 'https://push.example/' : url }));
+        if (cmd === 'push_poll') { asked.push(a); return Promise.resolve(replies.shift() || []); }
+        return Promise.resolve(null);
+      },
+      settingsSvc: {
+        _getSetting: function (c) { return Promise.resolve(store[c] || null); },
+        _updateSetting: function (c, k, v) { store[c] = store[c] || {}; store[c][k] = v; }
+      },
+      notificationSvc: { post: function (p) { posted.push(p); return { id: posted.length }; } }
+    });
+    return { svc: svc, store: store, asked: asked, posted: posted, announced: announced, replies: replies };
+  }
+  var realShell = global.ZylShell, realDispatch = global.window.dispatchEvent;
+
+  return Promise.all([
+    asyncTest('register: the app\'s own endpoint, the same each time; none without a server', function () {
+      var t = make();
+      return Promise.all([t.svc.register({ title: 'Chat', body: 'New' }, 'com.example.chat'),
+                          t.svc.register({ title: 'Chat', body: 'New' }, 'com.example.chat'),
+                          t.svc.register({ title: 'Mail', body: 'New' }, 'com.example.mail')]).then(function (e) {
+        assert.ok(/^https:\/\/push\.example\/up[A-Za-z0-9]{12}\?up=1$/.test(e[0]), e[0]);
+        assert.strictEqual(e[0], e[1]);
+        assert.notStrictEqual(e[0], e[2]);
+        return make({}, '').svc.register({ title: 'x' }, 'com.example.chat').then(function () {
+          throw new Error('registered without a server');
+        }, function (err) { assert.strictEqual(err.message, 'push unavailable'); });
+      });
+    }),
+    asyncTest('a message: to the app in front as PushReceived, else the notification it registered', function () {
+      var t = make();
+      var events = [];
+      global.ZylShell = { front: function () { return 'com.example.mail'; } };
+      global.window.dispatchEvent = function (e) { events.push(e); return true; };
+      return Promise.all([t.svc.register({ title: 'Chat', body: 'New message' }, 'com.example.chat'),
+                          t.svc.register({ title: 'Mail', body: 'New mail' }, 'com.example.mail')]).then(function (e) {
+        var chat = /\/(up[A-Za-z0-9]{12})\?/.exec(e[0])[1], mail = /\/(up[A-Za-z0-9]{12})\?/.exec(e[1])[1];
+        t.replies.push([{ id: 'k1', event: 'message', topic: chat, message: 'version=1' },
+                        { id: 'k2', event: 'message', topic: mail, message: 'hi' },
+                        { id: 'k3', event: 'keepalive', topic: chat },
+                        { id: 'k4', event: 'message', topic: 'upstranger00', message: 'x' }]);
+        return t.svc._poll().then(function (n) {
+          assert.strictEqual(n, 3);
+          assert.deepStrictEqual(t.asked[0], { topics: [chat, mail].sort().join(','), since: '' });
+          assert.deepStrictEqual(t.posted.map(function (p) { return [p.appId, p.title, p.body]; }),
+                                 [['com.example.chat', 'Chat', 'New message']]);
+          assert.deepStrictEqual(events.map(function (ev) { return [ev.type, ev.detail.appId, ev.detail.message]; }),
+                                 [['zyl:push', 'com.example.mail', 'hi']]);
+          return t.svc._poll();
+        }).then(function () {
+          assert.strictEqual(t.asked[1].since, 'k4');                 /* nothing asked for twice */
+        });
+      }).then(function () {
+        global.ZylShell = realShell; global.window.dispatchEvent = realDispatch;
+      }, function (err) {
+        global.ZylShell = realShell; global.window.dispatchEvent = realDispatch;
+        throw err;
+      });
+    }),
+    asyncTest('registrations survive a reload; unregister and a removed app leave none', function () {
+      var t = make();
+      return t.svc.register({ title: 'Chat' }, 'com.example.chat').then(function (first) {
+        var again = make(t.store);
+        return again.svc.register({ title: 'Chat' }, 'com.example.chat').then(function (e) {
+          assert.strictEqual(e, first);
+          return again.svc.unregister({}, 'com.example.chat');
+        }).then(function (ok) {
+          assert.strictEqual(ok, true);
+          return again.svc.unregister({}, 'com.example.chat');
+        }).then(function (ok) {
+          assert.strictEqual(ok, false);
+          return again.svc.register({ title: 'x' }, 'com.example.gone');
+        }).then(function () {
+          again.svc._forgetApp('com.example.gone');
+          assert.ok(t.store.push.state.indexOf('com.example.gone') === -1);
+          return again.svc._poll();
+        }).then(function (n) { assert.strictEqual(n, 0); });          /* no topics: nothing asked */
+      });
+    })
+  ]);
+})();
+
+/* ═══════════════════════════════════════════════════════
+   App content policy (real apps/system/sandbox.js, isolated) — the same
+   strings tests/test_app_scheme.c expects of the device's zyl_app_scheme_csp
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ ZylSandbox content policy');
+
+(function () {
+  var vm = require('vm');
+  var ctx = { window: {} };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'apps', 'system',
+                     'sandbox.js'), 'utf8'), ctx);
+  var S = ctx.window.ZylSandbox;
+
+  test('frame policy: camera and microphone by permission, geolocation never (as wam.c)', function () {
+    assert.strictEqual(S.getPolicy('com.example.cam', ['camera', 'location']),
+                       "camera 'self'; microphone 'none'; geolocation 'none'");
+  });
+
+  test('a user app without the network: its own files, nothing out', function () {
+    assert.strictEqual(S.getContentPolicy(false, ['camera']),
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+      "img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; " +
+      "font-src 'self'; frame-src 'self'; object-src 'none'");
+  });
+
+  test('with the network: https/wss out, never plain http, never remote or inline code', function () {
+    assert.strictEqual(S.getContentPolicy(false, ['network']),
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+      "img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; " +
+      "font-src 'self' https:; frame-src 'self'; object-src 'none'");
+  });
+
+  test('a system app holding network and webview', function () {
+    assert.strictEqual(S.getContentPolicy(true, ['network', 'webview']),
+      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; " +
+      "img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; " +
+      "font-src 'self' https:; frame-src 'self' https:; object-src 'none'");
+  });
+})();
+
+/* ═══════════════════════════════════════════════════════
    Wait for all async tests and report
    ═══════════════════════════════════════════════════════ */
 Promise.all([settingsTests, displayTests, inputTests, sensorsTests,
              usbTests, powerTests, audioTests, fsTests, updaterTests, telemetryTests, callTests, storeTests,
              netstatsTests, alertTests, lockTests, deviceBridgeTests, appStateTests,
              alarmTests, appsTests, sandboxTests, accessibilityTests, storageTests, networkTests,
-             credentialTests, locationTests, userTests, gateTests])
+             credentialTests, locationTests, userTests, gateTests, intentTests, pushTests])
   .then(function () {
     console.log('\n════════════════════════');
     console.log('Total: ' + total + '  Passed: ' + passed + '  Failed: ' + failed);
