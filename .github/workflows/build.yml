@@ -1,5 +1,15 @@
 name: Build & Test
-on: [push, pull_request]
+# PR 브랜치 푸시는 pull_request 로만 돈다 — push 까지 받으면 같은 커밋이 두 번
+# 돌고 실패 알림도 두 번 간다. main 은 머지 결과를 push 로 확인한다
+on:
+  push:
+    branches: [main]
+  pull_request:
+# 같은 PR 에 새 커밋이 오면 이전 커밋의 런은 의미가 없다 — 끝까지 돌다 실패해
+# 알림을 보내지 않게 취소한다. main 은 머지마다 끝까지 검증한다
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   # ─── Native C build (Arch Linux) ───
   build-native:
@@ -12,19 +22,31 @@ jobs:
         run: |
           pacman-key --init
           pacman-key --populate archlinux
-          pacman -Syu --noconfirm
-          pacman -S --noconfirm base-devel meson ninja pkgconf git \
-            wayland wayland-protocols \
-            libxkbcommon pixman libinput \
-            libdrm mesa libglvnd \
-            gtk4 webkitgtk-6.0 json-glib \
-            hwdata libdisplay-info \
-            seatd \
-            openssl libzip curl gpsd \
-            python nodejs dbus
+          # 기본 미러 둘은 같은 CDN 이라 동기화 중이면 함께 실패한다 —
+          # 독립된 1티어 미러를 뒤에 두고, 일시 장애는 재시도로 넘긴다
+          printf 'Server = https://%s/$repo/os/$arch\n' \
+            mirror.rackspace.com/archlinux mirrors.kernel.org/archlinux \
+            >> /etc/pacman.d/mirrorlist
+          for i in 1 2 3; do
+            pacman -Syu --noconfirm --needed base-devel meson ninja pkgconf git \
+              wayland wayland-protocols \
+              libxkbcommon pixman libinput \
+              libdrm mesa libglvnd \
+              gtk4 webkitgtk-6.0 json-glib \
+              hwdata libdisplay-info \
+              seatd \
+              openssl libzip curl gpsd \
+              python nodejs dbus && break
+            [ "$i" = 3 ] && exit 1
+            echo "pacman 실패 ($i/3) — 30초 뒤 다시"; sleep 30
+          done
       - name: Build wlroots from source
         run: |
-          git clone --depth 1 --branch 0.18.2 https://gitlab.freedesktop.org/wlroots/wlroots.git /tmp/wlroots
+          for i in 1 2 3; do
+            git clone --depth 1 --branch 0.18.2 https://gitlab.freedesktop.org/wlroots/wlroots.git /tmp/wlroots && break
+            [ "$i" = 3 ] && exit 1
+            rm -rf /tmp/wlroots; echo "clone 실패 ($i/3) — 15초 뒤 다시"; sleep 15
+          done
           cd /tmp/wlroots
           meson setup build --prefix=/usr -Dexamples=false -Dxwayland=disabled -Dwerror=false
           ninja -C build
