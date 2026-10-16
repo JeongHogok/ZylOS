@@ -1456,6 +1456,9 @@ static void on_service_event(const char *service, const char *signal,
     char *started = show && !wam->iface.get_instance(&wam->iface, show) ? g_strdup(show) : NULL;
     if (show && !wam_open(wam, show))
         g_warning("WAM: %s.%s needs %s, which could not start", service, signal, show);
+    /* A call ringing or an emergency alert in a dark pocket: the screen comes on
+       (the shell keeps them in front of the lock screen, zyl_shell_screen_on) */
+    if (show && strcmp(service, "telephony") == 0 && !wam->screen_on) power_call("ScreenOn");
     GHashTableIter it;
     gpointer key, value;
     g_hash_table_iter_init(&it, wam->instances);

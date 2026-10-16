@@ -4,7 +4,8 @@
  * 역할: 오디오 서비스(runtime/services/audio) 소리 정책 단위 테스트
  * 수행범위: 스트림 기본 볼륨(media 는 기기 출력에서 시작), 볼륨 0~100 클램프와
  *           잘못된 스트림 거부, media 만 기기 출력을 움직임, D-Bus 스트림 이름
- *           (모르는 이름은 InvalidArgs), 무음 모드(키 클릭은 조용, 경보음은 울림,
+ *           (모르는 이름은 InvalidArgs), 무음 모드(키 클릭은 조용, 경보음은 울림 —
+ *           음소거·낮은 음량도 넘어 최대로, 끝나면 사용자 것으로 돌아감,
  *           시작 때 설정의 sound.silentMode 를 이어받음), 시작 때 설정의 스트림
  *           볼륨(sound.<스트림>Volume, 정수·실수 어느 쪽이든)을 이어받음, 출력 음소거, 진동은
  *           설정 sound.vibration 을 따름(없으면 켜짐, 빈 패턴은 안 함), 마이크
@@ -134,6 +135,11 @@ static void on_reply(GObject *src, GAsyncResult *res, gpointer done) {
 }
 
 /* The service answers on this thread's main context: wait by running it */
+static void spin_ms(int ms) {
+    gint64 end = g_get_monotonic_time() + (gint64)ms * 1000;
+    while (g_get_monotonic_time() < end) { g_main_context_iteration(NULL, FALSE); g_usleep(1000); }
+}
+
 static GVariant *call(const char *method, GVariant *args) {
     gboolean done = FALSE;
     g_clear_error(&error);
@@ -237,7 +243,30 @@ static void test_silent_mode_quiets_key_clicks_but_not_alerts(void) {
     call_ok("PlayKeyClick", NULL);
     assert(tones == 1);
     call_ok("PlayTone", g_variant_new("(ii)", 1000, 200));             /* an alert sounds regardless */
-    assert(tones == 2 && tone_freq == 1000 && tone_ms == 200 && tone_volume == 60);
+    assert(tones == 2 && tone_freq == 1000 && tone_ms == 200 && tone_volume == 100);
+    spin_ms(700);                                                      /* its tail: the output is the user's again */
+}
+
+/* The emergency alert tone came out at the system volume on an output at the
+   media volume, muted with it: a presidential alert could be silent */
+static void test_an_alert_is_heard_through_mute_then_the_users_volume_returns(void) {
+    call_ok("SetMute", g_variant_new("(b)", TRUE));
+    zyl_audio_set_volume(svc, ZYL_AUDIO_STREAM_MEDIA, 20);
+    assert(output_muted && set_volume_to == 20);
+    call_ok("PlayTone", g_variant_new("(ii)", 853, 200));
+    assert(tones == 1 && tone_volume == 100);
+    assert(!output_muted && set_volume_to == 100);          /* the alert's output */
+    zyl_audio_set_volume(svc, ZYL_AUDIO_STREAM_MEDIA, 30);  /* the user turns it down meanwhile */
+    assert(set_volume_to == 100);
+    call_ok("PlayTone", g_variant_new("(ii)", 960, 200));   /* the next tone keeps it */
+    spin_ms(300);
+    assert(!output_muted && set_volume_to == 100);
+    spin_ms(500);                                           /* the last tone and its tail over */
+    assert(output_muted && set_volume_to == 30);            /* the user's, with the change made */
+    call_ok("PlayTone", g_variant_new("(ii)", 5, 200));     /* not a tone */
+    call_ok("PlayTone", g_variant_new("(ii)", 853, -1));
+    assert(tones == 2);
+    call_ok("SetMute", g_variant_new("(b)", FALSE));
 }
 
 static void test_muted_output_also_quiets_key_clicks(void) {
@@ -320,6 +349,7 @@ int main(void) {
     RUN_TEST(test_volume_is_clamped_and_only_media_moves_the_device);
     RUN_TEST(test_dbus_names_the_streams_and_refuses_unknown_ones);
     RUN_TEST(test_silent_mode_quiets_key_clicks_but_not_alerts);
+    RUN_TEST(test_an_alert_is_heard_through_mute_then_the_users_volume_returns);
     RUN_TEST(test_a_volume_set_is_saved_in_settings);
     RUN_TEST(test_the_notification_sound);
     RUN_TEST(test_muted_output_also_quiets_key_clicks);

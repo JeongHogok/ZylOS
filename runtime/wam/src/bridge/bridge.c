@@ -748,6 +748,8 @@ static const ServicePermission METHOD_PERMISSIONS[] = {
     {"notification.setChannelEnabled", {"system", NULL}},
     /* The chip's ID outlives a factory reset — a tracking ID if every app read it */
     {"device.getDeviceId",             {"system", NULL}},
+    /* The emergency alert tone: full volume through mute and silent mode */
+    {"audio.playTone",                 {"system", NULL}},
     /* The device's power is the OS's: any app may read it, only system apps
        turn the screen, sleep, shut down or reboot it, or hold it awake */
     {"power.screenOff",                {"system", NULL}},

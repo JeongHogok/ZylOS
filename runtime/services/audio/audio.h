@@ -33,6 +33,8 @@ int  zyl_audio_set_volume(ZylAudioService *svc, ZylAudioStream stream,
 bool zyl_audio_get_mute(ZylAudioService *svc);
 void zyl_audio_set_mute(ZylAudioService *svc, bool muted);
 
+/* The emergency alert tone: full volume through mute, then the user's back */
+int  zyl_audio_play_alert_tone(ZylAudioService *svc, int freq_hz, int duration_ms);
 int  zyl_audio_play_tone(ZylAudioService *svc, int freq_hz,
                           int duration_ms);
 
