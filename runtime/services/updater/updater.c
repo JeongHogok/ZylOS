@@ -249,15 +249,23 @@ static ZylUpdateType parse_update_type(const char *type_str) {
 /* The slot that actually booted: its signed FIT carries zyl.slot= (tools/
  * sign-image.sh), so this is the truth even while U-Boot is trying an update
  * and zyl_active_slot still names the previous slot. */
+#ifndef ZYL_CMDLINE
+#define ZYL_CMDLINE "/proc/cmdline"
+#endif
 static char *detect_active_slot(void) {
-    char *cmdline = read_file_string("/proc/cmdline");
-    const char *p = cmdline ? strstr(cmdline, "zyl.slot=") : NULL;
-    if (p && (p[9] == 'a' || p[9] == 'b')) {
-        char *slot = strndup(p + 9, 1);
-        free(cmdline);
-        return slot;
+    /* The whole line: a signed one carries the verity values ahead of zyl.slot=
+       and is longer than any fixed buffer — a cut-off line read slot "a" on
+       slot B, so no update was ever confirmed and every one rolled back */
+    gchar *cmdline = NULL;
+    if (g_file_get_contents(ZYL_CMDLINE, &cmdline, NULL, NULL)) {
+        const char *p = strstr(cmdline, "zyl.slot=");
+        if (p && (p[9] == 'a' || p[9] == 'b')) {
+            char *slot = strndup(p + 9, 1);
+            g_free(cmdline);
+            return slot;
+        }
     }
-    free(cmdline);
+    g_free(cmdline);
     char *slot = read_file_string(SLOT_METADATA_PATH);
     return slot ? slot : strdup("a");
 }

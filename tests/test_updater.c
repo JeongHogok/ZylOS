@@ -22,6 +22,7 @@
 #define ZYL_SLOT_B_VERITY DIR_ "/dev/p5"
 #define ZYL_BOOT_DIR  DIR_ "/boot"
 #define ZYL_OTA_KEY   DIR_ "/ota.pem"
+#define ZYL_CMDLINE   DIR_ "/cmdline"
 /* One unit: the board's Boot HAL pointed at scratch partitions, and the updater */
 #include "../runtime/hal/hal_boot.c"
 #include "../runtime/lib/ota_verify.c"
@@ -216,6 +217,24 @@ static void test_on_trial_only_while_u_boot_is_trying_this_slot(void) {
     assert(zyl_updater_on_trial(u));
 }
 
+/* The slot that booted comes from the signed kernel arguments, read whole: the
+   verity values ahead of zyl.slot= make the line longer than a fixed buffer */
+static void test_the_booted_slot_is_read_from_a_long_signed_command_line(void) {
+    GString *line = g_string_new("root=/dev/mapper/zyl-root ro zyl.verity=/dev/vda4,/dev/vda5,786432,4096,4096,1,");
+    for (int i = 0; i < 128; i++) g_string_append_c(line, "0123456789abcdef"[i % 16]);
+    g_string_append(line, ",");
+    for (int i = 0; i < 64; i++) g_string_append_c(line, 'f');
+    g_string_append(line, " panic=10 console=ttyS0,115200 zyl.slot=b quiet\n");
+    assert(line->len > 300);
+    put(ZYL_CMDLINE, line->str);
+    g_string_free(line, TRUE);
+    ZylUpdater *v = zyl_updater_create(NULL, DIR_ "/cache");
+    assert(v);
+    put(DIR_ "/next", "b");                                 /* U-Boot is trying b */
+    assert(zyl_updater_on_trial(v));
+    zyl_updater_destroy(v);
+}
+
 static void test_variables_are_the_ones_u_boot_reads(void) {
     char *env = NULL;
     assert(g_file_get_contents("board/bpi-f3/u-boot-env.txt", &env, NULL, NULL));
@@ -239,6 +258,7 @@ int main(void) {
     RUN_TEST(test_rollback_is_tried_like_an_update);
     RUN_TEST(test_supported_needs_the_key_and_a_bootloader_environment);
     RUN_TEST(test_on_trial_only_while_u_boot_is_trying_this_slot);
+    RUN_TEST(test_the_booted_slot_is_read_from_a_long_signed_command_line);
     RUN_TEST(test_variables_are_the_ones_u_boot_reads);
     zyl_updater_destroy(u);
     EVP_PKEY_free(key);
