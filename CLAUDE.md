@@ -134,14 +134,12 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 - 암시적 인텐트 resolve가 0개면 "앱 없음" 다이얼로그, 복수면 앱 선택 다이얼로그
   (시작한 앱 화면에 OS 공용 코드 `shared/bridge.js` 가 그림, 고른 앱은 제시된 것만)
 
-### 10. ContentProvider 경계 규칙
+### 10. 앱 간 데이터 공유
 
-- 앱 간 데이터 공유는 직접 파일 접근 금지 → 반드시 ContentProvider URI 경유
-- `ZylContentProvider.query(callerAppId, uri)` — callerAppId 생략 금지
-- 프로바이더 등록 시 `ZylPermissions` 체크 로직을 impl 내부에 포함하지 않음
-  (권한 체크는 ZylContentProvider가 직접 수행)
-- content:// URI 형식 엄수: `content://authority/path`
-
+- 앱의 데이터는 그 앱 컨테이너 안에만 있다(규칙 12). 다른 앱과 나누는 길은 둘뿐:
+  OS 서비스(권한이 지킨다 — 예: 연락처는 `contacts` 서비스와 `contacts.read`)와
+  인텐트의 `extras`(규칙 9)
+- 앱이 다른 앱의 파일·저장소·DOM 을 직접 읽는 경로를 만들지 말 것
 
 ### 11. 폼팩터 — 1 OS × N 프로파일
 

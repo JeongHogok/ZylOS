@@ -88,16 +88,6 @@
     });
   }
 
-  /* ── ContentProvider 등록: 다른 앱이 연락처 조회 가능하게 ── */
-  function registerContentProvider() {
-    if (typeof ZylContentProvider === 'undefined') return;
-    ZylContentProvider.registerProvider('com.zylos.contacts', {
-      query: function (path) {
-        return contacts; /* 현재 로드된 연락처 배열 반환 */
-      }
-    });
-  }
-
   function loadContacts() {
     /* 권한 판정은 OS 몫이다: 거부되면 응답이 오지 않고 목록은 빈 상태로 남는다 */
     requestServiceFire('contacts', 'getAll');
@@ -310,8 +300,6 @@
         if (msg.method === 'getAll' && msg.data) {
           contacts = msg.data;
           renderContacts(contacts);
-          /* 연락처 로드 후 ContentProvider 재등록 (데이터 최신화) */
-          registerContentProvider();
         }
         if (msg.method === 'create' || msg.method === 'update' || msg.method === 'delete') {
           loadContacts();
@@ -382,6 +370,5 @@
   }
 
   /* ── Init ── */
-  registerContentProvider(); /* ContentProvider 초기 등록 */
   loadContacts();
 })();
