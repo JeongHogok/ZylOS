@@ -17,6 +17,7 @@ pub mod emulated_services;
 pub mod filesystem;
 pub mod network;
 pub mod os_image;
+pub mod push;
 pub mod resource;
 pub mod settings;
 pub mod store;

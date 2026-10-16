@@ -76,7 +76,7 @@ var moduleFiles = [
   'location.js', 'telephony.js', 'contacts.js', 'messaging.js', 'usb.js',
   'user.js', 'credential.js', 'app-seal.js', 'appstore.js', 'updater.js', 'sandbox.js',
   'logger.js', 'accessibility.js', 'audio.js', 'telemetry.js', 'netstats.js', 'bootctl.js', 'lock.js',
-  'alarm.js'
+  'alarm.js', 'push.js'
 ];
 
 /* Provide window.addEventListener stub before loading modules */
@@ -3100,6 +3100,99 @@ var userTests = (function () {
 })();
 
 /* ═══════════════════════════════════════════════════════
+   Push — same rules as runtime/services/push (tests/test_push.c, push_e2e.sh)
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ push service');
+
+var pushTests = (function () {
+  if (!global.crypto) global.crypto = require('crypto').webcrypto;
+  function make(store, url) {
+    store = store || {};
+    var asked = [], posted = [], announced = [], replies = [];
+    var svc = ns.push({
+      invoke: function (cmd, a) {
+        if (cmd === 'push_config') return Promise.resolve(JSON.stringify({ url: url === undefined ? 'https://push.example/' : url }));
+        if (cmd === 'push_poll') { asked.push(a); return Promise.resolve(replies.shift() || []); }
+        return Promise.resolve(null);
+      },
+      settingsSvc: {
+        _getSetting: function (c) { return Promise.resolve(store[c] || null); },
+        _updateSetting: function (c, k, v) { store[c] = store[c] || {}; store[c][k] = v; }
+      },
+      notificationSvc: { post: function (p) { posted.push(p); return { id: posted.length }; } }
+    });
+    return { svc: svc, store: store, asked: asked, posted: posted, announced: announced, replies: replies };
+  }
+  var realShell = global.ZylShell, realDispatch = global.window.dispatchEvent;
+
+  return Promise.all([
+    asyncTest('register: the app\'s own endpoint, the same each time; none without a server', function () {
+      var t = make();
+      return Promise.all([t.svc.register({ title: 'Chat', body: 'New' }, 'com.example.chat'),
+                          t.svc.register({ title: 'Chat', body: 'New' }, 'com.example.chat'),
+                          t.svc.register({ title: 'Mail', body: 'New' }, 'com.example.mail')]).then(function (e) {
+        assert.ok(/^https:\/\/push\.example\/up[A-Za-z0-9]{12}\?up=1$/.test(e[0]), e[0]);
+        assert.strictEqual(e[0], e[1]);
+        assert.notStrictEqual(e[0], e[2]);
+        return make({}, '').svc.register({ title: 'x' }, 'com.example.chat').then(function () {
+          throw new Error('registered without a server');
+        }, function (err) { assert.strictEqual(err.message, 'push unavailable'); });
+      });
+    }),
+    asyncTest('a message: to the app in front as PushReceived, else the notification it registered', function () {
+      var t = make();
+      var events = [];
+      global.ZylShell = { front: function () { return 'com.example.mail'; } };
+      global.window.dispatchEvent = function (e) { events.push(e); return true; };
+      return Promise.all([t.svc.register({ title: 'Chat', body: 'New message' }, 'com.example.chat'),
+                          t.svc.register({ title: 'Mail', body: 'New mail' }, 'com.example.mail')]).then(function (e) {
+        var chat = /\/(up[A-Za-z0-9]{12})\?/.exec(e[0])[1], mail = /\/(up[A-Za-z0-9]{12})\?/.exec(e[1])[1];
+        t.replies.push([{ id: 'k1', event: 'message', topic: chat, message: 'version=1' },
+                        { id: 'k2', event: 'message', topic: mail, message: 'hi' },
+                        { id: 'k3', event: 'keepalive', topic: chat },
+                        { id: 'k4', event: 'message', topic: 'upstranger00', message: 'x' }]);
+        return t.svc._poll().then(function (n) {
+          assert.strictEqual(n, 3);
+          assert.deepStrictEqual(t.asked[0], { topics: [chat, mail].sort().join(','), since: '' });
+          assert.deepStrictEqual(t.posted.map(function (p) { return [p.appId, p.title, p.body]; }),
+                                 [['com.example.chat', 'Chat', 'New message']]);
+          assert.deepStrictEqual(events.map(function (ev) { return [ev.type, ev.detail.appId, ev.detail.message]; }),
+                                 [['zyl:push', 'com.example.mail', 'hi']]);
+          return t.svc._poll();
+        }).then(function () {
+          assert.strictEqual(t.asked[1].since, 'k4');                 /* nothing asked for twice */
+        });
+      }).then(function () {
+        global.ZylShell = realShell; global.window.dispatchEvent = realDispatch;
+      }, function (err) {
+        global.ZylShell = realShell; global.window.dispatchEvent = realDispatch;
+        throw err;
+      });
+    }),
+    asyncTest('registrations survive a reload; unregister and a removed app leave none', function () {
+      var t = make();
+      return t.svc.register({ title: 'Chat' }, 'com.example.chat').then(function (first) {
+        var again = make(t.store);
+        return again.svc.register({ title: 'Chat' }, 'com.example.chat').then(function (e) {
+          assert.strictEqual(e, first);
+          return again.svc.unregister({}, 'com.example.chat');
+        }).then(function (ok) {
+          assert.strictEqual(ok, true);
+          return again.svc.unregister({}, 'com.example.chat');
+        }).then(function (ok) {
+          assert.strictEqual(ok, false);
+          return again.svc.register({ title: 'x' }, 'com.example.gone');
+        }).then(function () {
+          again.svc._forgetApp('com.example.gone');
+          assert.ok(t.store.push.state.indexOf('com.example.gone') === -1);
+          return again.svc._poll();
+        }).then(function (n) { assert.strictEqual(n, 0); });          /* no topics: nothing asked */
+      });
+    })
+  ]);
+})();
+
+/* ═══════════════════════════════════════════════════════
    App content policy (real apps/system/sandbox.js, isolated) — the same
    strings tests/test_app_scheme.c expects of the device's zyl_app_scheme_csp
    ═══════════════════════════════════════════════════════ */
@@ -3146,7 +3239,7 @@ Promise.all([settingsTests, displayTests, inputTests, sensorsTests,
              usbTests, powerTests, audioTests, fsTests, updaterTests, telemetryTests, callTests, storeTests,
              netstatsTests, alertTests, lockTests, deviceBridgeTests, appStateTests,
              alarmTests, appsTests, sandboxTests, accessibilityTests, storageTests, networkTests,
-             credentialTests, locationTests, userTests, gateTests, intentTests])
+             credentialTests, locationTests, userTests, gateTests, intentTests, pushTests])
   .then(function () {
     console.log('\n════════════════════════');
     console.log('Total: ' + total + '  Passed: ' + passed + '  Failed: ' + failed);

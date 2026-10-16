@@ -3,7 +3,7 @@
  * [Clean Architecture] Application Layer - Service
  *
  * 역할: 푸시 서비스 (org.zylos.Push) — 앱 서버가 보낸 메시지가 화면에 없는 앱에도 닿게
- * 수행범위: 앱마다 추측할 수 없는 토픽과 끝점(UnifiedPush 방식, ntfy 프로토콜 — 앱 서버는
+ * 수행범위: 앱마다 추측할 수 없는 토픽(up+12자)과 끝점(UnifiedPush, ntfy 프로토콜 — 앱 서버는
  *           끝점에 POST/PUT), 등록과 마지막 메시지 id 의 저장, 서버(/etc/zyl-os/push.json
  *           의 url)로의 연결 하나(curl 스트림, 끊기면 늘어나는 간격으로 다시, 놓친 것은
  *           since 로), 메시지 → 떠 있는 앱에는 PushReceived(주인에게만), 아니면 그 앱이
@@ -56,13 +56,24 @@ static void reg_free(gpointer p) {
 
 /* ─── Pure parts (tests/test_push.c) ─── */
 
-/* "zyl" + 128 random bits in hex: nobody can guess an app's topic to push to it */
+/* "up" + 12 random letters and digits (~71 bits): nobody can guess an app's topic
+   to push to it. Exactly ntfy's UnifiedPush form — only such topics have their
+   rate limits counted on the subscriber (this device), not on the app server
+   (visitor-subscriber-rate-limiting), so a server sending for many users from
+   one address is not throttled */
+#define PUSH_TOPIC_LEN 14
 static char *push_new_topic(void) {
-    guint8 b[16];
-    if (getrandom(b, sizeof(b), 0) != (ssize_t)sizeof(b)) return NULL;
-    GString *s = g_string_new("zyl");
-    for (size_t i = 0; i < sizeof(b); i++) g_string_append_printf(s, "%02x", b[i]);
-    return g_string_free(s, FALSE);
+    static const char ALNUM[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    char t[PUSH_TOPIC_LEN + 1] = "up";
+    int n = 2;
+    while (n < PUSH_TOPIC_LEN) {
+        guint8 b[16];
+        if (getrandom(b, sizeof(b), 0) != (ssize_t)sizeof(b)) return NULL;
+        for (size_t i = 0; i < sizeof(b) && n < PUSH_TOPIC_LEN; i++)
+            if (b[i] < 248) t[n++] = ALNUM[b[i] % 62];    /* 248 = 4·62: every letter as likely */
+    }
+    t[PUSH_TOPIC_LEN] = '\0';
+    return g_strdup(t);
 }
 
 /* What the app hands its server: POST/PUT there (?up=1: the UnifiedPush form) */

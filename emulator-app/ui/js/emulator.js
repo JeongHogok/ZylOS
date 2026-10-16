@@ -466,6 +466,12 @@
     if (n) deliverEvent('notification', 'NotificationPosted', [n.id, n.appId, n.title, n.body, n.priority, n.actions || []]);
   });
 
+  /* The OS: a push message for the app in front (apps/system/services/push.js) */
+  window.addEventListener('zyl:push', function (e) {
+    var p = e.detail;
+    if (p && p.appId && _displayedApp === p.appId) deliverEvent('push', 'PushReceived', [p.topic, p.appId, p.message]);
+  });
+
   /* The OS: the user pressed a notification's action — its app comes forward
      and gets ActionInvoked once its page is there (the WAM's app_to_show) */
   var _eventsAfterLoad = {};   /* appId → [[service, event, data]] */

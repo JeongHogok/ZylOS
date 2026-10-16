@@ -23,6 +23,7 @@ window.ZylSystemServices = (function () {
      Service Timeout
      =============================================================== */
   var SERVICE_TIMEOUT_MS = 15000;
+  var PUSH_POLL_MS = 30000;
   var NETWORK_TIMEOUT_MS = 12000;
 
   function withTimeout(promise, ms, label) {
@@ -193,6 +194,7 @@ window.ZylSystemServices = (function () {
     if (ns.bootctl)       serviceMap.bootctl      = ns.bootctl(crossDeps);
     if (ns.lock)          serviceMap.lock         = ns.lock(crossDeps);
     if (ns.alarm)         serviceMap.alarm        = ns.alarm(crossDeps);
+    if (ns.push)          serviceMap.push         = ns.push(crossDeps);
     if (ns.audio) {
       var audioMod = ns.audio(crossDeps);
       serviceMap.audio = audioMod;
@@ -223,6 +225,9 @@ window.ZylSystemServices = (function () {
         }
       }).catch(function () { /* audio settings load failed — use defaults */ });
     }
+
+    /* Push: the device holds a stream to the server; here the OS asks now and then */
+    if (serviceMap.push) setInterval(function () { serviceMap.push._poll(); }, PUSH_POLL_MS);
 
     /* Intents hand files over through the file service (apps/system/intent.js) */
     if (typeof ZylIntent !== 'undefined' && ZylIntent.useHandoff && serviceMap.fs) {

@@ -59,6 +59,8 @@ fn main() {
             commands::appdata::appdata_save,
             // Store apps on the virtual device
             commands::store::store_config,
+            commands::push::push_config,
+            commands::push::push_poll,
             commands::store::store_download,
             commands::store::store_unpack,
             commands::store::store_inspect,

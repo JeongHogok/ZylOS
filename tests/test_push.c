@@ -2,7 +2,7 @@
  * [Clean Architecture] Infrastructure Layer - Test
  *
  * 역할: 푸시 서비스(runtime/services/push) 단위 테스트
- * 수행범위: 토픽(추측할 수 없는 128비트, 앱마다 다름, 다시 물으면 같은 끝점), 끝점·
+ * 수행범위: 토픽(ntfy 의 UnifiedPush 꼴 up+영숫자 12자, 앱마다 다름, 다시 물으면 같은 끝점), 끝점·
  *           스트림 주소(모든 토픽 하나로, 놓친 것은 since), 스트림 한 줄 해석(메시지만),
  *           토픽 → 앱, 서버 설정(https 만), 등록·since 의 저장과 복원, 서버가 없으면 꺼짐
  * 의존방향: push.c (ZYL_TEST), glib, json-glib
@@ -39,11 +39,12 @@ static void test_topics_are_random_and_an_apps_own(void) {
     char *b = push_register(ps, "com.example.mail", "Mail", "New mail");
     assert(a && b && strcmp(a, again) == 0 && strcmp(a, b) != 0);   /* the same app: the same endpoint */
     PushReg *r = g_hash_table_lookup(ps->regs, "com.example.chat");
-    assert(strlen(r->topic) == 3 + 32 && g_str_has_prefix(r->topic, "zyl"));
+    assert(strlen(r->topic) == PUSH_TOPIC_LEN && g_str_has_prefix(r->topic, "up"));
+    for (const char *c = r->topic; *c; c++) assert(g_ascii_isalnum(*c));
     char *want = g_strdup_printf("https://push.example/%s?up=1", r->topic);
     assert(strcmp(a, want) == 0);
     assert(strcmp(push_owner(ps->regs, r->topic), "com.example.chat") == 0);
-    assert(!push_owner(ps->regs, "zylnobody"));
+    assert(!push_owner(ps->regs, "upnobody"));
     assert(!push_register(ps, "", "x", "y"));
     g_free(want); g_free(a); g_free(again); g_free(b);
     drop(ps);
@@ -72,28 +73,28 @@ static void test_one_stream_for_every_topic(void) {
     Push *ps = fresh("https://push.example");
     assert(!push_stream_url(ps->url, ps->regs, NULL));                /* nobody registered: no connection */
     PushReg *a = g_new0(PushReg, 1), *b = g_new0(PushReg, 1);
-    a->topic = g_strdup("zylb"); b->topic = g_strdup("zyla");
+    a->topic = g_strdup("upb"); b->topic = g_strdup("upa");
     g_hash_table_replace(ps->regs, g_strdup("x"), a);
     g_hash_table_replace(ps->regs, g_strdup("y"), b);
     char *u = push_stream_url(ps->url, ps->regs, NULL);
-    assert(strcmp(u, "https://push.example/zyla,zylb/json") == 0);
+    assert(strcmp(u, "https://push.example/upa,upb/json") == 0);
     g_free(u);
     u = push_stream_url(ps->url, ps->regs, "AbC123");
-    assert(strcmp(u, "https://push.example/zyla,zylb/json?since=AbC123") == 0);
+    assert(strcmp(u, "https://push.example/upa,upb/json?since=AbC123") == 0);
     g_free(u);
     drop(ps);
 }
 
 static void test_only_messages_count(void) {
     char *id = NULL, *topic = NULL, *msg = NULL;
-    assert(push_parse_line("{\"id\":\"k1\",\"event\":\"message\",\"topic\":\"zyla\",\"message\":\"version=3\"}",
+    assert(push_parse_line("{\"id\":\"k1\",\"event\":\"message\",\"topic\":\"upa\",\"message\":\"version=3\"}",
                            &id, &topic, &msg));
-    assert(strcmp(id, "k1") == 0 && strcmp(topic, "zyla") == 0 && strcmp(msg, "version=3") == 0);
+    assert(strcmp(id, "k1") == 0 && strcmp(topic, "upa") == 0 && strcmp(msg, "version=3") == 0);
     g_free(id); g_free(topic); g_free(msg);
-    assert(!push_parse_line("{\"id\":\"k2\",\"event\":\"keepalive\",\"topic\":\"zyla\"}", &id, &topic, &msg));
-    assert(!push_parse_line("{\"id\":\"k3\",\"event\":\"open\",\"topic\":\"zyla\"}", &id, &topic, &msg));
+    assert(!push_parse_line("{\"id\":\"k2\",\"event\":\"keepalive\",\"topic\":\"upa\"}", &id, &topic, &msg));
+    assert(!push_parse_line("{\"id\":\"k3\",\"event\":\"open\",\"topic\":\"upa\"}", &id, &topic, &msg));
     assert(!push_parse_line("not json", &id, &topic, &msg));
-    assert(!push_parse_line("{\"event\":\"message\",\"topic\":\"zyla\"}", &id, &topic, &msg));   /* no id */
+    assert(!push_parse_line("{\"event\":\"message\",\"topic\":\"upa\"}", &id, &topic, &msg));   /* no id */
     assert(!push_parse_line(NULL, &id, &topic, &msg));
 }
 

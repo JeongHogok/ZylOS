@@ -93,7 +93,7 @@ shown() { for i in $(seq 100); do call Notification GetActive | grep -q "$1" && 
 
 OUT=$(call Push Register "$APP" "Chat" "New message")
 ENDPOINT=$(echo "$OUT" | sed -n "s/^('\(.*\)',)$/\1/p")
-case "$ENDPOINT" in https://127.0.0.1:$PORT/zyl*'?up=1') ;; *) fail "endpoint: $OUT" ;; esac
+case "$ENDPOINT" in https://127.0.0.1:$PORT/up????????????'?up=1') ;; *) fail "endpoint: $OUT" ;; esac
 [ "$(call Push Register "$APP" "Chat" "New message")" = "$OUT" ] || fail "a second register changed the endpoint"
 echo "  ✓ register: an endpoint of the app's own, the same each time"
 
