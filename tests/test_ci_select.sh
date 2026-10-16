@@ -29,6 +29,8 @@ expect "앱 JS 는 웹 검사 + 이미지 부팅(홈 앱이 떠야 한다)" \
 expect "C 런타임은 네이티브 + 두 부팅 레인" \
        "build-native fuzz qemu-boot qemu-boot-riscv64 test-integration verify-all" runtime/wam/src/wam.c
 expect "Dockerfile 은 docker 빌드만" "build-docker" Dockerfile
+expect "에뮬레이터 컨테이너 JS 는 웹 검사(test_services 가 읽는다) + 규칙 검사" \
+       "lint-html lint-js perf test-js verify-all" emulator-app/ui/js/emulator.js
 expect "C 단위 테스트는 규칙 검사를 부르지 않는다(셸 스크립트만 읽는다)" \
        "build-native fuzz test-integration" tests/test_shell.c
 expect "에뮬레이터 Rust 는 에뮬레이터 빌드·테스트 + 규칙 검사" "test-emulator verify-all" emulator-app/src/main.rs
