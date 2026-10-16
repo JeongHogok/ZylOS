@@ -212,7 +212,27 @@ ZylIntent.startActivity({ targetApp: 'com.example.viewer' });
 - 받을 앱이 하나면 바로 열린다. 여럿이면 고르는 시트를, 없으면 "열 수 있는 앱 없음" 시트를
   OS 공용 코드(`bridge.js`)가 시작한 앱 화면에 그린다. 앱이 이 UI 를 만들지 않는다.
 - 시작한 앱 자신은 후보에 오르지 않는다. 사용자는 제시된 앱 중에서만 고를 수 있다.
-- 넘기는 값은 `data`(문자열)와 `extras`(JSON 으로 옮겨지는 객체)뿐이다.
+- 넘기는 값은 `data`(텍스트·URL 문자열), `extras`(JSON 으로 옮겨지는 객체), `files`(파일)뿐이다.
+
+**파일 건네기** — 파일은 `files` 에 자기 파일 기준 경로로 적는다(10개까지, 하나에 64 MiB
+까지). 받는 앱은 경로가 아니라 **자기 사본**을 받는다: OS 가 받는 앱의 `Inbox/`(시스템
+앱이면 사용자의 `Downloads/`)에 복사하고, `files` 를 그 앱 기준 경로로 바꿔 건넨다.
+
+```javascript
+ZylIntent.startActivity({ action: ZylIntent.ACTION.SEND, mimeType: 'image/*', files: ['photos/cat.jpg'] });
+```
+
+**파일 고르기(PICK)** — 사용자의 파일을 받고 싶으면 OS 화면에서 고르게 한다. 고르는 앱은
+시스템 앱뿐이고(파일 앱), 답은 `onResult` 로 온다. 고르는 동안 앱이 다시 열릴 수 있으므로
+(에뮬레이터는 앱을 바꾸면 문서가 내려간다) 답은 이벤트로 받고 `requestCode` 로 구분한다.
+
+```javascript
+ZylIntent.onResult(function (r) {
+  /* r = { requestCode, files } — files 는 이 앱의 Inbox/ 에 들어온 사본. 비면 취소 */
+  if (r.requestCode === 'attach' && r.files.length) attach(r.files[0]);
+});
+ZylIntent.startActivity({ action: ZylIntent.ACTION.PICK, mimeType: 'image/*', requestCode: 'attach' });
+```
 
 **받기**
 
@@ -223,9 +243,13 @@ ZylIntent.startActivity({ targetApp: 'com.example.viewer' });
 
 ```javascript
 ZylIntent.onIntent(function (it) {
-  /* it = { action, data, mimeType, extras, sourceApp } — sourceApp 은 OS 가 채운다 */
+  /* it = { action, data, mimeType, extras, files, sourceApp } — sourceApp 은 OS 가 채우고,
+     files 는 이 앱 기준 경로(사본) */
 });
 ```
+
+PICK 을 처리하는 쪽(시스템 앱)은 받은 인텐트로 답한다:
+`ZylIntent.setResult(it, { files: [...] })` — 대기 중인 그 하나, 그 처리 앱만 답할 수 있다.
 
 ---
 
