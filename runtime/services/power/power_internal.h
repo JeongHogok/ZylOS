@@ -66,6 +66,7 @@ void apply_brightness(ZylPowerService *svc, int level);   /* the backlight only 
 
 /* ─── CPU/Doze 서브시스템 ─── */
 gboolean zyl_power_enter_doze(gpointer data);
+gboolean zyl_power_suspend_timeout(gpointer data);   /* the suspend timer's callback */
 void     exit_doze(ZylPowerService *svc);
 
 #endif /* ZYL_POWER_INTERNAL_H */

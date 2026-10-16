@@ -1,0 +1,255 @@
+/* ──────────────────────────────────────────────────────────
+ * [Clean Architecture] Infrastructure Layer - Test
+ *
+ * 역할: V4L2 카메라 서비스(runtime/services/camera) 단위 테스트
+ * 수행범위: 캡처 장치만 열림(V4L2 아님·캡처 기능 없음 거부, 전면=video1),
+ *           저장 경로는 카메라 디렉터리 안만(.., 접두어 흉내, 상대 경로 거부 —
+ *           거부 시 스트림도 안 켬), 스트림 직후 첫 프레임을 기다려 그대로 저장,
+ *           반복 촬영에도 매핑 버퍼가 쌓이지 않음, YUYV 를 못 하는 드라이버 거부,
+ *           드라이버가 정한 크기·엉뚱한 버퍼 번호·프레임 없음 처리
+ * 의존방향: runtime/services/camera/camera.c (ZYL_TEST, CAMERA_DEV_PREFIX·
+ *           CAMERA_CAPTURE_DIR 교체, ioctl/mmap/poll 을 가짜 드라이버로), gio
+ * SOLID: SRP — 카메라 캡처 경로 검증만 담당
+ * ────────────────────────────────────────────────────────── */
+
+#define _GNU_SOURCE
+#define ROOT_ "/tmp/zyl-camera-test"
+#define CAMERA_DEV_PREFIX ROOT_ "/video"
+#define CAMERA_CAPTURE_DIR ROOT_ "/data/camera/"
+#include <assert.h>
+#include <stdarg.h>
+#include <poll.h>
+#include <sys/ioctl.h>
+#include <sys/mman.h>
+#include <linux/videodev2.h>
+
+/* A fake V4L2 driver behind the service's own ioctl/mmap/poll calls,
+   with the kernel's rules: a frame is only there after waiting for it */
+static int fake_ioctl(int fd, unsigned long req, ...);
+static void *fake_mmap(void *addr, size_t len, int prot, int flags, int fd, off_t off);
+static int fake_munmap(void *addr, size_t len);
+static int fake_poll(struct pollfd *fds, nfds_t n, int timeout);
+#define ioctl fake_ioctl
+#define mmap fake_mmap
+#define munmap fake_munmap
+#define poll fake_poll
+#include "../runtime/services/camera/camera.c"
+
+#define PAGE 4096
+static struct {
+    bool v4l2, capture, no_frames;
+    uint32_t pixfmt, max_w, max_h;      /* what S_FMT settles on */
+    uint32_t w, h, sizeimage, bogus_index;
+    bool streaming, frame_ready;
+    int streamons, mapped;
+    void *buf_at[MAX_BUFFERS];
+} drv;
+
+static int fake_ioctl(int fd, unsigned long req, ...) {
+    (void)fd;
+    va_list ap;
+    va_start(ap, req);
+    void *arg = va_arg(ap, void *);
+    va_end(ap);
+    if (!drv.v4l2) { errno = ENOTTY; return -1; }
+    switch (req) {
+    case VIDIOC_QUERYCAP: {
+        struct v4l2_capability *c = arg;
+        memset(c, 0, sizeof(*c));
+        snprintf((char *)c->card, sizeof(c->card), "fake sensor");
+        c->capabilities = drv.capture ? V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_STREAMING
+                                      : V4L2_CAP_VIDEO_OUTPUT;
+        return 0;
+    }
+    case VIDIOC_S_FMT: {
+        struct v4l2_format *f = arg;
+        if (f->fmt.pix.width > drv.max_w) f->fmt.pix.width = drv.max_w;
+        if (f->fmt.pix.height > drv.max_h) f->fmt.pix.height = drv.max_h;
+        f->fmt.pix.pixelformat = drv.pixfmt;
+        drv.w = f->fmt.pix.width;
+        drv.h = f->fmt.pix.height;
+        drv.sizeimage = f->fmt.pix.sizeimage = drv.w * drv.h * 2;
+        return 0;
+    }
+    case VIDIOC_REQBUFS: {                 /* vb2 today: old mappings orphaned, no error */
+        struct v4l2_requestbuffers *r = arg;
+        if (r->count > MAX_BUFFERS) r->count = MAX_BUFFERS;
+        return 0;
+    }
+    case VIDIOC_QUERYBUF: {
+        struct v4l2_buffer *b = arg;
+        b->length = drv.sizeimage;
+        b->m.offset = b->index * PAGE;
+        return 0;
+    }
+    case VIDIOC_QBUF:
+        return 0;
+    case VIDIOC_STREAMON:
+        drv.streaming = true;
+        drv.streamons++;
+        return 0;
+    case VIDIOC_STREAMOFF:
+        drv.streaming = drv.frame_ready = false;
+        return 0;
+    case VIDIOC_DQBUF: {
+        struct v4l2_buffer *b = arg;
+        if (!drv.streaming) { errno = EINVAL; return -1; }
+        if (!drv.frame_ready) { errno = EAGAIN; return -1; }
+        drv.frame_ready = false;
+        b->index = drv.bogus_index ? drv.bogus_index : 0;
+        b->bytesused = drv.sizeimage;
+        if (b->index < MAX_BUFFERS && drv.buf_at[b->index])
+            memset(drv.buf_at[b->index], 0x5A, drv.sizeimage);
+        return 0;
+    }
+    }
+    errno = EINVAL;
+    return -1;
+}
+
+static void *fake_mmap(void *addr, size_t len, int prot, int flags, int fd, off_t off) {
+    (void)addr; (void)prot; (void)flags; (void)fd;
+    void *p = calloc(1, len);
+    assert(p);
+    drv.buf_at[off / PAGE] = p;
+    drv.mapped++;
+    return p;
+}
+
+static int fake_munmap(void *addr, size_t len) {
+    (void)len;
+    for (int i = 0; i < MAX_BUFFERS; i++)
+        if (drv.buf_at[i] == addr) drv.buf_at[i] = NULL;
+    free(addr);
+    drv.mapped--;
+    return 0;
+}
+
+static int fake_poll(struct pollfd *fds, nfds_t n, int timeout) {
+    (void)n; (void)timeout;
+    if (!drv.streaming || drv.no_frames) return 0;           /* timed out */
+    drv.frame_ready = true;
+    fds[0].revents = POLLIN;
+    return 1;
+}
+
+static int tests_run, tests_pass;
+#define RUN_TEST(fn) do { tests_run++; printf("  %-56s ", #fn); reset(); fn(); tests_pass++; printf("PASS\n"); } while (0)
+static ZylCameraService cam = { .fd = -1 };
+
+static void reset(void) {
+    zyl_camera_close(&cam);
+    assert(drv.mapped == 0);                                  /* close leaves nothing */
+    memset(&cam, 0, sizeof(cam));
+    cam.fd = -1;
+    memset(&drv, 0, sizeof(drv));
+    drv.v4l2 = drv.capture = true;
+    drv.pixfmt = V4L2_PIX_FMT_YUYV;
+    drv.max_w = 1920; drv.max_h = 1080;
+    g_assert_true(system("rm -rf " ROOT_ " && mkdir -p " ROOT_ "/data/camera && "
+                         "touch " ROOT_ "/video0 " ROOT_ "/video1") == 0);
+}
+
+static gsize file_size(const char *path) {
+    char *s = NULL;
+    gsize n = 0;
+    if (!g_file_get_contents(path, &s, &n, NULL)) return 0;
+    g_free(s);
+    return n;
+}
+
+static void test_open_takes_only_a_capture_device(void) {
+    drv.v4l2 = false;                                         /* not a V4L2 node */
+    assert(zyl_camera_open(&cam, ZYL_CAMERA_BACK) == -1 && !zyl_camera_is_open(&cam));
+    drv.v4l2 = true; drv.capture = false;                     /* an output device */
+    assert(zyl_camera_open(&cam, ZYL_CAMERA_BACK) == -1 && !zyl_camera_is_open(&cam));
+    drv.capture = true;
+    assert(zyl_camera_open(&cam, ZYL_CAMERA_BACK) == 0 && zyl_camera_is_open(&cam));
+    g_assert_true(unlink(ROOT_ "/video1") == 0);              /* no front camera */
+    assert(zyl_camera_open(&cam, ZYL_CAMERA_FRONT) == -1 && !zyl_camera_is_open(&cam));
+    assert(zyl_camera_open(&cam, ZYL_CAMERA_BACK) == 0);
+    assert(zyl_camera_capture(NULL, ROOT_ "/data/camera/a.yuv") == -1);
+}
+
+static void test_capture_path_must_stay_in_the_camera_dir(void) {
+    assert(zyl_camera_capture(&cam, ROOT_ "/data/camera/a.yuv") == -1);   /* not open */
+    assert(zyl_camera_open(&cam, ZYL_CAMERA_BACK) == 0);
+    const char *bad[] = {
+        "/etc/passwd", "", "data/camera/a.yuv",
+        ROOT_ "/data/camera",                                 /* the dir itself */
+        ROOT_ "/data/cameraX/a.yuv",                          /* prefix look-alike */
+        ROOT_ "/data/camera/../escape.yuv",
+        ROOT_ "/data/camera/x/../../../escape.yuv",
+        NULL };
+    for (int i = 0; bad[i]; i++)
+        assert(zyl_camera_capture(&cam, bad[i]) == -1);
+    assert(zyl_camera_capture(&cam, NULL) == -1);
+    assert(drv.streamons == 0);                               /* refused before the sensor */
+    assert(!g_file_test(ROOT_ "/data/escape.yuv", G_FILE_TEST_EXISTS));
+    assert(!g_file_test(ROOT_ "/escape.yuv", G_FILE_TEST_EXISTS));
+}
+
+static void test_capture_waits_for_the_first_frame_and_saves_it(void) {
+    assert(zyl_camera_open(&cam, ZYL_CAMERA_BACK) == 0);
+    /* the fd is non-blocking: DQBUF straight after STREAMON is EAGAIN */
+    assert(zyl_camera_capture(&cam, ROOT_ "/data/camera/IMG_1.yuv") == 0);
+    char *s = NULL;
+    gsize n = 0;
+    g_assert_true(g_file_get_contents(ROOT_ "/data/camera/IMG_1.yuv", &s, &n, NULL));
+    assert(n == 1920 * 1080 * 2);
+    assert((unsigned char)s[0] == 0x5A && (unsigned char)s[n - 1] == 0x5A);
+    g_free(s);
+    assert(!drv.streaming && !cam.streaming);                 /* stream put back off */
+}
+
+static void test_repeated_captures_do_not_pile_up_buffers(void) {
+    assert(zyl_camera_open(&cam, ZYL_CAMERA_BACK) == 0);
+    for (int i = 0; i < 3; i++) {
+        char path[128];
+        snprintf(path, sizeof(path), ROOT_ "/data/camera/IMG_%d.yuv", i);
+        assert(zyl_camera_capture(&cam, path) == 0);
+        assert(drv.mapped <= MAX_BUFFERS);                    /* ~16 MB per capture leaked */
+    }
+    zyl_camera_close(&cam);
+    assert(drv.mapped == 0 && !zyl_camera_is_open(&cam));
+}
+
+static void test_driver_without_yuyv_is_refused(void) {
+    drv.pixfmt = V4L2_PIX_FMT_MJPEG;                          /* S_FMT adjusts, never fails */
+    assert(zyl_camera_open(&cam, ZYL_CAMERA_BACK) == 0);
+    assert(zyl_camera_capture(&cam, ROOT_ "/data/camera/IMG.yuv") == -1);
+    assert(!g_file_test(ROOT_ "/data/camera/IMG.yuv", G_FILE_TEST_EXISTS));
+}
+
+static void test_frame_size_is_what_the_driver_chose(void) {
+    drv.max_w = 1280; drv.max_h = 720;
+    assert(zyl_camera_open(&cam, ZYL_CAMERA_BACK) == 0);
+    assert(zyl_camera_capture(&cam, ROOT_ "/data/camera/IMG.yuv") == 0);
+    assert(cam.config.width == 1280 && cam.config.height == 720);
+    assert(file_size(ROOT_ "/data/camera/IMG.yuv") == 1280 * 720 * 2);
+}
+
+static void test_bad_frames_save_nothing(void) {
+    assert(zyl_camera_open(&cam, ZYL_CAMERA_BACK) == 0);
+    drv.bogus_index = 7;                                      /* index past our buffers */
+    assert(zyl_camera_capture(&cam, ROOT_ "/data/camera/IMG.yuv") == -1);
+    drv.bogus_index = 0;
+    drv.no_frames = true;                                     /* sensor never delivers */
+    assert(zyl_camera_capture(&cam, ROOT_ "/data/camera/IMG.yuv") == -1);
+    assert(!g_file_test(ROOT_ "/data/camera/IMG.yuv", G_FILE_TEST_EXISTS));
+    assert(!drv.streaming);
+}
+
+int main(void) {
+    printf("=== Zyl OS Camera Service Tests ===\n");
+    RUN_TEST(test_open_takes_only_a_capture_device);
+    RUN_TEST(test_capture_path_must_stay_in_the_camera_dir);
+    RUN_TEST(test_capture_waits_for_the_first_frame_and_saves_it);
+    RUN_TEST(test_repeated_captures_do_not_pile_up_buffers);
+    RUN_TEST(test_driver_without_yuyv_is_refused);
+    RUN_TEST(test_frame_size_is_what_the_driver_chose);
+    RUN_TEST(test_bad_frames_save_nothing);
+    zyl_camera_close(&cam);
+    printf("\nResults: %d/%d passed\n", tests_pass, tests_run);
+    return tests_pass == tests_run ? 0 : 1;
+}

@@ -80,7 +80,7 @@ static void load_modes(ZylDisplayService *svc) {
 }
 
 /* --- Determine rotation from accelerometer data (H7) --- */
-static ZylRotation rotation_from_accel(double x, double y) {
+static ZylRotation rotation_from_accel(double x, double y, ZylRotation current) {
     /*
      * Gravity vector interpretation (device held upright = portrait):
      *   Portrait  (0):   y < -5   (gravity pulling down)
@@ -97,8 +97,8 @@ static ZylRotation rotation_from_accel(double x, double y) {
     if (y >  threshold)      return ZYL_ROTATION_180;
     if (x >  threshold)      return ZYL_ROTATION_270;
 
-    /* Ambiguous -- keep current */
-    return ZYL_ROTATION_0;
+    /* Ambiguous (lying flat, mid-turn) -- keep current */
+    return current;
 }
 
 /* --- Apply rotation to DRM connector --- */
@@ -131,6 +131,7 @@ static void on_sensor_event(GDBusConnection *conn,
     if (!svc->auto_rotate) return;
 
     /* SensorEvent(i type, d v0, d v1, d v2, t timestamp_ns) */
+    if (!g_variant_is_of_type(parameters, G_VARIANT_TYPE("(idddt)"))) return;  /* any bus client can send one */
     gint32 type;
     gdouble v0, v1, v2;
     guint64 ts;
@@ -139,7 +140,7 @@ static void on_sensor_event(GDBusConnection *conn,
     /* Only care about accelerometer (type 0) */
     if (type != 0) return;
 
-    ZylRotation desired = rotation_from_accel(v0, v1);
+    ZylRotation desired = rotation_from_accel(v0, v1, svc->rotation);
     uint64_t now = now_ns();
 
     if (desired != svc->rotation) {
@@ -156,6 +157,8 @@ static void on_sensor_event(GDBusConnection *conn,
             svc->pending_rotation = desired;
             svc->pending_since_ns = now;
         }
+    } else {
+        svc->pending_rotation = desired;   /* back where it was: a later tilt starts over */
     }
 }
 
@@ -398,7 +401,7 @@ int zyl_display_set_mode(ZylDisplayService *svc,
 
 int zyl_display_set_scale(ZylDisplayService *svc, float scale) {
     if (!svc) return -1;
-    if (scale < 0.5f || scale > 4.0f) {
+    if (!(scale >= 0.5f && scale <= 4.0f)) {      /* NaN fails both */
         g_warning("[Display] Scale %.2f out of range [0.5, 4.0]", scale);
         return -1;
     }
@@ -435,6 +438,7 @@ int zyl_display_set_auto_rotate(ZylDisplayService *svc, bool enabled) {
 /* ======================================================
  * main(): standalone daemon entry point
  * ====================================================== */
+#ifndef ZYL_TEST
 int main(int argc, char *argv[]) {
     (void)argc; (void)argv;
 
@@ -456,3 +460,4 @@ int main(int argc, char *argv[]) {
     g_message("[Display] Service stopped");
     return 0;
 }
+#endif /* ZYL_TEST */

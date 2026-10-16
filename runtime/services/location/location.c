@@ -88,6 +88,31 @@ static void emit_location_signal(ZylLocationService *svc,
         NULL);
 }
 
+/* ─── 프로바이더 결과 검증 ─── */
+/* A fix goes out only if it is a place on Earth (NaN/inf/out of range from a
+   provider or a forged response is dropped). Unknown extras — gpsd leaves them
+   NaN — become 0: JSON has no NaN, the bridge would hand apps "nan.0". */
+static bool fix_is_usable(ZylLocation *loc) {
+    if (!(fabs(loc->latitude) <= 90.0 && fabs(loc->longitude) <= 180.0))
+        return false;
+    if (!isfinite(loc->altitude_m))  loc->altitude_m  = 0.0;
+    if (!isfinite(loc->accuracy_m))  loc->accuracy_m  = 0.0f;
+    if (!isfinite(loc->speed_mps))   loc->speed_mps   = 0.0f;
+    if (!isfinite(loc->bearing_deg)) loc->bearing_deg = 0.0f;
+    return true;
+}
+
+/* GPSD (하드웨어 GPS) > WiFi BSS 삼각측량 > GeoIP — 쓸 수 있는 첫 위치 */
+static bool read_fix(ZylLocationService *svc, ZylLocation *loc) {
+#ifdef HAVE_GPSD
+    if ((svc->gpsd_connected || gpsd_connect(svc)) &&
+        gpsd_read(svc, loc) && fix_is_usable(loc))
+        return true;
+#endif
+    if (wifi_triangulate(svc, loc) && fix_is_usable(loc)) return true;
+    return geoip_query(loc) && fix_is_usable(loc);
+}
+
 /* ─── 폴링 스레드 ─── */
 static void *location_poll_thread(void *arg) {
     ZylLocationService *svc = arg;
@@ -95,24 +120,7 @@ static void *location_poll_thread(void *arg) {
 
     while (svc->thread_running) {
         ZylLocation loc = {0};
-        bool got_fix = false;
-
-        /* 1순위: GPSD (하드웨어 GPS) */
-#ifdef HAVE_GPSD
-        if (svc->gpsd_connected || gpsd_connect(svc)) {
-            got_fix = gpsd_read(svc, &loc);
-        }
-#endif
-
-        /* 2순위: WiFi BSS RSSI 삼각측량 */
-        if (!got_fix) {
-            got_fix = wifi_triangulate(svc, &loc);
-        }
-
-        /* 3순위: GeoIP 네트워크 폴백 */
-        if (!got_fix) {
-            got_fix = geoip_query(&loc);
-        }
+        bool got_fix = read_fix(svc, &loc);
 
         /* 융합: GPS/WiFi/네트워크 결합 (GPS > WiFi > GeoIP 우선순위) */
         if (got_fix) {
@@ -360,6 +368,11 @@ void zyl_location_stop_updates(ZylLocationService *svc) {
 int zyl_location_add_geofence(ZylLocationService *svc,
                                const ZylGeofence *fence) {
     if (!svc || !fence || !fence->tag) return -1;
+    /* D-Bus input: a fence off the globe or with a NaN/inf/negative radius
+       can never fire correctly and would only hold one of the shared slots */
+    if (!(fabs(fence->lat) <= 90.0 && fabs(fence->lon) <= 180.0 &&
+          fence->radius_m > 0.0 && isfinite(fence->radius_m)))
+        return -1;
 
     pthread_mutex_lock(&svc->lock);
 
@@ -426,6 +439,7 @@ int zyl_location_remove_geofence(ZylLocationService *svc,
     return -1;
 }
 
+#ifndef ZYL_TEST
 /* ─── main(): 독립 데몬 실행 ─── */
 int main(int argc, char *argv[]) {
     (void)argc; (void)argv;
@@ -450,3 +464,4 @@ int main(int argc, char *argv[]) {
     g_message("[Location] Service stopped");
     return 0;
 }
+#endif /* ZYL_TEST */

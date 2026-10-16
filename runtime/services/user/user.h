@@ -16,7 +16,9 @@
 
 #define ZYL_USER_MAX        8
 #define ZYL_USER_NAME_MAX   64
+#ifndef ZYL_USER_DATA_ROOT
 #define ZYL_USER_DATA_ROOT  "/data/users"
+#endif
 
 typedef enum {
     ZYL_USER_TYPE_OWNER,       /* 기기 소유자 (1명만) */

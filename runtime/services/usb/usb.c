@@ -21,8 +21,12 @@
  *  Constants
  * ════════════════════════════════════════════════════════════════ */
 
+#ifndef USB_GADGET_BASE
 #define USB_GADGET_BASE   "/sys/kernel/config/usb_gadget/g1"
+#endif
+#ifndef USB_STATE_PATH
 #define USB_STATE_PATH    "/sys/class/udc"
+#endif
 #define USB_POLL_INTERVAL 2  /* seconds */
 
 static const char *mode_to_function[] = {
@@ -65,12 +69,12 @@ static int write_sysfs(const char *path, const char *value) {
         g_warning("USB: cannot write to %s: %m", path);
         return -1;
     }
-    if (fputs(value, fp) == EOF) {
-        g_warning("USB: write failed for %s", path);
-        fclose(fp);
+    /* stdio buffers: configfs sees the write — and refuses it — at fclose */
+    bool failed = fputs(value, fp) == EOF;
+    if (fclose(fp) != 0 || failed) {
+        g_warning("USB: write failed for %s: %m", path);
         return -1;
     }
-    fclose(fp);
     return 0;
 }
 
@@ -122,8 +126,9 @@ static int configure_gadget_function(ZylUsbMode mode) {
     char udc_path[256];
     snprintf(udc_path, sizeof(udc_path), "%s/UDC", USB_GADGET_BASE);
 
-    /* Step 1: Detach UDC (required before changing functions) */
-    write_sysfs(udc_path, "");
+    /* Step 1: Detach UDC (required before changing functions). An empty
+       string never reaches configfs; a lone newline is what unbinds */
+    write_sysfs(udc_path, "\n");
 
     if (mode == ZYL_USB_MODE_NONE || mode == ZYL_USB_MODE_CHARGING) {
         /* Just charging / disconnected — UDC already cleared above */
@@ -159,20 +164,19 @@ static int configure_gadget_function(ZylUsbMode mode) {
         return -1;
     }
 
-    /* Step 5: Reattach UDC */
+    /* Step 5: Reattach UDC — the mode is only on if this worked */
+    int ret = -1;
     GDir *udc_dir = g_dir_open(USB_STATE_PATH, 0, NULL);
-    if (udc_dir) {
-        const gchar *udc_name = g_dir_read_name(udc_dir);
-        if (udc_name) {
-            g_message("USB: binding to UDC %s", udc_name);
-            write_sysfs(udc_path, udc_name);
-        } else {
-            g_warning("USB: no UDC controller found in %s", USB_STATE_PATH);
-        }
-        g_dir_close(udc_dir);
+    const gchar *udc_name = udc_dir ? g_dir_read_name(udc_dir) : NULL;
+    if (udc_name) {
+        g_message("USB: binding to UDC %s", udc_name);
+        ret = write_sysfs(udc_path, udc_name);
+    } else {
+        g_warning("USB: no UDC controller found in %s", USB_STATE_PATH);
     }
+    if (udc_dir) g_dir_close(udc_dir);
 
-    return 0;
+    return ret;
 }
 
 /* ════════════════════════════════════════════════════════════════
@@ -335,14 +339,17 @@ static const char *introspection_xml =
  *  D-Bus method handler
  * ════════════════════════════════════════════════════════════════ */
 
+/* Unknown names are not "none": a typo must not unplug the gadget and
+   report success — the out-of-range value makes zyl_usb_set_mode refuse */
 static ZylUsbMode string_to_mode(const char *str) {
-    if (!str) return ZYL_USB_MODE_NONE;
+    if (!str) return (ZylUsbMode)-1;
+    if (strcmp(str, "none")      == 0) return ZYL_USB_MODE_NONE;
     if (strcmp(str, "charging")  == 0) return ZYL_USB_MODE_CHARGING;
     if (strcmp(str, "mtp")       == 0) return ZYL_USB_MODE_MTP;
     if (strcmp(str, "ptp")       == 0) return ZYL_USB_MODE_PTP;
     if (strcmp(str, "adb")       == 0) return ZYL_USB_MODE_ADB;
     if (strcmp(str, "tethering") == 0) return ZYL_USB_MODE_TETHERING;
-    return ZYL_USB_MODE_NONE;
+    return (ZylUsbMode)-1;
 }
 
 static void handle_method_call(GDBusConnection       *conn,
@@ -392,6 +399,7 @@ static const GDBusInterfaceVTable vtable = {
  *  D-Bus bus acquired / name acquired
  * ════════════════════════════════════════════════════════════════ */
 
+#ifndef ZYL_TEST
 static void on_bus_acquired(GDBusConnection *conn,
                             const gchar     *name,
                             gpointer         user_data) {
@@ -479,3 +487,4 @@ int main(int argc, char *argv[]) {
 
     return 0;
 }
+#endif /* ZYL_TEST */

@@ -78,7 +78,9 @@ static GVariant *devices_variant(void) {
     for (int i = 0; i < n; i++) {
         GVariantBuilder d;
         g_variant_builder_init(&d, G_VARIANT_TYPE("a{sv}"));
-        g_variant_builder_add(&d, "{sv}", "name", g_variant_new_string(devs[i].name));
+        /* Any device in range picks its name and the HAL keeps the first bytes:
+           the cut can fall inside a character, and D-Bus strings must be UTF-8 */
+        g_variant_builder_add(&d, "{sv}", "name", g_variant_new_take_string(g_utf8_make_valid(devs[i].name, -1)));
         g_variant_builder_add(&d, "{sv}", "address", g_variant_new_string(devs[i].address));
         g_variant_builder_add(&d, "{sv}", "deviceType", g_variant_new_string(devs[i].type));
         g_variant_builder_add(&d, "{sv}", "paired", g_variant_new_boolean(devs[i].paired));

@@ -48,6 +48,7 @@ static void on_bus(GDBusConnection *conn, const gchar *name, gpointer data) {
     g_dbus_node_info_unref(info);
 }
 
+#ifndef ZYL_TEST
 static gboolean on_term(gpointer loop) {
     g_main_loop_quit(loop);
     return G_SOURCE_REMOVE;
@@ -62,3 +63,4 @@ int main(void) {
     g_main_loop_unref(loop);
     return 0;
 }
+#endif /* ZYL_TEST */

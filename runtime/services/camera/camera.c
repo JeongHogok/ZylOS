@@ -19,6 +19,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
+#include <poll.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <linux/videodev2.h>
@@ -29,6 +30,14 @@
 #endif
 
 #define MAX_BUFFERS 4
+#define FRAME_TIMEOUT_MS 2000
+
+#ifndef CAMERA_DEV_PREFIX
+#define CAMERA_DEV_PREFIX "/dev/video"
+#endif
+#ifndef CAMERA_CAPTURE_DIR
+#define CAMERA_CAPTURE_DIR "/data/camera/"
+#endif
 
 struct buffer {
     void   *start;
@@ -165,7 +174,7 @@ int zyl_camera_open(ZylCameraService *cam, ZylCameraFacing facing) {
 
     /* Select device: back=video0, front=video1 */
     const char *dev = (facing == ZYL_CAMERA_FRONT) ?
-        "/dev/video1" : "/dev/video0";
+        CAMERA_DEV_PREFIX "1" : CAMERA_DEV_PREFIX "0";
 
     cam->fd = open(dev, O_RDWR | O_NONBLOCK);
     if (cam->fd < 0) {
@@ -193,11 +202,7 @@ int zyl_camera_open(ZylCameraService *cam, ZylCameraFacing facing) {
     return 0;
 }
 
-void zyl_camera_close(ZylCameraService *cam) {
-    if (!cam) return;
-    zyl_camera_stop_preview(cam);
-
-    /* Unmap buffers */
+static void unmap_buffers(ZylCameraService *cam) {
     for (uint32_t i = 0; i < cam->n_buffers; i++) {
         if (cam->buffers[i].start) {
             munmap(cam->buffers[i].start, cam->buffers[i].length);
@@ -205,6 +210,12 @@ void zyl_camera_close(ZylCameraService *cam) {
         }
     }
     cam->n_buffers = 0;
+}
+
+void zyl_camera_close(ZylCameraService *cam) {
+    if (!cam) return;
+    zyl_camera_stop_preview(cam);
+    unmap_buffers(cam);
 
     if (cam->fd >= 0) {
         close(cam->fd);
@@ -213,6 +224,11 @@ void zyl_camera_close(ZylCameraService *cam) {
 }
 
 static int setup_mmap_buffers(ZylCameraService *cam) {
+    /* Every capture from idle comes back here: mappings left from the last
+       one would be overwritten and leak (vb2 orphans them, older kernels
+       refuse REQBUFS with EBUSY) */
+    unmap_buffers(cam);
+
     struct v4l2_requestbuffers req = {0};
     req.count  = MAX_BUFFERS;
     req.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
@@ -244,14 +260,7 @@ static int setup_mmap_buffers(ZylCameraService *cam) {
     return 0;
 
 fail_cleanup:
-    /* Unmap any successfully mapped buffers */
-    for (uint32_t j = 0; j < cam->n_buffers; j++) {
-        if (cam->buffers[j].start) {
-            munmap(cam->buffers[j].start, cam->buffers[j].length);
-            cam->buffers[j].start = NULL;
-        }
-    }
-    cam->n_buffers = 0;
+    unmap_buffers(cam);
     return -1;
 }
 
@@ -272,6 +281,12 @@ int zyl_camera_start_preview(ZylCameraService *cam,
     if (xioctl(cam->fd, VIDIOC_S_FMT, &fmt) < 0) {
         fprintf(stderr, "[Camera] VIDIOC_S_FMT failed: %s\n",
                 strerror(errno));
+        return -1;
+    }
+    /* S_FMT adjusts instead of failing: a driver may settle on MJPEG etc.,
+       and everything below reads the frame as YUYV */
+    if (fmt.fmt.pix.pixelformat != V4L2_PIX_FMT_YUYV) {
+        fprintf(stderr, "[Camera] Driver does not do YUYV\n");
         return -1;
     }
 
@@ -324,8 +339,8 @@ int zyl_camera_capture(ZylCameraService *cam, const char *output_path) {
     }
 
     /* Whitelist: only allow writes under /data/camera/ */
-    if (strncmp(output_path, "/data/camera/", 13) != 0) {
-        fprintf(stderr, "[Camera] Rejected output path outside /data/camera/: %s\n",
+    if (strncmp(output_path, CAMERA_CAPTURE_DIR, strlen(CAMERA_CAPTURE_DIR)) != 0) {
+        fprintf(stderr, "[Camera] Rejected output path outside " CAMERA_CAPTURE_DIR ": %s\n",
                 output_path);
         return -1;
     }
@@ -343,9 +358,13 @@ int zyl_camera_capture(ZylCameraService *cam, const char *output_path) {
     buf.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     buf.memory = V4L2_MEMORY_MMAP;
 
-    if (xioctl(cam->fd, VIDIOC_DQBUF, &buf) < 0) {
-        fprintf(stderr, "[Camera] VIDIOC_DQBUF failed: %s\n",
-                strerror(errno));
+    /* The fd is non-blocking: right after STREAMON no frame is there yet */
+    struct pollfd pfd = { .fd = cam->fd, .events = POLLIN };
+    errno = 0;
+    if (poll(&pfd, 1, FRAME_TIMEOUT_MS) <= 0 ||
+        xioctl(cam->fd, VIDIOC_DQBUF, &buf) < 0) {
+        fprintf(stderr, "[Camera] No frame: %s\n",
+                errno ? strerror(errno) : "timed out");
         if (!was_streaming) zyl_camera_stop_preview(cam);
         return -1;
     }
@@ -448,6 +467,7 @@ bool zyl_camera_is_open(const ZylCameraService *cam) {
 }
 
 /* ─── 데몬 진입점 ─── */
+#ifndef ZYL_TEST
 
 static GMainLoop *g_cam_loop = NULL;
 
@@ -471,3 +491,4 @@ int main(int argc, char *argv[]) {
     zyl_camera_destroy(cam);
     return 0;
 }
+#endif /* ZYL_TEST */

@@ -38,14 +38,14 @@ static gboolean on_wakelock_timeout(gpointer data) {
 
     /* 웨이크락 강제 해제 */
     zyl_power_release_wakelock(svc, tag);
-
-    g_free(ctx);
-    return G_SOURCE_REMOVE;
+    return G_SOURCE_REMOVE;                       /* the source frees ctx */
 }
 
 /* ─── 웨이크락 획득 ─── */
 int zyl_power_acquire_wakelock(ZylPowerService *svc, const char *tag) {
     if (!svc || !tag || svc->wakelock_count >= MAX_WAKELOCKS) return -1;
+    /* The timeout finds the lock by this tag again: one it cannot hold whole never expires */
+    if (strlen(tag) >= sizeof(((WakelockTimeoutCtx *)NULL)->tag)) return -1;
 
     /* 중복 체크 */
     for (int i = 0; i < svc->wakelock_count; i++) {
@@ -59,8 +59,8 @@ int zyl_power_acquire_wakelock(ZylPowerService *svc, const char *tag) {
     WakelockTimeoutCtx *ctx = g_new(WakelockTimeoutCtx, 1);
     ctx->svc = svc;
     g_strlcpy(ctx->tag, tag, sizeof(ctx->tag));
-    svc->wakelock_timers[slot] = g_timeout_add_seconds(WAKELOCK_TIMEOUT_SEC,
-        on_wakelock_timeout, ctx);
+    svc->wakelock_timers[slot] = g_timeout_add_seconds_full(G_PRIORITY_DEFAULT,
+        WAKELOCK_TIMEOUT_SEC, on_wakelock_timeout, ctx, g_free);
 
     svc->wakelock_count++;
     g_message("[Power] Wakelock acquired: %s (total: %d, timeout: %ds)",
@@ -94,6 +94,10 @@ void zyl_power_release_wakelock(ZylPowerService *svc, const char *tag) {
             svc->wakelocks[last]      = NULL;
             svc->wakelock_timers[last] = 0;
             g_message("[Power] Wakelock released: %s (remaining: %d)", tag, svc->wakelock_count);
+            /* The last one gone: what it held off counts down again */
+            if (svc->wakelock_count > 0) return;
+            if (svc->state == ZYL_POWER_STATE_ACTIVE) reset_idle_timers(svc);
+            else if (svc->state == ZYL_POWER_STATE_SCREEN_OFF) zyl_power_request_screen_off(svc);
             return;
         }
     }

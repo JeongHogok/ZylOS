@@ -2,7 +2,7 @@
 # [Clean Architecture] Infrastructure Layer - Test Runner
 #
 # 역할: Zyl OS 단위 테스트 빌드 정의
-# 수행범위: gesture detection, manifest parsing, notification service 테스트
+# 수행범위: 서비스·WAM·HAL·라이브러리 단위 테스트, 사설 버스 종단 테스트
 # 의존방향: gio-2.0, json-glib-1.0, 각 테스트 대상 소스 파일
 # SOLID: SRP — 테스트 빌드 구성만 담당
 # ──────────────────────────────────────────────────────────
@@ -289,6 +289,176 @@ test('manifest-scan',
   executable('test-manifest-scan',
     'test_manifest_scan.c',
     dependencies: [gio_dep, json_glib_dep],
+  )
+)
+
+# ─── Services without a test before (credential, user, storage, input, power,
+#     display, camera, location, usb, logger, accessibility, audio, bluetooth,
+#     device) ───
+
+# Test: keychain — AES-256-GCM round trip, tampered/truncated files and a
+# wrong passphrase refused, unsafe or path-truncating names refused
+test('credential',
+  executable('test-credential',
+    'test_credential.c',
+    dependencies: [gio_dep, dependency('openssl', version: '>=1.1.1')],
+    c_args: ['-DZYL_TEST'],
+  )
+)
+
+# Test: users — one owner, uid and data dir per user, limit, switch, remove
+# wipes data, a new user after restart does not inherit a forgotten one's files
+test('user',
+  executable('test-user',
+    'test_user.c',
+    dependencies: [gio_dep],
+    c_args: ['-DZYL_TEST'],
+  )
+)
+
+# Test: storage — statvfs of the data partition (fallback /), GetUsage fields
+# the same as the emulator's { total, used, available, percent }
+test('storage',
+  executable('test-storage',
+    'test_storage.c',
+    include_directories: include_directories('../runtime/hal'),
+    dependencies: [gio_dep],
+    c_args: ['-DZYL_TEST'],
+  )
+)
+
+# Test: power state machine — screen off/on keeps the user's brightness, idle
+# dims to 30% then off, wakelocks (hold, cap,
+# 10-minute expiry, timers resume after the last release), doze → suspend →
+# back to the state it left (fake sysfs; StateChanged over a socket-pair D-Bus)
+test('power',
+  executable('test-power',
+    'test_power.c',
+    '../runtime/services/power/power_cpu.c',
+    '../runtime/services/power/power_display.c',
+    '../runtime/services/power/power_wakelock.c',
+    '../runtime/hal/hal_display.c',
+    '../runtime/hal/hal_cpu.c',
+    '../runtime/hal/hal_battery.c',
+    include_directories: include_directories('../runtime/hal'),
+    dependencies: [gio_dep],
+    c_args: ['-DZYL_TEST', '-DZYL_SYSFS_ROOT="/tmp/zyl-power-test"'],
+  )
+)
+
+# Test: input — evdev keys to ZylHardwareKey and HardwareKeyPressed (press
+# only), what is not a hardware key, the virtual keyboard's layouts
+test('input',
+  executable('test-input',
+    'test_input.c',
+    dependencies: [gio_dep],
+    c_args: ['-DZYL_TEST'],
+  )
+)
+
+# Test: display — modes of the connected output, rotation and scale limits,
+# auto-rotate (steady half second, lying flat keeps it, malformed SensorEvent)
+test('display',
+  executable('test-display',
+    'test_display.c',
+    '../runtime/hal/hal_display.c',
+    include_directories: include_directories('../runtime/hal'),
+    dependencies: [gio_dep, meson.get_compiler('c').find_library('m')],
+    c_args: ['-DZYL_TEST', '-DZYL_SYSFS_ROOT="/tmp/zyl-display-test"'],
+  )
+)
+
+# Test: camera — only a capture device opens, captures stay in the camera
+# directory, the first frame is waited for, buffers do not pile up across
+# captures, a driver that will not do YUYV is refused (fake V4L2 driver)
+test('camera',
+  executable('test-camera', 'test_camera.c', '../runtime/hal/hal_torch.c',
+    include_directories: include_directories('../runtime/hal'),
+    dependencies: [gio_dep],
+    c_args: ['-DZYL_TEST'],
+  )
+)
+
+# Test: location — malformed, huge, NaN/inf or off-the-globe GeoIP/Wi-Fi
+# answers give no fix, gpsd's unknown fields never reach apps as NaN,
+# GPS > Wi-Fi > GeoIP fallback, geofence limits and enter/exit.
+# Built like the service: curl and gpsd when the system has them
+_libcurl_dep = dependency('libcurl', required: false)
+_libgps_dep = dependency('libgps', required: false)
+if _libcurl_dep.found()
+  test('location',
+    executable('test-location', 'test_location.c',
+      dependencies: [gio_dep, _libcurl_dep, _libgps_dep, dependency('threads'),
+                     meson.get_compiler('c').find_library('m')],
+      c_args: ['-DZYL_TEST', '-DHAVE_CURL'] + (_libgps_dep.found() ? ['-DHAVE_GPSD'] : []),
+    )
+  )
+endif
+
+# Test: USB gadget modes — only the function links change, charging really
+# unbinds, a failed bind or no controller is a failure, unknown names refused,
+# connection from the UDC state (fake configfs and UDC class)
+test('usb',
+  executable('test-usb', 'test_usb.c',
+    dependencies: [gio_dep],
+    c_args: ['-DZYL_TEST'],
+  )
+)
+
+# Test: logger — one valid JSON line per entry whatever the message (control
+# characters, a huge one, UTF-8 cut at the limit), no crash report faked by a
+# message, a fatal signal still kills, rotation at the size limit keeping five
+# old logs, the filter level across a restart
+test('logger',
+  executable('test-logger',
+    'test_logger.c',
+    dependencies: [gio_dep, json_glib_dep],
+    c_args: ['-DZYL_TEST'],
+  )
+)
+
+# Test: accessibility over a peer D-Bus — font scale range (NaN refused),
+# StateChanged, screen reader start, spoken text never an espeak-ng option
+# (fake espeak-ng/orca/at-spi2-registryd)
+test('accessibility',
+  executable('test-accessibility',
+    'test_accessibility.c',
+    dependencies: [gio_dep],
+    c_args: ['-DZYL_TEST'],
+  )
+)
+
+# Test: sound policy over a peer D-Bus — volume clamping, stream names, silent
+# mode (key clicks quiet, alerts sound, restored from Settings), mute, the
+# vibration setting (fake Audio/Vibrator HAL, fake Settings)
+test('audio',
+  executable('test-audio',
+    'test_audio.c',
+    include_directories: include_directories('../runtime/hal'),
+    dependencies: [gio_dep, dependency('threads')],
+    c_args: ['-DZYL_TEST'],
+  )
+)
+
+# Test: Bluetooth device list — fields, unreadable list, the 64 cap, a name
+# cut inside a character (fake BT HAL)
+test('bluetooth',
+  executable('test-bluetooth',
+    'test_bluetooth.c',
+    include_directories: include_directories('../runtime/hal'),
+    dependencies: [gio_dep],
+    c_args: ['-DZYL_TEST'],
+  )
+)
+
+# Test: device info — the board's values and their format, the first connected
+# output's preferred mode, unknowns left empty (fake Board/Display HAL)
+test('device',
+  executable('test-device',
+    'test_device.c',
+    include_directories: include_directories('../runtime/hal'),
+    dependencies: [gio_dep],
+    c_args: ['-DZYL_TEST'],
   )
 )
 

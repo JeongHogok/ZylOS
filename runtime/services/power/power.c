@@ -136,6 +136,7 @@ static void handle_power_method(GDBusConnection *conn, const gchar *sender,
     } else if (g_strcmp0(method, "ScreenOn") == 0) {
         zyl_power_request_screen_on(svc);
         g_dbus_method_invocation_return_value(inv, NULL);
+
     } else if (g_strcmp0(method, "Suspend") == 0) {
         zyl_power_request_suspend(svc);
         g_dbus_method_invocation_return_value(inv, NULL);
@@ -273,6 +274,7 @@ int zyl_power_request_suspend(ZylPowerService *svc) {
         return -1;
     }
 
+    ZylPowerState was = svc->state;
     transition_state(svc, ZYL_POWER_STATE_SUSPEND);
 
     /*
@@ -287,8 +289,8 @@ int zyl_power_request_suspend(ZylPowerService *svc) {
     /* logind holds the inhibitors and runs the sleep hooks */
     logind_call("Suspend");
 
-    /* 리쥼 후 여기로 돌아옴 */
-    transition_state(svc, ZYL_POWER_STATE_ACTIVE);
+    /* Back to the state it left: a screen that was off is still dark after resume */
+    transition_state(svc, was);
     return 0;
 }
 
@@ -318,6 +320,7 @@ int zyl_power_request_reboot(ZylPowerService *svc) {
 
 /* ─── 데몬 진입점 ─── */
 
+#ifndef ZYL_TEST
 static GMainLoop *g_power_loop = NULL;
 
 static gboolean on_signal_power(gpointer data) {
@@ -348,3 +351,4 @@ int main(int argc, char *argv[]) {
     zyl_power_destroy(svc);
     return 0;
 }
+#endif /* ZYL_TEST */

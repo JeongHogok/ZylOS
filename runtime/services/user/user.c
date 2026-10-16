@@ -182,13 +182,18 @@ int zyl_user_add(ZylUserService *svc, const char *name, ZylUserType type,
     }
 
     ZylUserProfile *u = &svc->users[svc->user_count];
-    u->uid = svc->next_uid++;
+    /* Accounts are not persisted but their data dirs are: a dir already on disk
+       is a forgotten account's — never hand it to a new one (the owner keeps its own) */
+    struct stat st;
+    do {
+        u->uid = svc->next_uid++;
+        snprintf(u->data_dir, sizeof(u->data_dir), "%s/%u", ZYL_USER_DATA_ROOT, u->uid);
+    } while (type != ZYL_USER_TYPE_OWNER && stat(u->data_dir, &st) == 0);
     snprintf(u->name, sizeof(u->name), "%s", name);
     u->type = type;
     u->created_at = (uint64_t)time(NULL);
     u->last_login_at = 0;
     u->is_active = false;
-    snprintf(u->data_dir, sizeof(u->data_dir), "%s/%u", ZYL_USER_DATA_ROOT, u->uid);
 
     if (!create_user_data(u->uid)) {
         return -1;
@@ -287,6 +292,7 @@ int zyl_user_switch(ZylUserService *svc, uint32_t uid) {
 }
 
 /* ─── 데몬 진입점 ─── */
+#ifndef ZYL_TEST
 int main(int argc, char *argv[]) {
     (void)argc; (void)argv;
 
@@ -303,3 +309,4 @@ int main(int argc, char *argv[]) {
     zyl_user_destroy(svc);
     return 0;
 }
+#endif /* ZYL_TEST */
