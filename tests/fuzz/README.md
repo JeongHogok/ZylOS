@@ -38,20 +38,7 @@ echo '../../etc/passwd' > corpus/fs_path/seed2.txt
 
 ## CI Integration
 
-Add to `.github/workflows/build.yml`:
-
-```yaml
-  fuzz:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build and run fuzzers (short run)
-        run: |
-          cd tests/fuzz
-          for f in fuzz_*.c; do
-            name="${f%.c}"
-            clang -g -O1 -fsanitize=fuzzer,address "$f" -o "$name"
-            mkdir -p "corpus/$name"
-            "./$name" "corpus/$name" -max_len=4096 -runs=10000
-          done
-```
+Already wired: the `fuzz` job in `.github/workflows/native.yml` builds every
+`fuzz_*.c` with `-fsanitize=fuzzer,address` and runs it for 10000 iterations.
+Run it locally with `tools/ci-local.sh fuzz` (natively — ASan does not work
+under amd64 emulation on an ARM host).

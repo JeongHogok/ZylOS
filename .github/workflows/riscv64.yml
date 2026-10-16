@@ -1,0 +1,87 @@
+# ──────────────────────────────────────────────────────────
+# [Clean Architecture] Infrastructure Layer - CI
+#
+# 역할: riscv64 레인 — 실기기와 같은 arch·HAL 백엔드로 교차 빌드·조립·부팅
+# 수행범위: board/generic-riscv64 교차 빌드, 2단계 부트스트랩, QEMU 부팅 후 zyl-selftest
+# 의존방향: debian:trixie(privileged — binfmt), crossbuild-essential-riscv64, QEMU
+# SOLID: SRP — 이 관심사만. 어떤 경로가 이 검사를 부르는지는 아래 paths 가
+#        유일한 출처다 (원격 PR 과 tools/ci-local.sh 가 같은 목록을 읽는다)
+# ──────────────────────────────────────────────────────────
+name: riscv64
+# PR 은 paths 에 걸린 변경이 있을 때만, main 은 머지마다 전부 돈다
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - 'runtime/**'
+      - 'compositor/**'
+      - 'system/**'
+      - 'board/generic-riscv64/**'
+      - 'board/meson.build'
+      - 'meson.build'
+      - 'meson_options.txt'
+      - 'tools/cross/**'
+      - 'tools/build-image.sh'
+      - 'tools/run-qemu.sh'
+      - 'tools/zyl-selftest'
+      - '.github/workflows/riscv64.yml'
+# 같은 PR 에 새 커밋이 오면 이전 커밋의 런은 취소한다. main 은 끝까지 검증한다
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  # ─── riscv64: same architecture and HAL backend as the device, no board ───
+  # The emulator board builds for the host arch with the HAL emulator backend,
+  # so it cannot see what breaks on riscv64. This lane cross-builds, assembles
+  # a riscv64 rootfs (2-stage debootstrap through binfmt) and boots it.
+  qemu-boot-riscv64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    container:
+      image: debian:trixie
+      # privileged: binfmt_misc 등록이 필요하다 — 2단계 부트스트랩이 riscv64
+      # 바이너리를 호스트에서 실행한다
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install cross toolchain, riscv64 libraries, image and QEMU tools
+        run: |
+          dpkg --add-architecture riscv64
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            meson ninja-build pkgconf python3 binutils \
+            crossbuild-essential-riscv64 libglib2.0-dev-bin wayland-protocols hwdata \
+            libglib2.0-dev:riscv64 libjson-glib-dev:riscv64 libgtk-4-dev:riscv64 \
+            libwebkitgtk-6.0-dev:riscv64 libssl-dev:riscv64 libcurl4-openssl-dev:riscv64 \
+            libzip-dev:riscv64 libwayland-dev:riscv64 libxkbcommon-dev:riscv64 \
+            libpixman-1-dev:riscv64 libinput-dev:riscv64 libdrm-dev:riscv64 \
+            libegl-dev:riscv64 libgles-dev:riscv64 libdisplay-info-dev:riscv64 \
+            libseat-dev:riscv64 libgps-dev:riscv64 libwlroots-0.18-dev:riscv64 \
+            debootstrap systemd systemd-sysv fdisk e2fsprogs dbus ca-certificates \
+            qemu-user-static qemu-system-misc
+      - name: Register the riscv64 binfmt handler
+        run: |
+          mountpoint -q /proc/sys/fs/binfmt_misc \
+            || mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc || true
+          # 데비안은 binfmt 등록을 systemd 로 옮겼다 — 컨테이너에는 systemd 가
+          # 돌지 않으니 그 도구를 직접 불러 /usr/lib/binfmt.d/*.conf 를 읽힌다
+          /usr/lib/systemd/systemd-binfmt || true
+          # 조건은 등록 흔적이 아니라 실행 여부다 — 호스트 커널에 이미 등록된
+          # 핸들러(F 플래그)로 돌아가는 환경에서는 컨테이너에 흔적이 없다
+          echo 'int main(void){return 0;}' > /tmp/rv-probe.c
+          riscv64-linux-gnu-gcc -static /tmp/rv-probe.c -o /tmp/rv-probe
+          /tmp/rv-probe \
+            || { echo "✗ riscv64 바이너리를 실행할 수 없다 — 2단계 부트스트랩이 불가능하다"; exit 1; }
+      - name: Cross-build (board=generic-riscv64, profile=phone)
+        run: |
+          meson setup builddir-rv64 --prefix=/usr \
+            --cross-file tools/cross/riscv64.ini \
+            -Dboard=generic-riscv64 -Dprofile=phone
+          ninja -C builddir-rv64
+      - name: Build the riscv64 disk image
+        run: bash tools/build-image.sh --builddir builddir-rv64 --out out/rv64 --with-kernel
+      - name: Boot it in QEMU and run the self test
+        run: |
+          bash tools/run-qemu.sh --image out/rv64/zyl-os-generic-riscv64-phone.img \
+            --builddir builddir-rv64 --check --timeout 1800
