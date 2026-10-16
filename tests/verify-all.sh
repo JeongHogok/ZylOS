@@ -637,6 +637,18 @@ fi
 # ═════════════════════════════════════════════════════════════
 # [E] 전체 — 기술부채 탐지
 # ═════════════════════════════════════════════════════════════
+# S-limit: StartLimit* 는 [Unit] 의 키다 — [Service] 에 두면 systemd 가 조용히 무시한다
+#   (9개 유닛이 그렇게 효력 없는 한도를 적어 두었다). 넣는다면 [Unit] 에, 핵심 서비스가
+#   한도에 걸려 영구 정지하는 것까지 생각하고
+MISPLACED_LIMIT=$(for u in "$ROOT"/system/*.service; do
+  awk -v F="$(basename "$u")" '/^\[/{s=$0} /^StartLimit/{ if (s!="[Unit]") print "  " F ": " s " " $0 }' "$u"
+done)
+if [ -n "$MISPLACED_LIMIT" ]; then
+  fail "StartLimit* 가 [Unit] 밖에 있음(systemd 가 무시):\n$MISPLACED_LIMIT"
+else
+  pass "StartLimit* 는 [Unit] 에만"
+fi
+
 section "전체 — 기술부채 + 코드 위생"
 
 # E-domain: Zyl 서버 주소는 우리가 가진 zyl-os.com 한 도메인만. 등록 안 된 주소

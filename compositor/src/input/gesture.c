@@ -169,7 +169,10 @@ static void handle_touch_down(struct wl_listener *listener, void *data)
     struct zyl_server *server =
         wl_container_of(listener, server, touch_down);
     struct wlr_touch_down_event *event = data;
-    zyl_power_user_activity();
+    /* A dark screen: a pocket, not the user — no app gets it, nor does it keep
+       the screen awake (PIN tries, a dialled emergency number, the camera) */
+    if (!zyl_os_screen_on()) return;
+    zyl_os_user_activity();
 
     double lx, ly;
     wlr_cursor_absolute_to_layout_coords(server->cursor, &event->touch->base,
@@ -311,6 +314,7 @@ static void handle_touch_frame(struct wl_listener *listener, void *data)
 
 static void pointer_moved(struct zyl_server *server, uint32_t time_msec)
 {
+    if (!zyl_os_screen_on()) return;   /* as a touch on a dark screen */
     double sx, sy;
     struct wlr_surface *surface =
         surface_at(server, server->cursor->x, server->cursor->y, &sx, &sy);
@@ -348,7 +352,8 @@ static void handle_cursor_button(struct wl_listener *listener, void *data)
     struct zyl_server *server =
         wl_container_of(listener, server, cursor_button);
     struct wlr_pointer_button_event *event = data;
-    zyl_power_user_activity();
+    if (!zyl_os_screen_on()) return;   /* as a touch on a dark screen */
+    zyl_os_user_activity();
     wlr_seat_pointer_notify_button(server->seat,
         event->time_msec, event->button, event->state);
 }
@@ -412,7 +417,7 @@ static void handle_keyboard_key(struct wl_listener *listener, void *data)
 {
     struct zyl_keyboard *kb = wl_container_of(listener, kb, key);
     struct wlr_keyboard_key_event *event = data;
-    zyl_power_user_activity();
+    zyl_os_user_activity();
     wlr_seat_set_keyboard(kb->server->seat, kb->wlr_keyboard);
     wlr_seat_keyboard_notify_key(kb->server->seat, event->time_msec,
                                  event->keycode, event->state);

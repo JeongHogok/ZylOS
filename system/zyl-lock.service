@@ -7,8 +7,6 @@ Type=simple
 ExecStart=/usr/bin/zyl-lock
 Restart=on-failure
 RestartSec=10
-StartLimitBurst=5
-StartLimitIntervalSec=120
 TimeoutStopSec=5
 
 # Holds only the PIN hash and failure count in /data/lock

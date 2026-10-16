@@ -266,7 +266,8 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    /* ── Gestures + input (module) ── */
+    /* ── Gestures + input (module) — a dark screen's touches reach no app ── */
+    zyl_os_bus_watch_screen();
     gesture_init_handlers(&server);
     gesture_register_listeners(&server);
 

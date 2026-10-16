@@ -9,8 +9,6 @@ BusName=org.zylos.Settings
 ExecStart=/usr/bin/zyl-settings
 Restart=on-failure
 RestartSec=10
-StartLimitBurst=5
-StartLimitIntervalSec=120
 TimeoutStopSec=5
 
 # Keeps only /data/settings; no network

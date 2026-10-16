@@ -7,8 +7,6 @@ Type=simple
 ExecStart=/usr/bin/zyl-netstats
 Restart=on-failure
 RestartSec=10
-StartLimitBurst=5
-StartLimitIntervalSec=120
 TimeoutStopSec=5
 
 # Reads /sys/class/net counters, drives nmcli for the mobile data limit
