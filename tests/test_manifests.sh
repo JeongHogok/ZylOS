@@ -58,15 +58,17 @@ for it in m.get('intents', []):
         print(f'BAD intent {it} in $f (action zyl.intent.action.{sorted(ACTIONS)}, mimeType type/subtype)')
         sys.exit(1)
 ff = m.get('formFactors')
-if ff is not None:
-    valid = set('$VALID_FF'.split(',')) | {'*'}
-    if not isinstance(ff, list) or not ff:
-        print(f'formFactors must be a non-empty list in $f')
-        sys.exit(1)
-    bad = [x for x in ff if x not in valid]
-    if bad:
-        print(f'UNKNOWN formFactors {bad} in $f (valid: {sorted(valid)})')
-        sys.exit(1)
+if ff is None:
+    print(f'formFactors missing in $f (* for every form factor — CLAUDE.md rule 11)')
+    sys.exit(1)
+valid = set('$VALID_FF'.split(',')) | {'*'}
+if not isinstance(ff, list) or not ff:
+    print(f'formFactors must be a non-empty list in $f')
+    sys.exit(1)
+bad = [x for x in ff if x not in valid]
+if bad:
+    print(f'UNKNOWN formFactors {bad} in $f (valid: {sorted(valid)})')
+    sys.exit(1)
 " || ERRORS=$((ERRORS + 1))
 done
 
