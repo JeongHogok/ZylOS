@@ -2,7 +2,8 @@
  * [Clean Architecture] Infrastructure Layer - Library
  *
  * 역할: 서비스가 설정 한 범주를 따라가기 — settings_follow.h 의 구현
- * 수행범위: 이름 감시(나타나면 Get, 사라지면 NULL), CategoryChanged 구독(그 범주면 Get)
+ * 수행범위: 이름 감시(나타나면 Get, 사라지면 — 한 번도 답이 없었을 때만 — NULL),
+ *           CategoryChanged 구독(그 범주면 Get)
  * 의존방향: gio (D-Bus)
  * SOLID: SRP — 설정 범주 구독만
  * ────────────────────────────────────────────────────────── */
@@ -21,6 +22,7 @@ struct ZylSettingsFollow {
     gpointer         data;
     guint            sub, watch;
     GCancellable    *cancel;           /* an answer on its way when unfollowed */
+    bool             answered;         /* the settings service has answered once */
 };
 typedef ZylSettingsFollow Follow;
 
@@ -28,6 +30,7 @@ static void on_get(GObject *src, GAsyncResult *res, gpointer data) {
     GVariant *r = g_dbus_connection_call_finish(G_DBUS_CONNECTION(src), res, NULL);
     if (!r) return;                     /* unfollowed (cancelled), or gone: the vanish tells */
     Follow *f = data;
+    f->answered = true;
     GVariant *values = g_variant_get_child_value(r, 0);
     f->fn(values, f->data);
     g_variant_unref(values);
@@ -58,7 +61,7 @@ static void on_appeared(GDBusConnection *conn, const gchar *name, const gchar *o
 static void on_vanished(GDBusConnection *conn, const gchar *name, gpointer data) {
     (void)conn; (void)name;
     Follow *f = data;
-    f->fn(NULL, f->data);
+    if (!f->answered) f->fn(NULL, f->data);   /* a restart keeps what it last said */
 }
 
 ZylSettingsFollow *zyl_settings_follow(GDBusConnection *conn, const char *category,

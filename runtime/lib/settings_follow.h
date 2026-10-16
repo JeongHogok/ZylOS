@@ -16,14 +16,16 @@
 #include <stdbool.h>
 #include <gio/gio.h>
 
-/* values: the category as a{sv} (borrowed), or NULL while there is no settings
-   service to ask — then the service runs on its defaults */
+/* values: the category as a{sv} (borrowed), or NULL when no settings service
+   has ever answered — then the service runs on its defaults. Once one has, the
+   settings service restarting keeps the last values (airplane mode does not
+   switch the radio on for the moment it is gone) */
 typedef void (*ZylSettingsFn)(GVariant *values, gpointer data);
 
 typedef struct ZylSettingsFollow ZylSettingsFollow;
 
 /* Calls fn now (once the settings service answers, or with NULL when it is
-   not on the bus) and after every change of category, until unfollowed */
+   not on the bus and never was) and after every change of category, until unfollowed */
 ZylSettingsFollow *zyl_settings_follow(GDBusConnection *conn, const char *category,
                                        ZylSettingsFn fn, gpointer data);
 

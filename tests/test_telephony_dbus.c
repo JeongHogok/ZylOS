@@ -536,7 +536,7 @@ int main(void) {
     zyl_calllog_free(probe);
     printf("PASS\n");
 
-    printf("  %-56s ", "airplane mode: modem off, on for a dialled call, off after");
+    printf("  %-56s ", "airplane mode: off, on for a dialled call, kept across a settings restart");
     g_airplane = TRUE;
     GDBusConnection *settings = fake_settings(g_addr);   /* appears: the service reads it */
     assert(wait_value(&g_enabled, 0));
@@ -547,10 +547,18 @@ int main(void) {
     emit_call(mm, 4, 7);
     assert(wait_for(&g_call_signals, before + 2));
     assert(wait_value(&g_enabled, 0));                    /* the call over, off again */
-    g_airplane = FALSE;                                   /* switched back: on */
+    int enables = g_atomic_int_get(&g_enables);
+    g_dbus_connection_close_sync(settings, NULL, NULL);   /* the settings service restarts */
+    g_object_unref(settings);
+    spin(400);
+    assert(g_atomic_int_get(&g_enables) == enables);      /* the radio stays off meanwhile */
+    g_airplane = FALSE;                                   /* back, switched off airplane mode */
+    settings = fake_settings(g_addr);
+    assert(wait_value(&g_enabled, 1));
+    g_airplane = TRUE;                                    /* and a change while it runs */
     g_dbus_connection_emit_signal(settings, NULL, "/org/zylos/Settings", "org.zylos.Settings",
         "CategoryChanged", g_variant_new("(s)", "connectivity"), NULL);
-    assert(wait_value(&g_enabled, 1));
+    assert(wait_value(&g_enabled, 0));
     printf("PASS\n");
 
     zyl_telephony_destroy(svc);

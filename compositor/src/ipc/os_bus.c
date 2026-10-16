@@ -91,6 +91,17 @@ static gpointer screen_watch(gpointer data)
     g_dbus_connection_signal_subscribe(bus, "org.zylos.PowerManager", "org.zylos.PowerManager",
         "StateChanged", "/org/zylos/PowerManager", NULL, G_DBUS_SIGNAL_FLAGS_NONE,
         on_power_state, NULL, NULL);
+    /* Now, as well: a compositor restarted while the screen is off starts dark */
+    GVariant *r = g_dbus_connection_call_sync(bus, "org.zylos.PowerManager", "/org/zylos/PowerManager",
+        "org.zylos.PowerManager", "GetState", NULL, G_VARIANT_TYPE("(a{sv})"),
+        G_DBUS_CALL_FLAGS_NONE, 2000, NULL, NULL);
+    if (r) {
+        GVariant *d = g_variant_get_child_value(r, 0);
+        gboolean on = TRUE;
+        if (g_variant_lookup(d, "screenOn", "b", &on)) g_atomic_int_set(&screen_on, on);
+        g_variant_unref(d);
+        g_variant_unref(r);
+    }
     GMainLoop *loop = g_main_loop_new(ctx, FALSE);
     g_main_loop_run(loop);   /* for the compositor's life */
     return NULL;
