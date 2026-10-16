@@ -8,7 +8,8 @@
 # ──────────────────────────────────────────────────────────
 
 gio_dep = dependency('gio-2.0')
-json_glib_dep = dependency('json-glib-1.0')
+# json-glib and the one way runtime/ reads its string members (runtime/lib/zyl_json.h)
+json_glib_dep = [dependency('json-glib-1.0'), zyl_json_dep]
 # The shared runtime code (runtime/lib): tests compile its sources themselves
 # so their own -D paths apply, and need its headers for what they include
 _lib_inc = include_directories('../runtime/lib')
@@ -88,7 +89,7 @@ test('telephony-dbus',
     '../runtime/services/telephony/cbs.c',
     '../runtime/services/telephony/calllog.c',
     include_directories: include_directories('../runtime/services/telephony'),
-    dependencies: [gio_dep],
+    dependencies: [gio_dep, zyl_settings_follow_dep],
   )
 )
 
@@ -388,7 +389,7 @@ if _libcurl_dep.found()
   test('location',
     executable('test-location', 'test_location.c',
       dependencies: [gio_dep, _libcurl_dep, _libgps_dep, dependency('threads'),
-                     meson.get_compiler('c').find_library('m')],
+                     meson.get_compiler('c').find_library('m'), zyl_settings_follow_dep],
       c_args: ['-DZYL_TEST', '-DHAVE_CURL'] + (_libgps_dep.found() ? ['-DHAVE_GPSD'] : []),
     )
   )

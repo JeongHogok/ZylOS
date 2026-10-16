@@ -19,14 +19,15 @@ window.ZylSecurity = (function () {
     '.system'
   ];
 
+  /* Judged on the path's parts, not its spelling — "./.system/x", ".//.SYSTEM"
+     and ".system/x" are the same place (the host's disk may not tell case apart);
+     as the device's fs.c and the container's filesystem.rs */
   function isProtectedPath(path) {
-    var normalized = (path || '').replace(/^\/+/, '');
-    for (var i = 0; i < PROTECTED_PATHS.length; i++) {
-      if (normalized === PROTECTED_PATHS[i] || normalized.indexOf(PROTECTED_PATHS[i] + '/') === 0) {
-        return true;
-      }
-    }
-    return false;
+    var normalized = String(path || '').split('/').filter(function (p) {
+      return p !== '' && p !== '.';
+    }).join('/').toLowerCase();
+    if (normalized === 'settings.json') return true;
+    return normalized.indexOf('.credentials') === 0 || normalized.indexOf('.system') === 0;
   }
 
   /**

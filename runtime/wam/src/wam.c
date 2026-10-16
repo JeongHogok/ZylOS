@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <json-glib/json-glib.h>
+#include "zyl_json.h"
 #ifdef ZYL_USE_WEBKIT2GTK
 #include <webkit2/webkit2.h>
 #else
@@ -268,7 +269,7 @@ static void wam_switch_app(ZylWam *wam, int direction) {
     g_hash_table_iter_init(&it, wam->instances);
     while (g_hash_table_iter_next(&it, &key, &value)) {
         ZylAppInstance *inst = value;
-        if (inst->manifest && inst->manifest->launcher) g_ptr_array_add(ids, key);
+        if (inst->manifest && zyl_manifest_in_launcher(inst->manifest)) g_ptr_array_add(ids, key);
     }
     g_ptr_array_sort(ids, compare_ids);
     int at = -1;
@@ -294,7 +295,7 @@ static void post_recents(ZylWam *wam) {
     g_hash_table_iter_init(&it, wam->instances);
     while (g_hash_table_iter_next(&it, &key, &value)) {
         ZylAppInstance *inst = value;
-        if (inst->manifest && inst->manifest->launcher) g_ptr_array_add(ids, key);
+        if (inst->manifest && zyl_manifest_in_launcher(inst->manifest)) g_ptr_array_add(ids, key);
     }
     g_ptr_array_sort(ids, compare_ids);
     JsonArray *apps = json_array_new();
@@ -327,7 +328,7 @@ static void wam_handle_panel_request(const char        *type,
                                      gpointer           user_data) {
     (void)type; (void)reply_ctx;
     ZylWam *wam = user_data;
-    const char *mode = json_object_get_string_member_with_default(msg_obj, "mode", "bar");
+    const char *mode = zyl_json_str(msg_obj, "mode", "bar");
     if (manifest) wam_set_panel(wam, zyl_shell_panel_mode(&wam->shell, manifest->id, mode));
 }
 
@@ -339,7 +340,7 @@ static void wam_handle_recents_close(const char        *type,
                                      gpointer           user_data) {
     (void)type; (void)reply_ctx;
     ZylWam *wam = user_data;
-    const char *app_id = json_object_get_string_member_with_default(msg_obj, "appId", NULL);
+    const char *app_id = zyl_json_str(msg_obj, "appId", NULL);
     if (!manifest || strcmp(manifest->id, ZYL_SHELL_SYSTEM_UI) != 0 || !app_id ||
         !zyl_shell_may_close(&wam->shell, app_id) || !wam->iface.get_instance(&wam->iface, app_id))
         return;
@@ -355,7 +356,7 @@ static void wam_handle_unlock(const char        *type,
                               gpointer           user_data) {
     (void)type; (void)reply_ctx;
     ZylWam *wam = user_data;
-    const char *app_id = json_object_get_string_member_with_default(msg_obj, "appId", NULL);
+    const char *app_id = zyl_json_str(msg_obj, "appId", NULL);
     const char *to = manifest ? zyl_shell_unlock(&wam->shell, manifest->id, app_id) : NULL;
     if (!to) {
         g_warning("WAM: unlock from %s refused", manifest ? manifest->id : "(unknown)");
@@ -399,7 +400,7 @@ static void wam_handle_app_launch(const char        *type,
         if (reply_ctx && reply_ctx->callback_id >= 0) zyl_bridge_reply_error(reply_ctx, "Permission denied");
         return;
     }
-    const char *target = json_object_get_string_member_with_default(msg_obj, "appId", NULL);
+    const char *target = zyl_json_str(msg_obj, "appId", NULL);
     if (!target) {
         /* Missing appId — resolve the promise with an error so it doesn't leak */
         if (reply_ctx && reply_ctx->callback_id >= 0) zyl_bridge_reply_error(reply_ctx, "missing appId");
@@ -502,7 +503,7 @@ static void deliver(ZylWam *wam, const char *from_app, const char *target,
 /* The handler gets the intent; a PICK waits for its answer, from that handler only */
 static void hand_over(ZylWam *wam, const char *source, const char *target,
                       JsonObject *intent, const char *request_code) {
-    if (g_strcmp0(json_object_get_string_member_with_default(intent, "action", ""), ZYL_INTENT_PICK) == 0) {
+    if (g_strcmp0(zyl_json_str(intent, "action", ""), ZYL_INTENT_PICK) == 0) {
         result_clear();
         g_result.token = g_strdup_printf("r%u", g_next_token++);
         g_result.requester = g_strdup(source);
@@ -527,7 +528,7 @@ static void wam_handle_intent_start(const char        *type,
 
     GPtrArray *targets = zyl_intent_resolve(wam->manifests, manifest->id, intent);
     JsonObject *handed = zyl_intent_deliverable(intent, manifest->id);
-    const char *request_code = json_object_get_string_member_with_default(intent, "requestCode", "");
+    const char *request_code = zyl_json_str(intent, "requestCode", "");
     if (targets->len == 0) {
         post_to(reply_ctx->webview, "intent.none", zyl_intent_object_node(json_object_new()));
     } else if (targets->len == 1) {
@@ -567,8 +568,8 @@ static void wam_handle_intent_chosen(const char        *type,
     (void)type; (void)reply_ctx;
     ZylWam *wam = user_data;
     JsonObject *msg = msg_obj;
-    const char *token = json_object_get_string_member_with_default(msg, "token", NULL);
-    const char *app_id = json_object_get_string_member_with_default(msg, "appId", NULL);
+    const char *token = zyl_json_str(msg, "token", NULL);
+    const char *app_id = zyl_json_str(msg, "appId", NULL);
     if (!manifest || !token || !app_id || !g_choice.token ||
         strcmp(token, g_choice.token) != 0 || strcmp(manifest->id, g_choice.source) != 0) return;
     for (guint i = 0; i < g_choice.targets->len; i++) {
@@ -596,7 +597,7 @@ static void wam_handle_intent_result(const char        *type,
     (void)type; (void)reply_ctx;
     ZylWam *wam = user_data;
     JsonObject *msg = msg_obj;
-    const char *token = json_object_get_string_member_with_default(msg, "token", NULL);
+    const char *token = zyl_json_str(msg, "token", NULL);
     if (!manifest || !token || !g_result.token || strcmp(token, g_result.token) != 0 ||
         strcmp(manifest->id, g_result.handler) != 0) return;
     JsonObject *result = json_object_new();
@@ -1455,6 +1456,9 @@ static void on_service_event(const char *service, const char *signal,
     char *started = show && !wam->iface.get_instance(&wam->iface, show) ? g_strdup(show) : NULL;
     if (show && !wam_open(wam, show))
         g_warning("WAM: %s.%s needs %s, which could not start", service, signal, show);
+    /* A call ringing or an emergency alert in a dark pocket: the screen comes on
+       (the shell keeps them in front of the lock screen, zyl_shell_screen_on) */
+    if (show && strcmp(service, "telephony") == 0 && !wam->screen_on) power_call("ScreenOn");
     GHashTableIter it;
     gpointer key, value;
     g_hash_table_iter_init(&it, wam->instances);

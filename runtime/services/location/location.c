@@ -5,7 +5,9 @@
  * 역할: 위치 서비스 매니저 — 프로바이더 융합, 지오펜스, D-Bus, 공개 API
  * 수행범위: GPS/GeoIP/WiFi 프로바이더 조율, 앱별 지오펜스 진입/이탈 감지
  *          (앱 삭제 때 정리), D-Bus 시그널/메서드, 주기적 폴링 스레드
- *          (멈춤 요청에 즉시 깨어남), 서비스 생명주기
+ *          (멈춤 요청에 즉시 깨어남), 서비스 생명주기, 사용자의 위치 스위치
+ *          (설정 location.enabled — 끄면 프로바이더에 묻지 않고 앱에 위치를 주지 않음).
+ *          로그에 좌표를 남기지 않는다
  * 의존방향: location_internal.h, gio/gio.h
  * SOLID: SRP — 프로바이더 조율 및 서비스 관리만 담당
  *         (개별 프로바이더는 location_gps.c, location_geoip.c, location_wifi.c)
@@ -42,8 +44,7 @@ static void emit_geofence_signal(ZylLocationService *svc,
         entered ? "GeofenceEnter" : "GeofenceExit",
         g_variant_new("(ss)", e->fence.tag, e->app),
         NULL);
-    g_message("[Location] Geofence %s: app='%s' tag='%s'",
-              entered ? "ENTER" : "EXIT", e->app, e->fence.tag);
+    g_message("[Location] Geofence %s: app='%s'", entered ? "ENTER" : "EXIT", e->app);
 }
 
 /* ─── 지오펜스 주기적 체크 (폴링 스레드에서 호출) ─── */
@@ -136,7 +137,10 @@ static void *location_poll_thread(void *arg) {
 
     do {
         ZylLocation loc = {0};
-        bool got_fix = read_fix(svc, &loc);
+        pthread_mutex_lock(&svc->lock);
+        bool off = svc->off;
+        pthread_mutex_unlock(&svc->lock);
+        bool got_fix = !off && read_fix(svc, &loc);
 
         /* 융합: GPS/WiFi/네트워크 결합 (GPS > WiFi > GeoIP 우선순위) */
         if (got_fix) {
@@ -232,8 +236,10 @@ static void handle_location_method(GDBusConnection *conn, const gchar *sender,
 
     if (g_strcmp0(method, "GetLastKnown") == 0) {
         pthread_mutex_lock(&svc->lock);
-        ZylLocation loc = svc->last_known;
+        ZylLocation loc = svc->last_known;     /* cleared while switched off */
+        bool off = svc->off;
         pthread_mutex_unlock(&svc->lock);
+        if (off) snprintf(loc.provider, sizeof(loc.provider), "off");
 
         g_dbus_method_invocation_return_value(inv,
             g_variant_new("(ddddddts)",
@@ -282,6 +288,21 @@ static void on_app_removed(GDBusConnection *conn, const gchar *sender, const gch
     zyl_location_forget_app(data, app_id);
 }
 
+/* The user's switch: off forgets the last place too — no app reads it afterwards */
+static void on_location_setting(GVariant *values, gpointer data) {
+    ZylLocationService *svc = data;
+    bool off = !zyl_settings_bool(values, "enabled", true);
+    pthread_mutex_lock(&svc->lock);
+    bool changed = off != svc->off;
+    svc->off = off;
+    if (off) {
+        memset(&svc->last_known, 0, sizeof(svc->last_known));
+        svc->has_fix = false;
+    }
+    pthread_mutex_unlock(&svc->lock);
+    if (changed) g_message("[Location] Switched %s by the user", off ? "off" : "on");
+}
+
 static void on_location_bus_acquired(GDBusConnection *conn, const gchar *name,
                                       gpointer data) {
     (void)name;
@@ -297,6 +318,7 @@ static void on_location_bus_acquired(GDBusConnection *conn, const gchar *name,
     g_dbus_connection_signal_subscribe(conn, "org.zylos.AppStore", "org.zylos.AppStore",
         "AppRemoved", "/org/zylos/AppStore", NULL, G_DBUS_SIGNAL_FLAGS_NONE,
         on_app_removed, svc, NULL);
+    svc->follow = zyl_settings_follow(conn, "location", on_location_setting, svc);
     g_message("[Location] D-Bus registered: %s", ZYL_LOCATION_DBUS_NAME);
 }
 
@@ -352,6 +374,7 @@ void zyl_location_destroy(ZylLocationService *svc) {
     if (!svc) return;
 
     stop_poll_thread(svc);
+    zyl_settings_unfollow(svc->follow);
 
 #ifdef HAVE_GPSD
     gpsd_disconnect(svc);
@@ -465,8 +488,7 @@ int zyl_location_add_geofence(ZylLocationService *svc, const char *app,
     svc->geofence_count++;
 
     pthread_mutex_unlock(&svc->lock);
-    g_message("[Location] Geofence added: app='%s' tag='%s' lat=%.4f lon=%.4f r=%.0fm",
-              app, fence->tag, fence->lat, fence->lon, fence->radius_m);
+    g_message("[Location] Geofence added: app='%s'", app);   /* not where: a place the user goes */
     return 0;
 }
 

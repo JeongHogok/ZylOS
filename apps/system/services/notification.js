@@ -81,24 +81,52 @@
       _announce('zyl:notification-dismissed', notif.id);
     }
 
+    /* What one app may hold — as the device service (notification.c), whose
+       GetActive reply must stay under the bus limit: each field in characters,
+       and 50 at a time per app (the 51st is refused, as on Android) */
+    var LIMITS = { title: 128, body: 1024, icon: 64, label: 64, actions: 3, perApp: 50 };
+
+    function _bounded(text, max) {
+      var s = (typeof text === 'string') ? text : '';
+      var out = '', n = 0;
+      for (var i = 0; i < s.length && n < max; i++, n++) {
+        var c = s.charCodeAt(i);
+        /* a surrogate pair is one character */
+        if (c >= 0xD800 && c <= 0xDBFF && i + 1 < s.length) { out += s.charAt(i) + s.charAt(i + 1); i++; }
+        else out += s.charAt(i);
+      }
+      return out;
+    }
+
+    function _activeCount(appId) {
+      var n = 0;
+      Object.keys(_activeMap).forEach(function (k) { if (_activeMap[k].appId === appId) n++; });
+      return n;
+    }
+
     function _postInternal(p, actions) {
       /* DND filtering: drop non-urgent when DND active */
       if (_dndEnabled && (p.priority || 1) < 3) {
         return { suppressed: true, reason: 'dnd' };
       }
+      if (_activeCount(p.appId || '') >= LIMITS.perApp) {
+        return { suppressed: true, reason: 'limit' };
+      }
 
       var notif = {
         id: _nextId++,
         appId: p.appId || '',
-        channelId: p.channelId || '',
-        title: p.title || '',
-        body: p.body || '',
-        icon: p.icon || '',
+        channelId: _bounded(p.channelId, LIMITS.label),
+        title: _bounded(p.title, LIMITS.title),
+        body: _bounded(p.body, LIMITS.body),
+        icon: _bounded(p.icon, LIMITS.icon),
         priority: p.priority || 1,
         timestamp: Date.now(),
-        group: p.group || '',
+        group: _bounded(p.group, LIMITS.label),
         persistent: !!p.persistent,
-        actions: actions || []
+        actions: (Array.isArray(actions) ? actions : []).slice(0, LIMITS.actions).map(function (a) {
+          return { label: _bounded(a && a.label, LIMITS.label), actionId: _bounded(a && a.actionId, LIMITS.label) };
+        })
       };
 
       _activeMap[notif.id] = notif;

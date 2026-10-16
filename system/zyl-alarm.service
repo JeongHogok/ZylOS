@@ -8,8 +8,6 @@ BusName=org.zylos.AlarmService
 ExecStart=/usr/bin/zyl-alarm
 Restart=on-failure
 RestartSec=5
-StartLimitBurst=5
-StartLimitIntervalSec=60
 TimeoutStopSec=5
 
 # Security hardening

@@ -6,8 +6,14 @@
  *           통화 기록(통화 상태 전이에서 직접 기록 — 부재중 포함, 앱이 쓰지 않음;
  *           판정·보관은 calllog.c),
  *           Cell Broadcast 채널 설정·수신 (분류·기록은 cbs.c),
- *           NetworkManager 모바일 데이터 연결 (APN 자동, IPv4v6, CLAT, 로밍)
- * 의존방향: telephony.h, gio/gio.h, ModemManager D-Bus API
+ *           NetworkManager 모바일 데이터 연결 (APN 자동, IPv4v6, CLAT, 로밍).
+ *           모뎀은 나타나고 사라지는 대로 다시 찾고(ModemManager 가 늦게 떠도, 다시
+ *           떠도), 켜는 것도 여기서 — 비행기 모드(설정 connectivity.airplaneMode)면
+ *           끄되 사용자가 거는 통화 동안만 켠다(긴급전화는 늘 나가야 한다).
+ *           새 통화는 Voice.CallAdded 로 안다(ModemManager 는 착신의 RINGING 을
+ *           통화 객체를 버스에 올리기 전에 정해서 그 StateChanged 는 오지 않는다).
+ *           로그에 번호·문자 내용을 남기지 않는다
+ * 의존방향: telephony.h, gio/gio.h, ModemManager D-Bus API, runtime/lib settings_follow
  * SOLID: SRP — 전화/메시징 상태 관리만 담당
  * ────────────────────────────────────────────────────────── */
 
@@ -20,6 +26,7 @@
 #include <string.h>
 #include <time.h>
 #include <gio/gio.h>
+#include "settings_follow.h"
 
 /* ─── 내부 상수 ─── */
 #define MAX_MODEM_PATH  256
@@ -34,6 +41,8 @@
 #define ZYL_CALLLOG_FILE "/data/telephony/calllog"
 #endif
 #define MM_CALL_IFACE   "org.freedesktop.ModemManager1.Call"
+#define MM_OM_IFACE     "org.freedesktop.DBus.ObjectManager"
+#define REFRESH_DELAY_MS 500     /* a modem comes with several interfaces at once */
 
 /* ─── 내부 구조체 ─── */
 #define MAX_MODEMS 4  /* Support up to 4 modems / SIM slots */
@@ -61,6 +70,16 @@ struct ZylTelephonyService {
     guint mm_sms_sub;                /* SMS 시그널 구독 */
     guint mm_cbs_sub;                /* Cell Broadcast 수신 */
     guint mm_cbm_props_sub;          /* 여러 조각 CBM 의 수신 완료 */
+    guint mm_voice_sub;              /* Voice.CallAdded — a call that is new (incoming) */
+    guint mm_objects_sub;            /* ObjectManager: modems coming and going */
+    guint mm_name_watch;             /* ModemManager itself starting or restarting */
+    guint refresh_source;            /* a rescan waiting to run */
+
+    /* Airplane mode (settings connectivity.airplaneMode): the modems are off but
+       for a call the user dials. radio_known: settings answered (or there are none) */
+    bool airplane, radio_known;
+    ZylSettingsFollow *connectivity;
+    GCancellable *cancel;            /* modem calls still on their way at destroy */
 
     ZylCbsStore *cbs;                /* 재난문자 기록 */
 
@@ -107,6 +126,8 @@ static GVariant *calllog_variant(const ZylTelephonyService *svc) {
     return g_variant_new("(aa{sv})", &list);
 }
 
+static void apply_radio(ZylTelephonyService *svc);
+
 /* ─── 통화 상태 전환 ─── */
 static void transition_call_state(ZylTelephonyService *svc,
                                    ZylCallState new_state,
@@ -133,8 +154,7 @@ static void transition_call_state(ZylTelephonyService *svc,
                            (int64_t)svc->call_start_ms, (int64_t)svc->call_answered_ms,
                            (int64_t)now_ms());
 
-    g_message("[Telephony] Call: %d -> %d (%s)", old, new_state,
-              number ? number : "");
+    g_message("[Telephony] Call: %d -> %d", old, new_state);   /* no number in the log */
 
     /* D-Bus 시그널 */
     if (svc->zyl_bus) {
@@ -146,6 +166,8 @@ static void transition_call_state(ZylTelephonyService *svc,
                            svc->active_call_number),
             NULL);
     }
+    /* A call dialled in airplane mode had the radio on: it goes off again */
+    if (new_state == ZYL_CALL_STATE_IDLE) apply_radio(svc);
 }
 
 /* ─── D-Bus 프로퍼티 읽기 유틸 ─── */
@@ -316,6 +338,57 @@ static void read_modem_state(ZylTelephonyService *svc) {
     }
 }
 
+/*
+ * MM_CALL_STATE:
+ *   0=Unknown, 1=Dialing, 2=RingingOut, 3=RingingIn,
+ *   4=Active, 5=Held, 6=Waiting, 7=Terminated
+ */
+static ZylCallState from_mm_call_state(gint32 s) {
+    switch (s) {
+    case 1: case 2: return ZYL_CALL_STATE_DIALING;
+    case 3:         return ZYL_CALL_STATE_RINGING;
+    case 4:         return ZYL_CALL_STATE_ACTIVE;
+    case 5: case 6: return ZYL_CALL_STATE_HELD;
+    default:        return ZYL_CALL_STATE_IDLE;
+    }
+}
+
+/* A call's new state; one that begins here (an incoming one) brings its number */
+static void call_reached(ZylTelephonyService *svc, const char *call_path, ZylCallState zyl_state) {
+    char *number = NULL;
+    if (svc->call_state == ZYL_CALL_STATE_IDLE && zyl_state != ZYL_CALL_STATE_IDLE) {
+        GVariant *v = get_dbus_property(svc->system_bus, MM_DBUS_NAME, call_path,
+                                        MM_CALL_IFACE, "Number");
+        if (v) {
+            number = g_variant_dup_string(v, NULL);
+            g_variant_unref(v);
+        }
+    }
+    transition_call_state(svc, zyl_state, number);
+    g_free(number);
+}
+
+/* ─── ModemManager 시그널: 새 통화 ───
+   ModemManager sets an incoming call RINGING_IN before it puts the call on the
+   bus, so that StateChanged never reaches anyone: the call is learnt of here,
+   with the state it has. A second call while one is going on (waiting) is not
+   modelled — it would overwrite the one in progress. */
+static void on_mm_call_added(GDBusConnection *conn, const gchar *sender,
+                             const gchar *object_path, const gchar *interface_name,
+                             const gchar *signal_name, GVariant *parameters, gpointer data) {
+    ZylTelephonyService *svc = data;
+    (void)conn; (void)sender; (void)object_path; (void)interface_name; (void)signal_name;
+    if (!g_variant_is_of_type(parameters, G_VARIANT_TYPE("(o)"))) return;
+    const gchar *call_path = NULL;
+    g_variant_get(parameters, "(&o)", &call_path);
+    if (svc->call_state != ZYL_CALL_STATE_IDLE) return;
+    GVariant *st = get_dbus_property(svc->system_bus, MM_DBUS_NAME, call_path,
+                                     MM_CALL_IFACE, "State");
+    gint32 mm_state = st && g_variant_is_of_type(st, G_VARIANT_TYPE_INT32) ? g_variant_get_int32(st) : 0;
+    if (st) g_variant_unref(st);
+    call_reached(svc, call_path, from_mm_call_state(mm_state));
+}
+
 /* ─── ModemManager 시그널: 통화 상태 변경 ─── */
 static void on_mm_call_state_changed(GDBusConnection *conn,
                                       const gchar *sender,
@@ -325,40 +398,14 @@ static void on_mm_call_state_changed(GDBusConnection *conn,
                                       GVariant *parameters,
                                       gpointer data) {
     ZylTelephonyService *svc = data;
-    (void)conn; (void)sender; (void)object_path; (void)interface_name;
+    (void)conn; (void)sender; (void)interface_name;
 
     if (g_strcmp0(signal_name, "StateChanged") != 0) return;
 
     gint32 old_state, new_state;
     guint32 reason;
     g_variant_get(parameters, "(iiu)", &old_state, &new_state, &reason);
-
-    /*
-     * MM_CALL_STATE:
-     *   0=Unknown, 1=Dialing, 2=RingingOut, 3=RingingIn,
-     *   4=Active, 5=Held, 6=Waiting, 7=Terminated
-     */
-    ZylCallState zyl_state;
-    switch (new_state) {
-    case 1: case 2: zyl_state = ZYL_CALL_STATE_DIALING; break;
-    case 3:         zyl_state = ZYL_CALL_STATE_RINGING; break;
-    case 4:         zyl_state = ZYL_CALL_STATE_ACTIVE; break;
-    case 5: case 6: zyl_state = ZYL_CALL_STATE_HELD; break;
-    default:        zyl_state = ZYL_CALL_STATE_IDLE; break;
-    }
-
-    /* A call that begins here (an incoming one) brings its number with it */
-    char *number = NULL;
-    if (svc->call_state == ZYL_CALL_STATE_IDLE && zyl_state != ZYL_CALL_STATE_IDLE) {
-        GVariant *v = get_dbus_property(svc->system_bus, MM_DBUS_NAME, object_path,
-                                        MM_CALL_IFACE, "Number");
-        if (v) {
-            number = g_variant_dup_string(v, NULL);
-            g_variant_unref(v);
-        }
-    }
-    transition_call_state(svc, zyl_state, number);
-    g_free(number);
+    call_reached(svc, object_path, from_mm_call_state(new_state));
 }
 
 /* ─── ModemManager 시그널: SMS 수신 ─── */
@@ -391,7 +438,7 @@ static void on_mm_sms_added(GDBusConnection *conn,
     const char *from = num_v ? g_variant_get_string(num_v, NULL) : "unknown";
     const char *body = text_v ? g_variant_get_string(text_v, NULL) : "";
 
-    g_message("[Telephony] SMS received from %s: %.40s...", from, body);
+    g_message("[Telephony] SMS received");   /* not who, not what: codes arrive by SMS */
 
     /* D-Bus 시그널 */
     if (svc->zyl_bus) {
@@ -464,7 +511,9 @@ static void on_mm_cbm_props(GDBusConnection *conn, const gchar *sender,
     if (changed) g_variant_unref(changed);
 }
 
-static void setup_cell_broadcast(ZylTelephonyService *svc) {
+/* Which channels the modems listen to — again after each comes on: a disabled
+   modem cannot take them */
+static void set_cbs_channels(ZylTelephonyService *svc) {
     GVariantBuilder ch;
     g_variant_builder_init(&ch, G_VARIANT_TYPE("a(uu)"));
     for (int i = 0; ZYL_CBS_CHANNELS[i].to; i++)
@@ -476,7 +525,10 @@ static void setup_cell_broadcast(ZylTelephonyService *svc) {
             MM_CB_IFACE, "SetChannels", g_variant_new("(@a(uu))", channels), NULL,
             G_DBUS_CALL_FLAGS_NONE, 5000, NULL, NULL, NULL);
     g_variant_unref(channels);
+}
 
+static void setup_cell_broadcast(ZylTelephonyService *svc) {
+    set_cbs_channels(svc);
     svc->mm_cbs_sub = g_dbus_connection_signal_subscribe(svc->system_bus,
         MM_DBUS_NAME, MM_CB_IFACE, "Added", NULL, NULL,
         G_DBUS_SIGNAL_FLAGS_NONE, on_mm_cbm_added, svc, NULL);
@@ -593,8 +645,22 @@ static bool write_mobile_data(bool enabled, bool roaming) {
 }
 
 /* ─── ModemManager 시그널 구독 ─── */
+static void unsubscribe_mm_signals(ZylTelephonyService *svc) {
+    guint *subs[] = { &svc->mm_signal_sub, &svc->mm_sms_sub, &svc->mm_cbs_sub,
+                      &svc->mm_cbm_props_sub, &svc->mm_voice_sub };
+    for (size_t i = 0; i < G_N_ELEMENTS(subs); i++) {
+        if (*subs[i]) g_dbus_connection_signal_unsubscribe(svc->system_bus, *subs[i]);
+        *subs[i] = 0;
+    }
+}
+
 static void subscribe_mm_signals(ZylTelephonyService *svc) {
     if (!svc->system_bus || !svc->modem_found) return;
+
+    /* 새 통화 (착신) */
+    svc->mm_voice_sub = g_dbus_connection_signal_subscribe(svc->system_bus,
+        MM_DBUS_NAME, MM_VOICE_IFACE, "CallAdded", NULL, NULL,
+        G_DBUS_SIGNAL_FLAGS_NONE, on_mm_call_added, svc, NULL);
 
     /* 통화 상태 변경 */
     svc->mm_signal_sub = g_dbus_connection_signal_subscribe(svc->system_bus,
@@ -614,6 +680,109 @@ static void subscribe_mm_signals(ZylTelephonyService *svc) {
     ensure_mobile_connection();
 
     g_message("[Telephony] Subscribed to ModemManager signals");
+}
+
+/* ─── 모뎀 켜기·끄기 ───
+   ModemManager leaves a modem disabled until asked; NetworkManager asks only to
+   bring mobile data up, so with data off nothing rang. wait: block until done
+   (a call about to be dialled needs the radio first). */
+static void on_modem_enabled(GObject *src, GAsyncResult *res, gpointer data) {
+    GVariant *r = g_dbus_connection_call_finish(G_DBUS_CONNECTION(src), res, NULL);
+    if (!r) return;                  /* failed, or cancelled at destroy: data is gone */
+    g_variant_unref(r);
+    set_cbs_channels(data);
+}
+
+static void set_modems_enabled(ZylTelephonyService *svc, bool on, bool wait) {
+    for (int i = 0; i < svc->modem_count; i++) {
+        if (wait) {
+            GVariant *r = g_dbus_connection_call_sync(svc->system_bus, MM_DBUS_NAME,
+                svc->modem_path[i], MM_MODEM_IFACE, "Enable", g_variant_new("(b)", on), NULL,
+                G_DBUS_CALL_FLAGS_NONE, 30000, NULL, NULL);
+            if (r) g_variant_unref(r);
+        } else {
+            g_dbus_connection_call(svc->system_bus, MM_DBUS_NAME, svc->modem_path[i],
+                MM_MODEM_IFACE, "Enable", g_variant_new("(b)", on), NULL,
+                G_DBUS_CALL_FLAGS_NONE, 30000, svc->cancel, on ? on_modem_enabled : NULL, svc);
+        }
+    }
+}
+
+/* On, unless airplane mode is — a call the user dialled keeps it on until it ends.
+   Nothing before settings answered: at boot in airplane mode the radio stays off. */
+static void apply_radio(ZylTelephonyService *svc) {
+    if (!svc->radio_known || !svc->modem_found) return;
+    set_modems_enabled(svc, !svc->airplane || svc->call_state != ZYL_CALL_STATE_IDLE, false);
+}
+
+static void on_connectivity(GVariant *values, gpointer data) {
+    ZylTelephonyService *svc = data;
+    bool airplane = zyl_settings_bool(values, "airplaneMode", false);
+    bool changed = !svc->radio_known || airplane != svc->airplane;
+    svc->airplane = airplane;
+    svc->radio_known = true;
+    if (changed) {
+        g_message("[Telephony] Airplane mode %s", airplane ? "on" : "off");
+        apply_radio(svc);
+    }
+}
+
+/* ─── 모뎀 다시 찾기 ───
+   ModemManager probes modems after it is on the bus, and a modem that resets
+   comes back under a new path: found once at start, a slow modem meant no calls,
+   SMS or emergency alerts until the next boot. */
+static void refresh_modems(ZylTelephonyService *svc) {
+    unsubscribe_mm_signals(svc);
+    svc->modem_found = find_modems(svc);
+    if (svc->modem_found) {
+        apply_radio(svc);
+        read_modem_state(svc);
+        subscribe_mm_signals(svc);
+    } else {
+        svc->modem_count = 0;
+        svc->state.sim_present = false;
+        g_message("[Telephony] No modem found — sim_present=false");
+    }
+}
+
+static gboolean on_refresh_due(gpointer data) {
+    ZylTelephonyService *svc = data;
+    svc->refresh_source = 0;
+    refresh_modems(svc);
+    return G_SOURCE_REMOVE;
+}
+
+static void schedule_refresh(ZylTelephonyService *svc) {
+    if (!svc->refresh_source)
+        svc->refresh_source = g_timeout_add(REFRESH_DELAY_MS, on_refresh_due, svc);
+}
+
+static void on_mm_objects_changed(GDBusConnection *conn, const gchar *sender,
+                                  const gchar *object_path, const gchar *interface_name,
+                                  const gchar *signal_name, GVariant *parameters, gpointer data) {
+    (void)conn; (void)sender; (void)object_path; (void)interface_name; (void)signal_name;
+    (void)parameters;
+    schedule_refresh(data);
+}
+
+/* ModemManager (re)started: its modems are new objects. At start it is usually
+   there already and its modems found — then nothing to do */
+static void on_mm_appeared(GDBusConnection *conn, const gchar *name, const gchar *owner, gpointer data) {
+    (void)conn; (void)name; (void)owner;
+    ZylTelephonyService *svc = data;
+    if (!svc->modem_found) schedule_refresh(svc);
+}
+
+static void on_mm_vanished(GDBusConnection *conn, const gchar *name, gpointer data) {
+    (void)conn; (void)name;
+    ZylTelephonyService *svc = data;
+    if (!svc->modem_found) return;
+    g_message("[Telephony] ModemManager went away");
+    unsubscribe_mm_signals(svc);
+    svc->modem_found = false;
+    svc->modem_count = 0;
+    svc->state.sim_present = false;
+    transition_call_state(svc, ZYL_CALL_STATE_IDLE, NULL);
 }
 
 /* ─── Zyl D-Bus 인트로스펙션 ─── */
@@ -819,6 +988,7 @@ static void on_telephony_bus_acquired(GDBusConnection *conn, const gchar *name,
 ZylTelephonyService *zyl_telephony_create(void) {
     ZylTelephonyService *svc = g_new0(ZylTelephonyService, 1);
     svc->call_state = ZYL_CALL_STATE_IDLE;
+    svc->cancel = g_cancellable_new();
     /* History is kept even without a modem: alerts received before a SIM swap stay readable */
     svc->cbs = zyl_cbs_store_open(ZYL_ALERTS_FILE);
     svc->calllog = zyl_calllog_open(ZYL_CALLLOG_FILE);
@@ -831,16 +1001,15 @@ ZylTelephonyService *zyl_telephony_create(void) {
         g_clear_error(&err);
     }
 
-    /* 모뎀 탐색 (dual-SIM: 최대 MAX_MODEMS 개) */
+    /* 모뎀 탐색 (dual-SIM: 최대 MAX_MODEMS 개) — now, and whenever they change */
     if (svc->system_bus) {
-        svc->modem_found = find_modems(svc);
-        if (svc->modem_found) {
-            read_modem_state(svc);
-            subscribe_mm_signals(svc);
-        } else {
-            g_message("[Telephony] No modem found — sim_present=false");
-            svc->state.sim_present = false;
-        }
+        refresh_modems(svc);
+        svc->mm_objects_sub = g_dbus_connection_signal_subscribe(svc->system_bus,
+            MM_DBUS_NAME, MM_OM_IFACE, NULL, MM_DBUS_PATH, NULL,
+            G_DBUS_SIGNAL_FLAGS_NONE, on_mm_objects_changed, svc, NULL);
+        svc->mm_name_watch = g_bus_watch_name_on_connection(svc->system_bus, MM_DBUS_NAME,
+            G_BUS_NAME_WATCHER_FLAGS_NONE, on_mm_appeared, on_mm_vanished, svc, NULL);
+        svc->connectivity = zyl_settings_follow(svc->system_bus, "connectivity", on_connectivity, svc);
     }
 
     /* Zyl D-Bus (시스템 버스) 등록 */
@@ -854,15 +1023,15 @@ ZylTelephonyService *zyl_telephony_create(void) {
 void zyl_telephony_destroy(ZylTelephonyService *svc) {
     if (!svc) return;
 
+    g_cancellable_cancel(svc->cancel);
+    g_object_unref(svc->cancel);
+    zyl_settings_unfollow(svc->connectivity);
+    if (svc->refresh_source) g_source_remove(svc->refresh_source);
+    if (svc->mm_name_watch) g_bus_unwatch_name(svc->mm_name_watch);
     if (svc->system_bus) {
-        if (svc->mm_signal_sub)
-            g_dbus_connection_signal_unsubscribe(svc->system_bus, svc->mm_signal_sub);
-        if (svc->mm_sms_sub)
-            g_dbus_connection_signal_unsubscribe(svc->system_bus, svc->mm_sms_sub);
-        if (svc->mm_cbs_sub)
-            g_dbus_connection_signal_unsubscribe(svc->system_bus, svc->mm_cbs_sub);
-        if (svc->mm_cbm_props_sub)
-            g_dbus_connection_signal_unsubscribe(svc->system_bus, svc->mm_cbm_props_sub);
+        unsubscribe_mm_signals(svc);
+        if (svc->mm_objects_sub)
+            g_dbus_connection_signal_unsubscribe(svc->system_bus, svc->mm_objects_sub);
         g_object_unref(svc->system_bus);
     }
 
@@ -879,7 +1048,10 @@ int zyl_telephony_dial(ZylTelephonyService *svc, const char *number) {
         return -1;
     }
 
-    g_message("[Telephony] Dialing: %s", number);
+    g_message("[Telephony] Dialing");   /* no number in the log */
+    /* Airplane mode keeps the radio off, but a call the user dials goes out —
+       an emergency number must always reach the network. Back off when it ends. */
+    if (svc->airplane) set_modems_enabled(svc, true, true);
     transition_call_state(svc, ZYL_CALL_STATE_DIALING, number);
 
     /* ModemManager Voice.CreateCall */
@@ -1045,7 +1217,7 @@ int zyl_telephony_send_sms(ZylTelephonyService *svc,
         return -1;
     }
 
-    g_message("[Telephony] Sending SMS to %s (len=%zu)", number, strlen(body));
+    g_message("[Telephony] Sending SMS (len=%zu)", strlen(body));
 
     /* Messaging.Create -> SMS 오브젝트 생성 */
     GVariantBuilder builder;

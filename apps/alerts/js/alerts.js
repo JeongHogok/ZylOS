@@ -73,10 +73,19 @@
     document.getElementById('alert-text').textContent = alert.text;   /* never as HTML */
   }
 
+  /* Felt as well as heard — the attention signal's on/off as a vibration
+     (the audio service follows the user's vibration setting) */
+  function vibrateAttention() {
+    var pattern = [];
+    for (var round = 0; round < 2; round++) pattern = pattern.concat(PATTERN);
+    ZylBridge.requestService('audio', 'vibrate', { pattern: pattern });
+  }
+
   function show(alert) {
     showing = alert;
     render(alert);
     playAttentionSignal();
+    vibrateAttention();
     document.getElementById('alert-ok').focus();
   }
 

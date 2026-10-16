@@ -65,6 +65,14 @@
   `ZylPermissions.setAppOverride` 로, 기기는 WAM 이 `CategoryChanged` 시그널을 따라 다시 읽어
   다음 호출부터 거부합니다.
 - 첫 사용 때 묻는 동의 창은 없습니다. 넣을 자리는 [CLAUDE.md](../CLAUDE.md) 규칙 8.
+- **사용자의 스위치는 그 일을 하는 서비스가 지킵니다.** 빠른 설정은 settings 에 쓰기만 하고,
+  서비스가 그 범주를 따라갑니다(`runtime/lib/settings_follow.c`). 위치(`location.enabled`)를
+  끄면 location 서비스는 공급자(GPS·Wi-Fi 조회·GeoIP)에 묻지 않고, 마지막 위치를 잊고, 앱에는
+  provider `off` 만 줍니다(에뮬레이터 `services/location.js` 도 같게). 비행기 모드
+  (`connectivity.airplaneMode`)면 telephony 가 모뎀을 끕니다 — 사용자가 거는 통화 동안만
+  켭니다(긴급전화는 늘 나가야 합니다).
+- 칩 ID(`deviceId`)는 공장 초기화로도 바뀌지 않아 `device.getInfo` 에 싣지 않고, 시스템 앱만
+  부르는 `device.getDeviceId` 로만 줍니다.
 
 ### 웹 플랫폼의 권한 요청
 
@@ -155,7 +163,10 @@
 - 기기는 PIN 을 솔트를 넣은 해시로만 `/data/lock` 에 둡니다(root 전용). 비교는 상수 시간,
   변경·제거는 현재 PIN 확인 뒤입니다.
 - 실패가 쌓이면 대기가 늘어납니다. 대기는 재부팅으로 초기화되지 않고, 대기 중에는 맞는 PIN
-  도 판정하지 않습니다.
+  도 판정하지 않습니다. 시도는 PIN 을 보기 전에 실패로 디스크에 먼저 적고, 적지 못하면
+  (저장소가 가득 참) 시도 자체를 하지 않습니다 — 메모리에만 센 시도는 재시작마다 사라졌습니다.
+- 앱이 `fs` 로 쓰거나 건네받는 파일은 root 가 아닌 몫(`f_bavail`)까지만 씁니다. ext4 가 root
+  에게 남겨 둔 블록은 OS 상태(설정·잠금 시도·메시지)의 몫입니다(`runtime/services/fs/fs.c`).
 - 해시 방식·저장 형식·대기 수치는 `runtime/services/lock/lock.c` 의 머리와 상수가 정합니다.
 - settings 서비스는 `security.pin` 쓰기를 거부합니다.
 - 한계: 하드웨어 키 결합이 없으므로 짧은 PIN 은 해시를 손에 넣으면 오프라인 대입을 막지
@@ -274,15 +285,19 @@ FIT 가 거부되고 롤백되는지. OS 이미지의 검증을 끄는 길은 �
   `/etc/zyl-os/ota-signing-key.pem`(빌드 옵션 `-Dota_public_key`)이 이미지에 있을 것.
   하나라도 없으면 업데이트를 받지 않습니다.
 - **검증**: 서명이 없거나 맞지 않거나 해시가 다른 패키지는 설치하지 않습니다
-  (`runtime/lib/ota_verify.c`). 서버 주소는 https 만 받습니다. 전체 이미지 패키지만
+  (`runtime/lib/ota_verify.c`). 서버 주소는 https 만 받고, 리디렉트도 https 만 따라갑니다.
+  다운로드는 매니페스트의 크기(없으면 4GiB)까지만, `/data` 에 그만큼과 256MiB 여유가 있을
+  때만 시작하고, 실패하면 받던 조각을 지웁니다. 전체 이미지 패키지만
   설치합니다 — 델타·앱만·커널만 패키지는 dm-verity rootfs 와 맞출 수 없어 거부합니다.
 - **설치**: 비활성 슬롯에만 rootfs → verity 트리 → FIT 순서로 씁니다(FIT 는 임시 이름으로
   쓰고 교체). 지금 부팅이 확정 전 시험 부팅이면 설치하지 않습니다 — 돌아갈 슬롯을 덮지
   않기 위해서입니다 (`runtime/services/updater`).
 - **전환**: 모든 기록이 끝난 뒤에만 `zyl_next_slot` 을 지정합니다. 새 슬롯의 부팅은 U-Boot
   의 FIT 서명과 커널의 dm-verity 가 다시 확인합니다.
-- **확정과 롤백**: 부팅 뒤 업데이터는 컴포지터와 WAM 이 떠 있으면 슬롯을 확정하고, 아니면
-  재시작합니다. 부트 정책이 정한 횟수(`board/boot-policy.txt` 의 `zyl_boot_limit`) 안에 확정되지
+- **확정과 롤백**: 부팅 1분 뒤부터 업데이터는 핵심 유닛(컴포지터·WAM·잠금·설정)을 30초
+  간격으로 보고, 두 표본에서 모두 active 이고 같은 실행(재시작 없음)이면 슬롯을 확정합니다.
+  몇 번 봐도(약 3.5분) 안 되면 재시작합니다 — 몇 초마다 죽는 WAM 도 한 번 본 순간에는 떠 있을
+  수 있어서입니다. 부트 정책이 정한 횟수(`board/boot-policy.txt` 의 `zyl_boot_limit`) 안에 확정되지
   않으면 U-Boot 가 이전 슬롯으로 돌아갑니다.
 - 패키지를 만들고 이미지를 준비하는 절차는 [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md#6-ota).
 

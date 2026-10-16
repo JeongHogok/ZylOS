@@ -39,10 +39,10 @@ zyl_confirm=\
 # ── Erase /data: unlocking must not hand the user's data to whoever holds
 #    the device, and a relock must not leave data an unverified OS wrote ──
 zyl_wipe=\
-  echo "ZylOS: erasing user data"; \
-  mmc dev ${zyl_boot_dev}; \
-  part start mmc ${zyl_boot_dev} ${zyl_data} zyl_data_start; \
-  part size mmc ${zyl_boot_dev} ${zyl_data} zyl_data_size; \
+  echo "ZylOS: erasing user data" && \
+  mmc dev ${zyl_boot_dev} && \
+  part start mmc ${zyl_boot_dev} ${zyl_data} zyl_data_start && \
+  part size mmc ${zyl_boot_dev} ${zyl_data} zyl_data_size && \
   mmc erase ${zyl_data_start} ${zyl_data_size}
 
 # ── eFuse: fuse the Root of Trust public key hash, once, on a locked device,

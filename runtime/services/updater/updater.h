@@ -105,7 +105,15 @@ bool zyl_updater_supported(const ZylUpdater *updater);
 /* 지금 부팅이 아직 확정되지 않은 업데이트 시험 부팅인지 (zyl_next_slot == 현재 슬롯) */
 bool zyl_updater_on_trial(const ZylUpdater *updater);
 
-/* 현재 슬롯을 검증 완료로 마킹 (성공적 부팅 후) */
+/* What the units a working session needs look like now — their state and the
+   run they are in (systemctl show); NULL when it cannot be read */
+char *zyl_updater_health_sample(void);
+
+/* Healthy: two samples taken apart are the same and every unit is active —
+   none restarted in between, none down */
+bool zyl_updater_health_stable(const char *before, const char *after);
+
+/* 현재 슬롯을 검증 완료로 마킹 — zyl_updater_health_stable 이 참일 때 */
 bool zyl_updater_mark_verified(ZylUpdater *updater);
 
 /* 이전 슬롯으로 롤백 */

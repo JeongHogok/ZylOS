@@ -50,6 +50,11 @@ bool zyl_seal_bytes_ok(const ZylSeal *s, const char *rel, const void *data, gsiz
 /* The developer of a development build; NULL for the store's own */
 const char *zyl_seal_developer(const ZylSeal *s);
 
+/* Who signed the app unpacked in app_dir: a development build's developer key
+   (its certificate's publicKey), NULL for the store's own. Read, not verified —
+   for an installed app (verified when it was installed) or one just verified */
+char *zyl_seal_signer_key(const char *app_dir);
+
 void zyl_seal_free(ZylSeal *s);
 
 const char *zyl_seal_verdict_message(ZylSealVerdict v);

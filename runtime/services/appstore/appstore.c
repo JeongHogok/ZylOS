@@ -28,6 +28,7 @@
 #include <glib/gstdio.h>
 #include <glib-unix.h>
 #include <json-glib/json-glib.h>
+#include "zyl_json.h"
 
 #include "store_catalog.h"
 #include "store_package.h"
@@ -64,8 +65,8 @@ static bool load_config(StoreConfig *c) {
     c->url = c->key_pem = NULL;
     if (json_parser_load_from_file(p, ZYL_STORE_CONFIG, NULL) && JSON_NODE_HOLDS_OBJECT(json_parser_get_root(p))) {
         JsonObject *o = json_node_get_object(json_parser_get_root(p));
-        const char *url = json_object_get_string_member_with_default(o, "url", "");
-        const char *key = json_object_get_string_member_with_default(o, "publicKey", "");
+        const char *url = zyl_json_str(o, "url", "");
+        const char *key = zyl_json_str(o, "publicKey", "");
         if (url && g_str_has_prefix(url, "https://") && key && *key) {
             c->url = g_strdup(url);
             c->key_pem = g_strdup(key);
@@ -86,7 +87,7 @@ static char *manifest_field(const char *dir, const char *field) {
     JsonParser *p = json_parser_new();
     char *out = NULL;
     if (json_parser_load_from_file(p, path, NULL) && JSON_NODE_HOLDS_OBJECT(json_parser_get_root(p))) {
-        const char *v = json_object_get_string_member_with_default(
+        const char *v = zyl_json_str(
             json_node_get_object(json_parser_get_root(p)), field, NULL);
         out = g_strdup(v);
     }
@@ -109,6 +110,12 @@ static bool is_system_app(const char *id) {
     }
     if (d) g_dir_close(d);
     return found;
+}
+
+/* com.zylos.* is the OS image's: an app taking such an id from the store would
+   hand its container to the system app an update later ships under that id */
+static bool reserved_id(const char *id) {
+    return g_str_has_prefix(id, "com.zylos.");
 }
 
 static char *installed_version(const char *id) {
@@ -172,6 +179,25 @@ static const char *seal_reason(const char *dir, const char *id, const char *vers
     return why;
 }
 
+/* An update only from whoever signed what is installed: another signer's build
+   under the same id — a development build over the store's app, or another
+   developer's — would take over the app's container (its web storage, files,
+   push topic). Removing the app first (which empties the container) is the way */
+static bool signer_changed(const char *id, const char *new_dir) {
+    char *installed = zyl_container_dir(ZYL_APPS_DIR, id, NULL, false);
+    if (!installed || !g_file_test(installed, G_FILE_TEST_IS_DIR)) {
+        g_free(installed);
+        return false;                           /* a first install */
+    }
+    char *was = zyl_seal_signer_key(installed), *now = zyl_seal_signer_key(new_dir);
+    bool changed = g_strcmp0(was, now) != 0;
+    if (changed) g_warning("[AppStore] %s: signed by someone else than the installed app", id);
+    g_free(was);
+    g_free(now);
+    g_free(installed);
+    return changed;
+}
+
 /* What the store last said is revoked: the WAM stops development builds signed by them */
 static void save_revoked(const char *json, gssize len) {
     char **revoked = zyl_store_catalog_revoked(json, len);
@@ -209,13 +235,14 @@ static const char *install_file(const char *rel, const char *store_pem, char **o
         if (!id || !version || !zyl_container_valid_id(id) || !strchr(id, '.') ||
             !zyl_store_check_manifest(dir, id, version, &detail)) why = "invalid_package";
     }
-    if (!why && is_system_app(id)) why = "system_app";
+    if (!why && (is_system_app(id) || reserved_id(id))) why = "system_app";
     if (!why) {
         char *have = installed_version(id);
         if (have && zyl_store_version_cmp(have, version) > 0) why = "up_to_date";   /* never a downgrade */
         g_free(have);
     }
     if (!why) why = seal_reason(dir, id, version, store_pem, false);
+    if (!why && signer_changed(id, dir)) why = "signer_changed";
     if (!why && !swap_in(work, id)) why = "io";
     if (!why) *out_id = g_strdup(id);
     if (detail && why) g_warning("[AppStore] %s: %s", rel ? rel : "", detail);
@@ -335,8 +362,10 @@ static void on_package(Job *j, bool downloaded) {
     else if (!zyl_store_unpack(pkg, dir, &why) || !zyl_store_check_manifest(dir, a->id, a->version, &why)) {
         g_warning("[AppStore] %s: %s", a->id, why);
         why = "invalid_package";
-    } else if (!(why = seal_reason(dir, a->id, a->version, j->cfg.key_pem, true)) &&
-               !swap_in(j->work, a->id)) why = "io";
+    } else if (!(why = seal_reason(dir, a->id, a->version, j->cfg.key_pem, true))) {
+        if (signer_changed(a->id, dir)) why = "signer_changed";
+        else if (!swap_in(j->work, a->id)) why = "io";
+    }
     g_free(pkg);
     g_free(dir);
     if (why) { finish(j, why); return; }
@@ -367,7 +396,7 @@ static void with_catalog(Job *j) {
         if (strcmp(e->id, j->app_id) == 0) a = e;
     }
     if (!a) { finish(j, "not_in_store"); return; }
-    if (is_system_app(a->id)) { finish(j, "system_app"); return; }
+    if (is_system_app(a->id) || reserved_id(a->id)) { finish(j, "system_app"); return; }
     char *have = installed_version(a->id);
     bool current = have && zyl_store_version_cmp(have, a->version) >= 0;   /* never a downgrade */
     g_free(have);

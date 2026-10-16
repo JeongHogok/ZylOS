@@ -42,8 +42,10 @@ done
 [ -n "$units" ] || bad "설치된 zyl 유닛이 없다"
 
 for u in $units; do
-    # 자기점검 자신과 oneshot 보조 유닛은 활성 여부를 묻지 않는다
-    case "$u" in zyl-selftest.service|zyl-apparmor.service) continue ;; esac
+    # 자기점검 자신은 활성 여부를 묻지 않는다. 프로필 로더(zyl-apparmor)는 묻는다 —
+    # RemainAfterExit 라 성공하면 active 다(전에는 빼 두어서 유닛 파일이 깨져 한 번도
+    # 돌지 않은 것을 몰랐다)
+    case "$u" in zyl-selftest.service) continue ;; esac
     state="$(systemctl is-active "$u" 2>/dev/null)"
     # 아직 올라오는 중이면 기다려 준다 — WAM 은 WebKit 과 홈 앱을 띄우느라
     # 느리고(에뮬레이션에서는 더), 시작 중인 유닛은 실패가 아니다
@@ -128,9 +130,10 @@ elif ! active="$(fw_printenv -n zyl_active_slot 2>/dev/null)"; then
     bad "부트로더 환경을 읽지 못한다 (/etc/fw_env.config) — 업데이트·잠금 해제가 꺼진다"
 else
     # 시험 중인 슬롯(zyl_next_slot)이면 업데이터가 건강 검사 뒤 확정할 때까지 기다린다
-    # (업데이터는 기동 후 1분에 확정한다 — 유닛의 TimeoutStartSec 안에서 끝나야 한다)
+    # (업데이터는 기동 후 1분에 첫 표본, 30초마다 비교해 핵심 유닛이 같은 실행으로
+    # 떠 있으면 확정한다 — 유닛의 TimeoutStartSec 안에서 끝나야 한다)
     i=0
-    while [ "$(fw_printenv -n zyl_next_slot 2>/dev/null)" = "$slot" ] && [ $i -lt 110 ]; do
+    while [ "$(fw_printenv -n zyl_next_slot 2>/dev/null)" = "$slot" ] && [ $i -lt 200 ]; do
         sleep 2; i=$((i + 2))
     done
     active="$(fw_printenv -n zyl_active_slot 2>/dev/null)"

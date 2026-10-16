@@ -43,7 +43,7 @@ saveenv() { log "saveenv"; }
 run()     { eval "${!1}"; }
 button()  { [ "${FAKE_BUTTON:-}" = "$1" ]; }
 sleep()   { :; }
-mmc()     { log "mmc $*"; }
+mmc()     { log "mmc $*"; [ -z "${FAKE_MMC_FAIL:-}" ]; }
 virtio()  { log "virtio $*"; }
 part()    { printf -v "$5" '%s' "0x1000"; }
 load()    { log "load $4 from $1 $2"; }
@@ -108,6 +108,10 @@ out=$(boot zyl_unlocked=1 zyl_oem_unlock_allowed=1 FAKE_BUTTON=user)
 check "confirmed unlock erases data, then boots unverified with a warning" "$out" \
   "mmc erase 0x1000 0x1000" "unlocked=1" "seen=1" "allowed=0" "bootm verify=no" "WARNING"
 
+out=$(boot zyl_unlocked=1 zyl_oem_unlock_allowed=1 FAKE_BUTTON=user FAKE_MMC_FAIL=1)
+check "an erase that fails changes no lock — no unverified boot over the old data" "$out" \
+  "could not be erased" "unlocked=0" "seen=0" "bootm verify=yes" "!WARNING"
+
 out=$(boot zyl_unlocked=1 zyl_lock_seen=1)
 check "an unlocked device keeps booting unverified, data kept" "$out" \
   "bootm verify=no" "WARNING" "!mmc erase" "!saveenv"
@@ -151,6 +155,9 @@ check "the same rollback after the try limit" "$out" "slot=a" "next= " "count=0"
 out=$(boot zyl_unlocked=1 zyl_oem_unlock_allowed=1 FAKE_BUTTON=user)
 check "no button: a lock change is never confirmed, nothing erased" "$out" \
   "unlocked=0" "not confirmed" "bootm verify=yes" "!erase"
+
+out=$( load_env; if run zyl_wipe; then builtin echo wiped; else builtin echo refused; fi )
+check "a board that cannot erase says so as a failure, never as done" "$out" "refused"
 
 # ── 부트 정책과 파티션 레이아웃이 같은 사실을 말하는가 ──
 # zyl_boot_part·zyl_data 는 보드의 partitions.conf 가 선언한 번호여야 한다.

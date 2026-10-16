@@ -239,6 +239,18 @@ const char *zyl_seal_verdict_message(ZylSealVerdict v) {
     return "unknown";
 }
 
+char *zyl_seal_signer_key(const char *app_dir) {
+    char *cert_json = seal_path(app_dir, "cert.json");
+    JsonParser *p = NULL;
+    JsonObject *cert = g_file_test(cert_json, G_FILE_TEST_EXISTS) ? load_object(cert_json, &p) : NULL;
+    const char *key = text(cert, "publicKey");
+    /* a certificate without a key is no one's — never the store's */
+    char *out = cert ? g_strdup(key && *key ? key : "?") : NULL;
+    if (p) g_object_unref(p);
+    g_free(cert_json);
+    return out;
+}
+
 char *zyl_seal_store_key(const char *config_path) {
     JsonParser *p = NULL;
     JsonObject *o = load_object(config_path, &p);

@@ -96,6 +96,14 @@ static void test_only_messages_count(void) {
     assert(!push_parse_line("not json", &id, &topic, &msg));
     assert(!push_parse_line("{\"event\":\"message\",\"topic\":\"upa\"}", &id, &topic, &msg));   /* no id */
     assert(!push_parse_line(NULL, &id, &topic, &msg));
+    /* A member of another type is not a crash (json-glib returns NULL for it) */
+    assert(!push_parse_line("{\"event\":\"message\",\"id\":123,\"topic\":\"upa\"}", &id, &topic, &msg));
+    assert(!push_parse_line("{\"event\":7,\"id\":\"k\",\"topic\":\"upa\"}", &id, &topic, &msg));
+    assert(!push_parse_line("{\"event\":\"message\",\"id\":\"k\",\"topic\":[1]}", &id, &topic, &msg));
+    assert(push_parse_line("{\"event\":\"message\",\"id\":\"k4\",\"topic\":\"upa\",\"message\":{}}",
+                           &id, &topic, &msg));
+    assert(strcmp(msg, "") == 0);
+    g_free(id); g_free(topic); g_free(msg);
 }
 
 static void test_registrations_and_since_survive_a_restart(void) {

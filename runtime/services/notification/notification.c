@@ -18,11 +18,25 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <json-glib/json-glib.h>
+#include "zyl_json.h"
 
 #ifndef NOTIF_PERSIST_DIR
 #define NOTIF_PERSIST_DIR  "/data/notifications"
 #endif
 #define NOTIF_PERSIST_FILE NOTIF_PERSIST_DIR "/active.json"
+
+/* What one app may hold. Every active notification goes back whole in one
+   GetActive reply, and a D-Bus message over the bus limit (32 MiB) drops this
+   service's connection — the process exits, and an URGENT one is reloaded from
+   disk to do it again. So each field is bounded, and so is each app's count
+   (the count as Android's, which also refuses the 51st). */
+#define NOTIF_MAX_TITLE     128     /* characters */
+#define NOTIF_MAX_BODY      1024
+#define NOTIF_MAX_ICON      64
+#define NOTIF_MAX_ACTIONS   3
+#define NOTIF_MAX_LABEL     64
+#define NOTIF_MAX_PER_APP   50
+#define NOTIF_MAX_CHANNELS  32      /* per app */
 
 /* ── D-Bus Introspection XML ──────────────────────────────── */
 
@@ -62,11 +76,13 @@ static const char *introspection_xml =
     "    </method>"
     "    <method name='ClearAll'/>"
     "    <method name='RegisterChannel'>"
+    "      <arg direction='in'  type='s' name='caller'/>"
     "      <arg direction='in'  type='s' name='id'/>"
     "      <arg direction='in'  type='s' name='name'/>"
     "      <arg direction='in'  type='i' name='importance'/>"
     "    </method>"
     "    <method name='SetChannelEnabled'>"
+    "      <arg direction='in'  type='s' name='app_id'/>"
     "      <arg direction='in'  type='s' name='channel_id'/>"
     "      <arg direction='in'  type='b' name='enabled'/>"
     "    </method>"
@@ -102,7 +118,7 @@ static const char *introspection_xml =
 
 struct _ZylNotificationService {
     GArray            *notifications;   /* element type: ZylNotification */
-    GHashTable        *channels;        /* key: channel_id (char*), value: ZylNotificationChannel* */
+    GHashTable        *channels;        /* key: channel_key(app, channel), value: ZylNotificationChannel* */
     GDBusConnection   *connection;
     GDBusNodeInfo     *introspection_data;
     guint              bus_owner_id;
@@ -245,11 +261,38 @@ static void emit_signal(ZylNotificationService *service,
 
 /* ── Channel Lookup ───────────────────────────────────────── */
 
+/* A channel is its app's: one table keyed by the bare id let any app register
+   "alarm" or "default" at importance 0 and drop every other app's notifications */
+static char *channel_key(const char *app_id, const char *channel_id)
+{
+    return g_strconcat(app_id, "\x1f", channel_id, NULL);
+}
+
 static ZylNotificationChannel *channel_lookup(ZylNotificationService *service,
+                                              const char             *app_id,
                                               const char             *channel_id)
 {
-    if (!channel_id) return NULL;
-    return g_hash_table_lookup(service->channels, channel_id);
+    if (!app_id || !channel_id) return NULL;
+    char *key = channel_key(app_id, channel_id);
+    ZylNotificationChannel *ch = g_hash_table_lookup(service->channels, key);
+    g_free(key);
+    return ch;
+}
+
+/* text cut to at most max characters (new string) */
+static char *bounded(const char *text, glong max)
+{
+    if (!text) return g_strdup("");
+    return g_utf8_strlen(text, -1) > max ? g_utf8_substring(text, 0, max) : g_strdup(text);
+}
+
+static int app_active_count(ZylNotificationService *service, const char *app_id)
+{
+    int n = 0;
+    for (guint i = 0; i < service->notifications->len; i++)
+        if (g_strcmp0(g_array_index(service->notifications, ZylNotification, i).app_id, app_id) == 0)
+            n++;
+    return n;
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -516,10 +559,10 @@ static void handle_register_channel(ZylNotificationService *service,
                                     GVariant               *parameters,
                                     GDBusMethodInvocation  *invocation)
 {
-    const char *id, *name;
+    const char *caller, *id, *name;
     gint32 importance;
-    g_variant_get(parameters, "(&s&si)", &id, &name, &importance);
-    zyl_notification_channel_register(service, id, name, importance);
+    g_variant_get(parameters, "(&s&s&si)", &caller, &id, &name, &importance);
+    zyl_notification_channel_register(service, caller, id, name, importance);
     g_dbus_method_invocation_return_value(invocation, NULL);
 }
 
@@ -527,10 +570,10 @@ static void handle_set_channel_enabled(ZylNotificationService *service,
                                        GVariant               *parameters,
                                        GDBusMethodInvocation  *invocation)
 {
-    const char *channel_id;
+    const char *app_id, *channel_id;
     gboolean enabled;
-    g_variant_get(parameters, "(&sb)", &channel_id, &enabled);
-    zyl_notification_channel_set_enabled(service, channel_id, (bool)enabled);
+    g_variant_get(parameters, "(&s&sb)", &app_id, &channel_id, &enabled);
+    zyl_notification_channel_set_enabled(service, app_id, channel_id, (bool)enabled);
     g_dbus_method_invocation_return_value(invocation, NULL);
 }
 
@@ -690,16 +733,17 @@ static void persist_load(ZylNotificationService *service) {
             JsonObject *nobj = json_node_get_object(nnode);
 
             ZylNotification notif = {0};
-#define GETSTR(field) \
-    notif.field = json_object_has_member(nobj, #field) ? \
-        g_strdup(json_object_get_string_member(nobj, #field)) : g_strdup("")
+/* As bounded as a new post: a file written before the limits must not bring
+   back the reply too big for the bus. A field of another type reads as "". */
+#define GETSTR(field, max) \
+    notif.field = bounded(zyl_json_str(nobj, #field, ""), max)
             notif.id = json_object_has_member(nobj, "id") ?
                 (uint64_t)json_object_get_int_member(nobj, "id") : 0;
-            GETSTR(app_id);
-            GETSTR(channel_id);
-            GETSTR(title);
-            GETSTR(body);
-            GETSTR(icon);
+            GETSTR(app_id, 255);
+            GETSTR(channel_id, NOTIF_MAX_LABEL);
+            GETSTR(title, NOTIF_MAX_TITLE);
+            GETSTR(body, NOTIF_MAX_BODY);
+            GETSTR(icon, NOTIF_MAX_ICON);
 #undef GETSTR
             notif.timestamp = json_object_has_member(nobj, "timestamp") ?
                 (uint64_t)json_object_get_int_member(nobj, "timestamp") : 0;
@@ -814,7 +858,7 @@ uint64_t zyl_notification_post_with_actions(ZylNotificationService *service,
     }
 
     /* ── Channel-based filtering ──────────────────────────── */
-    ZylNotificationChannel *ch = channel_lookup(service, channel_id);
+    ZylNotificationChannel *ch = channel_lookup(service, app_id, channel_id);
     if (ch) {
         /* Channel disabled -> reject */
         if (!ch->enabled) {
@@ -828,14 +872,21 @@ uint64_t zyl_notification_post_with_actions(ZylNotificationService *service,
         }
     }
 
+    if (app_active_count(service, app_id) >= NOTIF_MAX_PER_APP) {
+        g_message("zyl-notification: %s already shows %d, refusing another",
+                  app_id, NOTIF_MAX_PER_APP);
+        return 0;
+    }
+    if (num_actions > NOTIF_MAX_ACTIONS) num_actions = NOTIF_MAX_ACTIONS;
+
     /* ── Build notification ───────────────────────────────── */
     ZylNotification notif = {0};
     notif.id          = service->next_id++;
     notif.app_id      = g_strdup(app_id);
-    notif.channel_id  = g_strdup(channel_id ? channel_id : "");
-    notif.title       = g_strdup(title);
-    notif.body        = g_strdup(body ? body : "");
-    notif.icon        = g_strdup(icon ? icon : "");
+    notif.channel_id  = bounded(channel_id, NOTIF_MAX_LABEL);
+    notif.title       = bounded(title, NOTIF_MAX_TITLE);
+    notif.body        = bounded(body, NOTIF_MAX_BODY);
+    notif.icon        = bounded(icon, NOTIF_MAX_ICON);
     notif.timestamp   = now_timestamp();
     notif.read        = false;
     notif.persistent  = (priority == ZYL_NOTIFICATION_PRIORITY_URGENT);
@@ -848,8 +899,8 @@ uint64_t zyl_notification_post_with_actions(ZylNotificationService *service,
         notif.actions     = g_new0(ZylNotifAction, num_actions);
         notif.num_actions = num_actions;
         for (int i = 0; i < num_actions; i++) {
-            notif.actions[i].label     = g_strdup(actions[i].label     ? actions[i].label     : "");
-            notif.actions[i].action_id = g_strdup(actions[i].action_id ? actions[i].action_id : "");
+            notif.actions[i].label     = bounded(actions[i].label, NOTIF_MAX_LABEL);
+            notif.actions[i].action_id = bounded(actions[i].action_id, NOTIF_MAX_LABEL);
         }
     }
 
@@ -989,6 +1040,14 @@ void zyl_notification_forget_app(ZylNotificationService *service, const char *ap
         changed = TRUE;
     }
     if (changed) persist_save(service);
+
+    char *prefix = channel_key(app_id, "");
+    GHashTableIter it;
+    gpointer key;
+    g_hash_table_iter_init(&it, service->channels);
+    while (g_hash_table_iter_next(&it, &key, NULL))
+        if (g_str_has_prefix(key, prefix)) g_hash_table_iter_remove(&it);
+    g_free(prefix);
 }
 
 static void on_app_removed(GDBusConnection *conn, const gchar *sender, const gchar *path,
@@ -1005,43 +1064,62 @@ static void on_app_removed(GDBusConnection *conn, const gchar *sender, const gch
  * ══════════════════════════════════════════════════════════════ */
 
 void zyl_notification_channel_register(ZylNotificationService *service,
+                                       const char             *app_id,
                                        const char             *id,
                                        const char             *name,
                                        int                     importance)
 {
-    if (!service || !id || !name) return;
+    if (!service || !app_id || !id || !name) return;
+
+    char *key = channel_key(app_id, id);
+    if (!g_hash_table_contains(service->channels, key)) {
+        char *prefix = channel_key(app_id, "");
+        guint mine = 0;
+        GHashTableIter it;
+        gpointer k;
+        g_hash_table_iter_init(&it, service->channels);
+        while (g_hash_table_iter_next(&it, &k, NULL))
+            if (g_str_has_prefix(k, prefix)) mine++;
+        g_free(prefix);
+        if (mine >= NOTIF_MAX_CHANNELS) {
+            g_message("zyl-notification: %s has %u channels, refusing '%s'", app_id, mine, id);
+            g_free(key);
+            return;
+        }
+    }
 
     /* Clamp importance to valid range */
     if (importance < 0) importance = 0;
     if (importance > 3) importance = 3;
 
     ZylNotificationChannel *ch = g_new0(ZylNotificationChannel, 1);
-    ch->id                = g_strdup(id);
-    ch->name              = g_strdup(name);
+    ch->id                = bounded(id, NOTIF_MAX_LABEL);
+    ch->name              = bounded(name, NOTIF_MAX_LABEL);
     ch->enabled           = true;
     ch->importance        = importance;
     ch->show_on_lockscreen = (importance >= 2);  /* HIGH and URGENT visible on lockscreen */
 
-    /* Insert or replace existing channel */
-    g_hash_table_replace(service->channels, g_strdup(id), ch);
+    /* Insert or replace the app's own channel */
+    g_hash_table_replace(service->channels, key, ch);
 
-    g_info("zyl-notification: registered channel '%s' (%s) importance=%d",
-           id, name, importance);
+    g_info("zyl-notification: %s registered channel '%s' importance=%d",
+           app_id, ch->id, importance);
 }
 
 void zyl_notification_channel_set_enabled(ZylNotificationService *service,
+                                          const char             *app_id,
                                           const char             *channel_id,
                                           bool                    enabled)
 {
-    if (!service || !channel_id) return;
+    if (!service || !app_id || !channel_id) return;
 
-    ZylNotificationChannel *ch = channel_lookup(service, channel_id);
+    ZylNotificationChannel *ch = channel_lookup(service, app_id, channel_id);
     if (ch) {
         ch->enabled = enabled;
-        g_info("zyl-notification: channel '%s' %s",
-               channel_id, enabled ? "enabled" : "disabled");
+        g_info("zyl-notification: %s channel '%s' %s",
+               app_id, channel_id, enabled ? "enabled" : "disabled");
     } else {
-        g_warning("zyl-notification: channel '%s' not found", channel_id);
+        g_warning("zyl-notification: %s has no channel '%s'", app_id, channel_id);
     }
 }
 

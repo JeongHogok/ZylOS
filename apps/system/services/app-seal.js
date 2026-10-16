@@ -144,6 +144,15 @@
       });
     }
 
-    return { verify: verify, bytesOf: bytesOf, check: check, sealedOnly: sealedOnly };
+    /* Who signed it: a development build's developer key, '' for the store's own
+       (as the device's zyl_seal_signer_key — read, not verified) */
+    function signerKey(found) {
+      var s = (found && found.seal) || {};
+      if (typeof s['cert.json'] !== 'string') return '';
+      var cert = object(s['cert.json']);
+      return (cert && typeof cert.publicKey === 'string' && cert.publicKey) || '?';
+    }
+
+    return { verify: verify, bytesOf: bytesOf, check: check, sealedOnly: sealedOnly, signerKey: signerKey };
   };
 })(window.ZylServiceModules = window.ZylServiceModules || {});

@@ -145,6 +145,9 @@
 
     function outcome(ok, reason) { return { ok: ok, reason: reason || '' }; }
 
+    /* com.zylos.* is the OS image's (as the device's appstore reserved_id) */
+    function reserved(id) { return typeof id === 'string' && id.indexOf('com.zylos.') === 0; }
+
     /* The unpacked app.json, if it is a valid app with its entry page (and, when
        given, the expected id and version); else null */
     function unpackedManifest(u, id, version) {
@@ -157,9 +160,21 @@
       return m;
     }
 
-    /* Commit if the seal holds, else discard; the outcome */
-    function commitSealed(u, m, stage, storeOnly) {
+    /* An update only from whoever signed what is installed (as the device's
+       appstore signer_changed): another signer's build would take over the
+       app's container. '' or the reason */
+    function sameSigner(u, m, installed) {
+      if (!installed) return Promise.resolve('');
+      return Promise.resolve(invoke('store_inspect', { appId: m.id })).then(function (found) {
+        return seal.signerKey(found) === seal.signerKey(u) ? '' : 'signer_changed';
+      }, function () { return 'signer_changed'; });
+    }
+
+    /* Commit if the seal holds and the signer is the installed one's, else discard; the outcome */
+    function commitSealed(u, m, stage, storeOnly, installed) {
       return seal.check(u, m.id, m.version, storeOnly).then(function (why) {
+        return why || sameSigner(u, m, installed);
+      }).then(function (why) {
         if (why) {
           invoke('store_discard', { appId: stage });
           return outcome(false, why);
@@ -181,7 +196,7 @@
         if (c.state !== 'ok') return outcome(false, c.state);
         var a = c.apps.filter(function (e) { return e.id === appId; })[0];
         if (!a) return outcome(false, 'not_in_store');
-        if (have.image[a.id]) return outcome(false, 'system_app');
+        if (have.image[a.id] || reserved(a.id)) return outcome(false, 'system_app');
         if (have.store[a.id] && versionCmp(have.store[a.id], a.version) >= 0) return outcome(false, 'up_to_date');
         return invoke('store_download', { url: a.packageUrl, max: a.size }).then(function (b64) {
           return seal.verify(bytesOf(b64), a.sha256, a.signature, c.cfg.publicKey).then(function (ok) {
@@ -192,7 +207,7 @@
                 invoke('store_discard', { appId: a.id });
                 return outcome(false, 'invalid_package');
               }
-              return commitSealed(u, m, a.id, true);     /* the store's own seal only */
+              return commitSealed(u, m, a.id, true, !!have.store[a.id]);   /* the store's own seal only */
             }, function () { return outcome(false, 'invalid_package'); });
           });
         }, function () { return outcome(false, 'download_failed'); });
@@ -214,13 +229,13 @@
           return invoke('store_unpack', { appId: FILE_STAGE, 'package': b64 });
         }).catch(function () { return null; }).then(function (u) {
           var m = u && unpackedManifest(u, null, null);
-          var why = !m ? 'invalid_package' : have.image[m.id] ? 'system_app'
+          var why = !m ? 'invalid_package' : (have.image[m.id] || reserved(m.id)) ? 'system_app'
             : (have.store[m.id] && versionCmp(have.store[m.id], m.version) > 0) ? 'up_to_date' : '';
           if (why) {
             invoke('store_discard', { appId: FILE_STAGE });
             return outcome(false, why);
           }
-          return commitSealed(u, m, FILE_STAGE, false);
+          return commitSealed(u, m, FILE_STAGE, false, !!have.store[m.id]);
         });
       });
     }

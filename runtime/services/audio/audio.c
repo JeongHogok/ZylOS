@@ -25,6 +25,8 @@ struct ZylAudioService {
     int volumes[5]; /* per-stream volume 0-100 */
     bool muted;     /* the output itself */
     bool silent;    /* silent mode: no key clicks or system sounds; alerts still sound */
+    bool alerting;  /* an emergency alert sounds: the output is the alert's until alert_end */
+    guint alert_end;
     GDBusConnection *dbus;
     guint dbus_owner_id;
 };
@@ -205,11 +207,11 @@ static void handle_audio_method(GDBusConnection *conn, const gchar *sender,
     } else if (g_strcmp0(method, "PlayTone") == 0) {
         gint32 freq, dur;
         g_variant_get(params, "(ii)", &freq, &dur);
-        zyl_audio_play_tone(svc, freq, dur);
+        zyl_audio_play_alert_tone(svc, freq, dur);
         g_dbus_method_invocation_return_value(inv, NULL);
     } else if (g_strcmp0(method, "PlayKeyClick") == 0) {
         /* Keyboard feedback stays quiet in silent mode, unlike PlayTone
-           (emergency alerts must sound regardless) */
+           (the emergency alert tone, which sounds regardless) */
         if (!svc->silent && !svc->muted) zyl_audio_play_tone(svc, 800, 30);
         g_dbus_method_invocation_return_value(inv, NULL);
     } else if (g_strcmp0(method, "PlayNotificationSound") == 0) {
@@ -292,6 +294,7 @@ ZylAudioService *zyl_audio_create(void) {
 
 void zyl_audio_destroy(ZylAudioService *svc) {
     if (!svc) return;
+    if (svc->alert_end) g_source_remove(svc->alert_end);
     g_bus_unown_name(svc->dbus_owner_id);
     free(svc);
 }
@@ -306,7 +309,8 @@ int zyl_audio_set_volume(ZylAudioService *svc, ZylAudioStream stream,
     if (!svc || stream < 0 || stream > 4) return -1;
     int clamped = percent < 0 ? 0 : (percent > 100 ? 100 : percent);
     svc->volumes[stream] = clamped;
-    if (stream == ZYL_AUDIO_STREAM_MEDIA) zyl_hal_audio()->set_output_volume(clamped);
+    /* during an alert the output is the alert's; its end applies this */
+    if (stream == ZYL_AUDIO_STREAM_MEDIA && !svc->alerting) zyl_hal_audio()->set_output_volume(clamped);
     g_message("[Audio] Volume stream=%d → %d%%", stream, clamped);
     return clamped;
 }
@@ -318,16 +322,48 @@ bool zyl_audio_get_mute(ZylAudioService *svc) {
 void zyl_audio_set_mute(ZylAudioService *svc, bool muted) {
     if (!svc) return;
     svc->muted = muted;
-    zyl_hal_audio()->set_output_mute(muted);
+    if (!svc->alerting) zyl_hal_audio()->set_output_mute(muted);
     g_message("[Audio] Mute: %s", muted ? "ON" : "OFF");
 }
 
-/* Plays even in silent mode: alerts call this */
+/* A tone at the system volume (key clicks) */
 int zyl_audio_play_tone(ZylAudioService *svc, int freq_hz,
                          int duration_ms) {
     if (!svc) return -1;
     return zyl_hal_audio()->play_tone(freq_hz, duration_ms,
                                       svc->volumes[ZYL_AUDIO_STREAM_SYSTEM]) ? 0 : -1;
+}
+
+/* ─── Emergency alert tone ───
+   Heard whatever the user turned down: the tone was made at the system volume
+   and played on an output at the media volume, muted with it — a presidential
+   alert came silent. While it sounds the output is unmuted and full, the tone
+   at full amplitude; ALERT_TAIL_MS after the last tone the user's own volume
+   and mute come back (a change made meanwhile is the one restored). Only
+   system apps may ask (bridge METHOD_PERMISSIONS audio.playTone). */
+#define ALERT_TAIL_MS   300
+#define ALERT_MAX_MS    10000   /* one tone: the HAL writes it to /tmp (RAM) whole */
+
+static gboolean alert_over(gpointer data) {
+    ZylAudioService *svc = data;
+    svc->alert_end = 0;
+    svc->alerting = false;
+    zyl_hal_audio()->set_output_volume(svc->volumes[ZYL_AUDIO_STREAM_MEDIA]);
+    zyl_hal_audio()->set_output_mute(svc->muted);
+    return G_SOURCE_REMOVE;
+}
+
+int zyl_audio_play_alert_tone(ZylAudioService *svc, int freq_hz, int duration_ms) {
+    if (!svc || freq_hz < 20 || freq_hz > 20000 || duration_ms <= 0) return -1;
+    if (duration_ms > ALERT_MAX_MS) duration_ms = ALERT_MAX_MS;
+    if (!svc->alerting) {
+        svc->alerting = true;
+        zyl_hal_audio()->set_output_mute(false);
+        zyl_hal_audio()->set_output_volume(100);
+    }
+    if (svc->alert_end) g_source_remove(svc->alert_end);
+    svc->alert_end = g_timeout_add((guint)duration_ms + ALERT_TAIL_MS, alert_over, svc);
+    return zyl_hal_audio()->play_tone(freq_hz, duration_ms, 100) ? 0 : -1;
 }
 
 /* ─── 데몬 진입점 ─── */

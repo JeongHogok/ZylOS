@@ -12,6 +12,7 @@
 #include <dirent.h>
 #include <stdio.h>
 #include <json-glib/json-glib.h>
+#include "zyl_json.h"
 
 /* ─── Parse a single app.json ─── */
 ZylAppManifest *zyl_manifest_parse(const char *app_dir) {
@@ -46,8 +47,8 @@ ZylAppManifest *zyl_manifest_parse(const char *app_dir) {
         return NULL;
     }
 
-    const char *raw_id   = json_object_get_string_member(obj, "id");
-    const char *raw_name = json_object_get_string_member(obj, "name");
+    const char *raw_id   = zyl_json_str(obj, "id", NULL);
+    const char *raw_name = zyl_json_str(obj, "name", NULL);
     if (!raw_id || raw_id[0] == '\0' || !raw_name || raw_name[0] == '\0') {
         g_warning("Manifest %s: 'id' or 'name' is empty", manifest_path);
         g_object_unref(parser);
@@ -57,11 +58,11 @@ ZylAppManifest *zyl_manifest_parse(const char *app_dir) {
     ZylAppManifest *m = g_new0(ZylAppManifest, 1);
     m->id        = g_strdup(raw_id);
     m->name      = g_strdup(raw_name);
-    m->version   = g_strdup(json_object_get_string_member_with_default(
+    m->version   = g_strdup(zyl_json_str(
                        obj, "version", "1.0.0"));
-    m->entry     = g_strdup(json_object_get_string_member_with_default(
+    m->entry     = g_strdup(zyl_json_str(
                        obj, "entry", "index.html"));
-    m->icon      = g_strdup(json_object_get_string_member_with_default(
+    m->icon      = g_strdup(zyl_json_str(
                        obj, "icon", "icon.png"));
     m->base_path = g_strdup(app_dir);
     m->launcher  = TRUE;
@@ -87,10 +88,10 @@ ZylAppManifest *zyl_manifest_parse(const char *app_dir) {
     for (guint i = 0; intents && i < json_array_get_length(intents); i++) {
         JsonNode *e = json_array_get_element(intents, i);
         JsonObject *f = JSON_NODE_HOLDS_OBJECT(e) ? json_node_get_object(e) : NULL;
-        const char *action = f ? json_object_get_string_member_with_default(f, "action", NULL) : NULL;
+        const char *action = f ? zyl_json_str(f, "action", NULL) : NULL;
         if (!action) continue;
         g_ptr_array_add(actions, g_strdup(action));
-        g_ptr_array_add(mimes, g_strdup(json_object_get_string_member_with_default(f, "mimeType", "*/*")));
+        g_ptr_array_add(mimes, g_strdup(zyl_json_str(f, "mimeType", "*/*")));
     }
     g_ptr_array_add(actions, NULL);
     g_ptr_array_add(mimes, NULL);
@@ -148,7 +149,7 @@ GVariant *zyl_manifest_app_info(const ZylAppManifest *m) {
     g_variant_builder_add(&d, "{sv}", "permissions", string_array(obj, "permissions"));
     g_variant_builder_add(&d, "{sv}", "formFactors", string_array(obj, "formFactors"));
     g_variant_builder_add(&d, "{sv}", "iconSvg", g_variant_new_string(text_member(obj, "iconSvg", "")));
-    g_variant_builder_add(&d, "{sv}", "launcher", g_variant_new_boolean(m->launcher));
+    g_variant_builder_add(&d, "{sv}", "launcher", g_variant_new_boolean(zyl_manifest_in_launcher(m)));
     g_free(name_key);
     g_object_unref(p);
     g_free(path);

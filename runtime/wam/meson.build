@@ -25,7 +25,7 @@ endif
 json_glib = dependency('json-glib-1.0')
 gio = dependency('gio-2.0')
 
-wam_deps = [gtk4, webkitgtk, json_glib, gio, zyl_hal_dep, zyl_container_dep, zyl_seal_dep]
+wam_deps = [gtk4, webkitgtk, json_glib, gio, zyl_hal_dep, zyl_container_dep, zyl_seal_dep, zyl_json_dep]
 
 # The device class this image is built for (meson -Dprofile, the board allows
 # it): the WAM declares it to every app — hardware, not a user setting

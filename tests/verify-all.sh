@@ -322,6 +322,16 @@ else
   pass "빈 함수 없음"
 fi
 
+# C2b: JSON 문자열 멤버는 zyl_json_str 로만 — json-glib 의 getter 는 다른 타입의 멤버에
+#      기본값이 아니라 NULL 을 돌려줘서, 앱·패키지·서버가 쓴 한 줄이 서비스를 죽였다
+RAW_JSON_STR=$(grep -rn 'json_object_get_string_member' "$ROOT/runtime" --include='*.c' --include='*.h' 2>/dev/null \
+  | grep -v 'runtime/lib/zyl_json.h' | sed "s|$ROOT/||" || true)
+if [ -n "$RAW_JSON_STR" ]; then
+  fail "JSON 문자열 멤버를 zyl_json_str(runtime/lib/zyl_json.h) 없이 읽음:\n$RAW_JSON_STR"
+else
+  pass "JSON 문자열 멤버는 zyl_json_str 로만"
+fi
+
 # C3: Clean Architecture 헤더
 MISSING_C=""
 for cfile in $(find "$ROOT/runtime" -name '*.c' 2>/dev/null); do
@@ -627,6 +637,18 @@ fi
 # ═════════════════════════════════════════════════════════════
 # [E] 전체 — 기술부채 탐지
 # ═════════════════════════════════════════════════════════════
+# S-limit: StartLimit* 는 [Unit] 의 키다 — [Service] 에 두면 systemd 가 조용히 무시한다
+#   (9개 유닛이 그렇게 효력 없는 한도를 적어 두었다). 넣는다면 [Unit] 에, 핵심 서비스가
+#   한도에 걸려 영구 정지하는 것까지 생각하고
+MISPLACED_LIMIT=$(for u in "$ROOT"/system/*.service; do
+  awk -v F="$(basename "$u")" '/^\[/{s=$0} /^StartLimit/{ if (s!="[Unit]") print "  " F ": " s " " $0 }' "$u"
+done)
+if [ -n "$MISPLACED_LIMIT" ]; then
+  fail "StartLimit* 가 [Unit] 밖에 있음(systemd 가 무시):\n$MISPLACED_LIMIT"
+else
+  pass "StartLimit* 는 [Unit] 에만"
+fi
+
 section "전체 — 기술부채 + 코드 위생"
 
 # E-domain: Zyl 서버 주소는 우리가 가진 zyl-os.com 한 도메인만. 등록 안 된 주소

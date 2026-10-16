@@ -116,6 +116,21 @@ static void test_app_info_is_what_apps_see(void) {
     assert(g_variant_lookup(lock, "system", "b", &sys) && sys);
     g_variant_unref(lock);
     g_hash_table_destroy(t);
+
+    /* A third-party app saying it would hide from home, settings and recents —
+       everywhere the user could remove it or turn its permissions off */
+    f = fopen(ROOT "/user/notes/app.json", "w");
+    fprintf(f, "{\"id\":\"com.example.notes\",\"name\":\"Notes\",\"version\":\"2.1.0\","
+               "\"entry\":\"index.html\",\"launcher\":false}");
+    fclose(f);
+    t = scan();
+    ZylAppManifest *hidden = g_hash_table_lookup(t, "com.example.notes");
+    assert(zyl_manifest_in_launcher(hidden));
+    notes = g_variant_ref_sink(zyl_manifest_app_info(hidden));
+    assert(g_variant_lookup(notes, "launcher", "b", &launcher) && launcher);
+    g_variant_unref(notes);
+    assert(!zyl_manifest_in_launcher(g_hash_table_lookup(t, "com.zylos.lockscreen")));
+    g_hash_table_destroy(t);
 }
 
 static ZylAppManifest *parse_raw(const char *json) {
@@ -154,6 +169,26 @@ static void test_unknown_fields_ignored_unicode_kept(void) {
     zyl_manifest_free(m);
 }
 
+/* An app's app.json with members of another type: the defaults, not NULL —
+   a NULL mimeType ended the NULL-terminated list early, out of step with the
+   actions read beside it (runtime/lib/zyl_json.h) */
+static void test_members_of_another_type_are_the_defaults(void) {
+    ZylAppManifest *m = parse_raw("{\"id\":\"com.example.odd\",\"name\":\"Odd\",\"version\":2,"
+                                  "\"entry\":[\"x\"],\"icon\":{},"
+                                  "\"intents\":[{\"action\":\"VIEW\",\"mimeType\":3},"
+                                  "{\"action\":7},{\"action\":\"SEND\",\"mimeType\":\"text/plain\"}]}");
+    assert(m);
+    assert(strcmp(m->version, "1.0.0") == 0 && strcmp(m->entry, "index.html") == 0 &&
+           strcmp(m->icon, "icon.png") == 0);
+    assert(m->intent_actions[0] && strcmp(m->intent_actions[0], "VIEW") == 0 &&
+           strcmp(m->intent_mimes[0], "*/*") == 0);
+    assert(m->intent_actions[1] && strcmp(m->intent_actions[1], "SEND") == 0 &&
+           strcmp(m->intent_mimes[1], "text/plain") == 0);
+    assert(!m->intent_actions[2] && !m->intent_mimes[2]);
+    zyl_manifest_free(m);
+    assert(!parse_raw("{\"id\":5,\"name\":\"x\"}"));          /* an id of another type is none */
+}
+
 int main(void) {
     printf("=== Zyl OS Manifest Scan Tests ===\n");
     test_user_app_cannot_shadow_a_system_app();
@@ -166,7 +201,9 @@ int main(void) {
     printf("  test_broken_manifests_are_refused            PASS\n");
     test_unknown_fields_ignored_unicode_kept();
     printf("  test_unknown_fields_ignored_unicode_kept     PASS\n");
+    test_members_of_another_type_are_the_defaults();
+    printf("  test_members_of_another_type_are_the_defaults PASS\n");
     (void)system("rm -rf " ROOT);
-    printf("\nResults: 5/5 passed\n");
+    printf("\nResults: 6/6 passed\n");
     return 0;
 }

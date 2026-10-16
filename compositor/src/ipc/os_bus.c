@@ -4,7 +4,8 @@
  * 역할: 컴포지터 → OS 서비스 — 제스처 → WAM 내비게이션(GoHome·GoBack·SwitchApp),
  *       사용자 입력 → 전원 서비스 UserActivity
  * 수행범위: 시스템 버스 연결(처음 쓸 때, 실패하면 다음에 다시), 답을 기다리지
- *           않는 메서드 호출 — 컴포지터의 이벤트 루프를 막지 않는다
+ *           않는 메서드 호출 — 컴포지터의 이벤트 루프를 막지 않는다. 화면 상태는
+ *           자기 스레드의 GLib 컨텍스트에서 받아 원자 변수로만 넘긴다
  * 의존방향: os_bus.h → zyl_compositor.h, gio (버스 정책: root 는 org.zylos 를 부를 수 있다)
  * SOLID: SRP — 전달만. 무엇이 앞에 올지는 WAM 의 셸 정책(runtime/wam/src/shell),
  *        언제 어두워지고 꺼질지는 전원 서비스
@@ -15,6 +16,7 @@
 #include <string.h>
 #include <gio/gio.h>
 #include <wlr/util/log.h>
+#include "../../../runtime/services/power/power.h"
 
 static GDBusConnection *os_bus;
 
@@ -61,7 +63,61 @@ void zyl_wam_nav_send(struct zyl_server *server, const char *signal_name,
     send_call("org.zylos.WebAppManager", signal_name, args);
 }
 
-void zyl_power_user_activity(void)
+/* ─── The screen: on or off (org.zylos.PowerManager.StateChanged) ─── */
+static gint screen_on = 1;
+
+static void on_power_state(GDBusConnection *c, const gchar *sender, const gchar *path,
+                           const gchar *iface, const gchar *signal, GVariant *params, gpointer data)
+{
+    (void)c; (void)sender; (void)path; (void)iface; (void)signal; (void)data;
+    if (!g_variant_is_of_type(params, G_VARIANT_TYPE("(ii)"))) return;
+    gint32 was, now;
+    g_variant_get(params, "(ii)", &was, &now);
+    g_atomic_int_set(&screen_on, now == ZYL_POWER_STATE_ACTIVE || now == ZYL_POWER_STATE_DIM);
+}
+
+static gpointer screen_watch(gpointer data)
+{
+    (void)data;
+    GMainContext *ctx = g_main_context_new();
+    g_main_context_push_thread_default(ctx);   /* signals are dispatched here */
+    GError *err = NULL;
+    GDBusConnection *bus = g_bus_get_sync(G_BUS_TYPE_SYSTEM, NULL, &err);
+    if (!bus) {
+        wlr_log(WLR_ERROR, "OS bus: screen state not followed (%s)", err ? err->message : "?");
+        g_clear_error(&err);
+        return NULL;
+    }
+    g_dbus_connection_signal_subscribe(bus, "org.zylos.PowerManager", "org.zylos.PowerManager",
+        "StateChanged", "/org/zylos/PowerManager", NULL, G_DBUS_SIGNAL_FLAGS_NONE,
+        on_power_state, NULL, NULL);
+    /* Now, as well: a compositor restarted while the screen is off starts dark */
+    GVariant *r = g_dbus_connection_call_sync(bus, "org.zylos.PowerManager", "/org/zylos/PowerManager",
+        "org.zylos.PowerManager", "GetState", NULL, G_VARIANT_TYPE("(a{sv})"),
+        G_DBUS_CALL_FLAGS_NONE, 2000, NULL, NULL);
+    if (r) {
+        GVariant *d = g_variant_get_child_value(r, 0);
+        gboolean on = TRUE;
+        if (g_variant_lookup(d, "screenOn", "b", &on)) g_atomic_int_set(&screen_on, on);
+        g_variant_unref(d);
+        g_variant_unref(r);
+    }
+    GMainLoop *loop = g_main_loop_new(ctx, FALSE);
+    g_main_loop_run(loop);   /* for the compositor's life */
+    return NULL;
+}
+
+void zyl_os_bus_watch_screen(void)
+{
+    g_thread_unref(g_thread_new("zyl-screen", screen_watch, NULL));
+}
+
+bool zyl_os_screen_on(void)
+{
+    return g_atomic_int_get(&screen_on) != 0;
+}
+
+void zyl_os_user_activity(void)
 {
     static uint32_t last;
     uint32_t now = zyl_now_ms();

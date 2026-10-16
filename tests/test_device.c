@@ -2,7 +2,7 @@
  * [Clean Architecture] Infrastructure Layer - Test
  *
  * 역할: 기기 정보 서비스(runtime/services/device) 단위 테스트
- * 수행범위: GetInfo 의 필드(에뮬레이터와 같은 이름), 보드가 말한 값의 표시
+ * 수행범위: GetInfo 의 필드(에뮬레이터와 같은 이름 — 기기 ID 는 빼고 GetDeviceId 로만), 보드가 말한 값의 표시
  *           형식(메모리 GB, "Linux <커널>"), 이미지의 OS 버전·보안 패치, 해상도는
  *           연결되고 모드가 있는 첫 출력의 첫(선호) 모드, 모르는 값은 지어내지 않고
  *           빈 문자열(출력 목록을 못 읽어도)
@@ -72,7 +72,13 @@ static void test_info_shows_what_the_board_says(void) {
     assert(strcmp(field("soc"), "spacemit,k1-x") == 0);
     assert(strcmp(field("ram"), "4.0 GB") == 0);
     assert(strcmp(field("kernel"), "Linux 6.6.36") == 0);
-    assert(strcmp(field("deviceId"), "c0ffee0123456789") == 0);
+    /* The chip ID is not in what every app may read — its own method only */
+    assert(!g_variant_lookup(info, "deviceId", "&s", NULL));
+    GVariant *r = device_id_variant(), *id = g_variant_get_child_value(r, 0);
+    const char *v = NULL;
+    assert(g_variant_lookup(id, "deviceId", "&s", &v) && strcmp(v, "c0ffee0123456789") == 0);
+    g_variant_unref(id);
+    g_variant_unref(r);
     /* The image's release (meson passes it in) */
     assert(strcmp(field("osVersion"), ZYL_OS_VERSION) == 0 && strcmp(field("build"), ZYL_OS_VERSION) == 0);
     assert(strcmp(field("securityPatch"), ZYL_SECURITY_PATCH) == 0);
@@ -97,7 +103,7 @@ static void test_resolution_is_the_first_connected_output_with_a_mode(void) {
 static void test_what_is_not_known_is_empty_not_made_up(void) {
     output_count = -1;
     get_info();
-    const char *keys[] = { "deviceName", "soc", "ram", "kernel", "resolution", "deviceId" };
+    const char *keys[] = { "deviceName", "soc", "ram", "kernel", "resolution" };
     for (size_t i = 0; i < G_N_ELEMENTS(keys); i++) assert(*field(keys[i]) == '\0');
     output(0, "HDMI-A-1", false, 1, 1280, 720);
     output_count = 1;

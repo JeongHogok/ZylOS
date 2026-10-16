@@ -1542,6 +1542,21 @@ console.log('\n■ ZylPermissions');
    appId is its own, other apps' notifications are notification.read's,
    internals are not methods, an unlisted service is closed
    ═══════════════════════════════════════════════════════ */
+console.log('\n■ protected paths');
+(function () {
+  var vm = require('vm');
+  var ctx = {};
+  ctx.window = ctx;
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'apps', 'system', 'security.js'), 'utf8'), ctx);
+  test('judged on the path\'s parts, not its spelling (as fs.c and filesystem.rs)', function () {
+    ['.system/apps/x', './.system/apps/x', './/.SYSTEM/x', '/./settings.json', '././.credentials/key', 'Settings.json']
+      .forEach(function (p) { assert.ok(ctx.ZylSecurity.isProtectedPath(p), p); });
+    ['Documents/a.txt', './Documents/.system', 'settings.json.bak'].forEach(function (p) {
+      assert.ok(!ctx.ZylSecurity.isProtectedPath(p), p);
+    });
+  });
+})();
+
 console.log('\n■ request gate');
 
 var gateTests = (function () {
@@ -1551,7 +1566,7 @@ var gateTests = (function () {
               Promise: Promise, CustomEvent: function (type, init) { this.type = type; this.detail = init.detail; } };
   ctx.window = ctx;
   ctx.dispatchEvent = function (e) { events.push(e); return true; };
-  ['permissions.js', 'services/notification.js', 'services.js'].forEach(function (f) {
+  ['permissions.js', 'services/notification.js', 'services/device.js', 'services.js'].forEach(function (f) {
     vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'apps', 'system', f), 'utf8'), ctx);
   });
   var S = ctx.ZylSystemServices;
@@ -1640,6 +1655,18 @@ var gateTests = (function () {
         assert.strictEqual(S.handleRequest('notification', m, {}, 'com.zylos.statusbar'), null, m);
       });
       return active().then(function (a) { assert.strictEqual(a.length, 1); });
+    });
+  }).then(function () {
+    return asyncTest('the chip ID is the system\'s: not in getInfo, getDeviceId refused to other apps', function () {
+      S.applyDisplayProfile({ deviceId: 'CHIP-1' });
+      return Promise.all([ask('device', 'getInfo', {}, 'com.example.chat'),
+                          ask('device', 'getDeviceId', {}, 'com.example.chat'),
+                          ask('device', 'getDeviceId', {}, 'com.zylos.statusbar')])
+        .then(function (r) {
+          assert.ok(r[0] && r[0].osVersion !== undefined && !('deviceId' in r[0]));
+          assert.strictEqual(r[1].error, 'Permission denied');
+          assert.strictEqual(r[2].deviceId, 'CHIP-1');
+        });
     });
   }).then(function () {
     return asyncTest('users are system-only; an unlisted service is closed', function () {
@@ -2068,7 +2095,8 @@ var storeTests = (function () {
       }
       if (cmd === 'fs_read_binary') return Promise.resolve(pkg.toString('base64'));
       if (cmd === 'store_unpack') return Promise.resolve(opts.unpacked || sealed());
-      if (cmd === 'store_inspect') return Promise.resolve(opts.inspect[a.appId]);
+      /* what is installed: the store's own unless the test says otherwise */
+      if (cmd === 'store_inspect') return Promise.resolve((opts.inspect || {})[a.appId] || sealed({ id: a.appId }));
       if (cmd === 'store_revoked') {
         if (a.list) revoked = a.list;
         return Promise.resolve(revoked);
@@ -2174,6 +2202,25 @@ var storeTests = (function () {
         assert.strictEqual(r[1].reason, 'invalid_package');
         assert.strictEqual(r[2].reason, 'up_to_date');
         assert.strictEqual(r[3].ok, true);                    /* a developer's next build, same version */
+      });
+    }),
+    asyncTest('an update only from the installed app\'s signer; com.zylos.* is the image\'s', function () {
+      var over = store({ unpacked: sealed({ dev: true }),            /* a dev build over the store's app */
+                         installed: [{ id: 'com.example.hello', source: 'store', version: '1.0.0' }] });
+      var next = store({ unpacked: sealed({ dev: true }),            /* the same developer's next build */
+                         installed: [{ id: 'com.example.hello', source: 'store', version: '1.0.0' }],
+                         inspect: { 'com.example.hello': sealed({ dev: true, version: '1.0.0' }) } });
+      var storeOver = store({ installed: [{ id: 'com.example.hello', source: 'store', version: '1.0.0' }],
+                              inspect: { 'com.example.hello': sealed({ dev: true, version: '1.0.0' }) } });
+      var os = store({ unpacked: sealed({ id: 'com.zylos.maps' }) });
+      return Promise.all([over.svc.installFile({ path: 'a.zpkg' }), next.svc.installFile({ path: 'a.zpkg' }),
+                          storeOver.svc.install({ appId: 'com.example.hello' }),
+                          os.svc.installFile({ path: 'a.zpkg' })]).then(function (r) {
+        assert.deepStrictEqual(r[0], { ok: false, reason: 'signer_changed' });
+        assert.ok(over.committed.length === 0 && over.calls.indexOf('store_discard') !== -1);
+        assert.strictEqual(r[1].ok, true);
+        assert.deepStrictEqual(r[2], { ok: false, reason: 'signer_changed' });   /* the store's over a dev build */
+        assert.deepStrictEqual(r[3], { ok: false, reason: 'system_app' });
       });
     }),
     asyncTest('apps list: a store app whose seal does not hold is not listed', function () {
@@ -2577,7 +2624,7 @@ console.log('\n■ notification service');
     assert.strictEqual(armed, 0, 'a notification armed a timer');
   }
   function ids(list) { return list.map(function (n) { return n.id; }); }
-  var A = 'com.example.a', B = 'com.example.b';
+  var A = 'com.example.a', B = 'com.example.b', C = 'com.example.c';
 
   test('post: the next id each time, fields defaulted, no actions on a simple post', function () {
     untilDismissed(function (n) {
@@ -2589,6 +2636,24 @@ console.log('\n■ notification service');
       delete got.timestamp;
       assert.deepStrictEqual(got, { id: 1, appId: A, channelId: '', title: 'Timer', body: 'done', icon: '',
                                     priority: 1, group: '', persistent: false, actions: [] });
+    });
+  });
+
+  test('bounded as on the device: fields in characters, 3 actions, 50 per app', function () {
+    untilDismissed(function (n) {
+      var huge = new Array(5000).join('x');
+      var wide = new Array(201).join('\uD83D\uDE00');      /* 200 characters, 400 code units */
+      n.postWithActions({ appId: A, title: huge, body: huge, icon: huge, actions: [
+        { label: 'a', actionId: '1' }, { label: 'b', actionId: '2' }, { label: 'c', actionId: '3' },
+        { label: 'd', actionId: '4' }] });
+      n.post({ appId: A, title: wide });
+      var got = n.getActive();
+      assert.deepStrictEqual([got[0].title.length, got[0].body.length, got[0].icon.length, got[0].actions.length],
+                             [128, 1024, 64, 3]);
+      assert.strictEqual(got[1].title.length, 256);        /* 128 characters, no half pair */
+      for (var i = 2; i < 50; i++) n.post({ appId: A, title: 't' });
+      assert.deepStrictEqual(n.post({ appId: A, title: 'one more' }), { suppressed: true, reason: 'limit' });
+      assert.ok(n.post({ appId: B, title: 'another app' }).id > 0);
     });
   });
 
@@ -2678,13 +2743,14 @@ console.log('\n■ notification service');
 
   test('history keeps the newest 100, by app and newest-first limit; clearing it keeps the active', function () {
     untilDismissed(function (n) {
-      for (var i = 1; i <= 105; i++) n.post({ appId: i % 2 ? A : B, title: 't' + i });
+      /* three apps, so none reaches the 50 active one app may hold */
+      for (var i = 1; i <= 105; i++) n.post({ appId: [C, A, B][i % 3], title: 't' + i });
       function titles(list) { return list.map(function (x) { return x.title; }); }
       var all = n.getHistory();
       assert.strictEqual(all.length, 100);
       assert.deepStrictEqual([all[0].title, all[99].title], ['t6', 't105']);
       var onlyB = n.getHistory({ appId: B });
-      assert.strictEqual(onlyB.length, 50);
+      assert.strictEqual(onlyB.length, 33);                 /* t8, t11 … t104 */
       assert.ok(onlyB.every(function (x) { return x.appId === B; }));
       assert.deepStrictEqual(titles(n.getHistory({ limit: 2 })), ['t104', 't105']);
       assert.deepStrictEqual(titles(n.getHistory({ appId: B, limit: 1 })), ['t104']);
@@ -2785,13 +2851,17 @@ var appsTests = (function () {
         assert.strictEqual(a['com.example.side'].system, false);
       });
     }),
-    asyncTest('only an explicit launcher:false hides an app; only source "store" is a store app', function () {
+    asyncTest('only an explicit launcher:false hides an app, and only a system app; only source "store" is a store app', function () {
       return make(MANIFESTS).svc.getInstalled().then(function (list) {
         var a = byId(list);
         assert.deepStrictEqual([a['com.zylos.settings'].launcher, a['com.zylos.lockscreen'].launcher,
                                 a['com.example.hello'].launcher], [true, false, true]);
         assert.deepStrictEqual([a['com.zylos.settings'].source, a['com.example.hello'].source,
                                 a['com.example.side'].source], ['image', 'store', 'image']);
+        /* a third-party app cannot hide from where the user removes it (as manifest.h) */
+        return make([{ id: 'com.example.hidden', launcher: false }]).svc.getInstalled();
+      }).then(function (list) {
+        assert.strictEqual(list[0].launcher, true);
       });
     }),
     asyncTest('the list is asked for once and cached; getById reads it; invalidate asks again', function () {
@@ -3147,6 +3217,22 @@ var locationTests = (function () {
     asyncTest('no fix is null — no position invented', function () {
       return ns.location({ invoke: recordingInvoker({}) }).getLastKnown().then(function (r) {
         assert.strictEqual(r, null);
+      });
+    }),
+    asyncTest('the user\'s switch off: the host is not asked, no place is given (provider "off")', function () {
+      var invoke = recordingInvoker({ location_get_last_known: { latitude: 37.5, longitude: 127.0 } });
+      var enabled = false;
+      var settingsSvc = { _getSetting: function () { return Promise.resolve({ enabled: enabled }); } };
+      var loc = ns.location({ invoke: invoke, settingsSvc: settingsSvc });
+      return loc.getLastKnown().then(function (r) {
+        assert.strictEqual(r.provider, 'off');
+        assert.strictEqual(r.latitude, 0);
+        assert.deepStrictEqual(invoke.calls, []);
+        enabled = true;
+        return loc.getLastKnown();
+      }).then(function (r) {
+        assert.strictEqual(r.latitude, 37.5);
+        assert.strictEqual(invoke.calls.length, 1);
       });
     })
   ]);

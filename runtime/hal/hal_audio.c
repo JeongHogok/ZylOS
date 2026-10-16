@@ -21,6 +21,7 @@
 #include <unistd.h>
 #include <glib.h>
 #include <json-glib/json-glib.h>
+#include "zyl_json.h"
 
 /* A tool on PATH (Debian keeps wpctl/pactl/pw-play in /usr/bin); stdout kept when out != NULL */
 static bool run(const char *const argv[], char **out) {
@@ -116,8 +117,8 @@ typedef struct { char sink[256], earpiece[128], speaker[128]; } CallRoute;
 
 /* ALSA UCM names the call outputs; pactl reports them as port types or names */
 static bool port_is(JsonObject *port, const char *const kinds[]) {
-    const char *type = json_object_has_member(port, "type") ? json_object_get_string_member(port, "type") : "";
-    const char *name = json_object_get_string_member(port, "name");
+    const char *type = zyl_json_str(port, "type", "");
+    const char *name = zyl_json_str(port, "name", NULL);
     for (int i = 0; kinds[i]; i++) {
         if ((type && g_ascii_strcasecmp(type, kinds[i]) == 0) ||
             (name && strcasestr(name, kinds[i]))) return true;
@@ -142,12 +143,12 @@ static bool find_call_route(CallRoute *r) {
             JsonArray *ports = json_object_get_array_member(sink, "ports");
             for (guint k = 0; ports && k < json_array_get_length(ports); k++) {
                 JsonObject *port = json_array_get_object_element(ports, k);
-                const char *name = port ? json_object_get_string_member(port, "name") : NULL;
+                const char *name = port ? zyl_json_str(port, "name", NULL) : NULL;
                 if (!name) continue;
                 if (port_is(port, EARPIECE)) g_strlcpy(r->earpiece, name, sizeof(r->earpiece));
                 else if (port_is(port, SPEAKER)) g_strlcpy(r->speaker, name, sizeof(r->speaker));
             }
-            const char *sink_name = json_object_get_string_member(sink, "name");
+            const char *sink_name = zyl_json_str(sink, "name", NULL);
             found = r->earpiece[0] && r->speaker[0] && sink_name;
             if (found) g_strlcpy(r->sink, sink_name, sizeof(r->sink));
         }

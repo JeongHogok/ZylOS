@@ -30,6 +30,8 @@
 #include <spawn.h>
 #include <sys/wait.h>
 #include <sys/reboot.h>
+#include <sys/statvfs.h>
+#include <glib.h>
 
 
 /* ─── 내부 상수 ─── */
@@ -43,6 +45,16 @@
 #define SLOT_METADATA_PATH    ZYL_STATE_DIR "/slot-metadata"
 /* On /data: a package is as large as a rootfs and /var is RAM (tmpfs) */
 #define UPDATE_CACHE_DEFAULT  ZYL_STATE_DIR "/cache"
+#ifndef ZYL_SYSTEMCTL
+#define ZYL_SYSTEMCTL "/usr/bin/systemctl"
+#endif
+#ifndef ZYL_CURL
+#define ZYL_CURL "/usr/bin/curl"
+#endif
+/* A package with no size: at most this. With one, its size — and room for it
+   on /data with OTA_KEEP_FREE to spare, or not at all */
+#define OTA_MAX_BYTES  (4ULL * 1024 * 1024 * 1024)
+#define OTA_KEEP_FREE  (256ULL * 1024 * 1024)
 #define CURRENT_VERSION_FILE  "/etc/zyl-os/version"
 #define VERIFY_FLAG_FILE      ZYL_STATE_DIR "/slot-verified"
 
@@ -147,19 +159,8 @@ static bool is_safe_url(const char *url) {
         return false;
     return is_safe_path(url);
 }
-
-/* posix_spawn helper — system() 사용 금지 (command injection 방지) */
-static int safe_exec(const char *const argv[]) {
-    pid_t pid;
-    char *envp[] = {"PATH=/usr/sbin:/usr/bin:/sbin:/bin", NULL};
-    int rc = posix_spawn(&pid, argv[0], NULL, NULL, (char *const *)argv, envp);
-    if (rc != 0) return -1;
-    int status = 0;
-    waitpid(pid, &status, 0);
-    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
-}
-
 #include <json-glib/json-glib.h>
+#include "zyl_json.h"
 
 static char *json_get_string(const char *json_str, const char *key) {
     if (!json_str || !key) return NULL;
@@ -176,7 +177,7 @@ static char *json_get_string(const char *json_str, const char *key) {
     JsonObject *obj = json_node_get_object(root);
     char *result = NULL;
     if (json_object_has_member(obj, key)) {
-        const char *val = json_object_get_string_member(obj, key);
+        const char *val = zyl_json_str(obj, key, NULL);
         if (val) result = strdup(val);
     }
     g_object_unref(parser);
@@ -359,12 +360,12 @@ ZylUpdateState zyl_updater_check(ZylUpdater *u,
         posix_spawn_file_actions_addclose(&check_acts, check_pfd[0]);
 
         const char *check_argv[] = {
-            "/usr/bin/curl", "-s",
+            ZYL_CURL, "-s",
             "--connect-timeout", "10", "--max-time", "30",
             url, NULL
         };
         char *check_env[] = { "PATH=/usr/bin:/bin", NULL };
-        int check_rc = posix_spawn(&check_pid, "/usr/bin/curl",
+        int check_rc = posix_spawn(&check_pid, ZYL_CURL,
                                     &check_acts, NULL,
                                     (char *const *)check_argv, check_env);
         posix_spawn_file_actions_destroy(&check_acts);
@@ -514,6 +515,20 @@ bool zyl_updater_download(ZylUpdater *u,
     fprintf(stderr, "[UPDATER] Downloading: %s -> %s\n",
             u->pending->download_url, pkg_path);
 
+    /* A server (or a mirror) sending without end filled /data, and what it left
+       stayed: settings, messages, the lock screen's tries had nowhere to go */
+    unsigned long long limit = u->pending->download_size ? u->pending->download_size : OTA_MAX_BYTES;
+    struct statvfs fsv;
+    if (statvfs(u->cache_dir, &fsv) != 0 ||
+        (unsigned long long)fsv.f_bavail * fsv.f_frsize < limit + OTA_KEEP_FREE) {
+        fprintf(stderr, "[UPDATER] Not enough room for the package (%llu bytes)\n", limit);
+        u->state = ZYL_UPDATE_FAILED;
+        report_progress(u, 0, "Not enough storage");
+        return false;
+    }
+    char max_bytes[32];
+    snprintf(max_bytes, sizeof(max_bytes), "%llu", limit);
+
     /* curl via posix_spawn; capture progress output without a shell */
     int pipefd[2];
     if (pipe(pipefd) != 0) {
@@ -531,7 +546,9 @@ bool zyl_updater_download(ZylUpdater *u,
     posix_spawn_file_actions_addclose(&dl_acts, pipefd[0]);
 
     const char *dl_argv[] = {
-        "/usr/bin/curl", "-f", "-L",
+        ZYL_CURL, "-f", "-L",
+        "--proto", "=https", "--proto-redir", "=https",   /* a redirect stays TLS too */
+        "--max-filesize", max_bytes,
         "--connect-timeout", "15",
         "--max-time", "3600",
         "-o", pkg_path,
@@ -540,7 +557,7 @@ bool zyl_updater_download(ZylUpdater *u,
         NULL
     };
     char *dl_env[] = { "PATH=/usr/bin:/bin", NULL };
-    int spawn_rc = posix_spawn(&dl_pid, "/usr/bin/curl", &dl_acts, NULL,
+    int spawn_rc = posix_spawn(&dl_pid, ZYL_CURL, &dl_acts, NULL,
                                (char *const *)dl_argv, dl_env);
     posix_spawn_file_actions_destroy(&dl_acts);
     close(pipefd[1]);
@@ -578,6 +595,7 @@ bool zyl_updater_download(ZylUpdater *u,
 
     if (ret != 0) {
         fprintf(stderr, "[UPDATER] Download failed (exit code %d)\n", ret);
+        unlink(pkg_path);   /* a part of a package is nothing to keep */
         u->state = ZYL_UPDATE_FAILED;
         report_progress(u, 0, "Download failed");
         return false;
@@ -727,31 +745,58 @@ bool zyl_updater_reboot_to_update(ZylUpdater *u) {
     return false;
 }
 
+/* ─── Is the updated system working? ───
+   What a session needs — the screen, the apps, unlocking, settings. One look
+   at is-active passed a WAM crashing every few seconds most of the time, and
+   the slot was confirmed: a black screen U-Boot would never leave. Two looks
+   apart must show the same run of each, active: a unit that restarted in
+   between (InvocationID changed) or is not up is not healthy. */
+static const char *const HEALTH_UNITS[] = {
+    "zyl-compositor.service", "zyl-wam.service", "zyl-lock.service", "zyl-settings.service", NULL
+};
+
+char *zyl_updater_health_sample(void) {
+    const char *argv[16] = { ZYL_SYSTEMCTL, "show", "-p", "ActiveState", "-p", "InvocationID" };
+    int n = 6;
+    for (int i = 0; HEALTH_UNITS[i]; i++) argv[n++] = HEALTH_UNITS[i];
+    argv[n] = NULL;
+    char *envp[] = { "PATH=/usr/sbin:/usr/bin:/sbin:/bin", NULL };
+    char *out = NULL;
+    int status = 0;
+    if (!g_spawn_sync(NULL, (char **)argv, envp, G_SPAWN_STDERR_TO_DEV_NULL,
+                      NULL, NULL, &out, NULL, &status, NULL) ||
+        !g_spawn_check_wait_status(status, NULL)) {
+        g_free(out);
+        return NULL;
+    }
+    return out;
+}
+
+bool zyl_updater_health_stable(const char *before, const char *after) {
+    if (!before || !after || strcmp(before, after) != 0) return false;
+    char **lines = g_strsplit(after, "\n", -1);
+    int active = 0, ids = 0, units = 0;
+    bool ok = true;
+    for (int i = 0; lines[i]; i++) {
+        if (g_str_has_prefix(lines[i], "ActiveState=")) {
+            if (strcmp(lines[i], "ActiveState=active") == 0) active++;
+            else ok = false;
+        } else if (g_str_has_prefix(lines[i], "InvocationID=")) {
+            if (lines[i][strlen("InvocationID=")]) ids++;
+            else ok = false;
+        }
+    }
+    for (int i = 0; HEALTH_UNITS[i]; i++) units++;
+    g_strfreev(lines);
+    return ok && active == units && ids == units;
+}
+
 bool zyl_updater_mark_verified(ZylUpdater *u) {
     if (!u) return false;
 
-    fprintf(stderr, "[UPDATER] Running system health checks...\n");
-
-    /* 1. 핵심 서비스 실행 상태 확인: compositor */
-    int ret = safe_exec((const char *[]){"/usr/bin/systemctl", "is-active", "--quiet", "zyl-compositor", NULL});
-    if (ret != 0) {
-        fprintf(stderr, "[UPDATER] Health check FAILED: "
-                "zyl-compositor not running (exit %d)\n", ret);
-        return false;
-    }
-    fprintf(stderr, "[UPDATER] Health: zyl-compositor OK\n");
-
-    /* 2. 핵심 서비스 실행 상태 확인: WAM */
-    ret = safe_exec((const char *[]){"/usr/bin/systemctl", "is-active", "--quiet", "zyl-wam", NULL});
-    if (ret != 0) {
-        fprintf(stderr, "[UPDATER] Health check FAILED: "
-                "zyl-wam not running (exit %d)\n", ret);
-        return false;
-    }
-    fprintf(stderr, "[UPDATER] Health: zyl-wam OK\n");
-
-    /* 3. The try is over: this slot becomes the one U-Boot falls back to, and
-          it stops counting boots (board/boot-policy.txt rolls back after zyl_boot_limit) */
+    /* The try is over (zyl_updater_health_stable said so): this slot becomes the
+       one U-Boot falls back to, and it stops counting boots
+       (board/boot-policy.txt rolls back after zyl_boot_limit) */
     const ZylBootHal *boot = zyl_hal_boot();
     if (!boot->env_set("zyl_active_slot", u->active_slot) ||
         !boot->env_set("zyl_next_slot", NULL) || !boot->env_set("zyl_boot_count", "0")) {

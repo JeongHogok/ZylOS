@@ -14,6 +14,7 @@
 #include <string.h>
 #include <sys/random.h>
 #include <json-glib/json-glib.h>
+#include "zyl_json.h"
 
 /* == Handler Registry Entry ================================= */
 
@@ -26,7 +27,9 @@ typedef struct {
 
 static GHashTable *handler_registry = NULL;
 
-/* service.request: introspection per D-Bus name, fetched on first use.
+/* service.request: introspection per route (service name), fetched on first use.
+ * Not per D-Bus name: one name can answer on several objects (the WAM's apps and
+ * webcontent), and each object's introspection holds only its own interface.
  * shortcut: a service upgraded in place keeps its old signature here until WAM
  * restarts — fine while services and WAM ship in the same OS image. */
 static GHashTable *introspect_cache = NULL;
@@ -334,7 +337,7 @@ void zyl_bridge_dispatch(WebKitWebView    *webview,
         return;
     }
 
-    const char *type = json_object_get_string_member(msg, "type");
+    const char *type = zyl_json_str(msg, "type", NULL);
     if (!type || type[0] == '\0') {
         g_warning("Bridge: empty 'type' field from %s", app_id);
         g_object_unref(parser);
@@ -606,7 +609,7 @@ static void handle_app_launch(const char *type, gpointer msg_obj,
 
     const char *target = NULL;
     if (json_object_has_member(msg, "appId"))
-        target = json_object_get_string_member(msg, "appId");
+        target = zyl_json_str(msg, "appId", NULL);
 
     g_info("Bridge: app.launch from %s -> target=%s",
            app_id, target ? target : "(none)");
@@ -743,6 +746,10 @@ static const ServicePermission METHOD_PERMISSIONS[] = {
     {"notification.invokeAction",      {"notification.read", NULL}},
     {"notification.setDndMode",        {"system", NULL}},
     {"notification.setChannelEnabled", {"system", NULL}},
+    /* The chip's ID outlives a factory reset — a tracking ID if every app read it */
+    {"device.getDeviceId",             {"system", NULL}},
+    /* The emergency alert tone: full volume through mute and silent mode */
+    {"audio.playTone",                 {"system", NULL}},
     /* The device's power is the OS's: any app may read it, only system apps
        turn the screen, sleep, shut down or reboot it, or hold it awake */
     {"power.screenOff",                {"system", NULL}},
@@ -1292,7 +1299,7 @@ static void on_introspect_done(GObject *source, GAsyncResult *res, gpointer data
     if (!introspect_cache)
         introspect_cache = g_hash_table_new_full(g_str_hash, g_str_equal, g_free,
                                                  (GDestroyNotify)g_dbus_node_info_unref);
-    g_hash_table_replace(introspect_cache, g_strdup(c->route->dbus_name), node);
+    g_hash_table_replace(introspect_cache, g_strdup(c->route->service), node);
     service_call_invoke(c, node);
 }
 
@@ -1311,8 +1318,8 @@ static void handle_service_request(const char *type, gpointer msg_obj,
         return;
     }
 
-    const char *service = json_object_get_string_member(msg, "service");
-    const char *method  = json_object_get_string_member(msg, "method");
+    const char *service = zyl_json_str(msg, "service", NULL);
+    const char *method  = zyl_json_str(msg, "method", NULL);
 
     if (!service || !method || service[0] == '\0' || method[0] == '\0') {
         zyl_bridge_reply_error(reply_ctx, "empty service or method");
@@ -1367,7 +1374,7 @@ static void handle_service_request(const char *type, gpointer msg_obj,
         call->params = json_object_ref(json_node_get_object(params_node));
 
     GDBusNodeInfo *cached = introspect_cache
-        ? g_hash_table_lookup(introspect_cache, route->dbus_name) : NULL;
+        ? g_hash_table_lookup(introspect_cache, route->service) : NULL;
     if (cached) {
         service_call_invoke(call, cached);
         return;

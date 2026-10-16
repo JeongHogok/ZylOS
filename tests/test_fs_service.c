@@ -6,7 +6,8 @@
  *           목록(폴더 먼저·이름순, 숨김·링크 제외, 형식), 텍스트·명시적 base64
  *           쓰기·읽기, 텍스트처럼 보이는 base64 문자열은 그대로, 이름 바꾸기·
  *           삭제(루트 자체는 못 지움), 기본 폴더, 건네기(받는 앱 Inbox·시스템 앱이면
- *           Downloads 로 복사, 이름 충돌, 같은 루트는 그대로, 루트 밖·폴더·없는 파일 거부)
+ *           Downloads 로 복사, 이름 충돌, 같은 루트는 그대로, 루트 밖·폴더·없는 파일 거부),
+ *           한도(읽기 응답은 버스 한도 아래, 쓰기·건네기는 root 예약분을 남기고)
  * 의존방향: runtime/services/fs/fs.c (ZYL_TEST), glib
  * SOLID: SRP — 파일 접근 정책 검증만 담당
  * ────────────────────────────────────────────────────────── */
@@ -42,6 +43,9 @@ static void test_nothing_outside_the_root(void) {
 static void test_protected_paths_are_refused(void) {
     assert(!resolve(ZYL_FILES_ROOT, "settings.json") && !resolve(ZYL_FILES_ROOT, ".credentials/key") && !resolve(ZYL_FILES_ROOT, ".SYSTEM/x"));
     assert(!write_file(ZYL_FILES_ROOT, "settings.json", "{}", NULL));
+    /* the same places spelt otherwise */
+    assert(!resolve(ZYL_FILES_ROOT, "./.system/x") && !resolve(ZYL_FILES_ROOT, ".//.credentials/key"));
+    assert(!resolve(ZYL_FILES_ROOT, "/./settings.json") && !resolve(ZYL_FILES_ROOT, "././.SYSTEM"));
 }
 
 static void test_listing_folders_first_without_hidden_or_links(void) {
@@ -156,6 +160,39 @@ static void test_handoff_same_root_and_refusals(void) {
     g_variant_unref(r);
 }
 
+/* A reply over the bus limit drops this service's connection and it exits;
+   a file too big to send back is "cannot read", not a crash */
+static void test_read_reply_stays_under_the_bus_limit(void) {
+    char *big = g_strnfill(MAX_REPLY_READ + 1, 'x');
+    assert(g_file_set_contents(ZYL_FILES_ROOT "/big.txt", big, -1, NULL));
+    gsize len = 0;
+    assert(read_file(ZYL_FILES_ROOT, "big.txt", &len) == NULL);
+    big[MAX_REPLY_READ] = '\0';
+    assert(g_file_set_contents(ZYL_FILES_ROOT "/ok.txt", big, -1, NULL));
+    char *d = read_file(ZYL_FILES_ROOT, "ok.txt", &len);
+    assert(d && len == MAX_REPLY_READ);
+    g_free(d);
+    g_free(big);
+}
+
+/* An app cannot fill /data to the last block: the root-reserved part and a
+   margin stay for the OS — writes and hand-offs past it are refused */
+static void test_apps_leave_the_os_its_room(void) {
+    assert(write_file(ZYL_FILES_ROOT, "Documents/a.txt", "hello", NULL));
+    guint64 saved = keep_free;
+    /* as if the disk were full — not the space measured now: tests run side by
+       side and another may free some meanwhile */
+    keep_free = G_MAXUINT64 / 2;
+    assert(!write_file(ZYL_FILES_ROOT, "Documents/b.txt", "hello", NULL));
+    assert(!g_file_test(ZYL_FILES_ROOT "/Documents/b.txt", G_FILE_TEST_EXISTS));
+    char *got = handoff(ZYL_FILES_ROOT, "Documents/a.txt", ZYL_CONTAINERS_ROOT "/x", "Inbox");
+    assert(got == NULL);
+    keep_free = saved;
+    got = handoff(ZYL_FILES_ROOT, "Documents/a.txt", ZYL_CONTAINERS_ROOT "/x", "Inbox");
+    assert(got != NULL);
+    g_free(got);
+}
+
 int main(void) {
     printf("=== File service ===\n");
     RUN_TEST(test_nothing_outside_the_root);
@@ -166,6 +203,8 @@ int main(void) {
     RUN_TEST(test_third_party_app_gets_its_container);
     RUN_TEST(test_handoff_copies_into_the_receivers_root);
     RUN_TEST(test_handoff_same_root_and_refusals);
+    RUN_TEST(test_read_reply_stays_under_the_bus_limit);
+    RUN_TEST(test_apps_leave_the_os_its_room);
     assert(system("rm -rf " ROOT_) == 0);
     printf("Results: %d/%d passed\n", tests_pass, tests_run);
     return tests_pass == tests_run ? 0 : 1;

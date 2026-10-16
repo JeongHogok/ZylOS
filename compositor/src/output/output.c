@@ -38,13 +38,9 @@ static void output_frame(struct wl_listener *listener, void *data)
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
     wlr_scene_output_send_frame_done(scene_output, &now);
-
-    /*
-     * Frame pacing: schedule the next frame instead of rendering
-     * continuously. The compositor will only wake when the output
-     * is ready for a new frame or when damage occurs.
-     */
-    wlr_output_schedule_frame(output->wlr_output);
+    /* No wlr_output_schedule_frame here: the scene schedules the next frame
+       when something is damaged. Asking for one every frame committed at
+       60 Hz with nothing to show — the screen off included — a battery drain */
 }
 
 /* ─── Output state request (mode change, enable/disable, ...) ─── */

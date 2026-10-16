@@ -106,7 +106,7 @@ bool geoip_query(ZylLocation *loc) {
     loc->timestamp_ms = now_ms();
     snprintf(loc->provider, sizeof(loc->provider), "network");
 
-    g_message("[Location] GeoIP fix: lat=%.4f lon=%.4f", lat, lon);
+    g_message("[Location] GeoIP fix");   /* no coordinates in the log */
     return true;
 }
 

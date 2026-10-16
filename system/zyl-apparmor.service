@@ -9,7 +9,7 @@ Type=oneshot
 RemainAfterExit=yes
 # Fail closed on parser errors instead of silently ignoring broken profiles.
 # Missing glob matches are ignored safely; individual profile load failures abort.
-ExecStart=/bin/sh -eu -c '
+ExecStart=/bin/sh -eu -c ' \
   found=0; \
   for p in /etc/apparmor.d/zyl-*; do \
     [ -e "$p" ] || continue; \
@@ -27,7 +27,8 @@ ProtectHome=true
 PrivateTmp=true
 PrivateDevices=true
 PrivateNetwork=true
-ProtectKernelTunables=true
+# Not ProtectKernelTunables: it makes /sys read-only, and loading a profile is
+# a write to securityfs (/sys/kernel/security/apparmor)
 ProtectKernelModules=true
 ProtectControlGroups=true
 RestrictNamespaces=true

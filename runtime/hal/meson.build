@@ -45,7 +45,7 @@ cc = meson.get_compiler('c')
 zyl_hal = static_library('zyl-hal', hal_sources,
   c_args: boot_layout_args,
   include_directories: include_directories('.'),    # hal.h for a board's own sources
-  dependencies: [gio, json_glib, cc.find_library('m'), dependency('threads')],
+  dependencies: [gio, json_glib, zyl_json_dep, cc.find_library('m'), dependency('threads')],
   install: false,
 )
 

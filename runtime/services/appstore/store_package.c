@@ -11,6 +11,7 @@
 #include <glib.h>
 #include <glib/gstdio.h>
 #include <json-glib/json-glib.h>
+#include "zyl_json.h"
 #include <string.h>
 #include <sys/stat.h>
 #include <zip.h>
@@ -87,9 +88,9 @@ bool zyl_store_check_manifest(const char *dir, const char *id, const char *versi
     const char *reason = "no app.json";
     if (json_parser_load_from_file(p, path, NULL) && JSON_NODE_HOLDS_OBJECT(json_parser_get_root(p))) {
         JsonObject *o = json_node_get_object(json_parser_get_root(p));
-        const char *mid = json_object_get_string_member_with_default(o, "id", "");
-        const char *mver = json_object_get_string_member_with_default(o, "version", "");
-        const char *entry = json_object_get_string_member_with_default(o, "entry", "index.html");
+        const char *mid = zyl_json_str(o, "id", "");
+        const char *mver = zyl_json_str(o, "version", "");
+        const char *entry = zyl_json_str(o, "entry", "index.html");
         char *entry_path = g_build_filename(dir, entry, NULL);
         if (strcmp(mid, id) != 0) reason = "package is a different app";
         else if (strcmp(mver, version) != 0) reason = "package is a different version";

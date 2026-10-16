@@ -267,9 +267,13 @@
     return el;
   }
 
-  function renderAboutInfo(info) {
+  /* The chip ID is its own request (device.getDeviceId, system apps only) */
+  var aboutInfo = null, aboutDeviceId = '';
+
+  function renderAboutInfo() {
     var list = document.getElementById('about-info-list');
-    if (!list) return;
+    var info = aboutInfo;
+    if (!list || !info) return;
     list.innerHTML = '';
     var items = [
       { label: t('settings.device_name'), value: info.deviceName },
@@ -281,7 +285,7 @@
       { label: t('settings.build'),       value: info.build }
     ];
     /* What a developer registers in a provisioning profile; none on a board without one */
-    if (info.deviceId) items.push({ label: t('settings.device_id'), value: info.deviceId });
+    if (aboutDeviceId) items.push({ label: t('settings.device_id'), value: aboutDeviceId });
     items.forEach(function (item) {
       list.appendChild(infoRow(item.label, item.value));
     });
@@ -316,7 +320,8 @@
   /* Register device and storage as core handlers */
   handlers.device = {
     onServiceResponse: function (method, data) {
-      if (method === 'getInfo' && data) renderAboutInfo(data);
+      if (method === 'getInfo' && data) { aboutInfo = data; renderAboutInfo(); }
+      if (method === 'getDeviceId' && data) { aboutDeviceId = data.deviceId || ''; renderAboutInfo(); }
     }
   };
 
@@ -379,6 +384,7 @@
   requestServiceFire('wifi', 'getNetworks');
   requestServiceFire('bluetooth', 'getDevices');
   requestServiceFire('device', 'getInfo');
+  requestServiceFire('device', 'getDeviceId');
   requestServiceFire('storage', 'getUsage');
 
   /* Request settings state for all categories */

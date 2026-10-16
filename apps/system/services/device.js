@@ -2,8 +2,10 @@
 // [Clean Architecture] Domain Layer - Service Module
 //
 // Role: DeviceInfo service — device metadata and uptime
-// Scope: deviceName, osVersion, securityPatch, SoC, RAM, kernel, build info,
-//        deviceId (the hardware's own ID — what development profiles list)
+// Scope: deviceName, osVersion, securityPatch, SoC, RAM, kernel, build info;
+//        deviceId (the hardware's own ID — what development profiles list) is
+//        getDeviceId only, the system's (permissions.js): it outlives a factory
+//        reset, a tracking ID if every app could read it — as the device's GetDeviceId
 // Dependency Direction: Domain -> none (static data)
 // SOLID: SRP — device info only
 // ----------------------------------------------------------
@@ -33,7 +35,12 @@
     };
 
     return {
-      getInfo:   function () { return info; },
+      getInfo:   function () {
+        var out = {};
+        Object.keys(info).forEach(function (k) { if (k !== 'deviceId') out[k] = info[k]; });
+        return out;
+      },
+      getDeviceId: function () { return { deviceId: info.deviceId }; },
       getUptime: function () { return Promise.resolve(Math.floor((Date.now() - info.bootTime) / 1000)); },
       _applyProfile: function (profile) {
         if (!profile) return;
