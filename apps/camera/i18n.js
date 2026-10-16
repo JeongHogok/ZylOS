@@ -11,6 +11,7 @@
 
   zylI18n.addTranslations('ko', {
     'camera.access_denied': '\uCE74\uBA54\uB77C \uC811\uADFC\uC774 \uAC70\uBD80\uB418\uC5C8\uC2B5\uB2C8\uB2E4',
+    'camera.unavailable': '\uce74\uba54\ub77c\ub97c \uc4f8 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4',
     'camera.photo': '\uC0AC\uC9C4',
     'camera.video': '\uBE44\uB514\uC624',
     'camera.portrait': '\uC778\uBB3C',
@@ -25,6 +26,7 @@
 
   zylI18n.addTranslations('en', {
     'camera.access_denied': 'Camera access denied',
+    'camera.unavailable': 'Camera unavailable',
     'camera.photo': 'Photo',
     'camera.video': 'Video',
     'camera.portrait': 'Portrait',
@@ -39,6 +41,7 @@
 
   zylI18n.addTranslations('ja', {
     'camera.access_denied': '\u30AB\u30E1\u30E9\u3078\u306E\u30A2\u30AF\u30BB\u30B9\u304C\u62D2\u5426\u3055\u308C\u307E\u3057\u305F',
+    'camera.unavailable': '\u30ab\u30e1\u30e9\u3092\u4f7f\u7528\u3067\u304d\u307e\u305b\u3093',
     'camera.photo': '\u5199\u771F',
     'camera.video': '\u30D3\u30C7\u30AA',
     'camera.portrait': '\u30DD\u30FC\u30C8\u30EC\u30FC\u30C8',
@@ -53,6 +56,7 @@
 
   zylI18n.addTranslations('zh', {
     'camera.access_denied': '\u76F8\u673A\u8BBF\u95EE\u88AB\u62D2\u7EDD',
+    'camera.unavailable': '\u76f8\u673a\u4e0d\u53ef\u7528',
     'camera.photo': '\u62CD\u7167',
     'camera.video': '\u89C6\u9891',
     'camera.portrait': '\u4EBA\u50CF',
@@ -67,6 +71,7 @@
 
   zylI18n.addTranslations('es', {
     'camera.access_denied': 'Acceso a la c\u00E1mara denegado',
+    'camera.unavailable': 'C\u00e1mara no disponible',
     'camera.photo': 'Foto',
     'camera.video': 'Video',
     'camera.portrait': 'Retrato',

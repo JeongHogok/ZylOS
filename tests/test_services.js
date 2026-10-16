@@ -1560,6 +1560,30 @@ var gateTests = (function () {
       return Promise.resolve();
     });
   }).then(function () {
+    /* Same rule as test_notification.c: only an offered action, by the system UI; then it is done */
+    return asyncTest('an action press goes to the posting app, by the system UI only, once', function () {
+      var before = events.length;
+      return ask('notification', 'postWithActions',
+                 { title: 'Mom', actions: [{ label: 'Reply', actionId: 'reply' }] }, 'com.example.chat')
+        .then(function (r) {
+          var id = r.id;
+          return Promise.all([
+            ask('notification', 'invokeAction', { id: id, actionId: 'reply' }, 'com.example.chat'),
+            ask('notification', 'invokeAction', { id: id, actionId: 'nope' }, 'com.zylos.statusbar')
+          ]).then(function (refused) {
+            assert.strictEqual(refused[0].error, 'Permission denied');           /* not an app's own call */
+            assert.strictEqual(refused[1], false);                                 /* not offered */
+            return ask('notification', 'invokeAction', { id: id, actionId: 'reply' }, 'com.zylos.statusbar');
+          }).then(function (ok) {
+            assert.strictEqual(ok, true);
+            var pressed = events.slice(before).filter(function (e) { return e.type === 'zyl:notification-action'; });
+            assert.deepStrictEqual(JSON.parse(JSON.stringify(pressed.map(function (e) { return e.detail; }))),
+                                   [{ id: id, appId: 'com.example.chat', actionId: 'reply' }]);
+            return ask('notification', 'invokeAction', { id: id, actionId: 'reply' }, 'com.zylos.statusbar');
+          }).then(function (again) { assert.strictEqual(again, false); });           /* done: gone */
+        });
+    });
+  }).then(function () {
     return asyncTest('internals and what every object has are not methods', function () {
       ['_forgetApp', 'constructor', 'toString', '__proto__', 'hasOwnProperty'].forEach(function (m) {
         assert.strictEqual(S.handleRequest('notification', m, {}, 'com.zylos.statusbar'), null, m);
@@ -3087,6 +3111,11 @@ console.log('\n■ ZylSandbox content policy');
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'apps', 'system',
                      'sandbox.js'), 'utf8'), ctx);
   var S = ctx.window.ZylSandbox;
+
+  test('frame policy: camera and microphone by permission, geolocation never (as wam.c)', function () {
+    assert.strictEqual(S.getPolicy('com.example.cam', ['camera', 'location']),
+                       "camera 'self'; microphone 'none'; geolocation 'none'");
+  });
 
   test('a user app without the network: its own files, nothing out', function () {
     assert.strictEqual(S.getContentPolicy(false, ['camera']),
