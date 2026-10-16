@@ -2,9 +2,11 @@
 // [Clean Architecture] Presentation Layer - Page
 //
 // 역할: Zyl OS 네이티브 에뮬레이터 — Tauri 통합 + 프리부팅 설정 연동
-// 수행범위: 앱 라우팅, 네비게이션 입력, HAL 자동 감지. 어느 앱이 앞에 올지
-//           (설정·잠금·홈·최근 앱)는 OS 의 ZylShell 이 정하고 여기는 띄우기만 한다
-// 의존방향: hal-tauri.js | hal-browser.js, config-ui.js, boot-sequence.js,
+// 수행범위: 앱 라우팅, 네비게이션 입력, 두 프레임(앱 · OS 의
+//           시스템 UI). 어느 앱이 앞에 올지(설정·잠금·홈·최근 앱)와 시스템 UI
+//           표면이 얼마나 보일지는 OS 의 ZylShell 이 정하고 여기는 띄우기만 한다.
+//           상태바·알림판·최근 앱은 OS 앱(apps/statusbar)이 그린다
+// 의존방향: config-ui.js, boot-sequence.js, app-state.js,
 //           OS: ZylShell (apps/system/shell.js), ZylAppRegistry, ZylIntent
 // SOLID: OCP — 디바이스 프로필 배열에 추가만으로 새 기종 지원
 //
@@ -14,10 +16,6 @@
 
 (function () {
   'use strict';
-
-  /* ═══ HAL 자동 감지 ═══ */
-  var IS_TAURI = (typeof window !== 'undefined' && typeof window.__TAURI__ !== 'undefined');
-  var HAL = IS_TAURI ? window.ZylHalTauri : window.ZylHalBrowser;
 
   /* ═══ 앱 경로 ═══
      부팅 시 Rust가 OS 이미지(.img)를 마운트 → apps/를 ui/apps/로 복사.
@@ -33,13 +31,8 @@
     previousApp: null,
     runningApps: [],
     screenOn: true,
-    recentsOpen: false,
+    panel: 'bar',        /* the system UI surface: bar | banner | full (the OS's) */
   };
-
-  /* ═══ Notifications ═══
-     What the OS notification service holds (apps/system/services/notification.js
-     announces posted/dismissed); the container draws the shade and banners */
-  var notifications = []; // { id, appId, appName, icon, title, body, channel, priority, timestamp, read, persistent }
 
   /* ═══ DOM ═══ */
   var emulatorScreen  = document.getElementById('emulator-screen');
@@ -48,13 +41,10 @@
   var frameEl         = document.getElementById('device-frame');
   var controlEl       = document.getElementById('control-panel');
   var appFrame        = document.getElementById('app-frame');
+  var systemFrame     = document.getElementById('system-frame');
   var viewport        = document.getElementById('app-viewport');
-  var emuTime         = document.getElementById('emu-time');
   var logEl           = document.getElementById('sys-log');
   var appsList        = document.getElementById('running-apps-list');
-  var recentsOverlay  = document.getElementById('recents-overlay');
-  var recentsCards    = document.getElementById('recents-cards');
-  var recentsEmpty    = document.getElementById('recents-empty');
   var navSoftkeys     = document.getElementById('nav-softkeys');
   var navGesture      = document.getElementById('nav-gesture');
   var navHardware     = document.getElementById('nav-hardware');
@@ -78,14 +68,6 @@
     logEl.appendChild(line);
     logEl.scrollTop = logEl.scrollHeight;
   }
-
-  /* ═══ Clock ═══ */
-  function updateClock() {
-    if (!emuTime) return;
-    emuTime.textContent = deviceClockText(new Date());
-  }
-  updateClock();
-  var _clockInterval = setInterval(updateClock, 1000);
 
   /* ═══════════════════════════════════════════════════════
      Which app may be in front is the OS's (ZylShell): setup, the lock
@@ -127,16 +109,9 @@
     var app = ZylAppRegistry.getApp(appId);
     if (!app) {
       syslog('App not found: ' + appId, 'warn');
-      showToast({
-        icon: '📦',
-        appName: 'System',
-        title: 'App not installed',
-        body: appId.replace('com.zylos.', '') + ' is not available',
-        appId: null
-      });
       return;
     }
-    if (state.recentsOpen) hideRecents();
+    setPanel('bar');
 
     /* Hardware input hint for the OS. The container reports what input
        hardware exists; apps/shared/form-factor.js decides the form factor.
@@ -199,13 +174,6 @@
           if (restored.found) {
             broadcastToCurrentApp('lifecycle.restore', { state: restored.state });
           }
-
-          /* The notifications the device holds, where the OS shows them */
-          if (ZylShell.showsNotifications(loadAppId)) {
-            notifications.forEach(function (n) {
-              broadcastToCurrentApp('notification.push', n);
-            });
-          }
         }, 200);
         appFrame.onload = null;
       };
@@ -240,6 +208,7 @@
 
   /* Home: the lock screen while locked, nothing during setup (the OS's) */
   function goHome() {
+    setPanel('bar');
     show(ZylShell.home());
   }
 
@@ -247,6 +216,7 @@
 
   /* Back goes to the app first; an app that exits goes where home goes */
   function goBack() {
+    if (state.panel !== 'bar') { setPanel('bar'); return; }   /* back closes the panel first */
     if (_backResponsePending) return;
 
     syslog('\u2190 Back', 'sys');
@@ -290,21 +260,51 @@
     }, 350);
   }
 
+  /* ═══ System UI surface ═══
+     The OS's status bar app in its own frame over the app: the OS says how
+     much of it shows (ZylShell.panelMode) and tells it (panel.mode) */
+  function postToSystemUi(type, data) {
+    try {
+      systemFrame.contentWindow.postMessage(JSON.stringify({ type: type, data: data }), _ipcOrigin);
+    } catch (e) { /* not loaded yet */ }
+  }
+
+  function setPanel(mode) {
+    if (!systemFrame) return;
+    state.panel = mode;
+    systemFrame.className = mode === 'bar' ? '' : 'panel-' + mode;
+    postToSystemUi('panel.mode', { mode: mode });
+  }
+
+  function loadSystemUi() {
+    var id = ZylShell.systemUi();
+    if (!systemFrame || !ZylAppRegistry.getApp(id)) return;
+    systemFrame.onload = function () {
+      setTimeout(function () {
+        postToSystemUi('system.setLocale', { locale: ZylEmuI18n.getLocale() });
+        postToSystemUi('system.setTimeZone', { timeZone: _currentTimeZone });
+        setPanel('bar');
+      }, 200);
+    };
+    systemFrame.src = ZylAppRegistry.getPath(id) + '?v=' + Date.now();
+  }
+
+  /* Recents: the system UI shows them, with what is running */
+  function recentsList() {
+    return state.runningApps.map(function (a) {
+      return { appId: a.id, name: a.name, closable: ZylShell.mayClose(a.id) };
+    });
+  }
+
   function showRecents() {
     if (!ZylShell.navigable()) return;
-    state.recentsOpen = true;
-    recentsOverlay.classList.remove('hidden');
-    renderRecentsCards();
+    setPanel('full');
+    postToSystemUi('recents.open', { apps: recentsList() });
     syslog('Recents', 'sys');
   }
 
-  function hideRecents() {
-    state.recentsOpen = false;
-    recentsOverlay.classList.add('hidden');
-  }
-
   function toggleRecents() {
-    if (state.recentsOpen) hideRecents();
+    if (state.panel === 'full') setPanel('bar');
     else showRecents();
   }
 
@@ -320,34 +320,6 @@
     open(apps[next].id);
     syslog('Switch → ' + apps[next].name, 'sys');
   }
-
-  /* ═══ Recents UI ═══ */
-  function renderRecentsCards() {
-    if (!recentsCards) return;
-    recentsCards.innerHTML = '';
-    var apps = state.runningApps;
-    if (recentsEmpty) recentsEmpty.style.display = apps.length === 0 ? 'block' : 'none';
-    apps.forEach(function (app) {
-      var card = document.createElement('div');
-      card.className = 'recents-card';
-      card.style.cursor = 'pointer';
-      card.onclick = function () { hideRecents(); open(app.id); };
-      var nameEl = document.createElement('span');
-      nameEl.className = 'recents-card-name';
-      nameEl.textContent = app.name;
-      var close = document.createElement('button');
-      close.className = 'recents-card-close';
-      close.textContent = '\u00d7';
-      close.onclick = function (e) { e.stopPropagation(); closeApp(app.id); renderRecentsCards(); if (state.runningApps.length === 0) hideRecents(); };
-      card.appendChild(nameEl);
-      if (ZylShell.mayClose(app.id)) card.appendChild(close);
-      recentsCards.appendChild(card);
-    });
-  }
-
-  if (recentsOverlay) recentsOverlay.addEventListener('click', function (e) {
-    if (e.target === recentsOverlay) hideRecents();
-  });
 
   /* ═══ Running Apps (side panel) ═══ */
   function updateRunningApps() {
@@ -416,173 +388,6 @@
     navGesture.addEventListener('click', function () { goHome(); });
   }
 
-  /* ═══════════════════════════════════════════════════════
-     상태바 풀다운 → 퀵설정 패널
-     ═══════════════════════════════════════════════════════ */
-  var qsPanel   = document.getElementById('qs-panel');
-  var statusbar = document.getElementById('emu-statusbar');
-  var qsTime    = document.getElementById('qs-time');
-  var qsDate    = document.getElementById('qs-date');
-  var qsOpen    = false;
-  var sbDrag    = { active: false, startY: 0 };
-
-  function updateQsClock() {
-    var now = new Date();
-    if (qsTime) qsTime.textContent = deviceClockText(now);
-    var emuLocale = (typeof ZylEmuI18n !== 'undefined') ? ZylEmuI18n.getLocale() : 'en';
-    if (qsDate) {
-      try {
-        qsDate.textContent = now.toLocaleDateString(emuLocale, zoneOpts({ month: 'long', day: 'numeric', weekday: 'long' }));
-      } catch (e) {
-        qsDate.textContent = now.toLocaleDateString(emuLocale, { month: 'long', day: 'numeric', weekday: 'long' });
-      }
-    }
-  }
-
-  var qsBackdrop = document.getElementById('qs-backdrop');
-
-  function openQsPanel() {
-    if (qsOpen || !ZylShell.navigable()) return;
-    qsOpen = true;
-    updateQsClock();
-    renderQsNotifications();
-    qsPanel.classList.remove('qs-hidden');
-    qsPanel.style.transform = 'translateY(0)';
-    qsPanel.style.opacity = '1';
-    qsPanel.style.pointerEvents = '';
-    if (qsBackdrop) { qsBackdrop.classList.add('qs-backdrop-show'); qsBackdrop.style.opacity = ''; }
-    /* Block iframe from receiving ANY events while QS is open */
-    if (appFrame) appFrame.style.pointerEvents = 'none';
-  }
-
-  function closeQsPanel() {
-    if (!qsOpen) return;
-    qsOpen = false;
-    qsPanel.style.transform = '';
-    qsPanel.style.opacity = '';
-    qsPanel.classList.add('qs-hidden');
-    if (qsBackdrop) { qsBackdrop.classList.remove('qs-backdrop-show'); qsBackdrop.style.opacity = ''; }
-    /* Restore iframe events */
-    if (appFrame) appFrame.style.pointerEvents = '';
-  }
-
-  /* ═══ QS Panel Drag — delegated to ZylTouch.createPanelDrag ═══ */
-  var qsPanelDrag = null;
-  var _qsDragMoved = false;
-
-  function blockIframe(block) {
-    if (appFrame) appFrame.style.pointerEvents = block ? 'none' : '';
-  }
-
-  if (typeof ZylTouch !== 'undefined' && statusbar && qsPanel) {
-    qsPanelDrag = ZylTouch.createPanelDrag(statusbar, qsPanel, {
-      direction: 'down',
-      threshold: 40,
-      getHeight: function () { return qsPanel.offsetHeight || 400; },
-      onOpen: function () {
-        qsOpen = true;
-        updateQsClock();
-        renderQsNotifications();
-        qsPanel.classList.remove('qs-hidden');
-        qsPanel.style.pointerEvents = '';
-        if (qsBackdrop) { qsBackdrop.classList.add('qs-backdrop-show'); qsBackdrop.style.opacity = ''; }
-      },
-      onClose: function () {
-        qsOpen = false;
-        qsPanel.classList.add('qs-hidden');
-        if (qsBackdrop) { qsBackdrop.classList.remove('qs-backdrop-show'); qsBackdrop.style.opacity = ''; }
-      }
-    });
-  }
-
-  /* Statusbar: drag down to open, click to toggle */
-  statusbar.addEventListener('mousedown', function (e) {
-    _qsDragMoved = false;
-    if (qsPanelDrag && ZylShell.navigable()) qsPanelDrag.start(e.clientY, blockIframe);
-  });
-  statusbar.addEventListener('touchstart', function (e) {
-    _qsDragMoved = false;
-    if (qsPanelDrag && ZylShell.navigable()) qsPanelDrag.start(e.touches[0].clientY, blockIframe);
-  }, { passive: true });
-
-  statusbar.addEventListener('click', function () {
-    if (_qsDragMoved) return;
-    if (qsOpen) closeQsPanel(); else openQsPanel();
-  });
-
-  /* Block click-through on QS panel */
-  qsPanel.addEventListener('click', function (e) { e.stopPropagation(); });
-
-  /* Panel: drag up to close */
-  qsPanel.addEventListener('mousedown', function (e) {
-    if (e.target.closest('button, input, .qs-tile, .qs-notif-card')) return;
-    _qsDragMoved = false;
-    if (qsPanelDrag && ZylShell.navigable()) qsPanelDrag.start(e.clientY, blockIframe);
-  });
-  qsPanel.addEventListener('touchstart', function (e) {
-    if (e.target.closest('button, input, .qs-tile, .qs-notif-card')) return;
-    _qsDragMoved = false;
-    if (qsPanelDrag && ZylShell.navigable()) qsPanelDrag.start(e.touches[0].clientY, blockIframe);
-  }, { passive: true });
-
-  /* Global move/end listeners */
-  document.addEventListener('mousemove', function (e) {
-    if (qsPanelDrag && qsPanelDrag.isActive()) { qsPanelDrag.move(e.clientY); _qsDragMoved = true; }
-  });
-  document.addEventListener('touchmove', function (e) {
-    if (qsPanelDrag && qsPanelDrag.isActive()) { qsPanelDrag.move(e.touches[0].clientY); _qsDragMoved = true; }
-  }, { passive: true });
-  document.addEventListener('mouseup', function () {
-    if (qsPanelDrag && qsPanelDrag.isActive()) qsPanelDrag.end(blockIframe);
-  });
-  document.addEventListener('touchend', function () {
-    if (qsPanelDrag && qsPanelDrag.isActive()) qsPanelDrag.end(blockIframe);
-  });
-
-  /* 퀵설정 타일 토글 + 서비스 호출 */
-  document.querySelectorAll('.qs-tile').forEach(function (tile) {
-    tile.addEventListener('click', function () {
-      tile.classList.toggle('active');
-      var qs = tile.dataset.qs;
-      var on = tile.classList.contains('active');
-      syslog('QS: ' + qs + ' ' + (on ? 'ON' : 'OFF'), 'sys');
-      /* Route ALL QS toggles through services + apply side effects */
-      var categoryMap = { wifi: 'wifi', bt: 'bluetooth', airplane: 'network', rotate: 'display', flashlight: 'display' };
-      var keyMap = { wifi: 'enabled', bt: 'enabled', airplane: 'airplaneMode', rotate: 'autoRotate', flashlight: 'flashlight' };
-      if (qs === 'silent') {
-        ZylServices.handleRequest('audio', 'setSilentMode', { enabled: on });
-        _systemSilentMode = on;
-        applySettingSideEffect('sound', 'silentMode', on);
-      } else if (categoryMap[qs]) {
-        ZylServices.handleRequest('settings', 'update', { category: categoryMap[qs], key: keyMap[qs], value: on });
-        applySettingSideEffect(categoryMap[qs], keyMap[qs], on);
-      }
-    });
-  });
-
-  /* 밝기 슬라이더 → 화면 밝기 반영 */
-  var qsBrightness = document.getElementById('qs-brightness');
-  if (qsBrightness) {
-    qsBrightness.addEventListener('input', function () {
-      var pct = parseInt(qsBrightness.value, 10);
-      var screen = document.getElementById('device-screen');
-      if (screen) screen.style.filter = 'brightness(' + (pct / 100) + ')';
-      syslog('Brightness: ' + pct + '%', 'sys');
-    });
-  }
-
-  /* 패널 핸들 / 백드롭 클릭으로 닫기 */
-  if (qsPanel && qsPanel.querySelector('.qs-handle')) qsPanel.querySelector('.qs-handle').addEventListener('click', closeQsPanel);
-  if (qsBackdrop) {
-    qsBackdrop.addEventListener('click', function (e) {
-      e.stopPropagation();
-      closeQsPanel();
-    });
-    /* Block ALL touch/mouse events from reaching app below */
-    qsBackdrop.addEventListener('touchstart', function (e) { e.stopPropagation(); }, { passive: false });
-    qsBackdrop.addEventListener('mousedown', function (e) { e.stopPropagation(); });
-  }
-
   /* ═══ 제어 패널 ═══ */
   document.getElementById('btn-power').addEventListener('click', powerToggle);
   document.getElementById('btn-volup').addEventListener('click', function () { adjustVolume(5); });
@@ -596,9 +401,7 @@
     /* Screen off locks (the lock screen goes up behind the dark screen);
        screen on shows what holds the device — the OS decides both */
     if (!state.screenOn) {
-      if (qsOpen) closeQsPanel();
-      if (state.recentsOpen) hideRecents();
-      hideToast();
+      setPanel('bar');
       show(ZylShell.lock());
     } else {
       show(ZylShell.screenOn());
@@ -613,102 +416,36 @@
   document.getElementById('btn-reboot').addEventListener('click', function () {
     syslog('Rebooting...', 'warn');
     /* Clean up persistent timers before reboot to prevent accumulation */
-    if (_clockInterval) { clearInterval(_clockInterval); _clockInterval = null; }
     if (_volumeOsdTimer) { clearTimeout(_volumeOsdTimer); _volumeOsdTimer = null; }
     state.runningApps = [];
     state.currentApp = null;
-    /* Reset battery watcher flag so bootDevice re-initialises it cleanly */
-    state._batteryStarted = false;
     updateRunningApps();
-    /* Restart clock */
-    updateClock();
-    _clockInterval = setInterval(updateClock, 1000);
     bootDevice(device);
   });
 
   /* ═══════════════════════════════════════════════════════
-     알림 시스템
+     Service events: an OS service's signal to the frames the OS allows
+     (ZylPermissions.mayReceive — the device bridge's rule), in the device
+     bridge's form { type: 'service.event', service, event, data }
      ═══════════════════════════════════════════════════════ */
-  function pushNotification(n) {
-    var app = n.appId ? ZylAppRegistry.getApp(n.appId) : null;
-    var notif = {
-      id: n.id,
-      appId: n.appId || '',
-      appName: app ? app.name : 'System',
-      icon: n.icon || '🔔',
-      title: n.title || '',
-      body: n.body || '',
-      channel: n.channelId || 'default',
-      priority: n.priority || 1,
-      timestamp: n.timestamp || Date.now(),
-      read: false,
-      persistent: !!n.persistent
-    };
-    notifications.unshift(notif);
-    updateNotifBadge();
-    renderQsNotifications();
-
-    /* Play notification sound + vibrate */
-    playNotifSound();
-    triggerVibrate();
-
-    /* A banner unless locked; the lock screen lists them itself */
-    if (state.screenOn && !ZylShell.isLocked()) {
-      showToast(notif);
+  function deliverEvent(service, event, data) {
+    var msg = JSON.stringify({ type: 'service.event', service: service, event: event, data: data });
+    var ui = ZylShell.systemUi();
+    if (systemFrame && ZylPermissions.mayReceive(ui, service, event, data)) {
+      try { systemFrame.contentWindow.postMessage(msg, _ipcOrigin); } catch (e) { /* not loaded */ }
     }
-    if (ZylShell.showsNotifications(state.currentApp)) {
-      broadcastToCurrentApp('notification.push', notif);
+    if (_displayedApp && ZylPermissions.mayReceive(_displayedApp, service, event, data)) {
+      try { appFrame.contentWindow.postMessage(msg, frameOrigin()); } catch (e) { /* detached */ }
     }
-
-    syslog('Notif: ' + notif.title, 'app');
-    return notif.id;
   }
 
   window.addEventListener('zyl:notification-posted', function (e) {
-    if (e.detail) pushNotification(e.detail);
+    var n = e.detail;
+    if (n) deliverEvent('notification', 'NotificationPosted', [n.id, n.appId, n.title, n.body, n.priority]);
   });
   window.addEventListener('zyl:notification-dismissed', function (e) {
-    notifications = notifications.filter(function(n) { return n.id !== e.detail; });
-    updateNotifBadge();
-    renderQsNotifications();
+    deliverEvent('notification', 'NotificationDismissed', e.detail);
   });
-
-  /* The user dismissed it in the shade: the service drops it and says so */
-  function dismissNotification(id) {
-    ZylServices.handleRequest('notification', 'cancel', { id: id });
-  }
-
-  function clearAllNotifications() {
-    /* 카드 제거 애니메이션 후 실제 삭제 */
-    var list = document.getElementById('qs-notif-list');
-    var cards = list ? list.querySelectorAll('.qs-notif-card') : [];
-    if (cards.length === 0) {
-      ZylServices.handleRequest('notification', 'clearAll', {});
-      return;
-    }
-    cards.forEach(function(card, i) {
-      card.style.animation = 'none'; /* CSS animation 제거하여 transition과 충돌 방지 */
-      card.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
-      card.style.transitionDelay = (i * 50) + 'ms';
-      /* 강제 리플로우 후 transform 적용 */
-      void card.offsetWidth;
-      card.style.transform = 'translateX(100%)';
-      card.style.opacity = '0';
-    });
-    setTimeout(function() {
-      ZylServices.handleRequest('notification', 'clearAll', {});
-      syslog('Notifications cleared', 'sys');
-    }, cards.length * 50 + 350);
-  }
-
-  function updateNotifBadge() {
-    var unread = notifications.filter(function(n) { return !n.read; }).length;
-    var badge = document.getElementById('notif-badge');
-    if (badge) {
-      badge.textContent = unread;
-      badge.classList.toggle('hidden', unread === 0);
-    }
-  }
 
   /* ── postMessage target origin ──
    * Use window.location.origin so responses are only accepted by same-origin
@@ -724,6 +461,16 @@
   function frameOrigin() {
     var o = _displayedApp ? ZylAppRegistry.getOrigin(_displayedApp) : '';
     return o || _ipcOrigin;
+  }
+
+  /* Where a reply to a frame may go: the image's own pages share this origin */
+  function originFor(source) {
+    return (source === window || source === systemFrame.contentWindow) ? _ipcOrigin : frameOrigin();
+  }
+
+  /* Who sent it, as the OS knows: the system UI's frame, or the app in front */
+  function senderOf(source) {
+    return source === systemFrame.contentWindow ? ZylShell.systemUi() : (state.currentApp || '');
   }
 
   /* The OS decided who handles an intent; the container launches and delivers */
@@ -743,98 +490,9 @@
     } catch(e) { /* iframe may be cross-origin or detached */ }
   }
 
-  /* ═══ Toast Banner ═══ */
-  function showToast(notif) {
-    var toast = document.getElementById('notif-toast');
-    if (!toast) return;
-    toast.querySelector('.toast-icon').textContent = notif.icon;
-    toast.querySelector('.toast-app').textContent = notif.appName;
-    toast.querySelector('.toast-title').textContent = notif.title;
-    toast.querySelector('.toast-body').textContent = notif.body;
-    toast.classList.remove('toast-hidden', 'toast-show');
-    void toast.offsetWidth; /* 강제 리플로우 — transition 보장 */
-    toast.classList.add('toast-show');
-
-    toast.onclick = function() {
-      hideToast();
-      if (notif.appId && ZylAppRegistry.getApp(notif.appId)) open(notif.appId);
-    };
-
-    clearTimeout(toast._timer);
-    toast._timer = setTimeout(hideToast, 3000);
-  }
-
-  function hideToast() {
-    var toast = document.getElementById('notif-toast');
-    toast.classList.remove('toast-show');
-    toast.classList.add('toast-hidden');
-  }
-
-  /* ═══ QS Notification List ═══ */
-  function renderQsNotifications() {
-    var list = document.getElementById('qs-notif-list');
-    if (!list) return;
-    list.innerHTML = '';
-
-    var visible = notifications.filter(function(n) { return !n.read; });
-
-    if (visible.length === 0) {
-      list.innerHTML = '<div class="qs-notif-empty">' + esc(ZylEmuI18n.t('qs.no_notifications')) + '</div>';
-      return;
-    }
-
-    visible.forEach(function(notif) {
-      var card = document.createElement('div');
-      card.className = 'qs-notif-card';
-      card.innerHTML =
-        '<div class="qs-notif-icon">' + esc(notif.icon) + '</div>' +
-        '<div class="qs-notif-content">' +
-          '<div class="qs-notif-app">' + esc(notif.appName) + '</div>' +
-          '<div class="qs-notif-title">' + esc(notif.title) + '</div>' +
-          '<div class="qs-notif-body">' + esc(notif.body) + '</div>' +
-        '</div>' +
-        '<div class="qs-notif-time">' + esc(formatTimeAgo(notif.timestamp)) + '</div>';
-
-      card.addEventListener('click', function() {
-        closeQsPanel();
-        if (notif.appId && ZylAppRegistry.getApp(notif.appId)) open(notif.appId);
-      });
-
-      // Swipe to dismiss
-      var sx = 0;
-      card.addEventListener('mousedown', function(e) { sx = e.clientX; });
-      card.addEventListener('mouseup', function(e) {
-        if (Math.abs(e.clientX - sx) > 80) {
-          card.style.transform = 'translateX(' + (e.clientX > sx ? '100%' : '-100%') + ')';
-          card.style.opacity = '0';
-          setTimeout(function() { dismissNotification(notif.id); }, 300);
-        }
-      });
-
-      list.appendChild(card);
-    });
-
-    // Clear all button
-    if (visible.length > 0) {
-      var clearBtn = document.createElement('button');
-      clearBtn.className = 'qs-notif-clear';
-      clearBtn.textContent = ZylEmuI18n.t('qs.clear_all');
-      clearBtn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        clearAllNotifications();
-      });
-      list.appendChild(clearBtn);
-    }
-  }
-
-  function formatTimeAgo(ts) {
-    return ZylEmuI18n.formatTimeAgo(ts);
-  }
-
   /* ═══ System Services IPC ═══ */
-  function handleServiceRequest(msg, source) {
+  function handleServiceRequest(msg, source, callerAppId) {
     if (!msg.service || !msg.method) return;
-    var callerAppId = state.currentApp || '';
 
     /* Camera access: dynamically grant iframe permissions */
     if (msg.service === 'camera' && msg.method === 'requestAccess') {
@@ -854,7 +512,7 @@
       });
       try {
         if (source) {
-          source.postMessage(camResponse, source === window ? _ipcOrigin : frameOrigin());
+          source.postMessage(camResponse, originFor(source));
         } else if (appFrame && appFrame.contentWindow) {
           appFrame.contentWindow.postMessage(camResponse, frameOrigin());
         }
@@ -881,29 +539,16 @@
       });
       try {
         if (source) {
-          source.postMessage(response, source === window ? _ipcOrigin : frameOrigin());
+          source.postMessage(response, originFor(source));
         } else if (appFrame && appFrame.contentWindow) {
           appFrame.contentWindow.postMessage(response, frameOrigin());
         }
       } catch (err) { /* iframe not ready */ }
     }
 
-    /* The virtual device's own status bar shows its radios as switched */
-    function showRadio(data) {
-      if (msg.method !== 'setEnabled' || data !== true) return;
-      var on = !!(msg.params && msg.params.enabled);
-      if (msg.service === 'wifi') {
-        var wifiIcon = document.getElementById('sb-wifi');
-        if (wifiIcon) wifiIcon.style.opacity = on ? '0.85' : '0.15';
-      } else if (msg.service === 'bluetooth') {
-        var btIcon = document.getElementById('sb-bt');
-        if (btIcon) btIcon.classList.toggle('hidden', !on);
-      }
-    }
-
     /* Promise 또는 동기 데이터 모두 처리 */
     if (result && typeof result.then === 'function') {
-      result.then(function (data) { showRadio(data); sendResponse(data); })
+      result.then(function (data) { sendResponse(data); })
             .catch(function () { sendResponse(null); });
     } else {
       sendResponse(result);
@@ -915,22 +560,6 @@
   /* The device's configured time zone (Settings > Date & time); 'auto' follows
      the system zone. Broadcast to every app on load, like the locale. */
   var _currentTimeZone = 'auto';
-
-  /* The emulator draws the virtual device's status bar clock, so it follows
-     the device's zone — not the host's. (syslog stamps stay in host time:
-     they are emulator diagnostics.) */
-  function zoneOpts(opts) {
-    if (_currentTimeZone && _currentTimeZone !== 'auto') opts.timeZone = _currentTimeZone;
-    return opts;
-  }
-  function deviceClockText(now) {
-    try {
-      return now.toLocaleTimeString('en-GB', zoneOpts({ hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }));
-    } catch (e) {
-      return String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
-    }
-  }
-  var _systemSilentMode = false;
 
   function applySettingSideEffect(category, key, value) {
     /* ── 밝기: CSS filter로 화면 밝기 시뮬레이션 ── */
@@ -954,28 +583,13 @@
       syslog('Font size: ' + value, 'sys');
     }
 
-    /* ── Sound: statusbar silent/vibrate icons ── */
-    if (category === 'sound') {
-      if (key === 'silentMode') {
-        _systemSilentMode = !!value;
-        var silentIcon = document.getElementById('sb-silent');
-        var vibrateIcon = document.getElementById('sb-vibrate');
-        if (silentIcon) silentIcon.classList.toggle('hidden', !value);
-        /* If silent and vibration is on, show vibrate icon */
-        if (vibrateIcon) vibrateIcon.classList.toggle('hidden', !value);
-      }
-      if (key === 'vibration') {
-        var vibrateIcon2 = document.getElementById('sb-vibrate');
-        /* Show vibrate icon only when vibration is ON and silent mode is ON */
-        if (vibrateIcon2) vibrateIcon2.classList.toggle('hidden', !(_systemSilentMode && !!value));
-      }
-      syslog('Sound: ' + key + ' \u2192 ' + value, 'sys');
-    }
+    if (category === 'sound') syslog('Sound: ' + key + ' \u2192 ' + value, 'sys');
 
 
     /* ── Locale change → update compositor i18n ── */
     if (category === 'language' && key === 'locale') {
       ZylEmuI18n.setLocale(String(value));
+      postToSystemUi('system.setLocale', { locale: String(value) });
       syslog('Locale: ' + value, 'sys');
     }
 
@@ -983,7 +597,7 @@
     if (category === 'datetime' && key === 'timezone') {
       _currentTimeZone = String(value || 'auto');
       broadcastToCurrentApp('system.setTimeZone', { timeZone: _currentTimeZone });
-      updateClock();
+      postToSystemUi('system.setTimeZone', { timeZone: _currentTimeZone });
       syslog('Time zone: ' + _currentTimeZone, 'sys');
     }
 
@@ -999,40 +613,53 @@
 
   /* ═══ iframe 메시지 ═══ */
   window.addEventListener('message', function (e) {
-    /* S7: Origin verification — only accept messages from our own app iframe
-       or the window itself. Reject messages from unknown origins. */
-    if (e.source !== appFrame.contentWindow && e.source !== window) return;
+    /* S7: Origin verification — only our two frames (the app, the system UI)
+       or the window itself. The OS names the sender, never the message. */
+    if (e.source !== appFrame.contentWindow && e.source !== systemFrame.contentWindow &&
+        e.source !== window) return;
+    var from = senderOf(e.source);
     try {
       var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
       if (!msg || !msg.type) return;
       switch (msg.type) {
         case 'lifecycle.state':
-          _appStates.onState(msg.state);
+          if (e.source !== systemFrame.contentWindow) _appStates.onState(msg.state);
           break;
         case 'app.launch':
           open(msg.appId);
           break;
         case 'app.close':
-          if (state.currentApp && ZylShell.mayClose(state.currentApp)) closeApp(state.currentApp);
+          if (from && from !== ZylShell.systemUi() && ZylShell.mayClose(from)) closeApp(from);
           break;
         case 'intent.start':
-          runIntent(ZylIntent.start(state.currentApp, msg.intent));
+          runIntent(ZylIntent.start(from, msg.intent));
           break;
         case 'intent.chosen':
-          runIntent(ZylIntent.choose(state.currentApp, msg.token, msg.appId));
+          runIntent(ZylIntent.choose(from, msg.token, msg.appId));
           break;
-        /* Only the lock screen unlocks, only setup finishes setup: the OS
-           checks who sent it (the app in front) */
+        /* Only the lock screen unlocks, only setup finishes setup */
         case 'unlock':
-          var opened = ZylShell.unlock(state.currentApp, msg.appId);
+          var opened = ZylShell.unlock(from, msg.appId);
           if (opened) syslog('Device unlocked', 'sys');
           show(opened);
           break;
         case 'setup.done':
-          show(ZylShell.setupDone(state.currentApp));
+          show(ZylShell.setupDone(from));
+          break;
+        /* The system UI asks for its surface; the OS says how much */
+        case 'panel.request':
+          var granted = ZylShell.panelMode(from, msg.mode);
+          if (granted) setPanel(granted);
+          break;
+        /* Closing an app from recents — the system UI's, what the OS lets close */
+        case 'recents.close':
+          if (from === ZylShell.systemUi() && ZylShell.mayClose(msg.appId)) {
+            closeApp(msg.appId);
+            postToSystemUi('recents.open', { apps: recentsList() });
+          }
           break;
         case 'service.request':
-          handleServiceRequest(msg, e.source);
+          handleServiceRequest(msg, e.source, from);
           break;
         case 'system.setLocale':
           if (msg.locale) {
@@ -1075,15 +702,6 @@
     _volumeOsdTimer = setTimeout(function () {
       volumeOsd.classList.remove('visible');
     }, 2000);
-  }
-
-  /* Play notification sound on toast */
-  function playNotifSound() {
-    ZylServices.handleRequest('audio', 'playNotificationSound', {});
-  }
-
-  function triggerVibrate() {
-    ZylServices.handleRequest('audio', 'vibrate', { pattern: [200] });
   }
 
   /* ═══ 키보드 ═══ */
@@ -1194,24 +812,11 @@
       var setupCheck = ZylServices.handleRequest('settings', 'get', { category: 'system' });
       Promise.resolve(setupCheck).then(function (sys) {
         show(ZylShell.boot(!!(sys && sys.oobe_completed)));
+        loadSystemUi();
       }, function () {
         show(ZylShell.boot(true));
+        loadSystemUi();
       });
-
-      /* HAL에서 실제 배터리 정보 가져오기 (중복 init 방지) */
-      if (HAL && HAL.battery && !state._batteryStarted) {
-        state._batteryStarted = true;
-        var batEl = document.getElementById('emu-battery');
-        function updateBattery() {
-          var s = HAL.battery.getState();
-          if (s && s.level >= 0 && batEl) batEl.textContent = s.level + '%';
-        }
-        if (HAL.battery.init) HAL.battery.init();
-        updateBattery();
-        if (HAL.battery.onChange) HAL.battery.onChange(updateBattery);
-        setInterval(updateBattery, 30000);
-        syslog('Battery: ' + (HAL.battery.getState().level || '?') + '%', 'sys');
-      }
 
       /* 환영 알림은 OS 이미지의 앱이 담당 (에뮬레이터는 콘텐츠 생성 안 함) */
     }, 600);

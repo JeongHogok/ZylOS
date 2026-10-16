@@ -194,7 +194,7 @@ URI 기반 앱 간 데이터 공유 게이트웨이.
 | hal_camera.c | 사진 한 장 | V4L2 (실기기). 보드가 `board_hal_camera` 로 교체 가능 |
 | hal_emulator.c | 에뮬레이터 보드 | 하드웨어 없음 — 없다고 보고 |
 
-에뮬레이터 구현: 브라우저 Web API (hal-browser.js)
+에뮬레이터 구현: `hal_emulator.c` — 하드웨어 없음을 그대로 보고한다 (에뮬레이터의 하드웨어 사실은 Tauri 명령이 OS 서비스 모듈에 준다)
 
 ### 폼팩터 아키텍처 (board × profile)
 

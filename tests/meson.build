@@ -13,11 +13,13 @@ json_glib_dep = dependency('json-glib-1.0')
 # so their own -D paths apply, and need its headers for what they include
 _lib_inc = include_directories('../runtime/lib')
 
-# Test: gesture detection algorithm
-# Self-contained — replicates gesture_detect() logic to avoid wlroots deps
+# Test: system gesture judgement — only edge touches are gestures; the real
+# compositor/src/input/gesture_detect.c (no wlroots), not a copy of it
 test('gesture-detection',
   executable('test-gesture',
     'test_gesture.c',
+    '../compositor/src/input/gesture_detect.c',
+    include_directories: include_directories('../compositor/include'),
   )
 )
 

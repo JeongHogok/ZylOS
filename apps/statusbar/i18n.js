@@ -2,7 +2,7 @@
 // [Clean Architecture] Presentation Layer - i18n Data
 //
 // Role: Statusbar app translation data
-// Scope: qs.*, notif.* keys for ko/en/ja/zh/es
+// Scope: qs.*, notif.*, recents.* keys for ko/en/ja/zh/es
 // Dependency: zylI18n (shared/i18n.js)
 // SOLID: SRP — Statusbar translation data only
 //
@@ -13,6 +13,9 @@
   if (typeof zylI18n === 'undefined') return;
 
   zylI18n.addTranslations('ko', {
+    'recents.title': '\uCD5C\uADFC \uC571',
+    'recents.empty': '\uC2E4\uD589 \uC911\uC778 \uC571\uC774 \uC5C6\uC2B5\uB2C8\uB2E4',
+    'recents.close': '\uB2EB\uAE30',
     'qs.wifi': 'WiFi',
     'qs.bluetooth': 'BT',
     'qs.silent': '\uBB34\uC74C',
@@ -35,6 +38,9 @@
   });
 
   zylI18n.addTranslations('en', {
+    'recents.title': 'Recent apps',
+    'recents.empty': 'No running apps',
+    'recents.close': 'Close',
     'qs.wifi': 'WiFi',
     'qs.bluetooth': 'BT',
     'qs.silent': 'Silent',
@@ -57,6 +63,9 @@
   });
 
   zylI18n.addTranslations('ja', {
+    'recents.title': '\u6700\u8FD1\u306E\u30A2\u30D7\u30EA',
+    'recents.empty': '\u5B9F\u884C\u4E2D\u306E\u30A2\u30D7\u30EA\u306F\u3042\u308A\u307E\u305B\u3093',
+    'recents.close': '\u9589\u3058\u308B',
     'qs.wifi': 'WiFi',
     'qs.bluetooth': 'BT',
     'qs.silent': '\u30DE\u30CA\u30FC',
@@ -79,6 +88,9 @@
   });
 
   zylI18n.addTranslations('zh', {
+    'recents.title': '\u6700\u8FD1\u5E94\u7528',
+    'recents.empty': '\u6CA1\u6709\u6B63\u5728\u8FD0\u884C\u7684\u5E94\u7528',
+    'recents.close': '\u5173\u95ED',
     'qs.wifi': 'WiFi',
     'qs.bluetooth': '\u84DD\u7259',
     'qs.silent': '\u9759\u97F3',
@@ -101,6 +113,9 @@
   });
 
   zylI18n.addTranslations('es', {
+    'recents.title': 'Apps recientes',
+    'recents.empty': 'No hay apps en ejecuci\u00F3n',
+    'recents.close': 'Cerrar',
     'qs.wifi': 'WiFi',
     'qs.bluetooth': 'BT',
     'qs.silent': 'Silencio',

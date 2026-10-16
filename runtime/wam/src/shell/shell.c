@@ -39,7 +39,7 @@ const char *zyl_shell_boot(ZylShell *s, gboolean setup_done) {
 }
 
 gboolean zyl_shell_may_launch(const ZylShell *s, const char *app_id) {
-    if (!app_id) return FALSE;
+    if (!app_id || is(app_id, ZYL_SHELL_SYSTEM_UI)) return FALSE;   /* a surface, never in front */
     if (s->setup) return is(app_id, ZYL_SHELL_SETUP) || over_lock(app_id);
     if (s->locked) return is(app_id, ZYL_SHELL_LOCK) || over_lock(app_id);
     return !is(app_id, ZYL_SHELL_LOCK) && !is(app_id, ZYL_SHELL_SETUP);
@@ -53,7 +53,7 @@ const char *zyl_shell_home(const ZylShell *s) {
 gboolean zyl_shell_navigable(const ZylShell *s) { return !s->setup && !s->locked; }
 
 gboolean zyl_shell_may_close(const ZylShell *s, const char *app_id) {
-    if (is(app_id, ZYL_SHELL_HOME)) return FALSE;
+    if (is(app_id, ZYL_SHELL_HOME) || is(app_id, ZYL_SHELL_SYSTEM_UI)) return FALSE;
     if (is(app_id, ZYL_SHELL_LOCK)) return !s->locked;
     if (is(app_id, ZYL_SHELL_SETUP)) return !s->setup;
     return TRUE;
@@ -82,6 +82,13 @@ const char *zyl_shell_setup_done(ZylShell *s, const char *source) {
     s->setup = FALSE;
     s->locked = FALSE;
     return ZYL_SHELL_HOME;
+}
+
+ZylPanelMode zyl_shell_panel_mode(const ZylShell *s, const char *source, const char *mode) {
+    if (!is(source, ZYL_SHELL_SYSTEM_UI)) return ZYL_PANEL_NONE;
+    if (is(mode, "full")) return zyl_shell_navigable(s) ? ZYL_PANEL_FULL : ZYL_PANEL_BAR;
+    if (is(mode, "banner")) return (s->setup || s->locked) ? ZYL_PANEL_BAR : ZYL_PANEL_BANNER;
+    return ZYL_PANEL_BAR;
 }
 
 void zyl_shell_shown(ZylShell *s, const char *app_id) {

@@ -20,6 +20,10 @@
 #define ZYL_SHELL_HOME  "com.zylos.home"
 #define ZYL_SHELL_LOCK  "com.zylos.lockscreen"
 #define ZYL_SHELL_SETUP "com.zylos.oobe"
+/* The surface over every app: status bar, notification panel, recents */
+#define ZYL_SHELL_SYSTEM_UI "com.zylos.statusbar"
+
+typedef enum { ZYL_PANEL_NONE, ZYL_PANEL_BAR, ZYL_PANEL_BANNER, ZYL_PANEL_FULL } ZylPanelMode;
 
 typedef struct {
     gboolean setup;     /* first setup is not done */
@@ -54,6 +58,11 @@ const char *zyl_shell_unlock(ZylShell *s, const char *source, const char *app_id
 
 /* Setup says it is finished: home, NULL when refused */
 const char *zyl_shell_setup_done(ZylShell *s, const char *source);
+
+/* The system UI asks for "bar", "banner" (a new notification) or "full" (the
+   panel, recents): what it gets — full only when navigable, banner not while
+   locked or in setup. ZYL_PANEL_NONE when the sender is not the system UI */
+ZylPanelMode zyl_shell_panel_mode(const ZylShell *s, const char *source, const char *mode);
 
 /* The WAM brought this app to the front */
 void zyl_shell_shown(ZylShell *s, const char *app_id);

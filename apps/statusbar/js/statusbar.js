@@ -1,8 +1,13 @@
 // ──────────────────────────────────────────────────────────
 // [Clean Architecture] Presentation Layer - Widget
 //
-// Role: Status bar widget — time, battery, network status, quick settings, notifications
-// Scope: Clock update, battery polling, QS toggle with service calls, notification IPC, brightness slider
+// Role: System UI — status bar, notification panel with quick settings, the
+//       new-notification banner, recents
+// Scope: Clock, battery, QS toggles with service calls, brightness, the
+//        notification service's events, recents. Its surface lies over every
+//        app; the OS decides how much of it shows (panel.mode: bar, banner,
+//        full — apps/system/shell.js, runtime/wam/src/shell) and this asks
+//        (panel.request). Recents lists what the OS says is running
 // Dependency: ZylClock (clock.js), zylI18n (i18n.js)
 // SOLID: SRP — status bar UI rendering and system state display only
 //
@@ -21,9 +26,14 @@
   var statusbar     = document.getElementById('statusbar');
   var notifList     = document.getElementById('notification-list');
   var brightnessEl  = document.getElementById('brightness-slider');
+  var banner        = document.getElementById('notif-banner');
+  var recentsEl     = document.getElementById('recents');
+  var recentsList   = document.getElementById('recents-list');
 
   /* ─── State ─── */
-  var isDrawerOpen   = false;
+  var mode           = 'bar';   /* what the OS granted: bar | banner | full */
+  var showing        = 'panel'; /* what full shows: the panel or recents */
+  var bannerTimer    = null;
   var notifCount     = 0;
   var qsState = {
     wifi: true,
@@ -227,35 +237,104 @@
   }
 
   /* ════════════════════════════════════════════
-   *  Notification Drawer
+   *  The surface: ask the OS, show what it grants
    * ════════════════════════════════════════════ */
-  if (statusbar) {
-    statusbar.addEventListener('click', function () {
-      toggleDrawer();
-    });
+  function requestMode(m) {
+    ZylBridge.sendToSystem({ type: 'panel.request', mode: m });
   }
 
-  function toggleDrawer() {
-    isDrawerOpen = !isDrawerOpen;
-    if (isDrawerOpen) {
+  function applyMode(m) {
+    var wasFull = mode === 'full';
+    mode = m;
+    var full = m === 'full';
+    if (full && !wasFull && showing === 'panel') {
       /* Radios may have been switched elsewhere (Settings): show them as they are */
       Object.keys(RADIOS).forEach(function (r) { if (qsBtns[r] && !qsBtns[r].disabled) refreshRadio(r); });
+    }
+    if (full && showing === 'panel') {
       drawer.classList.remove('hidden');
       drawer.offsetHeight; /* force reflow for animation */
       drawer.classList.add('visible');
-    } else {
+    } else if (drawer.classList.contains('visible')) {
       drawer.classList.remove('visible');
-      setTimeout(function () {
-        drawer.classList.add('hidden');
-      }, 350);
+      setTimeout(function () { if (mode !== 'full') drawer.classList.add('hidden'); }, 350);
     }
+    recentsEl.classList.toggle('hidden', !(full && showing === 'recents'));
+    banner.classList.toggle('hidden', m !== 'banner');
+    if (!full) showing = 'panel';
+  }
+
+  /* Pull the bar down, or tap it: the panel (the OS may say no — locked) */
+  if (statusbar) {
+    var pullFrom = null;
+    statusbar.addEventListener('click', function () {
+      requestMode(mode === 'full' ? 'bar' : 'full');
+    });
+    statusbar.addEventListener('touchstart', function (e) { pullFrom = e.touches[0].clientY; }, { passive: true });
+    statusbar.addEventListener('touchmove', function (e) {
+      if (pullFrom !== null && e.touches[0].clientY - pullFrom > 30 && mode !== 'full') {
+        pullFrom = null;
+        requestMode('full');
+      }
+    }, { passive: true });
   }
 
   var handle = drawer ? drawer.querySelector('.drawer-handle') : null;
   if (handle) {
-    handle.addEventListener('click', function () {
-      if (isDrawerOpen) toggleDrawer();
+    handle.addEventListener('click', function () { requestMode('bar'); });
+  }
+
+  /* Opening an app from here: it comes to the front and the panel goes */
+  function openApp(appId) {
+    ZylBridge.sendToSystem({ type: 'app.launch', appId: appId });
+    requestMode('bar');
+  }
+
+  /* ─── A new notification: a banner for a few seconds, if allowed ─── */
+  function showBanner(data) {
+    if (mode === 'full') return;
+    document.getElementById('banner-icon').textContent = data.icon || '\uD83D\uDD14';
+    document.getElementById('banner-title').textContent = data.title || '';
+    document.getElementById('banner-body').textContent = data.body || '';
+    banner.onclick = function () { if (data.appId) openApp(data.appId); else requestMode('bar'); };
+    requestMode('banner');
+    clearTimeout(bannerTimer);
+    bannerTimer = setTimeout(function () { if (mode === 'banner') requestMode('bar'); }, 3000);
+  }
+
+  /* ─── Recents: the OS says what is running ─── */
+  function showRecents(apps) {
+    var t = zylI18n.t;
+    showing = 'recents';
+    recentsList.innerHTML = '';
+    if (!apps || apps.length === 0) {
+      var empty = document.createElement('div');
+      empty.className = 'recents-empty';
+      empty.textContent = t('recents.empty');
+      recentsList.appendChild(empty);
+    }
+    (apps || []).forEach(function (a) {
+      var card = document.createElement('div');
+      card.className = 'recent-card';
+      card.setAttribute('role', 'button');
+      var name = document.createElement('span');
+      name.textContent = a.name || a.appId;
+      card.appendChild(name);
+      card.addEventListener('click', function () { openApp(a.appId); });
+      if (a.closable) {
+        var close = document.createElement('button');
+        close.className = 'recent-close';
+        close.textContent = '\u00d7';
+        close.setAttribute('aria-label', t('recents.close'));
+        close.addEventListener('click', function (e) {
+          e.stopPropagation();
+          ZylBridge.sendToSystem({ type: 'recents.close', appId: a.appId });
+        });
+        card.appendChild(close);
+      }
+      recentsList.appendChild(card);
     });
+    applyMode(mode);
   }
 
   /* ════════════════════════════════════════════
@@ -286,12 +365,7 @@
     /* Tap notification → launch source app */
     if (data.appId) {
       item.style.cursor = 'pointer';
-      item.addEventListener('click', function () {
-        ZylBridge.sendToSystem({
-          type: 'app.launch', appId: data.appId
-        });
-        toggleDrawer();
-      });
+      item.addEventListener('click', function () { openApp(data.appId); });
     }
 
     /* Swipe to dismiss */
@@ -339,9 +413,6 @@
     clearAllBtn.addEventListener('click', clearAllNotifications);
   }
 
-  /* Expose for external calls */
-  window.addNotification = addNotification;
-
   function escapeHtml(str) {
     var div = document.createElement('div');
     div.appendChild(document.createTextNode(str || ''));
@@ -369,10 +440,16 @@
     });
   }
 
-  /* Device: the notification service's own events (the emulator pushes
-     notification.push instead) */
+  /* What the device already holds, then the notification service's own
+     events (the WAM delivers them on the device, the emulator the same way) */
+  ZylBridge.requestService('notification', 'getActive').then(function (list) {
+    (list || []).forEach(function (n) { addNotification(n); });
+  }, function () {});
   ZylBridge.onServiceEvent('notification', 'NotificationPosted', function (d) {
-    if (d && d.length >= 4) addNotification({ id: d[0], appId: d[1], title: d[2], body: d[3] });
+    if (!d || d.length < 4) return;
+    var n = { id: d[0], appId: d[1], title: d[2], body: d[3] };
+    addNotification(n);
+    showBanner(n);
   });
   ZylBridge.onServiceEvent('notification', 'NotificationDismissed', function (id) {
     var el = notifList && notifList.querySelector('.notif-item[data-id="' + String(id).replace(/\D/g, '') + '"]');
@@ -386,21 +463,14 @@
       if (!msg || !msg.type) return;
 
       switch (msg.type) {
-        /* Notification pushed from emulator/system */
-        case 'notification.push':
-          if (msg.data) addNotification(msg.data);
+        /* What the OS lets the surface be */
+        case 'panel.mode':
+          if (msg.data && msg.data.mode) applyMode(msg.data.mode);
           break;
 
-        /* Settings changed (WiFi/BT/brightness etc.) */
-        case 'settings.changed':
-          if (msg.data) handleSettingsChange(msg.data);
-          break;
-
-        /* Battery update from emulator */
-        case 'battery.update':
-          if (msg.data && msg.data.level !== undefined) {
-            if (batteryPct) batteryPct.textContent = msg.data.level + '%';
-          }
+        /* Recents, with what is running */
+        case 'recents.open':
+          showRecents(msg.data && msg.data.apps);
           break;
 
         /* Service responses */
@@ -410,17 +480,6 @@
       }
     } catch (err) { /* ignore parse errors */ }
   });
-
-  function handleSettingsChange(data) {
-    if (!data) return;
-    /* FIX: Normalize category — may arrive as data.category or data.params.category
-     *       depending on which path triggered settings.changed. Coerce to string. */
-    var category = data.category || (data.params && data.params.category) || '';
-    /* Brightness */
-    if (category === 'display' && data.key === 'brightness') {
-      if (brightnessEl) brightnessEl.value = parseInt(data.value, 10) || 80;
-    }
-  }
 
   function handleServiceResponse(msg) {
     /* Battery level from power service */

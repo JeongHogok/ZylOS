@@ -37,6 +37,7 @@ compositor_deps = [
 compositor_sources = files(
   'src/main.c',
   'src/input/gesture.c',
+  'src/input/gesture_detect.c',
   'src/ipc/os_bus.c',
   'src/output/output.c',
   'src/view/view.c',
@@ -45,6 +46,8 @@ compositor_sources = files(
 compositor_inc = include_directories(
   'include',
   'src',
+  # The system UI's app id: the shell policy's (runtime/wam/src/shell/shell.h)
+  '../runtime/wam/src/shell',
 )
 
 executable('zyl-compositor',

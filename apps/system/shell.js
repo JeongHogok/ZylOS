@@ -8,6 +8,10 @@
 //        both. Home, back-exit, recents and app switching follow from that.
 //        Only the lock screen unlocks and only setup finishes setup — the OS
 //        names the sender, never the message. Home is never closed.
+//        The system UI (status bar, notification panel, recents) is a surface
+//        over every app: a bar, a banner for a new notification, or the whole
+//        screen — only it asks, and the whole screen only when the user may
+//        move between apps.
 //        Same rules as runtime/wam/src/shell/shell.c
 // Dependency Direction: Domain -> none (the container launches what it says)
 // SOLID: SRP — shell policy only; launching and drawing are the container's
@@ -21,6 +25,7 @@ window.ZylShell = (function () {
   var HOME = 'com.zylos.home';
   var LOCK = 'com.zylos.lockscreen';
   var SETUP = 'com.zylos.oobe';
+  var SYSTEM_UI = 'com.zylos.statusbar';
   /* Shown over the lock screen and setup: an incoming or emergency call, an
      emergency alert, the lock screen's camera shortcut. Leaving them returns
      to the lock screen, and they cannot open anything else while locked. */
@@ -48,7 +53,7 @@ window.ZylShell = (function () {
 
   /** May this app come to the front now? (an app, a notification, an intent) */
   function mayLaunch(appId) {
-    if (!appId) return false;
+    if (!appId || appId === SYSTEM_UI) return false;   /* a surface, never the app in front */
     if (_setup) return appId === SETUP || overLock(appId);
     if (_locked) return appId === LOCK || overLock(appId);
     return appId !== LOCK && appId !== SETUP;
@@ -65,7 +70,7 @@ window.ZylShell = (function () {
 
   /** May this app be closed? Home never; the lock screen and setup not while they hold the device */
   function mayClose(appId) {
-    if (appId === HOME) return false;
+    if (appId === HOME || appId === SYSTEM_UI) return false;
     if (appId === LOCK) return !_locked;
     if (appId === SETUP) return !_setup;
     return true;
@@ -105,6 +110,18 @@ window.ZylShell = (function () {
     return HOME;
   }
 
+  /**
+   * The system UI asks for its surface: 'bar', 'banner' (a new notification)
+   * or 'full' (the panel, recents). @returns {string|null} what it gets, null
+   * when the sender is not the system UI
+   */
+  function panelMode(source, mode) {
+    if (source !== SYSTEM_UI) return null;
+    if (mode === 'full') return navigable() ? 'full' : 'bar';
+    if (mode === 'banner') return (_setup || _locked) ? 'bar' : 'banner';
+    return 'bar';
+  }
+
   /** The container brought this app to the front */
   function shown(appId) { _top = String(appId || ''); }
 
@@ -119,8 +136,9 @@ window.ZylShell = (function () {
     unlock: unlock,
     setupDone: setupDone,
     shown: shown,
+    panelMode: panelMode,
+    systemUi: function () { return SYSTEM_UI; },
     isLocked: function () { return _locked; },
-    /* Notifications the device holds are shown on the lock screen */
-    showsNotifications: function (appId) { return appId === LOCK; }
+    isSetup: function () { return _setup; }
   };
 })();

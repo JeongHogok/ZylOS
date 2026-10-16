@@ -312,27 +312,17 @@
    * ════════════════════════════════════════════ */
   var notifList = document.getElementById('lock-notifications');
 
-  /* Device: the notification service's own events (the emulator pushes
-     notification.push instead) */
+  /* What the device already holds, then the notification service's own
+     events (the WAM on the device, the emulator the same way) */
+  ZylBridge.requestService('notification', 'getActive').then(function (list) {
+    (list || []).forEach(function (n) { addLockNotification(n); });
+  }, function () {});
   ZylBridge.onServiceEvent('notification', 'NotificationPosted', function (d) {
     if (d && d.length >= 4) addLockNotification({ id: d[0], appId: d[1], title: d[2], body: d[3] });
   });
   ZylBridge.onServiceEvent('notification', 'NotificationDismissed', function (id) {
     var el = notifList && notifList.querySelector('.lock-notif[data-id="' + String(id).replace(/\D/g, '') + '"]');
     if (el) el.remove();
-  });
-
-  /* 에뮬레이터/시스템에서 메시지 수신 (postMessage) */
-  window.addEventListener('message', function (e) {
-    if (e.source !== window.parent && e.source !== window) return;
-    try {
-      var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-      if (!msg) return;
-      /* Notification */
-      if (msg.type === 'notification.push') {
-        addLockNotification(msg.data);
-      }
-    } catch (err) { /* ignore */ }
   });
 
   function addLockNotification(n) {

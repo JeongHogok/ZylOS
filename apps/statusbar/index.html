@@ -108,6 +108,21 @@
     </div>
   </div>
 
+  <!-- 새 알림 배너: OS 가 banner 를 허락했을 때만 (잠금·설정 중에는 아니다) -->
+  <div id="notif-banner" class="hidden" role="status" aria-live="polite">
+    <div class="notif-icon" id="banner-icon"></div>
+    <div class="notif-content">
+      <div class="notif-title" id="banner-title"></div>
+      <div class="notif-body" id="banner-body"></div>
+    </div>
+  </div>
+
+  <!-- 최근 앱: 실행 중인 앱은 OS 가 준다 (recents.open) -->
+  <div id="recents" class="hidden">
+    <div class="recents-title" data-i18n="recents.title">Recent apps</div>
+    <div id="recents-list"></div>
+  </div>
+
   <!-- Shared modules -->
   <script src="../shared/i18n.js"></script>
   <script src="i18n.js"></script>

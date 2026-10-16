@@ -9,7 +9,7 @@
 - **C 서비스 디렉토리**: 32개 (runtime/services/, 전부 D-Bus 데몬)
 - **systemd 서비스**: 35개 (system/*.service — 서비스 32 + wam·compositor·apparmor)
 - **JS 서비스 모듈**: 33개 (apps/system/services/)
-- **HAL 구현체**: 12개 (runtime/hal/)
+- **HAL 구현체**: 15개 (runtime/hal/)
 - **시스템 앱**: 22개 (apps/, shared 포함)
 - **에뮬레이터**: Tauri 2.x (Rust), aes-gcm 암호화
 
@@ -90,6 +90,12 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
   ·`test_services.js` 가 같은 시나리오로 검증). 에뮬레이터·컴포지터는 그 답대로 띄우기만
   하고 앱 id 로 분기하지 않는다. 앞에 앱을 올리는 새 경로는 반드시 그 판단을 거칠 것.
   잠금 해제는 잠금 화면, 설정 완료는 OOBE 가 보낸 것만 — 보낸 앱은 OS 가 말한다
+- 시스템 UI(상태바·알림판·빠른 설정·새 알림 배너·최근 앱)는 OS 앱 `apps/statusbar` 가
+  모든 앱 위의 표면으로 그린다 — 기기는 WAM 이 투명한 전체 화면 창으로(입력 영역만
+  바꾼다), 에뮬레이터는 두 번째 iframe 으로. 얼마나 보일지(bar·banner·full)는 셸
+  정책(`panelMode`)이 정한다. 에뮬레이터·컴포지터가 이런 UI 를 직접 그리지 말 것
+- 서비스 이벤트 중 한 앱의 것(알림, 지오펜스)은 제3자 앱에 자기 것만 간다 —
+  `permissions.js` 의 `OWNED_EVENTS` 가 권위, `bridge.c` 사본(verify-all 대조)
 - 앱이 스스로를 시스템앱으로 선언하는 것을 신뢰하지 않음
 - `settings.json`, `.credentials/`, `.system/`은 보호 경로
 - 서비스 권한 체크는 OS 레이어에서만 수행
@@ -116,6 +122,7 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 | 서비스 권한 정책 | `apps/system/permissions.js` | `bridge.c`(verify-all 이 대조) |
 | 교차 툴체인 | `tools/cross/<arch>.ini` | 보드의 `board_cross_file` |
 | 둘 이상이 컴파일하는 C 코드 (앱 컨테이너·봉인·서명 검증) | `runtime/lib/` | appdata·fs·appstore·updater·WAM (`zyl_*_dep`) |
+| 사용자 루트·소유자 uid·소유자 파일 트리 | `runtime/lib/users.h` | user·fs·appstore, 에뮬레이터 `user.js`(test_services 대조) |
 
 서비스 디렉터리는 다른 서비스의 라이브러리가 되지 않는다 — 함께 쓰는 코드는
 `runtime/lib/` 로 옮기고 각 쪽이 그 의존성을 링크한다.

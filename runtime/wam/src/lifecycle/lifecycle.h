@@ -96,6 +96,18 @@ ZylAppInstance *zyl_lifecycle_launch(ZylAppInterface *iface,
                                     ZylWebEngine    *engine,
                                     const char      *app_id);
 
+/*
+ * The system UI's surface: the whole screen, transparent, never fullscreen
+ * (the compositor keeps it over every app by its Wayland app id).
+ */
+ZylAppInstance *zyl_lifecycle_launch_panel(ZylAppInterface *iface,
+                                           ZylWebEngine    *engine,
+                                           const char      *app_id);
+
+/* How much of the panel takes input: the top `height` pixels (0 or more than
+   the screen: all of it). Touches elsewhere go to the app below. */
+void zyl_lifecycle_panel_input(ZylAppInstance *instance, int height);
+
 /* Suspend a running app (saves resources). */
 void zyl_lifecycle_suspend(ZylAppInterface *iface,
                            const char      *app_id);

@@ -125,6 +125,29 @@ static void test_unlocked_home_close_and_lock(void) {
     EQ(zyl_shell_screen_on(&s), NULL);
 }
 
+/* The system UI's surface: only it asks; the whole screen only when the user
+   may move between apps, a banner not over the lock screen or setup */
+static void test_the_panel_follows_the_device_state(void) {
+    ZylShell s;
+    const char *UI = ZYL_SHELL_SYSTEM_UI;
+    show(&s, zyl_shell_boot(&s, FALSE));
+    assert(zyl_shell_panel_mode(&s, "com.example.app", "full") == ZYL_PANEL_NONE);
+    assert(zyl_shell_panel_mode(&s, SETUP, "bar") == ZYL_PANEL_NONE);
+    assert(zyl_shell_panel_mode(&s, UI, "full") == ZYL_PANEL_BAR);     /* setup */
+    assert(zyl_shell_panel_mode(&s, UI, "banner") == ZYL_PANEL_BAR);
+    show(&s, zyl_shell_setup_done(&s, SETUP));
+    assert(zyl_shell_panel_mode(&s, UI, "full") == ZYL_PANEL_FULL);
+    assert(zyl_shell_panel_mode(&s, UI, "banner") == ZYL_PANEL_BANNER);
+    assert(zyl_shell_panel_mode(&s, UI, "bar") == ZYL_PANEL_BAR);
+    assert(zyl_shell_panel_mode(&s, UI, "anything") == ZYL_PANEL_BAR);
+    show(&s, zyl_shell_lock(&s));
+    assert(zyl_shell_panel_mode(&s, UI, "full") == ZYL_PANEL_BAR);     /* locked */
+    assert(zyl_shell_panel_mode(&s, UI, "banner") == ZYL_PANEL_BAR);
+    assert(!zyl_shell_may_launch(&s, UI) && !zyl_shell_may_close(&s, UI));   /* a surface */
+    show(&s, zyl_shell_unlock(&s, LOCK, NULL));
+    assert(!zyl_shell_may_launch(&s, UI) && !zyl_shell_may_close(&s, UI));
+}
+
 int main(void) {
     printf("Shell policy tests\n");
     RUN_TEST(test_setup_holds_the_device);
@@ -133,6 +156,7 @@ int main(void) {
     RUN_TEST(test_only_the_lock_screen_unlocks);
     RUN_TEST(test_unlock_opens_home_unless_an_app_may_open);
     RUN_TEST(test_unlocked_home_close_and_lock);
+    RUN_TEST(test_the_panel_follows_the_device_state);
     printf("\n%d/%d passed\n", tests_pass, tests_run);
     return tests_pass == tests_run ? 0 : 1;
 }

@@ -49,6 +49,7 @@ struct zyl_config zyl_config_defaults(void)
         .swipe_threshold_px   = 50,
         .swipe_from_bottom_px = 40,
         .swipe_from_top_px    = 40,
+        .swipe_from_side_px   = 24,
         .statusbar_height_px  = 36,
     };
 }

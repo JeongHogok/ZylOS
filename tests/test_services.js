@@ -1302,6 +1302,27 @@ console.log('\n■ ZylShell');
     assert.strictEqual(S.screenOn(), null);
   });
 
+  test('the panel follows the device state', function () {
+    var S = shell();
+    var UI = S.systemUi();
+    show(S, S.boot(false));
+    assert.strictEqual(S.panelMode('com.example.app', 'full'), null);
+    assert.strictEqual(S.panelMode(SETUP, 'bar'), null);
+    assert.strictEqual(S.panelMode(UI, 'full'), 'bar');                 /* setup */
+    assert.strictEqual(S.panelMode(UI, 'banner'), 'bar');
+    show(S, S.setupDone(SETUP));
+    assert.strictEqual(S.panelMode(UI, 'full'), 'full');
+    assert.strictEqual(S.panelMode(UI, 'banner'), 'banner');
+    assert.strictEqual(S.panelMode(UI, 'bar'), 'bar');
+    assert.strictEqual(S.panelMode(UI, 'anything'), 'bar');
+    show(S, S.lock());
+    assert.strictEqual(S.panelMode(UI, 'full'), 'bar');                 /* locked */
+    assert.strictEqual(S.panelMode(UI, 'banner'), 'bar');
+    assert.ok(!S.mayLaunch(UI) && !S.mayClose(UI));                     /* a surface */
+    show(S, S.unlock(LOCK));
+    assert.ok(!S.mayLaunch(UI) && !S.mayClose(UI));
+  });
+
   test('the same apps as the device policy (shell.c)', function () {
     var js = fs.readFileSync(path.join(__dirname, '..', 'apps', 'system', 'shell.js'), 'utf8');
     var c = fs.readFileSync(path.join(__dirname, '..', 'runtime', 'wam', 'src', 'shell', 'shell.c'), 'utf8') +
@@ -2933,9 +2954,13 @@ var userTests = (function () {
     asyncTest("the device's owner, as runtime/services/user starts — nothing from the host or the request", function () {
       var svc = ns.user({ invoke: function () { throw new Error('the host is not asked'); } });
       return Promise.all([svc.getCurrent({ uid: 0 }), svc.listUsers({ all: true })]).then(function (r) {
-        assert.strictEqual(r[0].uid, 1000);
+        /* The facts are runtime/lib/users.h's (the device's user, fs, appstore read it) */
+        var h = fs.readFileSync(path.join(__dirname, '..', 'runtime', 'lib', 'users.h'), 'utf8');
+        var uid = parseInt(/#define ZYL_OWNER_UID\s+(\d+)/.exec(h)[1], 10);
+        var root = /#define ZYL_USERS_ROOT\s+"([^"]+)"/.exec(h)[1];
+        assert.strictEqual(r[0].uid, uid);
         assert.strictEqual(r[0].type, 'OWNER');
-        assert.strictEqual(r[0].dataDir, '/data/users/1000');
+        assert.strictEqual(r[0].dataDir, root + '/' + uid);
         assert.deepStrictEqual(r[1], [r[0]]);
       });
     })
