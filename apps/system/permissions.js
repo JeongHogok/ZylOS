@@ -86,6 +86,7 @@ window.ZylPermissions = (function () {
     'notification.getGroupSummary':   ['notification.read'],
     'notification.clearAll':          ['notification.read'],
     'notification.clearHistory':      ['notification.read'],
+    'notification.invokeAction':      ['notification.read'],
     'notification.setDndMode':        ['system'],
     'notification.setChannelEnabled': ['system'],
     /* The device's power is the OS's: any app may read it, only system apps

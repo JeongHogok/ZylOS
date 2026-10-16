@@ -124,6 +124,15 @@ void zyl_notification_cancel(ZylNotificationService *service, uint64_t id,
                              const char *app_id);
 
 /**
+ * The user pressed one of a notification's action buttons. Only an action the
+ * notification offered: ActionInvoked(id, app_id, action_id) goes out — the
+ * bridge hands it to the posting app only — and the notification is done
+ * (cancelled). Returns whether it was one.
+ */
+bool zyl_notification_invoke_action(ZylNotificationService *service, uint64_t id,
+                                    const char *action_id);
+
+/**
  * Retrieve all active (unread) notifications.
  * Caller must free the returned array with g_free(), and each element
  * with zyl_notification_free().

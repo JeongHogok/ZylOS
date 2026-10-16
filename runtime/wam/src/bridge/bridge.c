@@ -693,6 +693,7 @@ static const ServicePermission METHOD_PERMISSIONS[] = {
     {"notification.getGroupSummary",   {"notification.read", NULL}},
     {"notification.clearAll",          {"notification.read", NULL}},
     {"notification.clearHistory",      {"notification.read", NULL}},
+    {"notification.invokeAction",      {"notification.read", NULL}},
     {"notification.setDndMode",        {"system", NULL}},
     {"notification.setChannelEnabled", {"system", NULL}},
     /* The device's power is the OS's: any app may read it, only system apps

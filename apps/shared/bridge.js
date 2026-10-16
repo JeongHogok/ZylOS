@@ -229,6 +229,8 @@ var ZylBridge = (function () {
    * @param {string} title
    * @param {string} body
    * @param {Object} [options] - { channel, icon, priority, appId, actions }
+   *   actions: [{ label, actionId }] — label already translated by the app;
+   *   pressing one comes back to onNotificationAction
    * @returns {Promise<number|null>} notification ID
    */
   function notify(title, body, options) {
@@ -243,7 +245,19 @@ var ZylBridge = (function () {
       icon: opts.icon || '',
       priority: opts.priority || 1,
       actions: actions
-    }).then(function (r) { return r && r.id !== undefined ? r.id : null; });
+    }).then(function (r) {
+      /* The device answers with the id itself, the emulator with { id } */
+      if (typeof r === 'number') return r;
+      return r && r.id !== undefined ? r.id : null;
+    });
+  }
+
+  /* fn({ id, actionId }) — the user pressed an action of this app's notification
+     (the OS brought the app forward for it; the notification is gone) */
+  function onNotificationAction(fn) {
+    onServiceEvent('notification', 'ActionInvoked', function (d) {
+      if (d && d.length >= 3) fn({ id: d[0], actionId: d[2] });
+    });
   }
 
   /* ─── Incoming Message Handler (emulator → app iframe) ─── */
@@ -597,5 +611,6 @@ var ZylBridge = (function () {
     launch: launch,
     closeApp: closeApp,
     notify: notify,
+    onNotificationAction: onNotificationAction,
   };
 })();
