@@ -3,8 +3,9 @@
  *
  * 역할: 인텐트 해석(runtime/wam/src/intent) 단위 테스트
  * 수행범위: app.json "intents" 파싱(잘못된 항목은 건너뜀), MIME 일치 규칙,
- *           처리 앱 찾기(시작한 앱 제외, 정렬, 명시적 대상), 넘길 내용
- *           (sourceApp 은 요청 값이 아닌 OS 의 것), 메시지 스크립트
+ *           처리 앱 찾기(시작한 앱 제외, 정렬, 명시적 대상, PICK 은 시스템 앱만),
+ *           넘길 내용(sourceApp 은 요청 값이 아닌 OS 의 것, 건넬 파일은 문자열만
+ *           10개까지), 메시지 스크립트
  * 의존방향: intent.c, manifest.c, json-glib
  * SOLID: SRP — apps/system/intent.js 와 같은 규칙인지 검증
  * ────────────────────────────────────────────────────────── */
@@ -40,6 +41,12 @@ static GHashTable *apps(void) {
     add_app(t, "files", "{\"id\":\"com.zylos.files\",\"name\":\"Files\"}");
     add_app(t, "any", "{\"id\":\"com.example.any\",\"name\":\"Any\",\"intents\":["
             "{\"action\":\"zyl.intent.action.SEND\"}]}");
+    /* Who picks: a system app's screen, never a third-party app claiming to */
+    add_app(t, "files2", "{\"id\":\"com.zylos.picker\",\"name\":\"Picker\",\"intents\":["
+            "{\"action\":\"zyl.intent.action.PICK\"}]}");
+    ((ZylAppManifest *)g_hash_table_lookup(t, "com.zylos.picker"))->is_system = TRUE;
+    add_app(t, "fake", "{\"id\":\"com.example.fakepicker\",\"name\":\"Fake\",\"intents\":["
+            "{\"action\":\"zyl.intent.action.PICK\"}]}");
     return t;
 }
 
@@ -99,6 +106,32 @@ static void test_who_handles_it(void) {
     g_hash_table_destroy(t);
 }
 
+static void test_only_a_system_app_picks(void) {
+    GHashTable *t = apps();
+    expect(t, "com.example.any", "{\"action\":\"zyl.intent.action.PICK\",\"mimeType\":\"image/png\"}",
+           "com.zylos.picker");                                     /* the third-party one is not offered */
+    expect(t, "com.example.any", "{\"action\":\"zyl.intent.action.PICK\",\"targetApp\":\"com.example.fakepicker\"}", "");
+    expect(t, "com.example.any", "{\"action\":\"zyl.intent.action.PICK\",\"targetApp\":\"com.zylos.picker\"}",
+           "com.zylos.picker");
+    g_hash_table_destroy(t);
+}
+
+static void test_files_are_strings_ten_at_most(void) {
+    JsonObject *it = intent("{\"action\":\"A\",\"files\":[\"a\",1,\"\",{\"x\":1},\"b\","
+                            "\"3\",\"4\",\"5\",\"6\",\"7\",\"8\",\"9\",\"10\",\"11\"]}");
+    JsonObject *d = zyl_intent_deliverable(it, "com.example.x");
+    JsonArray *f = json_object_get_array_member(d, "files");
+    assert(json_array_get_length(f) == ZYL_INTENT_MAX_FILES);
+    assert(strcmp(json_array_get_string_element(f, 0), "a") == 0 && strcmp(json_array_get_string_element(f, 1), "b") == 0);
+    json_object_unref(d);
+    json_object_unref(it);
+    JsonObject *none = intent("{\"action\":\"A\",\"files\":\"Pictures/a.png\"}");
+    d = zyl_intent_deliverable(none, NULL);
+    assert(json_array_get_length(json_object_get_array_member(d, "files")) == 0);
+    json_object_unref(d);
+    json_object_unref(none);
+}
+
 static void test_deliverable_and_script(void) {
     JsonObject *it = intent("{\"action\":\"A\",\"data\":\"Pictures/a.png\",\"extras\":{\"n\":1},"
                             "\"sourceApp\":\"com.zylos.settings\",\"evil\":true}");
@@ -123,6 +156,8 @@ int main(void) {
     assert(system("rm -rf " ROOT_) == 0);
     RUN_TEST(test_manifest_intents_parsed_junk_skipped);
     RUN_TEST(test_mime_rules);
+    RUN_TEST(test_only_a_system_app_picks);
+    RUN_TEST(test_files_are_strings_ten_at_most);
     RUN_TEST(test_who_handles_it);
     RUN_TEST(test_deliverable_and_script);
     assert(system("rm -rf " ROOT_) == 0);
