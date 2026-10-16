@@ -1372,6 +1372,95 @@ console.log('\n■ ZylPermissions');
 /* ═══════════════════════════════════════════════════════
    Telemetry consent (JS service, emulator contract)
    ═══════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════
+   The request gate (real services.js + permissions.js + notification.js,
+   isolated) — the device bridge's rules (bridge.c): a third-party app's
+   appId is its own, other apps' notifications are notification.read's,
+   internals are not methods, an unlisted service is closed
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ request gate');
+
+var gateTests = (function () {
+  var vm = require('vm');
+  var events = [];
+  var ctx = { console: console, setTimeout: function () { return 0; }, clearTimeout: function () {},
+              Promise: Promise, CustomEvent: function (type, init) { this.type = type; this.detail = init.detail; } };
+  ctx.window = ctx;
+  ctx.dispatchEvent = function (e) { events.push(e); return true; };
+  ['permissions.js', 'services/notification.js', 'services.js'].forEach(function (f) {
+    vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'apps', 'system', f), 'utf8'), ctx);
+  });
+  var S = ctx.ZylSystemServices;
+  ctx.ZylPermissions.registerFromAppList([
+    { id: 'com.example.chat', permissions: ['notification'] },
+    { id: 'com.example.spy', permissions: ['notification', 'notification.read'] },
+    { id: 'com.zylos.statusbar', permissions: [] }
+  ]);
+  S.init(function () { return Promise.resolve(null); });
+  /* A request's answer — refusals come back as a promise */
+  function ask(service, method, params, app) { return Promise.resolve(S.handleRequest(service, method, params, app)); }
+  function active() {
+    return ask('notification', 'getActive', {}, 'com.zylos.statusbar').then(function (a) { return JSON.parse(JSON.stringify(a)); });
+  }
+
+  /* One after another: they share the service's state */
+  return asyncTest('a third-party app posts only as itself; a system app may name another', function () {
+    return ask('notification', 'post', { appId: 'com.zylos.messages', title: 'fake' }, 'com.example.chat')
+      .then(function () { return ask('notification', 'post', { appId: 'com.zylos.settings', title: 'data' }, 'com.zylos.statusbar'); })
+      .then(active).then(function (a) {
+        assert.strictEqual(a[0].appId, 'com.example.chat');
+        assert.strictEqual(a[1].appId, 'com.zylos.settings');
+      });
+  }).then(function () {
+    return asyncTest("other apps' notifications are not a third-party app's to read, dismiss or silence", function () {
+      var refused = [];
+      ['getActive', 'getHistory', 'cancel', 'clearAll', 'clearHistory', 'setDndMode'].forEach(function (m) {
+        ['com.example.chat', 'com.example.spy'].forEach(function (app) {
+          refused.push(ask('notification', m, { id: 1 }, app).then(function (r) {
+            assert.ok(r && r.error === 'Permission denied', app + ' ' + m);
+          }));
+        });
+      });
+      return Promise.all(refused).then(active).then(function (a) {
+        assert.strictEqual(a.length, 2);                                  /* nothing dismissed */
+        return ask('notification', 'cancel', { id: a[0].id }, 'com.zylos.statusbar');
+      }).then(active).then(function (a) { assert.strictEqual(a.length, 1); });
+    });
+  }).then(function () {
+    return asyncTest('posted and dismissed are announced (what draws notifications follows them)', function () {
+      assert.deepStrictEqual(events.map(function (e) { return e.type; }),
+        ['zyl:notification-posted', 'zyl:notification-posted', 'zyl:notification-dismissed']);
+      assert.strictEqual(events[0].detail.appId, 'com.example.chat');
+      return Promise.resolve();
+    });
+  }).then(function () {
+    return asyncTest('internals and what every object has are not methods', function () {
+      ['_forgetApp', 'constructor', 'toString', '__proto__', 'hasOwnProperty'].forEach(function (m) {
+        assert.strictEqual(S.handleRequest('notification', m, {}, 'com.zylos.statusbar'), null, m);
+      });
+      return active().then(function (a) { assert.strictEqual(a.length, 1); });
+    });
+  }).then(function () {
+    return asyncTest('users are system-only; an unlisted service is closed', function () {
+      return Promise.all([ask('user', 'listUsers', {}, 'com.example.chat'), ask('nosuch', 'x', {}, 'com.example.chat')])
+        .then(function (r) {
+          assert.strictEqual(r[0].error, 'Permission denied');
+          assert.strictEqual(r[1].error, 'Permission denied');
+        });
+    });
+  }).then(function () {
+    return asyncTest('no whitelist loaded is no network', function () {
+      var c2 = { window: {} };
+      vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'apps', 'system', 'services', 'network.js'), 'utf8'), c2);
+      var called = false;
+      var net = c2.window.ZylServiceModules.network({ invoke: function () { called = true; return Promise.resolve('x'); } });
+      return net.fetch({ url: 'https://example.com' }).then(function (r) {
+        assert.ok(r && r.error && !called);
+      });
+    });
+  });
+})();
+
 console.log('\n■ telemetry service');
 
 var telemetryTests = (function () {
@@ -2855,7 +2944,7 @@ Promise.all([settingsTests, displayTests, inputTests, sensorsTests,
              usbTests, powerTests, audioTests, fsTests, updaterTests, telemetryTests, callTests, storeTests,
              netstatsTests, alertTests, lockTests, deviceBridgeTests, appStateTests,
              alarmTests, appsTests, sandboxTests, accessibilityTests, storageTests, networkTests,
-             credentialTests, locationTests, userTests])
+             credentialTests, locationTests, userTests, gateTests])
   .then(function () {
     console.log('\n════════════════════════');
     console.log('Total: ' + total + '  Passed: ' + passed + '  Failed: ' + failed);

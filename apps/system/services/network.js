@@ -15,7 +15,8 @@
 
     return {
       fetch: function (p) {
-        if (typeof ZylSandbox !== 'undefined' && !ZylSandbox.isAllowedDomain(p.url || '')) {
+        /* No whitelist loaded is no permission, never all of them */
+        if (typeof ZylSandbox === 'undefined' || !ZylSandbox.isAllowedDomain(p.url || '')) {
           return Promise.resolve({ error: 'Domain not in whitelist' });
         }
         return invoke('http_fetch', { url: p.url || '' });

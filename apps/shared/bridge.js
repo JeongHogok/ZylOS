@@ -295,44 +295,42 @@ var ZylBridge = (function () {
   /* ─── Notifications ─── */
 
   /**
-   * Post a notification through the system notification channel.
+   * Post a notification. It goes through the notification service like any
+   * request, so the OS names the posting app (a third-party app's appId is its
+   * own) — the same on the device.
    * @param {string} title
    * @param {string} body
    * @param {Object} [options] - { channel, icon, priority, appId, actions }
-   * @returns {Promise<number>} notification ID
+   * @returns {Promise<number|null>} notification ID
    */
   function notify(title, body, options) {
     var opts = options || {};
-    var msg = {
-      type: 'notification.create',
-      title: title,
-      body: body,
-      channel: opts.channel || 'default',
+    var actions = opts.actions || [];
+    log('notify', title);
+    return requestService('notification', actions.length ? 'postWithActions' : 'post', {
+      appId: opts.appId || '',
+      channelId: opts.channel || 'default',
+      title: title || '',
+      body: body || '',
       icon: opts.icon || '',
       priority: opts.priority || 1,
-      appId: opts.appId || '',
-      actions: opts.actions || [],
-    };
-    log('notify', title);
-    sendToSystem(msg);
-    return Promise.resolve(Date.now());
+      actions: actions
+    }).then(function (r) { return r && r.id !== undefined ? r.id : null; });
   }
 
   /**
-   * Dismiss a notification by ID.
+   * Dismiss a notification by ID (another app's needs notification.read).
    * @param {number} id
    */
   function clearNotification(id) {
-    sendToSystem({ type: 'notification.dismiss', id: id });
-    return Promise.resolve(true);
+    return requestService('notification', 'cancel', { id: id }).then(function () { return true; });
   }
 
   /**
-   * Clear all notifications.
+   * Clear all notifications (notification.read: the status bar's).
    */
   function clearAllNotifications() {
-    sendToSystem({ type: 'notification.clearAll' });
-    return Promise.resolve(true);
+    return requestService('notification', 'clearAll', {}).then(function () { return true; });
   }
 
   /* ─── Incoming Message Handler (emulator → app iframe) ─── */

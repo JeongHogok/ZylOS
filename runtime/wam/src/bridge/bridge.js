@@ -91,14 +91,25 @@
       postBridge({ type: "app.launch", appId: appId });
     },
 
-    /* ── Notifications ─────────────────────────────────── */
+    /* ── Notifications ─────────────────────────────────────
+     * Through the notification service like any request: the OS names the
+     * posting app (bridge.c), so an app posts only as itself.
+     */
     notification: {
       create: function (title, body, opts) {
+        var o = opts || {};
         return asyncBridge({
-          type:    "notification.create",
-          title:   title,
-          body:    body,
-          options: opts || {}
+          type:    "service.request",
+          service: "notification",
+          method:  "post",
+          params:  {
+            appId:     "{{APP_ID}}",
+            channelId: o.channel || "default",
+            title:     title || "",
+            body:      body || "",
+            icon:      o.icon || "",
+            priority:  o.priority || 1
+          }
         });
       }
     },

@@ -55,6 +55,8 @@ window.ZylPermissions = (function () {
     'lock':         ['system'],
     /* Installs and restarts into a new OS: Settings only */
     'updater':      ['system'],
+    /* Adds, switches and removes users — removing one deletes their data */
+    'user':         ['system'],
     /* Services with no special permission required */
     'device':        [],
     'storage':       [],
@@ -63,7 +65,6 @@ window.ZylPermissions = (function () {
     'input':         [],
     'sensors':       [],
     'usb':           [],
-    'user':          [],
     'sandbox':       [],
     'logger':        [],
     'accessibility': [],
@@ -71,6 +72,23 @@ window.ZylPermissions = (function () {
     /* Every app has its own, named by the OS's caller — never another's */
     'appdata':       [],
     'power':         []
+  };
+
+  /* Methods that reach past the caller's own, checked after the service rule:
+     every app's notifications and the device-wide quiet settings. An app posts
+     its own (its appId is always its own); reading, dismissing or silencing
+     other apps' is the status bar's. runtime/wam/src/bridge/bridge.c has the
+     same table (verify-all compares them). */
+  var METHOD_PERMISSIONS = {
+    'notification.getActive':         ['notification.read'],
+    'notification.getHistory':        ['notification.read'],
+    'notification.getAllBadgeCounts': ['notification.read'],
+    'notification.getGroupSummary':   ['notification.read'],
+    'notification.cancel':            ['notification.read'],
+    'notification.clearAll':          ['notification.read'],
+    'notification.clearHistory':      ['notification.read'],
+    'notification.setDndMode':        ['system'],
+    'notification.setChannelEnabled': ['system']
   };
 
   /* App-declared permissions from app.json */
@@ -188,16 +206,21 @@ window.ZylPermissions = (function () {
    */
   function checkPermission(appId, service, method) {
     var required = SERVICE_PERMISSIONS[service];
-    /* Unknown service or no permission required */
-    if (!required || required.length === 0) return true;
+    /* A service with no entry is unreviewed: closed, as on the device */
+    if (!required) return false;
 
     /* All apps — including system — go through the same permission path.
        System apps have ALL_PERMISSIONS registered, so they pass naturally. */
     var appPerms = getEffectivePermissions(appId);
-    for (var i = 0; i < required.length; i++) {
-      if (appPerms.indexOf(required[i]) !== -1) return true;
+    function holdsOne(list) {
+      if (list.length === 0) return true;
+      for (var i = 0; i < list.length; i++) {
+        if (appPerms.indexOf(list[i]) !== -1) return true;
+      }
+      return false;
     }
-    return false;
+    var byMethod = METHOD_PERMISSIONS[service + '.' + method];
+    return holdsOne(required) && (!byMethod || holdsOne(byMethod));
   }
 
   /**

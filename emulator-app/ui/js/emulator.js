@@ -36,9 +36,10 @@
     recentsOpen: false,
   };
 
-  /* ═══ Notifications ═══ */
-  var notifications = []; // { id, appId, appName, icon, title, body, channel, priority, timestamp, read }
-  var notifIdCounter = 0;
+  /* ═══ Notifications ═══
+     What the OS notification service holds (apps/system/services/notification.js
+     announces posted/dismissed); the container draws the shade and banners */
+  var notifications = []; // { id, appId, appName, icon, title, body, channel, priority, timestamp, read, persistent }
 
   /* ═══ DOM ═══ */
   var emulatorScreen  = document.getElementById('emulator-screen');
@@ -628,18 +629,20 @@
   /* ═══════════════════════════════════════════════════════
      알림 시스템
      ═══════════════════════════════════════════════════════ */
-  function pushNotification(data) {
+  function pushNotification(n) {
+    var app = n.appId ? ZylAppRegistry.getApp(n.appId) : null;
     var notif = {
-      id: ++notifIdCounter,
-      appId: data.appId || 'com.zylos.system',
-      appName: data.appName || (ZylAppRegistry.getApp(data.appId) && ZylAppRegistry.getApp(data.appId).name) || 'System',
-      icon: data.icon || '🔔',
-      title: data.title || '',
-      body: data.body || '',
-      channel: data.channel || 'default',
-      priority: data.priority || 1,
-      timestamp: Date.now(),
+      id: n.id,
+      appId: n.appId || '',
+      appName: app ? app.name : 'System',
+      icon: n.icon || '🔔',
+      title: n.title || '',
+      body: n.body || '',
+      channel: n.channelId || 'default',
+      priority: n.priority || 1,
+      timestamp: n.timestamp || Date.now(),
       read: false,
+      persistent: !!n.persistent
     };
     notifications.unshift(notif);
     updateNotifBadge();
@@ -661,10 +664,18 @@
     return notif.id;
   }
 
-  function dismissNotification(id) {
-    notifications = notifications.filter(function(n) { return n.id !== id; });
+  window.addEventListener('zyl:notification-posted', function (e) {
+    if (e.detail) pushNotification(e.detail);
+  });
+  window.addEventListener('zyl:notification-dismissed', function (e) {
+    notifications = notifications.filter(function(n) { return n.id !== e.detail; });
     updateNotifBadge();
     renderQsNotifications();
+  });
+
+  /* The user dismissed it in the shade: the service drops it and says so */
+  function dismissNotification(id) {
+    ZylServices.handleRequest('notification', 'cancel', { id: id });
   }
 
   function clearAllNotifications() {
@@ -672,9 +683,7 @@
     var list = document.getElementById('qs-notif-list');
     var cards = list ? list.querySelectorAll('.qs-notif-card') : [];
     if (cards.length === 0) {
-      notifications = notifications.filter(function(n) { return n.persistent; });
-      updateNotifBadge();
-      renderQsNotifications();
+      ZylServices.handleRequest('notification', 'clearAll', {});
       return;
     }
     cards.forEach(function(card, i) {
@@ -687,9 +696,7 @@
       card.style.opacity = '0';
     });
     setTimeout(function() {
-      notifications = notifications.filter(function(n) { return n.persistent; });
-      updateNotifBadge();
-      renderQsNotifications();
+      ZylServices.handleRequest('notification', 'clearAll', {});
       syslog('Notifications cleared', 'sys');
     }, cards.length * 50 + 350);
   }
@@ -1023,15 +1030,6 @@
           break;
         case 'setup.done':
           show(ZylShell.setupDone(state.currentApp));
-          break;
-        case 'notification.create':
-          pushNotification(msg);
-          break;
-        case 'notification.dismiss':
-          dismissNotification(msg.id);
-          break;
-        case 'notification.clearAll':
-          clearAllNotifications();
           break;
         case 'service.request':
           handleServiceRequest(msg, e.source);
