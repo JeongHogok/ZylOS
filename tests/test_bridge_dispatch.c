@@ -623,6 +623,9 @@ static void test_notifications_are_the_apps_own(void) {
     const char *others[] = { "getActive", "clearAll", "setDndMode", "setChannelEnabled", NULL };
     for (int i = 0; others[i]; i++) {
         assert(!app_may_call_method(&app, "notification", others[i]));
+        char *dbus_form = capitalize_method(others[i]);   /* the same D-Bus method */
+        assert(!app_may_call_method(&app, "notification", dbus_form));
+        g_free(dbus_form);
         assert(!app_may_call_method(&greedy, "notification", others[i]));
         assert(app_may_call_method(&bar, "notification", others[i]));
     }
@@ -691,6 +694,9 @@ static void test_power_actions_are_system_only(void) {
                            "setBrightness", "acquireWakelock", "releaseWakelock", NULL };
     for (int i = 0; acts[i]; i++) {
         assert(!app_may_call_method(&app, "power", acts[i]));
+        char *dbus_form = capitalize_method(acts[i]);
+        assert(!app_may_call_method(&app, "power", dbus_form));
+        g_free(dbus_form);
         assert(app_may_call_method(&settings, "power", acts[i]));
     }
 }

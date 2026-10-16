@@ -895,11 +895,15 @@ static gboolean app_may_call(const ZylAppManifest *m, const char *service) {
     return FALSE;
 }
 
-/* The method rule, after app_may_call: system apps hold every permission */
+/* The method rule, after app_may_call: system apps hold every permission.
+   The rule is keyed by the method that is called: "reboot" and "Reboot" are
+   both D-Bus Reboot (capitalize_method), so both meet the rule for "reboot" */
 static gboolean app_may_call_method(const ZylAppManifest *m, const char *service,
                                     const char *method) {
     if (m->is_system) return TRUE;
     char *key = g_strconcat(service, ".", method, NULL);
+    char *first = key + strlen(service) + 1;
+    *first = g_ascii_tolower(*first);
     gboolean ok = TRUE;
     for (int i = 0; METHOD_PERMISSIONS[i].service; i++) {
         if (strcmp(METHOD_PERMISSIONS[i].service, key) != 0) continue;
