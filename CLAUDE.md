@@ -10,7 +10,7 @@
 - `window.__TAURI__` 참조 금지
 - `__TAURI__.core.invoke` 호출 금지
 - `window.parent.postMessage()` 직접 호출 금지 → 반드시 `ZylBridge.sendToSystem()` 사용
-- 에뮬레이터 전용 커맨드명(`boot_device`, `shutdown_device` 등) 참조 금지
+- 에뮬레이터의 Tauri 커맨드명(`boot_device` 등) 참조 금지
 - `emulator-app/` 경로의 파일 import/참조 금지
 
 **필수 패턴:**
@@ -45,7 +45,7 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 
 - 사용자에게 보이는 **모든 텍스트**는 `zylI18n.t('key')` 경유
 - 하드코딩된 영어/한국어 문자열 금지
-- 새 키 추가 시 반드시 **5개 언어** (ko, en, ja, zh, es) 동시 추가
+- 새 키는 지원하는 **모든 언어**(`apps/shared/i18n.js` 의 `getSupportedLocales`)에 동시 추가
 - i18n 키는 `{앱이름}.{키이름}` 네이밍 규칙 준수
 
 ### 5. Mock/Demo 데이터 절대 금지
@@ -107,7 +107,7 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 | 파티션 레이아웃 | `board/<id>/partitions.conf` | `build-image.sh`, `sign-image.sh`, Boot HAL(`runtime/hal/meson.build`), `u-boot-env.txt`(테스트가 대조) |
 | 실행 시점 패키지 | `system/packages.list` | `build-image.sh` |
 | 보드·아키텍처·프로파일·prefix | meson → `builddir/zyl-board.conf` | `build-image.sh`, `run-qemu.sh` |
-| 서비스 집합 | `meson.build` 의 `zyl_profile_extras` | 생성되는 `zyl-os.target` |
+| 서비스 집합 | `meson.build` 의 `zyl_core_services` + `zyl_profile_extras` | 생성되는 `zyl-os.target` |
 | 버스 접근 권한 | `system/dbus-1/zyl-os.conf` | dbus-daemon, `tests/test_dbus_policy.sh` |
 | 서비스 권한 정책 | `apps/system/permissions.js` | `bridge.c`(verify-all 이 대조) |
 | 교차 툴체인 | `tools/cross/<arch>.ini` | 보드의 `board_cross_file` |
@@ -172,7 +172,7 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
   `webkit/` 세션). 앱이 공유 위치에 흔적을 남기는 API 를 새로 만들지 말 것
 - 앱별 상태를 갖는 서비스를 추가하면 삭제 때 정리 경로도 함께:
   기기 `org.zylos.AppStore` 의 `AppRemoved` 시그널 구독, 에뮬레이터 모듈의
-  `_forgetApp(appId)`. `tests/store_e2e.sh` 가 삭제 후 흔적 0 을 검증한다
+  `_forgetApp(appId)`. 삭제 후 흔적 0 은 `tests/store_e2e.sh` 와 그 서비스의 단위 테스트가 검증한다
 - 앱이 누구인지는 OS 만 말한다: in-arg `caller`(항상 호출 앱), `container`
   (시스템 앱이면 "", 아니면 그 앱), `app_id`(제3자 앱이면 그 앱) — 요청 값 무시
 - 스토어 패키지·카탈로그는 스토어 키 서명(패키지 전체의 SHA-256) 없이는 설치하지
@@ -187,66 +187,20 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 
 ## 빌드 & 검증
 
-### CI 는 로컬에서 — 푸시 전 관문
-```bash
-tools/ci-local.sh                 # main 대비 바뀐 것(커밋 안 한 것 포함)에 걸리는 잡만 act 로
-tools/ci-local.sh --dry-run       # 무엇이 걸리는지만
-tools/ci-local.sh lint-js fuzz    # 잡 이름으로 골라서 / --all 은 전부
-```
-워크플로는 관심사별로 나뉘어 있고(`.github/workflows/`), **각 워크플로의 `pull_request.paths` 가 "어떤 변경이 이 검사를
-부르는가" 의 유일한 출처**다 — 원격 PR 과 `ci-local.sh` 가 같은 목록을 읽는다
-(`tests/test_ci_select.sh` 가 규칙을 검증). 새 검사를 넣으면 그 검사가 읽는
-경로를 그 워크플로의 paths 에 함께 적을 것.
-**로컬에서 녹색을 본 뒤에만 푸시한다** — 원격 GitHub Actions 는 같은 워크플로의
-기록일 뿐 검증 수단이 아니다. 워크플로를 바꾸면 로컬에서도 돌아야 한다
-(ARM 맥: Arch 이미지 잡만 amd64 에뮬레이션, 나머지는 네이티브).
+명령과 잡 목록은 [CONTRIBUTING.md](CONTRIBUTING.md)(로컬 CI·테스트·퍼저·성능 예산·훅),
+보드 없이 이미지를 만들어 QEMU 로 부팅하는 레인은 [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)
+에 있다. 여기에는 지킬 것만 적는다.
 
-### 전체 검증 (모든 영역)
-```bash
-bash tests/verify-all.sh
-```
-규칙 문서(이 파일)의 기계 검사다 — apps/ 규칙(OS 독립성·ES5·i18n·헤더·CSS 폴백·
-Mock 금지·매니페스트), 에뮬레이터 규칙, runtime/ C 품질과 JS↔C 사본 대조(권한 표·
-허용 도메인·기기 D-Bus 메서드), system/ 정합(유닛·tmpfiles·AppArmor), 전체 기술부채.
-무엇을 어떻게 보는지는 스크립트가 출처다. 규칙을 추가하면 verify-all 에 검사도 추가할 것.
-
-### 개별 검증
-```bash
-bash tests/check-os-independence.sh  # OS 이미지만
-bash tests/test_js_syntax.sh         # JS 문법
-bash tests/test_manifests.sh         # app.json
-bash tests/test_image_profiles.sh    # 모든 폼팩터가 이미지로 성립하는지 (meson 필요)
-node tests/perf/run.js               # 앱 성능 예산 (Chrome 필요, CI 'perf' 잡)
-```
-
-### 보드 없이 전체 경로 검증 (리눅스/컨테이너, root)
-```bash
-meson setup builddir --prefix=/usr -Dboard=emulator -Dprofile=phone
-ninja -C builddir
-tools/build-image.sh --builddir builddir --out out/image --with-kernel
-#   --with-kernel: QEMU 게스트는 이미지 안의 커널·모듈로 부팅해야 DRM·입력이
-#   보인다. 실기기는 서명 FIT 으로 커널을 받으므로 기본은 끔
-tools/run-qemu.sh --image out/image/zyl-os-emulator-phone.img \
-                  --builddir builddir --check                  # 부팅 + 자기점검
-```
-자기점검은 유닛·버스·정책·앱 디렉터리·`/data` 와 화면 체인(DRM → Wayland 소켓
-→ WAM 이 띄운 앱)까지 본다. riscv64(실기기와 같은 아키텍처·HAL 백엔드)로도 같은 레인을 돌린다 — 교차 빌드
-(`--cross-file tools/cross/riscv64.ini -Dboard=generic-riscv64`) + binfmt 2단계
-부트스트랩. CI 의 `qemu-boot`·`qemu-boot-riscv64` 잡이 매 커밋 같은 일을 한다.
-이 레인이 **검증하지 않는 것**:
-U-Boot·서명 FIT·dm-verity·A/B 전환(부트로더 빌드와 `tools/sign-image.sh`·
-`tests/test_boot_env.sh` 소관), SoC 고유 경로(GPU·모뎀·ISP·eFuse).
-기기에서도 같은 자기점검을 돌릴 수 있다: `systemctl start zyl-selftest`.
-
-### 성능 예산
-앱마다 시작 시간·메인스레드 블로킹·힙·DOM 노드·레이아웃 수를 CPU 스로틀 +
-GPU 없이 측정해 `tests/perf/budgets.json` 과 비교한다. 의도된 변경으로 수치가
-바뀌면 `node tests/perf/run.js --update` 로 예산을 갱신하고 그 이유를 커밋에 적는다.
-예산을 올리는 것으로 회귀를 덮지 말 것.
-
-### 커밋 전 훅
-```bash
-git config core.hooksPath tools/hooks   # 클론마다 한 번
-```
-커밋할 때 `tests/check-os-independence.sh`(Tauri 참조·postMessage 직접 호출·ES5·
-CSS 폴백)를 돌려 위반이면 커밋을 막는다. 같은 검사를 verify-all 이 CI 에서 다시 한다.
+- **로컬에서 녹색을 본 뒤에만 푸시한다** — `tools/ci-local.sh`. 원격 GitHub Actions 는
+  같은 워크플로의 기록일 뿐 검증 수단이 아니다
+- 각 워크플로의 `pull_request.paths` 가 "어떤 변경이 이 검사를 부르는가" 의 유일한
+  출처다(원격 PR 과 `ci-local.sh` 가 같은 목록을 읽고, `tests/test_ci_select.sh` 가 규칙을
+  검증). 새 검사를 넣으면 그 검사가 읽는 경로를 그 워크플로의 paths 에 함께 적을 것.
+  워크플로를 바꾸면 로컬에서도 돌아야 한다
+- `tests/verify-all.sh`(CI `verify-all`)는 이 파일의 규칙과 사본 대조의 기계 검사다.
+  규칙이나 사본을 더하면 검사도 더할 것. 무엇을 보는지는 스크립트가 출처다
+- 테스트는 판정 코드의 복사본이 아니라 실제 소스를 시험한다
+- 성능 예산(`tests/perf/budgets.json`)을 올려 회귀를 덮지 말 것. 의도한 변경으로 갱신하면
+  그 이유를 커밋에 적는다
+- QEMU 레인이 보지 못하는 것(U-Boot·서명 FIT·dm-verity·A/B 전환, SoC 고유 경로)은
+  부트로더·서명 테스트와 보드가 맡는다 — 레인이 녹색이라고 그 경로가 검증된 것이 아니다
