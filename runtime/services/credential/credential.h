@@ -55,9 +55,13 @@ int zyl_credential_lookup(ZylCredentialStore *store,
 int zyl_credential_delete(ZylCredentialStore *store,
                            const char *service, const char *account);
 
-/* 마스터 키 설정 (기기 잠금 PIN에서 파생) */
+/* 마스터 키를 key 에서 파생 (저장소의 .master_salt 와 함께) */
 int zyl_credential_set_master_key(ZylCredentialStore *store,
                                    const void *key, size_t key_len);
+
+/* 기기 결합 키로 연다 — 없으면 처음 만든다(0600), 깨져 있으면 덮어쓰지 않고
+   잠긴 채로 둔다(-1). 데몬은 시작할 때 이것으로 연다 */
+int zyl_credential_open_with_device_key(ZylCredentialStore *store);
 
 #define ZYL_CREDENTIAL_DBUS_NAME "org.zylos.CredentialManager"
 #define ZYL_CREDENTIAL_DBUS_PATH "/org/zylos/CredentialManager"

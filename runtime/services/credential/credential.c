@@ -11,6 +11,11 @@
  * 파일 포맷:   [salt(16)][iv(12)][ciphertext(N)][tag(16)]
  * 암호화:      AES-256-GCM via OpenSSL EVP API
  * 키 파생:     PBKDF2-HMAC-SHA256, 100,000 iterations
+ * 마스터 키:   기기 결합 키 {store_path}/.device_key (첫 시작 때 32 바이트 난수,
+ *              root 0600) 에서 파생. 시작하면 바로 열린다
+ * shortcut: 기기 결합 키가 저장소와 같은 곳(root 전용)에 있다 — 지키는 것은
+ *           /var/lib 접근 제한(잠금 서비스와 같은 선)이다. TEE 나 PIN 결합이
+ *           생기면 키를 그쪽으로 옮길 것
  * ────────────────────────────────────────────────────────── */
 
 #include "credential.h"
@@ -275,39 +280,15 @@ static const char *cred_introspection_xml =
     "      <arg type='s' name='service' direction='in'/>"
     "      <arg type='s' name='account' direction='in'/>"
     "    </method>"
-    "    <method name='SetMasterKey'>"
-    "      <arg type='s' name='passphrase' direction='in'/>"
-    "      <arg type='b' name='success' direction='out'/>"
-    "    </method>"
     "  </interface>"
     "</node>";
-
-/*
- * Check caller UID via D-Bus GetConnectionUnixUser.
- * Returns the caller's UID, or (uid_t)-1 on failure.
- */
-static uid_t get_caller_uid(GDBusConnection *conn, const gchar *sender) {
-    if (!sender) return (uid_t)-1;
-    GError *e = NULL;
-    GVariant *r = g_dbus_connection_call_sync(conn,
-        "org.freedesktop.DBus", "/org/freedesktop/DBus",
-        "org.freedesktop.DBus", "GetConnectionUnixUser",
-        g_variant_new("(s)", sender),
-        G_VARIANT_TYPE("(u)"),
-        G_DBUS_CALL_FLAGS_NONE, 3000, NULL, &e);
-    if (!r) { g_clear_error(&e); return (uid_t)-1; }
-    guint32 uid = 0;
-    g_variant_get(r, "(u)", &uid);
-    g_variant_unref(r);
-    return (uid_t)uid;
-}
 
 static void handle_cred_method(GDBusConnection *conn, const gchar *sender,
                                 const gchar *path, const gchar *iface,
                                 const gchar *method, GVariant *params,
                                 GDBusMethodInvocation *inv, gpointer data) {
     ZylCredentialStore *store = data;
-    (void)path; (void)iface;
+    (void)conn; (void)sender; (void)path; (void)iface;
 
     if (g_strcmp0(method, "Store") == 0) {
         const gchar *service, *account, *secret, *label;
@@ -350,27 +331,6 @@ static void handle_cred_method(GDBusConnection *conn, const gchar *sender,
         zyl_credential_delete(store, service, account);
         g_dbus_method_invocation_return_value(inv, NULL);
 
-    } else if (g_strcmp0(method, "SetMasterKey") == 0) {
-        /*
-         * SetMasterKey is a privileged operation — only the device owner
-         * (root, uid 0) or the system credential-setup service may call it.
-         * Reject unprivileged callers to prevent credential key replacement.
-         */
-        uid_t caller_uid = get_caller_uid(conn, sender);
-        if (caller_uid != 0) {
-            g_warning("[Credential] SetMasterKey rejected: caller uid=%u is not root",
-                      (unsigned)caller_uid);
-            g_dbus_method_invocation_return_error(inv, G_DBUS_ERROR,
-                G_DBUS_ERROR_ACCESS_DENIED,
-                "SetMasterKey requires root privileges");
-            return;
-        }
-        const gchar *passphrase;
-        g_variant_get(params, "(&s)", &passphrase);
-        int ret = zyl_credential_set_master_key(
-            store, passphrase, strlen(passphrase));
-        g_dbus_method_invocation_return_value(
-            inv, g_variant_new("(b)", ret == 0));
     }
 }
 
@@ -443,8 +403,7 @@ int zyl_credential_store(ZylCredentialStore *store,
     (void)type; (void)label;
 
     if (!store->key_set) {
-        g_warning("[Credential] Master key not set — refusing to store. "
-                  "Call SetMasterKey first.");
+        g_warning("[Credential] Store is locked (no device key) — refusing to store");
         return -1;
     }
 
@@ -667,6 +626,42 @@ int zyl_credential_set_master_key(ZylCredentialStore *store,
     return 0;
 }
 
+#define DEVICE_KEY_LEN 32
+
+/* The store opens with this device's own key, made once on first start. A
+   key file that is there but unreadable is never replaced — that would make
+   every stored secret unreadable for good. */
+int zyl_credential_open_with_device_key(ZylCredentialStore *store) {
+    if (!store) return -1;
+    char *path = g_build_filename(store->store_path, ".device_key", NULL);
+    gchar *bytes = NULL;
+    gsize len = 0;
+    int ret = -1;
+    if (g_file_get_contents(path, &bytes, &len, NULL)) {
+        if (len == DEVICE_KEY_LEN) ret = zyl_credential_set_master_key(store, bytes, len);
+        else g_critical("[Credential] %s is %zu bytes, not %d — left locked", path, (size_t)len, DEVICE_KEY_LEN);
+    } else if (!g_file_test(path, G_FILE_TEST_EXISTS)) {
+        unsigned char key[DEVICE_KEY_LEN];
+        if (RAND_bytes(key, DEVICE_KEY_LEN) == 1 &&
+            g_file_set_contents_full(path, (const gchar *)key, DEVICE_KEY_LEN,
+                G_FILE_SET_CONTENTS_CONSISTENT | G_FILE_SET_CONTENTS_DURABLE, 0600, NULL)) {
+            g_message("[Credential] Device key created");
+            ret = zyl_credential_set_master_key(store, key, DEVICE_KEY_LEN);
+        } else {
+            g_critical("[Credential] Cannot create the device key at %s", path);
+        }
+        OPENSSL_cleanse(key, DEVICE_KEY_LEN);
+    } else {
+        g_critical("[Credential] Cannot read the device key at %s — left locked", path);
+    }
+    if (bytes) {
+        OPENSSL_cleanse(bytes, len);
+        g_free(bytes);
+    }
+    g_free(path);
+    return ret;
+}
+
 /* ─── 데몬 진입점 ─── */
 
 #ifndef ZYL_TEST
@@ -680,10 +675,12 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    if (zyl_credential_open_with_device_key(store) != 0) {
+        zyl_credential_destroy(store);
+        return 1;   /* systemd retries; a store that cannot open serves nothing */
+    }
     g_message("[Credential] Zyl OS Credential Manager started "
-              "(AES-256-GCM + PBKDF2)");
-    g_message("[Credential] Waiting for SetMasterKey via D-Bus "
-              "before accepting Store/Lookup requests");
+              "(AES-256-GCM + PBKDF2, device key)");
 
     GMainLoop *loop = g_main_loop_new(NULL, FALSE);
     g_main_loop_run(loop);

@@ -24,8 +24,9 @@
 #include <glib-unix.h>
 #include "container.h"
 
+#include "users.h"
 #ifndef ZYL_FILES_ROOT
-#define ZYL_FILES_ROOT "/data/users/0/files"
+#define ZYL_FILES_ROOT ZYL_OWNER_FILES
 #endif
 #ifndef ZYL_CONTAINERS_ROOT
 #define ZYL_CONTAINERS_ROOT ZYL_CONTAINERS

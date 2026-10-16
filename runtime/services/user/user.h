@@ -16,8 +16,9 @@
 
 #define ZYL_USER_MAX        8
 #define ZYL_USER_NAME_MAX   64
+#include "users.h"   /* runtime/lib: the root and the owner's uid */
 #ifndef ZYL_USER_DATA_ROOT
-#define ZYL_USER_DATA_ROOT  "/data/users"
+#define ZYL_USER_DATA_ROOT  ZYL_USERS_ROOT
 #endif
 
 typedef enum {

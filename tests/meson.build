@@ -311,6 +311,7 @@ test('credential',
 test('user',
   executable('test-user',
     'test_user.c',
+    include_directories: _lib_inc,
     dependencies: [gio_dep],
     c_args: ['-DZYL_TEST'],
   )

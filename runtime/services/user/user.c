@@ -148,7 +148,7 @@ ZylUserService *zyl_user_create(void) {
     ZylUserService *svc = calloc(1, sizeof(ZylUserService));
     if (!svc) return NULL;
 
-    svc->next_uid = 1000;
+    svc->next_uid = ZYL_OWNER_UID;   /* the owner is the first: runtime/lib/users.h */
     ensure_dir(ZYL_USER_DATA_ROOT);
 
     /* 기본 소유자 계정 생성 */
