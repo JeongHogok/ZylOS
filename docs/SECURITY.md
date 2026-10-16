@@ -162,11 +162,17 @@
 | FSBL (SPL) | Boot ROM — eFuse 에 루트 키 해시가 있을 때만 | `zylos-rotpk`(헤더), `zylos-spl-key`(SPL) | `tools/build-bootloader.sh` |
 | OpenSBI · U-Boot FIT | SPL (공개키가 SPL DTB 에 `required`) | `zylos-fw-key` | `tools/build-bootloader.sh` |
 | 커널 · DTB · initramfs FIT | U-Boot (공개키가 U-Boot DTB 에 `required`) | `zylos-boot-key` | `tools/sign-image.sh` |
-| rootfs | 커널 dm-verity (루트 해시는 서명된 커널 인자) | — | `tools/sign-image.sh` |
+| rootfs | initramfs 가 여는 dm-verity (`system/initramfs`) — 값은 전부 서명된 커널 인자, 디스크의 verity 수퍼블록은 읽지 않음 | — | `tools/sign-image.sh` |
 | 사용자 앱 | appstore · WAM 봉인 (6장) | 스토어 키 / 허락된 개발자 키 | `tools/build-store.py` |
 
-**불변식**: 부트 정책(`board/bpi-f3/u-boot-env.txt`, 검증 `tests/test_boot_env.sh`)은
-부트로더에 내장되어 바깥에서 바꿀 수 없습니다. OS 이미지의 검증을 끄는 길은 소유자가 기기에서
+**불변식**: 부트 정책(모든 보드의 `board/boot-policy.txt` + 보드의 `board/<id>/u-boot-env.txt`)은
+부트로더의 기본 환경으로 내장되어 바깥에서 바꿀 수 없습니다. 저장소의 환경에서는 정책의
+"Runtime state" 변수만 받으므로(쓰기 허용 목록) 환경을 쓸 수 있어도 `bootcmd` 와 검증은 그대로이고,
+커널 인자(루트·verity 값·슬롯)는 환경이 아니라 서명된 FIT 안에 있습니다. 검증되지 않는 루트는
+셸 대신 재시작으로 끝나고(`panic=`, `--restart-on-corruption`), 시험 중인 슬롯이면 U-Boot 가 그
+시도를 셉니다. 정책은 `tests/test_boot_env.sh` 가 보드마다 실행하고, `tests/verified_boot.sh` 가
+QEMU 에서 실제 U-Boot 로 확인합니다 — 저장된 환경에 써 넣은 `bootcmd` 가 무시되는지, 변조된
+FIT 가 거부되고 롤백되는지. OS 이미지의 검증을 끄는 길은 소유자가 기기에서
 확인하는 잠금 해제(GPLv3 §6) 하나이고, 잠금 상태가 바뀔 때마다 `/data` 가 지워집니다.
 부트로더가 무엇을 막는지, U-Boot 명령 줄이 언제 남는지, 잠금 해제 절차, eFuse 굽기는
 [INSTALLATION_INFORMATION.md](INSTALLATION_INFORMATION.md) 가 정합니다.
@@ -178,7 +184,8 @@
 - 패키지(`tools/build-ota.sh`)는 패키지 SHA-256 에 대한 RSA-SHA256 서명을 가집니다. 서명
   키는 부트 서명 키(`zylos-boot-key`)입니다 — 부팅 이미지를 서명할 수 있는 키가 곧 업데이트를
   낼 수 있는 키입니다.
-- **받을 조건**: U-Boot 환경을 읽을 수 있고(`fw_printenv`), 공개키
+- **받을 조건**: U-Boot 환경을 읽을 수 있고(`fw_printenv`, 자리는 이미지 빌드가 보드의
+  `partitions.conf` 에서 만든 `/etc/fw_env.config`), 공개키
   `/etc/zyl-os/ota-signing-key.pem`(빌드 옵션 `-Dota_public_key`)이 이미지에 있을 것.
   하나라도 없으면 업데이트를 받지 않습니다.
 - **검증**: 서명이 없거나 맞지 않거나 해시가 다른 패키지는 설치하지 않습니다
@@ -190,7 +197,7 @@
 - **전환**: 모든 기록이 끝난 뒤에만 `zyl_next_slot` 을 지정합니다. 새 슬롯의 부팅은 U-Boot
   의 FIT 서명과 커널의 dm-verity 가 다시 확인합니다.
 - **확정과 롤백**: 부팅 뒤 업데이터는 컴포지터와 WAM 이 떠 있으면 슬롯을 확정하고, 아니면
-  재시작합니다. 부트 정책이 정한 횟수(`u-boot-env.txt` 의 `zyl_boot_limit`) 안에 확정되지
+  재시작합니다. 부트 정책이 정한 횟수(`board/boot-policy.txt` 의 `zyl_boot_limit`) 안에 확정되지
   않으면 U-Boot 가 이전 슬롯으로 돌아갑니다.
 - 패키지를 만들고 이미지를 준비하는 절차는 [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md#6-ota).
 

@@ -222,13 +222,19 @@ wlroots 기반 Wayland 컴포지터다. 창을 그리고 입력을 나눌 뿐, �
 ```
 Boot ROM → FSBL (루트 키) → OpenSBI · U-Boot (서명된 FIT)
          → OS FIT: 커널 · 디바이스 트리 · initramfs (OS 키)
-         → rootfs (dm-verity, A/B 슬롯) → systemd → zyl-os.target
+         → initramfs 가 서명된 커널 인자의 값으로 rootfs 를 연다 (dm-verity, A/B 슬롯)
+         → systemd → zyl-os.target
 ```
 
-- 부트 정책은 `board/bpi-f3/u-boot-env.txt` 한 곳에 있다. 부트로더는 `tools/build-bootloader.sh`
-  로만 빌드·서명한다. 파티션 레이아웃은 `board/<id>/partitions.conf` 에 있다.
+- 부트 정책은 모든 보드가 같은 `board/boot-policy.txt` 와 보드의 상수·훅
+  `board/<id>/u-boot-env.txt` 에 있다. 부트로더는 `tools/build-bootloader.sh` 로만 빌드하고,
+  저장소의 환경이 바꿀 수 있는 것은 정책의 "Runtime state" 뿐이다. 파티션 레이아웃은
+  `board/<id>/partitions.conf` 에 있다.
 - 시스템 파티션은 읽기 전용이고 검증된다. 그래서 시스템 앱 디렉터리에 있다는 사실이 시스템 앱의
-  근거가 된다. 바뀌는 것은 전부 `/data` 에 있다.
+  근거가 된다. `/var` 는 휘발이고, 부팅을 넘어 남는 상태는 전부 `/data/<서비스>` 에 있다 —
+  잠금 전환과 공장 초기화는 그 `/data` 를 통째로 지운다([CLAUDE.md](../CLAUDE.md) §8-2).
+- 보드 없이 같은 체인을 도는 것은 riscv64 레인이다(`generic-riscv64`, 메인라인 U-Boot) —
+  [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md#검증-부팅-레인-testsverified_bootsh).
 - 키·서명·verity 는 [SECURITY.md](SECURITY.md#9-검증-부팅-verified-boot), 부트로더 잠금과
   eFuse 는 [INSTALLATION_INFORMATION.md](INSTALLATION_INFORMATION.md), 이미지 조립·서명·OTA 는
   [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md), 보드별 사실은 `board/<id>/README.md`.

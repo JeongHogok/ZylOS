@@ -8,7 +8,9 @@
 
 ## 쓰는 곳
 
-- 이미지 레인: 조립 → QEMU 부팅 → 자기점검 (`.github/workflows/image.yml` 의 `qemu-boot`)
+- 이미지 레인: 조립 → QEMU 가 커널을 직접 띄워 부팅 → 자기점검 (`.github/workflows/image.yml`
+  의 `qemu-boot`). 읽기 전용 루트와 휘발 `/var` 는 기기와 같고, 부팅 체인(U-Boot·서명 FIT·
+  dm-verity·A/B)은 [generic-riscv64](../generic-riscv64/README.md) 레인이 봅니다
 - 프로파일마다 설정되고 유닛마다 바이너리가 있는지: `tests/test_image_profiles.sh`
 
 ## 쓰는 법
@@ -28,4 +30,5 @@
 
 - `meson.build` — 보드 계약 (설명: `board/meson.build`)
 - `partitions.conf` — 디스크 레이아웃. 실기기와 같은 파티션 번호를 쓰고 디스크 노드와
-  크기만 다릅니다 — 이미지 조립 코드가 보드마다 갈라지지 않게 하려는 것입니다
+  크기만 다릅니다 — 이미지 조립 코드가 보드마다 갈라지지 않게 하려는 것입니다. 부트로더가
+  없으니 U-Boot 환경도 없습니다(`ZYL_ENV_IN=none`)

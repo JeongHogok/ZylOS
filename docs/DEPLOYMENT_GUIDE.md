@@ -55,10 +55,14 @@ sudo tools/build-image.sh --builddir <builddir> --out <outdir> [--with-kernel]
    등록이 필요합니다
 3. 링크 검사 — 설치한 `zyl-*` 바이너리가 요구하는 공유 라이브러리가 rootfs 에 없으면
    실패합니다. 그 라이브러리를 주는 패키지를 `system/packages.list` 에 더하십시오
-4. 부팅 설정 — fstab(슬롯 A 루트, `/data`), 기본 타겟 → `zyl-os.target`, 서비스
+4. 부팅 설정 — 루트는 읽기 전용이고 남는 것은 `/data` 에만 있도록([CLAUDE.md](../CLAUDE.md)
+   §8-2): fstab(읽기 전용 루트, 부트 파티션 `/boot`, `/data` — 파일 시스템이 없으면 부팅 때
+   만들고 파티션 크기까지 늘린다, 휘발 `/var`), 비운 `/etc/machine-id`, `/run` 을 가리키는
+   `/etc/resolv.conf`, 부트 환경의 자리 `/etc/fw_env.config`(보드 `partitions.conf` 의
+   `ZYL_ENV_*`), `/usr` 쪽에 구운 글꼴 캐시. 그리고 기본 타겟 → `zyl-os.target`, 서비스
    사용자·디렉터리, 로그인 콘솔 차단
-5. rootfs ext4 → 보드 레이아웃 그대로 GPT 디스크를 만들고 슬롯 A 에 rootfs, `/data`
-   포맷. 만들어진 파티션 순서가 선언과 다르면 실패합니다
+5. rootfs ext4 → 보드 레이아웃 그대로 GPT 디스크를 만들고 슬롯 A 에 rootfs, 부트
+   파티션 vfat, `/data` 포맷. 만들어진 파티션 순서가 선언과 다르면 실패합니다
 
 `<outdir>` 에 남는 것:
 
@@ -68,12 +72,14 @@ sudo tools/build-image.sh --builddir <builddir> --out <outdir> [--with-kernel]
 | `rootfs-<프로파일>.img` | rootfs 단독 — 디스크 슬롯 A 와 같은 바이트. 서명(§5)과 OTA(§6)의 입력 |
 | `vmlinuz`, `initrd.img` | `--with-kernel` 일 때만 |
 
-`--rootfs-only` 는 rootfs 이미지까지만 만듭니다. 슬롯 B·verity·부트 파티션은 비어
-있습니다 — 실기기에서 채우는 쪽은 서명 도구와 OTA 입니다.
+`--rootfs-only` 는 rootfs 이미지까지만 만듭니다. 디스크 이미지의 슬롯 B·verity 파티션은
+비어 있고 부트 파티션에는 FIT 이 없습니다 — 채우는 쪽은 서명 도구(§5)와 OTA(§6)입니다.
 
-**`--with-kernel`** 은 배포판 커널과 그 모듈을 rootfs 에 넣고 커널·initrd 를 꺼내 둡니다.
+**`--with-kernel`** 은 배포판 커널과 그 모듈을 rootfs 에 넣고, dm-verity 훅
+(`system/initramfs`)이 들어가게 initramfs 를 다시 만든 뒤 커널·initrd 를 꺼내 둡니다.
 QEMU 레인에서 켭니다 — 게스트가 이미지 자신의 커널로 떠야 모듈이 맞아 DRM·입력이
-올라옵니다. 실기기 이미지는 끕니다. 커널은 서명 FIT 으로 옵니다.
+올라오고, 검증 부팅 레인은 이 커널·initrd 를 서명 FIT 로 묶습니다. 실기기 이미지는
+끕니다. 커널은 서명 FIT 으로 옵니다.
 
 ## 4. 보드 없이 부팅 — `tools/run-qemu.sh`
 
@@ -81,18 +87,45 @@ QEMU 레인에서 켭니다 — 게스트가 이미지 자신의 커널로 떠�
 tools/run-qemu.sh --image <outdir>/zyl-os-<보드>-<프로파일>.img --builddir <builddir> --check
 ```
 
-- 아키텍처는 `zyl-board.conf`, 루트 장치는 그 보드 `partitions.conf` 의 슬롯 A 입니다.
-- 커널·initrd 는 `--kernel`/`--initrd` 로 준 것, 없으면 이미지 옆의 `vmlinuz`·`initrd.img`
-  (`--with-kernel`), 그것도 없으면 호스트 `/boot` 의 최신 것을 씁니다.
-- `--check` 는 커널 인자 `systemd.wants=zyl-selftest.service` 로 자기점검을 켜고,
-  결과(PASS/FAILED)를 종료 코드로 돌려줍니다. `--timeout`·`--mem` 으로 조정합니다.
+- 아키텍처는 `zyl-board.conf` 에서 옵니다.
+- 기본은 QEMU 가 커널을 직접 띄웁니다. 루트는 그 보드 `partitions.conf` 의 슬롯 A
+  파티션이고(dm-verity 없이), 읽기 전용 루트와 휘발 `/var` 는 기기와 같습니다. 커널·initrd 는
+  `--kernel`/`--initrd` 로 준 것, 없으면 이미지 옆의 `vmlinuz`·`initrd.img`(`--with-kernel`),
+  그것도 없으면 호스트 `/boot` 의 최신 것을 씁니다.
+- `--firmware <디렉터리> --dtb <DTB>` 는 기기와 같은 길로 띄웁니다(riscv64 만): OpenSBI
+  `fw_jump` → 부트 정책을 가진 U-Boot(`tools/build-bootloader.sh --board generic-riscv64` 의
+  출력) → 부트 파티션의 서명 FIT. DTB 는 `--dumpdtb <파일>` 로 뽑은 이 머신의 것에
+  `tools/sign-image.sh` 가 OS 공개키를 넣은 것이고, U-Boot 가 그 키로 FIT 를 검증합니다.
+  디스크는 virtio-mmio 입니다(U-Boot 가 환경을 읽을 때 PCI 는 아직 없습니다).
+- `--check` 는 자기점검 결과(PASS/FAILED)를 종료 코드로 돌려줍니다. 커널을 직접 띄우면
+  `systemd.wants=zyl-selftest.service` 를 커널 인자에 더하고, 펌웨어로 띄우면 그 인자는
+  서명된 FIT 안에 있어야 합니다. `--log <파일>` 은 직렬 콘솔을 남기고, `--timeout`·`--mem`
+  으로 조정합니다.
 
 QEMU 레인과 그 명령 순서의 기준이 되는 워크플로:
 
 | 보드 | 무엇을 보나 | 워크플로 |
 |------|-------------|----------|
-| [`emulator`](../board/emulator/README.md) | 호스트 아키텍처, HAL `emulator` 백엔드 | `image.yml` (`qemu-boot`) |
-| [`generic-riscv64`](../board/generic-riscv64/README.md) | 실기기와 같은 아키텍처·HAL `linux` 백엔드 | `riscv64.yml` (`qemu-boot-riscv64`) |
+| [`emulator`](../board/emulator/README.md) | 호스트 아키텍처, HAL `emulator` 백엔드, 커널 직접 부팅 | `image.yml` (`qemu-boot`) |
+| [`generic-riscv64`](../board/generic-riscv64/README.md) | 실기기와 같은 아키텍처·HAL `linux` 백엔드·부팅 체인 (아래 검증 부팅 레인) | `riscv64.yml` (`qemu-boot-riscv64`) |
+
+### 검증 부팅 레인 (`tests/verified_boot.sh`)
+
+```bash
+tools/build-bootloader.sh --board generic-riscv64 <펌웨어 출력>
+tests/verified_boot.sh --builddir <builddir> --image <outdir>/zyl-os-generic-riscv64-<프로파일>.img \
+                       --firmware <펌웨어 출력>
+```
+
+이미지는 `-Dboard=generic-riscv64` 와 `--with-kernel` 로 만든 것입니다. 일회용 키로 슬롯을
+서명해 디스크에 넣고(`sign-image.sh --disk`) 펌웨어로 여러 번 부팅하며, 매번 부트 환경을
+읽어 봅니다:
+
+1. 슬롯 A 검증 부팅 — U-Boot 가 FIT 서명을 확인하고 initramfs 가 dm-verity 루트를 열고,
+   자기점검이 통과한다
+2. 슬롯 B 로의 업데이트 — U-Boot 가 시도하고 OS 의 업데이터가 확정한다. 저장된 환경에
+   써 넣은 `bootcmd` 는 무시된다(쓰기 허용 목록)
+3. 변조된 FIT 로의 업데이트 — U-Boot 가 거부하고, 시도를 다 쓰면 확정된 슬롯으로 돌아간다
 
 ### 자기점검 (`tools/zyl-selftest`)
 
@@ -101,21 +134,29 @@ QEMU 레인과 그 명령 순서의 기준이 되는 워크플로:
 
 - 설치된 `zyl-*.service` 가 활성인가 (하드웨어 조건이 맞지 않아 건너뛴 유닛은 실패가 아님)
 - 그 유닛의 `BusName=` 이 시스템 버스에 있는가
-- 앱 디렉터리·WAM 브리지·`/data` 마운트·`/etc/zyl-release`
+- 앱 디렉터리·WAM 브리지·`/etc/zyl-release`
 - 화면 체인: DRM 장치 → Wayland 소켓 → WAM 이 띄운 앱 (DRM 이 없으면 건너뜀)
+- 저장소: 루트가 읽기 전용인가, `/var` 가 tmpfs 인가, `/data`·`/boot` 가 마운트됐는가
+- A/B: 부트로더가 띄운 슬롯(커널 인자 `zyl.slot`)이 확정되는가 — 시험 중인 슬롯이면
+  업데이터가 확정할 때까지 기다린다. 부트로더 없이 부팅했으면 건너뜀
 
-**보지 않는 것**: U-Boot·서명 FIT·dm-verity·A/B 전환 — 이것은
-`tools/build-bootloader.sh` 의 자체 검증과 `tests/test_boot_env.sh`·`test_sign_image.sh`·
-`test_build_ota.sh`·`test_updater.c` 의 몫입니다. SoC 고유 경로(GPU·모뎀·ISP·eFuse)는
-실기기에서만 확인됩니다.
+기기에는 셸이 없고 커널 인자는 서명 안에 있으므로, `systemd.wants=zyl-selftest.service` 를
+넣어 서명한 이미지(`sign-image.sh --cmdline-extra`)로 돌립니다(공장 검사). 결과는 직렬
+콘솔에 남습니다.
 
-기기에는 셸이 없으므로 같은 커널 인자 `systemd.wants=zyl-selftest.service` 로 돌립니다
-(공장 검사). 결과는 직렬 콘솔에 남습니다.
+### 레인이 보지 않는 것
+
+제조사 부트로더 체인(FSBL, OpenSBI·U-Boot 의 서명), eMMC 부팅 영역 쓰기 보호, eFuse,
+기기 앞의 잠금 전환 확인과 `/data` 삭제(QEMU 에는 버튼이 없다), SoC 고유 경로(GPU·모뎀·ISP).
+부트로더는 `tools/build-bootloader.sh` 의 자체 검증이 보고, BPI-F3 의 훅(버튼·eMMC 삭제·
+eFuse·기기 ID·쓰기 보호)은 `tests/test_boot_env.sh` 가 U-Boot 명령을 흉내 내어 결정만
+봅니다. 나머지는 실기기에서만 확인됩니다.
 
 ## 5. 실기기 — 키, 부트로더, 서명, 기록
 
 서명 부팅 도구(`tools/gen-boot-keys.sh`, `tools/build-bootloader.sh`,
-`tools/sign-image.sh`)는 BPI-F3 의 U-Boot 체인을 대상으로 합니다. 체인이 무엇을
+`tools/sign-image.sh`)는 보드를 `--board` 로 받습니다(기본 `bpi-f3`). 이 절은 BPI-F3 의
+순서이고, `generic-riscv64` 는 검증 부팅 레인(§4)이 같은 도구를 씁니다. 체인이 무엇을
 검증하는지는 [SECURITY.md](SECURITY.md#9-검증-부팅-verified-boot) 에 있습니다.
 
 ### 운영자가 가져야 할 키
@@ -137,18 +178,25 @@ tools/build-bootloader.sh --key-dir <키 디렉터리> <출력 디렉터리>
 ```
 
 고정한 제조사 U-Boot·OpenSBI 위에 `board/bpi-f3/bootloader`(패치·설정 조각)를 얹고,
-부트 정책 `board/bpi-f3/u-boot-env.txt` 를 기본 환경으로 내장해 빌드·서명합니다. 결과는
-스스로 검증합니다. 부트로더가 무엇을 막는지와 eFuse 를 굽는 `--burn-rotpk` 는
+부트 정책 — 모든 보드의 `board/boot-policy.txt` 와 이 보드의 상수·훅
+`board/bpi-f3/u-boot-env.txt` — 을 기본 환경으로 내장해 빌드·서명합니다. 저장소가 쓸 수
+있는 변수는 정책의 "Runtime state" 절뿐입니다. 환경의 자리·크기는 `partitions.conf` 의
+`ZYL_ENV_*` 이고, 빌드가 U-Boot 설정과 대조합니다(OS 의 `/etc/fw_env.config` 도 같은 값,
+§3). 결과는 스스로 검증합니다. 부트로더가 무엇을 막는지와 eFuse 를 굽는 `--burn-rotpk` 는
 [INSTALLATION_INFORMATION.md](INSTALLATION_INFORMATION.md#부트로더가-지켜야-하는-것).
 
 ### OS 이미지 서명
 
 1. §2–3 으로 이미지를 만듭니다: `-Dboard=bpi-f3`, `--cross-file tools/cross/riscv64.ini`,
    `-Dota_public_key=<키 디렉터리>/zylos-boot-key.pub`, `--with-kernel` 없이.
-2. 커널·DTB·initramfs 는 이 저장소가 만들지 않습니다. 보드 커널 빌드에서 가져오되:
-   - 커널은 gzip 압축 (`board/bpi-f3/fit-image.its`), dm-verity 와 `dm-mod.create=`
-     (CONFIG_DM_INIT)를 내장 — 서명된 커널 인자가 그것으로 루트를 세웁니다
-   - rootfs 에는 그 커널의 모듈이 들어가지 않으므로 필요한 드라이버는 커널에 내장합니다
+2. 커널·DTB 는 이 저장소가 만들지 않습니다. 보드 커널 빌드에서 가져오고, initramfs 는
+   그 커널로 이 이미지에서 만듭니다:
+   - 커널은 gzip 압축 (`board/bpi-f3/fit-image.its`), dm-verity 를 갖출 것 — 내장이든
+     initramfs 에 실은 모듈이든
+   - initramfs 는 이 이미지의 rootfs 에서 보드 커널로 만들어 `system/initramfs` 의 훅이
+     들어간 것(`--with-kernel` 이 배포판 커널로 하는 일). 그 훅이 서명된 커널 인자의 값만으로
+     슬롯의 rootfs 를 dm-verity 로 엽니다
+   - rootfs 에는 그 커널의 모듈이 들어가지 않으므로 OS 가 쓰는 드라이버는 커널에 내장합니다
    - DTB 는 보드 전체 DTB 에 `system/dts/bpi-f3-zyl.dts` 오버레이를 적용한 것
 3. 슬롯 A 서명:
 
@@ -157,15 +205,20 @@ tools/build-bootloader.sh --key-dir <키 디렉터리> <출력 디렉터리>
      tools/sign-image.sh --slot a --key-dir <키 디렉터리> <outdir>/rootfs-<프로파일>.img <서명 출력>
    ```
 
-   rootfs 의 verity 트리를 만들고, 그 루트 해시·슬롯의 파티션·`zyl.slot` 을 담은 커널
-   인자를 DTB `/chosen` 에 넣은 뒤 FIT 로 묶어 서명합니다. 커널 인자는 환경이 아니라
-   서명되는 DTB 안에 있으므로 바꿀 수 없습니다.
+   rootfs 의 verity 트리를 만들고, 슬롯의 루트·verity 값 전부(`zyl.verity=`)·`zyl.slot`·
+   콘솔(`partitions.conf` 의 `ZYL_CONSOLE`)을 담은 커널 인자를 DTB `/chosen` 에 넣은 뒤
+   보드의 `fit-image.its` 로 FIT 를 묶어 서명합니다. 커널 인자는 환경이 아니라 서명되는
+   DTB 안에 있으므로 바꿀 수 없습니다.
+   - `--board` 는 파티션·콘솔·FIT 틀을 그 보드의 것으로, `--cmdline-extra` 는 서명되는
+     커널 인자에 더할 것(공장 검사의 `systemd.wants=zyl-selftest.service` 처럼),
+     `--disk <디스크 이미지>` 는 결과를 그 이미지에 바로 설치합니다 — rootfs·verity 트리는
+     슬롯 파티션, FIT 는 부트 파티션.
    - 서명할 rootfs 는 **디스크 이미지 슬롯 A 에 들어간 바로 그 파일**이어야 합니다 —
      루트 해시가 그 바이트에 묶입니다.
    - `fit_check_sign` 이 없으면 서명 확인을 건너뛰고 경고만 냅니다. 있는 환경에서
      서명하십시오.
    - 출력의 `u-boot.dtb` 는 확인용입니다. 기기의 U-Boot DTB 에는 `build-bootloader.sh`
-     가 같은 공개키를 넣습니다.
+     가 같은 공개키를 넣습니다(`generic-riscv64` 는 이 DTB 를 QEMU 가 U-Boot 에 넘깁니다, §4).
 4. 기록: [board/bpi-f3/README.md](../board/bpi-f3/README.md).
 
 ## 6. OTA
