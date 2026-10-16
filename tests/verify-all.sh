@@ -277,7 +277,8 @@ if [ -n "$MISSING_C" ]; then warn "C 파일 CA 헤더 누락:\n$MISSING_C"; else
 #       "이 파일이 무엇을 책임지는가"를 아무도 적지 않은 채 늘어난다.
 MISSING_SH=""
 for f in "$ROOT"/tools/*.sh "$ROOT"/tools/zyl-selftest "$ROOT"/tests/*.sh \
-         "$ROOT"/board/*/partitions.conf "$ROOT"/system/packages.list \
+         "$ROOT"/board/*/partitions.conf "$ROOT"/tools/cross/*.ini \
+         "$ROOT"/system/packages.list \
          "$ROOT"/system/*.conf.in "$ROOT"/system/tmpfiles.d/*.conf \
          "$ROOT"/system/dbus-1/*.conf; do
   [ -f "$f" ] || continue

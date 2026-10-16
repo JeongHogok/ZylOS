@@ -107,7 +107,7 @@ sector 0. Flash with fastboot as in the vendor's guide (`fastboot stage FSBL.bin
 
 ```bash
 # Cross-compile ZylOS for RISC-V
-meson setup builddir --cross-file board/bpi-f3/cross-riscv64.ini
+meson setup builddir --cross-file tools/cross/riscv64.ini
 ninja -C builddir
 
 # Deploy to SD card
@@ -137,4 +137,4 @@ Limitations:
 
 ## Cross-Compilation File
 
-See `cross-riscv64.ini` for meson cross-file configuration.
+See `tools/cross/riscv64.ini` for meson cross-file configuration.
