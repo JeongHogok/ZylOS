@@ -26,8 +26,8 @@ Zyl OS 앱을 만드는 사람(제3자 앱·이 저장소의 시스템 앱)을 �
   보는 API 는 `ZylBridge` 하나다 — 앱은 자기가 기기에 있는지 에뮬레이터에 있는지 알 필요가 없다.
 - **앱 자기 파일과 OS 코드만 읽는다**: OS 코드는 `/shared/`(앱에서는 `../shared/…`)와
   `bridge.js` 가 불러오는 화면 키보드 `/keyboard/` 이고, 이미지의 것이 나간다. 코드는 이
-  파일에서만 돈다(CSP): 바깥 스크립트·`eval` 은 없고, 제3자 앱은 인라인 스크립트(`<script>`
-  본문, `onclick="…"`)도 안 된다 — `<script src>` 와 `addEventListener` 를 쓴다.
+  파일에서만 돈다(CSP): 바깥 스크립트·`eval` 은 없고, 인라인 스크립트(`<script>` 본문,
+  `onclick="…"`)도 안 된다 — `<script src>` 와 `addEventListener` 를 쓴다.
 - **`network` 권한이 있으면 바깥에 직접 나간다**: `fetch`·`XMLHttpRequest`·`WebSocket` 으로
   https/wss 만(평문 http 는 막힘), 이미지·미디어·글꼴도 https 에서. 권한이 없으면 자기 출처
   밖으로는 아무것도 못 나간다. 자세한 규칙은 [SECURITY.md §3](SECURITY.md#3-권한).

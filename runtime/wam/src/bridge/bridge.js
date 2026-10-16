@@ -11,7 +11,8 @@
  * only in the app's own document: a page the app frames gets no copy of this
  * script, and a page the app navigates to is not zyl-app://<id>/.
  *
- * Tokens replaced at injection time:
+ * Tokens replaced at injection time, each with a JS string literal of its
+ * value (bridge.c js_literal — a manifest's strings are the app's to write):
  *   {{APP_ID}}       - unique app identifier
  *   {{APP_NAME}}     - display name
  *   {{APP_VERSION}}  - version string
@@ -30,12 +31,13 @@
 (function () {
   "use strict";
 
-  var own = location.href.indexOf("zyl-app://{{APP_ID}}/") === 0;
+  var APP_ID = {{APP_ID}}, TOKEN = {{BRIDGE_TOKEN}};
+  var own = location.href.indexOf("zyl-app://" + APP_ID + "/") === 0;
   var handler = window.webkit && window.webkit.messageHandlers &&
                 window.webkit.messageHandlers.bridge;
 
   function post(json) {
-    if (own && handler) handler.postMessage("{{BRIDGE_TOKEN}}" + json);
+    if (own && handler) handler.postMessage(TOKEN + json);
   }
   Object.defineProperty(window, "__zylPost", { value: post });
 
@@ -45,12 +47,12 @@
 
   window.navigator.system = {
     app: {
-      id:      "{{APP_ID}}",
-      name:    "{{APP_NAME}}",
-      version: "{{APP_VERSION}}",
+      id:      APP_ID,
+      name:    {{APP_NAME}},
+      version: {{APP_VERSION}},
 
       close: function () {
-        postBridge({ type: "app.close", appId: "{{APP_ID}}" });
+        postBridge({ type: "app.close", appId: APP_ID });
       }
     },
 

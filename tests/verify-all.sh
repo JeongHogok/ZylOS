@@ -48,6 +48,13 @@ HITS=$(grep -rn 'emulator-app\|hal-tauri' "$ROOT/apps" --include='*.js' --includ
   | grep -v '//' | grep -v 'See ' || true)
 if [ -n "$HITS" ]; then fail "에뮬레이터 참조:\n$HITS"; else pass "에뮬레이터 참조 없음"; fi
 
+# A3b: 인라인 스크립트 없음 — OS 의 CSP 가 어느 앱에도 허락하지 않아(app_scheme.c,
+# sandbox.js) 기기에서 조용히 돌지 않는다. 마크업으로 그린 남의 문자열이 돌지 않게 한 규칙
+HITS=$( { grep -rnE '<script(\s[^>]*)?>' "$ROOT/apps" --include='*.html' | grep -v 'src='
+          grep -rnE '\son[a-z]+\s*=' "$ROOT/apps" --include='*.html'
+          grep -rnE "\son[a-z]+=['\"\\\\]" "$ROOT/apps" --include='*.js'; } 2>/dev/null || true)
+if [ -n "$HITS" ]; then fail "인라인 스크립트·핸들러 (CSP 가 막음):\n$HITS"; else pass "인라인 스크립트·핸들러 없음"; fi
+
 # ─────────────────────────────────────────────────────────────
 section "apps/ — ES5 호환성"
 

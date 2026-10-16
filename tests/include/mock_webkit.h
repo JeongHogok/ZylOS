@@ -49,13 +49,19 @@ static inline WebKitUserContentManager *webkit_web_view_get_user_content_manager
     return &manager;
 }
 
+static gchar *mock_user_script_source;   /* the last script bridge.c built */
+static WebKitUserContentInjectedFrames mock_user_script_frames;
+
 static inline WebKitUserScript *webkit_user_script_new(const gchar *source,
                                                        WebKitUserContentInjectedFrames frames,
                                                        WebKitUserScriptInjectionTime time,
                                                        gpointer whitelist,
                                                        gpointer blacklist)
 {
-    (void)source; (void)frames; (void)time; (void)whitelist; (void)blacklist;
+    (void)time; (void)whitelist; (void)blacklist;
+    g_free(mock_user_script_source);
+    mock_user_script_source = g_strdup(source);
+    mock_user_script_frames = frames;
     static WebKitUserScript script;
     return &script;
 }

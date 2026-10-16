@@ -70,8 +70,8 @@ static void test_mime_and_uri(void) {
 }
 
 /* The same strings test_services.js expects of sandbox.js getContentPolicy */
-static void same_csp(gboolean system, gboolean network, gboolean webview, const char *want) {
-    char *got = zyl_app_scheme_csp(system, network, webview);
+static void same_csp(gboolean network, gboolean webview, const char *want) {
+    char *got = zyl_app_scheme_csp(network, webview);
     if (strcmp(got, want) != 0) printf("\n    got  %s\n    want %s\n", got, want);
     assert(strcmp(got, want) == 0);
     g_free(got);
@@ -103,25 +103,25 @@ static void test_the_view_stays_the_apps(void) {
 }
 
 static void test_csp_follows_permissions(void) {
-    /* A user-installed app without the network: its own files, nothing out */
-    same_csp(FALSE, FALSE, FALSE,
+    /* Without the network: its own files, nothing out */
+    same_csp(FALSE, FALSE,
         "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; "
         "font-src 'self'; frame-src 'self'; object-src 'none'");
     /* With it: https/wss out, still never plain http, never remote or inline code */
-    same_csp(FALSE, TRUE, FALSE,
+    same_csp(TRUE, FALSE,
         "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; "
         "font-src 'self' https:; frame-src 'self'; object-src 'none'");
-    /* A system app (its pages have inline script) holding both */
-    same_csp(TRUE, TRUE, TRUE,
-        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+    /* Both (a system app holds every permission): https pages in frames */
+    same_csp(TRUE, TRUE,
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; "
         "font-src 'self' https:; frame-src 'self' https:; object-src 'none'");
-    /* Whatever the permissions: no eval, no remote script */
-    char *all = zyl_app_scheme_csp(TRUE, TRUE, TRUE);
+    /* Whatever the permissions: no eval, no remote and no inline script */
+    char *all = zyl_app_scheme_csp(TRUE, TRUE);
     assert(!strstr(all, "eval"));
-    assert(strstr(all, "script-src 'self' 'unsafe-inline';"));
+    assert(strstr(all, "script-src 'self';"));
     g_free(all);
 }
 

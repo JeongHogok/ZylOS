@@ -19,7 +19,7 @@
       <div class="oobe-logo">Zyl OS</div>
       <h1 data-i18n="oobe.welcome">Welcome</h1>
       <p data-i18n="oobe.welcome_desc">Start your new mobile experience</p>
-      <button class="oobe-btn" onclick="nextStep()" data-i18n="oobe.get_started">Get Started</button>
+      <button class="oobe-btn" data-action="nextStep" data-i18n="oobe.get_started">Get Started</button>
     </div>
 
     <!-- Step 2: Language (5 languages) -->
@@ -33,8 +33,8 @@
         <div class="oobe-option" data-lang="es" role="option" tabindex="0">Español</div>
       </div>
       <div class="oobe-step-actions">
-        <button class="oobe-btn-back" onclick="prevStep()" aria-label="Back">&larr;</button>
-        <button class="oobe-btn" onclick="nextStep()" data-i18n="oobe.next">Next</button>
+        <button class="oobe-btn-back" data-action="prevStep" aria-label="Back">&larr;</button>
+        <button class="oobe-btn" data-action="nextStep" data-i18n="oobe.next">Next</button>
       </div>
     </div>
 
@@ -51,8 +51,8 @@
       </div>
       <div id="wifi-msg" role="status" aria-live="polite"></div>
       <div class="oobe-step-actions">
-        <button class="oobe-btn-back" onclick="prevStep()" aria-label="Back">&larr;</button>
-        <button class="oobe-btn" onclick="nextStep()" data-i18n="oobe.skip">Skip</button>
+        <button class="oobe-btn-back" data-action="prevStep" aria-label="Back">&larr;</button>
+        <button class="oobe-btn" data-action="nextStep" data-i18n="oobe.skip">Skip</button>
       </div>
     </div>
 
@@ -64,10 +64,10 @@
       <input type="password" id="pin-confirm" maxlength="4" placeholder="Confirm PIN" inputmode="numeric" pattern="[0-9]*" aria-label="Confirm PIN">
       <div id="pin-msg"></div>
       <div class="oobe-step-actions">
-        <button class="oobe-btn-back" onclick="prevStep()" aria-label="Back">&larr;</button>
-        <button class="oobe-btn" onclick="setupPin()" data-i18n="oobe.pin_set">Set</button>
+        <button class="oobe-btn-back" data-action="prevStep" aria-label="Back">&larr;</button>
+        <button class="oobe-btn" data-action="setupPin" data-i18n="oobe.pin_set">Set</button>
       </div>
-      <button class="oobe-btn-skip" onclick="nextStep()" data-i18n="oobe.pin_later">Later</button>
+      <button class="oobe-btn-skip" data-action="nextStep" data-i18n="oobe.pin_later">Later</button>
     </div>
 
     <!-- Step 5: Terms -->
@@ -79,8 +79,8 @@
         <span data-i18n="oobe.terms_agree">I agree to the Terms of Service</span>
       </label>
       <div class="oobe-step-actions">
-        <button class="oobe-btn-back" onclick="prevStep()" aria-label="Back">&larr;</button>
-        <button class="oobe-btn" onclick="acceptTerms()" data-i18n="oobe.agree">Agree</button>
+        <button class="oobe-btn-back" data-action="prevStep" aria-label="Back">&larr;</button>
+        <button class="oobe-btn" data-action="acceptTerms" data-i18n="oobe.agree">Agree</button>
       </div>
     </div>
 
@@ -93,8 +93,8 @@
         <span data-i18n="oobe.privacy_share">Send diagnostic data</span>
       </label>
       <div class="oobe-step-actions">
-        <button class="oobe-btn-back" onclick="prevStep()" data-i18n-aria-label="oobe.back">&larr;</button>
-        <button class="oobe-btn" onclick="applyPrivacy()" data-i18n="oobe.next">Next</button>
+        <button class="oobe-btn-back" data-action="prevStep" data-i18n-aria-label="oobe.back">&larr;</button>
+        <button class="oobe-btn" data-action="applyPrivacy" data-i18n="oobe.next">Next</button>
       </div>
     </div>
 
@@ -103,7 +103,7 @@
       <div class="oobe-logo">&check;</div>
       <h1 data-i18n="oobe.complete_title">Setup Complete</h1>
       <p data-i18n="oobe.complete_desc">Enjoy Zyl OS!</p>
-      <button class="oobe-btn" onclick="finishSetup()" data-i18n="oobe.start">Start</button>
+      <button class="oobe-btn" data-action="finishSetup" data-i18n="oobe.start">Start</button>
     </div>
 
     <!-- Progress dots -->

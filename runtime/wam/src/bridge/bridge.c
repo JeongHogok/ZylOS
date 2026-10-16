@@ -116,6 +116,23 @@ const char *zyl_bridge_untoken(const char *msg, const char *token)
 
 /* == Load and inject the JS bridge ========================== */
 
+/* A JS string literal of s: the manifest's strings are the app's to write,
+   and the bridge script runs before — and outside — the app's CSP */
+static gchar *js_literal(const char *s)
+{
+    GString *out = g_string_new("\"");
+    for (const unsigned char *p = (const unsigned char *)(s ? s : ""); *p; p++) {
+        if (*p == '"' || *p == '\\') { g_string_append_c(out, '\\'); g_string_append_c(out, (char)*p); }
+        else if (*p < 0x20 || *p == '<' || *p == '>') g_string_append_printf(out, "\\u%04x", *p);
+        else if (p[0] == 0xE2 && p[1] == 0x80 && (p[2] == 0xA8 || p[2] == 0xA9)) {   /* U+2028/9 end ES5 lines */
+            g_string_append_printf(out, "\\u%04x", p[2] == 0xA8 ? 0x2028 : 0x2029);
+            p += 2;
+        } else g_string_append_c(out, (char)*p);
+    }
+    g_string_append_c(out, '"');
+    return g_string_free(out, FALSE);
+}
+
 gboolean zyl_bridge_inject(const char      *bridge_js_path,
                            WebKitWebView   *webview,
                            ZylAppManifest  *manifest,
@@ -137,34 +154,20 @@ gboolean zyl_bridge_inject(const char      *bridge_js_path,
         return FALSE;
     }
 
-    gchar *s1 = g_strdup(template);
-    if (!s1) { g_free(template); return FALSE; }
-    gchar *s2, *s3;
-    gchar **parts;
-
-    parts = g_strsplit(s1, "{{APP_ID}}", -1);
-    s2 = g_strjoinv(manifest->id, parts);
-    g_strfreev(parts);
-    g_free(s1);
-    if (!s2) { g_free(template); return FALSE; }
-
-    parts = g_strsplit(s2, "{{APP_NAME}}", -1);
-    s3 = g_strjoinv(manifest->name, parts);
-    g_strfreev(parts);
-    g_free(s2);
-    if (!s3) { g_free(template); return FALSE; }
-
-    parts = g_strsplit(s3, "{{APP_VERSION}}", -1);
-    s2 = g_strjoinv(manifest->version, parts);
-    g_strfreev(parts);
-    g_free(s3);
-    if (!s2) { g_free(template); return FALSE; }
-
-    parts = g_strsplit(s2, "{{BRIDGE_TOKEN}}", -1);
-    s1 = g_strjoinv(token, parts);
-    g_strfreev(parts);
-    g_free(s2);
-    if (!s1) { g_free(template); return FALSE; }
+    /* One pass over the template: a value is never read again for tokens */
+    const char *names[] = { "{{APP_ID}}", "{{APP_NAME}}", "{{APP_VERSION}}", "{{BRIDGE_TOKEN}}", NULL };
+    const char *values[] = { manifest->id, manifest->name, manifest->version, token };
+    GString *script = g_string_new(NULL);
+    for (const char *p = template; *p; ) {
+        int i = 0;
+        while (names[i] && !g_str_has_prefix(p, names[i])) i++;
+        if (!names[i]) { g_string_append_c(script, *p++); continue; }
+        gchar *lit = js_literal(values[i]);
+        g_string_append(script, lit);
+        g_free(lit);
+        p += strlen(names[i]);
+    }
+    gchar *s1 = g_string_free(script, FALSE);
 
     WebKitUserContentManager *ucm =
         webkit_web_view_get_user_content_manager(webview);

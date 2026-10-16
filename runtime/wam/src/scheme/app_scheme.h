@@ -32,11 +32,13 @@ const char *zyl_app_scheme_mime(const char *file);
 char *zyl_app_scheme_uri(const char *app_id, const char *entry);
 
 /* The Content-Security-Policy sent with every file of an app. Code only from
-   the app's own files (what was sealed): never remote, never eval, and no
-   inline script for a user-installed app — with the network it could run what
-   it fetched. "network" opens https/wss (never plain http), "webview" lets it
-   frame https pages. The same rule as apps/system/sandbox.js getContentPolicy */
-char *zyl_app_scheme_csp(gboolean system, gboolean network, gboolean webview);
+   the app's own files (what was sealed): never remote, never eval, never
+   inline — with the network an app could run what it fetched, and every app
+   draws strings others sent (a notification, a file name, a Wi-Fi network's),
+   which as markup must not run. "network" opens https/wss (never plain http),
+   "webview" lets it frame https pages. The same rule as apps/system/sandbox.js
+   getContentPolicy */
+char *zyl_app_scheme_csp(gboolean network, gboolean webview);
 
 /* Is a document at uri the app's own: zyl-app://<app id>/… */
 gboolean zyl_app_scheme_is_own(const char *app_id, const char *uri);

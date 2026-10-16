@@ -103,12 +103,11 @@ gboolean zyl_app_scheme_may_load(const char *app_id, const char *uri, gboolean w
     return webview && g_ascii_strncasecmp(uri, "https://", 8) == 0;
 }
 
-char *zyl_app_scheme_csp(gboolean system, gboolean network, gboolean webview) {
+char *zyl_app_scheme_csp(gboolean network, gboolean webview) {
     const char *web = network ? " https:" : "";
     return g_strdup_printf(
-        "default-src 'self'; script-src 'self'%s; style-src 'self' 'unsafe-inline'; "
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data: blob:%s; media-src 'self' blob:%s; connect-src 'self'%s; "
         "font-src 'self'%s; frame-src 'self'%s; object-src 'none'",
-        system ? " 'unsafe-inline'" : "", web, web, network ? " https: wss:" : "",
-        web, webview ? " https:" : "");
+        web, web, network ? " https: wss:" : "", web, webview ? " https:" : "");
 }

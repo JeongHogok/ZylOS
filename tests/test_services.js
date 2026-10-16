@@ -944,8 +944,9 @@ var deviceBridgeTests = (function () {
                 Object: Object };
     vm.createContext(ctx);
     var wamJs = fs.readFileSync(path.join(__dirname, '..', 'runtime', 'wam', 'src', 'bridge', 'bridge.js'), 'utf8')
-      .split('{{APP_ID}}').join('com.zylos.settings').split('{{APP_NAME}}').join('Settings')
-      .split('{{APP_VERSION}}').join('1.0.0').split('{{BRIDGE_TOKEN}}').join(TOKEN);
+      .split('{{APP_ID}}').join(JSON.stringify('com.zylos.settings'))   /* JS literals, as bridge.c */
+      .split('{{APP_NAME}}').join(JSON.stringify('Settings'))
+      .split('{{APP_VERSION}}').join(JSON.stringify('1.0.0')).split('{{BRIDGE_TOKEN}}').join(JSON.stringify(TOKEN));
     vm.runInContext(wamJs, ctx);
     vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'apps', 'shared', 'bridge.js'), 'utf8'), ctx);
     return { win: win, sent: sent, raw: raw, B: win.ZylBridge || ctx.ZylBridge, listeners: listeners };
@@ -3242,22 +3243,22 @@ console.log('\n■ ZylSandbox content policy');
   });
 
   test('a user app without the network: its own files, nothing out', function () {
-    assert.strictEqual(S.getContentPolicy(false, ['camera']),
+    assert.strictEqual(S.getContentPolicy(['camera']),
       "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
       "img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; " +
       "font-src 'self'; frame-src 'self'; object-src 'none'");
   });
 
   test('with the network: https/wss out, never plain http, never remote or inline code', function () {
-    assert.strictEqual(S.getContentPolicy(false, ['network']),
+    assert.strictEqual(S.getContentPolicy(['network']),
       "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
       "img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; " +
       "font-src 'self' https:; frame-src 'self'; object-src 'none'");
   });
 
-  test('a system app holding network and webview', function () {
-    assert.strictEqual(S.getContentPolicy(true, ['network', 'webview']),
-      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; " +
+  test('network and webview (as a system app holds): https frames, still no inline code', function () {
+    assert.strictEqual(S.getContentPolicy(['network', 'webview']),
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
       "img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; " +
       "font-src 'self' https:; frame-src 'self' https:; object-src 'none'");
   });

@@ -239,6 +239,14 @@
     ZylBridge.sendToSystem({ type: 'setup.done' });
   };
 
+  /* The buttons' steps — as listeners: the OS runs no inline script (its CSP) */
+  document.querySelectorAll('[data-action]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var step = window[btn.getAttribute('data-action')];
+      if (typeof step === 'function') step();
+    });
+  });
+
   /* Select default language based on i18n locale (avoid navigator.language bypass) */
   var detectedLang = (typeof zylI18n !== 'undefined' && zylI18n.getLocale) ? zylI18n.getLocale() : 'en';
   var langOption = document.querySelector('.oobe-option[data-lang="' + detectedLang + '"]');

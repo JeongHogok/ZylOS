@@ -709,7 +709,7 @@ static void on_app_request(WebKitURISchemeRequest *req, gpointer user_data) {
         GInputStream *in = g_memory_input_stream_new_from_bytes(bytes);
         /* The policy rides on every response, so it binds from the first byte
            of the document and each worker script — not after the page ran */
-        char *csp = zyl_app_scheme_csp(m->is_system, zyl_bridge_app_holds(m, "network"),
+        char *csp = zyl_app_scheme_csp(zyl_bridge_app_holds(m, "network"),
                                        zyl_bridge_app_holds(m, "webview"));
         SoupMessageHeaders *headers = soup_message_headers_new(SOUP_MESSAGE_HEADERS_RESPONSE);
         soup_message_headers_append(headers, "Content-Security-Policy", csp);

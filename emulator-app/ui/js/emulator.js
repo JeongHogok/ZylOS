@@ -155,7 +155,7 @@
       /* A store app's files carry the CSP the OS made from its permissions,
          as the WAM serves them on the device; the image's apps are this page's */
       var served = ZylAppRegistry.getOrigin(appId) && typeof ZylSandbox !== 'undefined'
-        ? setServedPolicy(appId, ZylSandbox.getContentPolicy(!!app.system, effectivePerms))
+        ? setServedPolicy(appId, ZylSandbox.getContentPolicy(effectivePerms))
         : Promise.resolve();
       served.then(null, function (e) {
         syslog('[ERROR] No policy for ' + appId + ': ' + e, 'warn');   /* served nothing: fails closed */
