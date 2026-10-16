@@ -11,6 +11,7 @@
 name: Bootloader
 on:
   push:
+    branches: [main]
     paths:
       - 'board/bpi-f3/**'
       - 'tools/build-bootloader.sh'
@@ -22,6 +23,9 @@ on:
       - 'tools/build-bootloader.sh'
       - 'tools/gen-boot-keys.sh'
       - '.github/workflows/bootloader.yml'
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   build-bootloader:
     runs-on: ubuntu-24.04

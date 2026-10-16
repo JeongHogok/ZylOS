@@ -34,7 +34,7 @@ Zyl OS 는 **소유자가 직접 여는 부트로더 잠금 해제**로 이를 �
 
 ```bash
 # 소스: 이 저장소 전체 (GPL-3.0 대응 소스)
-meson setup builddir-riscv --cross-file board/bpi-f3/cross-riscv64.ini -Dboard=bpi-f3
+meson setup builddir-riscv --cross-file tools/cross/riscv64.ini -Dboard=bpi-f3
 ninja -C builddir-riscv
 # rootfs 준비는 docs/DEPLOYMENT_GUIDE.md §4
 

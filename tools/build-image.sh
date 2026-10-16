@@ -196,8 +196,12 @@ systemctl --root="$ROOTFS" mask console-getty.service >/dev/null 2>&1 || true
 # 메운다 — 호스트 커널을 쓰면 모듈 버전이 어긋나 DRM·입력이 올라오지 않는다
 if [ $WITH_KERNEL = 1 ]; then
     step "커널·initrd 추출"
-    K="$(ls -1 "$ROOTFS"/boot/vmlinuz-* 2>/dev/null | sort -V | tail -1)"
-    R="$(ls -1 "$ROOTFS"/boot/initrd.img-* 2>/dev/null | sort -V | tail -1)"
+    # riscv64 는 vmlinuz 가 아니라 vmlinux(ELF)를 깐다 — 레인은 이름이 아니라
+    # "이 이미지의 커널" 이 필요하므로 한 글롭으로 둘 다 본다(있으면 vmlinuz).
+    # 없는 이름을 ls 에 따로 주면 ls 가 2 로 끝나고 pipefail+set -e 에 걸려
+    # "커널이 없다" 는 메시지 대신 조용히 죽는다
+    K="$(ls -1 "$ROOTFS"/boot/vmlinu[xz]-* 2>/dev/null | sort -V | tail -1 || true)"
+    R="$(ls -1 "$ROOTFS"/boot/initrd.img-* 2>/dev/null | sort -V | tail -1 || true)"
     [ -n "$K" ] && [ -n "$R" ] || { echo "✗ 이미지에 커널·initrd 가 없다" >&2; exit 1; }
     cp "$K" "$OUT/vmlinuz"
     cp "$R" "$OUT/initrd.img"

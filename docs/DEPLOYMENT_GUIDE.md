@@ -55,9 +55,32 @@ ninja -C builddir
 
 ### 크로스 컴파일 (RISC-V 타겟)
 ```bash
-meson setup builddir-riscv --cross-file board/bpi-f3/cross-riscv64.ini
+dpkg --add-architecture riscv64 && apt-get update
+apt-get install crossbuild-essential-riscv64   # + :riscv64 개발 라이브러리
+meson setup builddir-riscv --prefix=/usr --cross-file tools/cross/riscv64.ini \
+      -Dboard=bpi-f3 -Dprofile=phone
 ninja -C builddir-riscv
 ```
+
+개발 라이브러리는 multiarch(`:riscv64`)로 깔립니다. 정확한 목록은 CI 의
+`qemu-boot-riscv64` 잡이 단일 출처입니다 — 호스트 아키텍처 개발 패키지와
+섞어 깔면 `libpsl-dev` 처럼 man 페이지가 충돌하는 패키지가 있으므로,
+교차 빌드는 전용 컨테이너에서 하십시오.
+
+### 보드 없이 riscv64 로 돌려 보기
+실기기와 **같은 아키텍처·같은 HAL 백엔드**로 부팅까지 확인합니다
+(`board/generic-riscv64`, QEMU `-machine virt`):
+```bash
+meson setup builddir-rv64 --prefix=/usr --cross-file tools/cross/riscv64.ini \
+      -Dboard=generic-riscv64 -Dprofile=phone
+ninja -C builddir-rv64
+tools/build-image.sh --builddir builddir-rv64 --out out/rv64 --with-kernel
+tools/run-qemu.sh --image out/rv64/zyl-os-generic-riscv64-phone.img \
+      --builddir builddir-rv64 --check
+```
+rootfs 조립에는 `qemu-user-static` + binfmt 가 필요합니다 (다른 아키텍처라
+debootstrap 이 2단계로 돌아갑니다). riscv64 데비안 커널은 `vmlinuz` 가 아니라
+`vmlinux`(ELF)로 설치됩니다 — 이미지 빌드가 둘 다 찾습니다.
 
 ### Docker 재현 가능 빌드
 ```bash

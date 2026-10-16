@@ -9,28 +9,35 @@
 
 FROM archlinux:latest AS builder
 
-# Pinned mirror snapshot for reproducibility
-# Update this date to bump base packages
-ARG MIRROR_DATE=2026/03/30
 ENV LANG=en_US.UTF-8
 
-# Install build dependencies
+# Install build dependencies.
+# 기본 미러 둘은 같은 CDN 이라 동기화 중이면 함께 실패한다 — 독립 1티어 미러를
+# 뒤에 두고 일시 장애는 재시도로 넘긴다 (CI 의 build-native 와 같은 처방)
 RUN pacman-key --init && \
     pacman-key --populate archlinux && \
-    pacman -Syu --noconfirm && \
-    pacman -S --noconfirm \
-      base-devel meson ninja pkgconf git \
-      wayland wayland-protocols \
-      libxkbcommon pixman libinput \
-      libdrm mesa libglvnd \
-      gtk4 webkitgtk-6.0 json-glib \
-      hwdata libdisplay-info \
-      seatd \
-      openssl libzip curl gpsd \
-      python && \
+    printf 'Server = https://%s/$repo/os/$arch\n' \
+      mirror.rackspace.com/archlinux mirrors.kernel.org/archlinux \
+      >> /etc/pacman.d/mirrorlist && \
+    for i in 1 2 3; do \
+      pacman -Syu --noconfirm --needed \
+        base-devel meson ninja pkgconf git \
+        wayland wayland-protocols \
+        libxkbcommon pixman libinput \
+        libdrm mesa libglvnd \
+        gtk4 webkitgtk-6.0 json-glib \
+        hwdata libdisplay-info \
+        seatd \
+        openssl libzip curl gpsd \
+        python && break; \
+      [ "$i" = 3 ] && exit 1; sleep 30; \
+    done && \
     # Build wlroots from source (pinned version)
-    git clone --depth 1 --branch 0.18.2 \
-      https://gitlab.freedesktop.org/wlroots/wlroots.git /tmp/wlroots && \
+    for i in 1 2 3; do \
+      git clone --depth 1 --branch 0.18.2 \
+        https://gitlab.freedesktop.org/wlroots/wlroots.git /tmp/wlroots && break; \
+      [ "$i" = 3 ] && exit 1; rm -rf /tmp/wlroots; sleep 15; \
+    done && \
     cd /tmp/wlroots && \
     meson setup build --prefix=/usr -Dexamples=false -Dxwayland=disabled -Dwerror=false && \
     ninja -C build && ninja -C build install && \

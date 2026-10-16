@@ -247,9 +247,12 @@ ninja -C builddir
 
 ### 크로스 컴파일 (RISC-V)
 ```bash
-meson setup builddir-riscv --cross-file board/bpi-f3/cross-riscv64.ini
+meson setup builddir-riscv --prefix=/usr --cross-file tools/cross/riscv64.ini \
+      -Dboard=bpi-f3 -Dprofile=phone
 ninja -C builddir-riscv
 ```
+보드 없이 riscv64 로 부팅까지 확인하려면 `-Dboard=generic-riscv64` 로 빌드해
+이미지를 만들고 QEMU 로 띄웁니다 — `docs/DEPLOYMENT_GUIDE.md` §2 참조.
 
 ### zyl SDK CLI
 ```bash
