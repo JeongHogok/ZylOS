@@ -2,7 +2,7 @@
  * [Clean Architecture] Infrastructure Layer - Test
  *
  * 역할: 앱 출처 zyl-app:// 해석(runtime/wam/src/scheme) 단위 테스트
- * 수행범위: 앱 파일·/shared/ 공용 코드, .. ·절대 경로·밖을 가리키는 심볼릭
+ * 수행범위: 앱 파일·OS 코드(/shared/·/keyboard/), .. ·절대 경로·밖을 가리키는 심볼릭
  *           링크·디렉터리·없는 파일 거부, MIME, 진입 URI
  * 의존방향: app_scheme.c, glib
  * SOLID: SRP — 앱이 자기 디렉터리와 OS 공용 코드 밖을 읽지 못함을 검증
@@ -17,7 +17,8 @@
 
 #define ROOT_ "/tmp/zyl-scheme-test"
 #define APP ROOT_ "/apps/com.example.x"
-#define SHARED ROOT_ "/os/shared"
+#define OS ROOT_ "/os"
+#define SHARED OS "/shared"
 
 static int tests_run, tests_pass;
 #define RUN_TEST(fn) do { tests_run++; printf("  %-60s ", #fn); fn(); tests_pass++; printf("PASS\n"); } while (0)
@@ -25,7 +26,7 @@ static int tests_run, tests_pass;
 static void put(const char *path) { assert(g_file_set_contents(path, "x", -1, NULL)); }
 
 static bool names(const char *path, const char *want) {
-    char *f = zyl_app_scheme_file(APP, SHARED, path);
+    char *f = zyl_app_scheme_file(APP, OS, path);
     bool ok = want ? f && strcmp(f, want) == 0 : f == NULL;
     if (!ok) printf("\n    %s → %s (want %s)\n", path, f ? f : "NULL", want ? want : "NULL");
     g_free(f);
@@ -36,6 +37,12 @@ static void test_app_and_shared_files(void) {
     assert(names("/index.html", APP "/index.html"));
     assert(names("/js/app.js", APP "/js/app.js"));
     assert(names("/shared/bridge.js", SHARED "/bridge.js"));     /* ../shared/ from the app's root */
+    /* The on-screen keyboard bridge.js loads into every page: OS code, not the app's */
+    assert(names("/keyboard/js/inpage.js", OS "/keyboard/js/inpage.js"));
+    assert(zyl_app_scheme_is_os("/keyboard/js/inpage.js") && zyl_app_scheme_is_os("/shared/x.js"));
+    assert(!zyl_app_scheme_is_os("/keyboards/x.js") && !zyl_app_scheme_is_os("/sharedx/y") &&
+           !zyl_app_scheme_is_os("/index.html") && !zyl_app_scheme_is_os("/shared"));
+    assert(names("/settings/x.js", NULL));                       /* other image apps stay out */
 }
 
 static void test_nothing_outside(void) {
@@ -66,6 +73,10 @@ int main(void) {
     assert(system("rm -rf " ROOT_) == 0);
     g_mkdir_with_parents(APP "/js", 0755);
     g_mkdir_with_parents(SHARED, 0755);
+    g_mkdir_with_parents(OS "/keyboard/js", 0755);
+    g_mkdir_with_parents(OS "/settings", 0755);
+    put(OS "/keyboard/js/inpage.js");
+    put(OS "/settings/x.js");
     put(APP "/index.html");
     put(APP "/js/app.js");
     put(SHARED "/bridge.js");

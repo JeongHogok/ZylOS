@@ -5,7 +5,7 @@
 // 수행범위: OS 이미지의 스토어 설정(system/store.json) 제공, https 다운로드,
 //           패키지 풀기(이름 검사: 절대 경로·..·링크 거부)·확정·버리기·삭제(앱
 //           컨테이너까지), 설치된 스토어 앱 목록, 스토어 앱을 기기와 같은 출처
-//           zyl-app://<id>/ 로 제공(/shared/ 는 OS 공용 코드). 봉인 대조용 자료
+//           zyl-app://<id>/ 로 제공(/shared/·/keyboard/ 는 OS 코드). 봉인 대조용 자료
 //           (파일마다 SHA-256, .zyl-seal/ 의 내용)와 스토어가 폐기한 인증서 목록 보관.
 //           무엇을 받을지·서명·봉인·카탈로그 해석·app.json 확인은 OS
 //           (apps/system/services/appstore.js, app-seal.js)의 몫
@@ -239,16 +239,23 @@ pub fn installed_store_apps(app_state: &AppState) -> Vec<serde_json::Value> {
     apps
 }
 
-/// The file a zyl-app path names: /shared/… is the OS shared code, anything
-/// else the app's own directory; nothing outside the two
-fn resolve(app_dir: &Path, shared_dir: &Path, path: &str) -> Option<PathBuf> {
+/// The OS code every page includes, whatever the app (the device's
+/// app_scheme.c has the same list): the shared runtime and the on-screen
+/// keyboard shared/bridge.js loads into the page
+const OS_DIRS: &[&str] = &["shared", "keyboard"];
+
+/// The file a zyl-app path names: an OS path from that directory of the
+/// image's apps (os_dir), anything else the app's own directory; nothing outside
+fn resolve(app_dir: &Path, os_dir: &Path, path: &str) -> Option<PathBuf> {
     if !path.starts_with('/') || path.split('/').any(|p| p == "..") {
         return None;
     }
-    let (base, rel) = match path.strip_prefix("/shared/") {
-        Some(rest) => (shared_dir, rest),
-        None => (app_dir, &path[1..]),
+    let os = OS_DIRS.iter().find_map(|d| path[1..].strip_prefix(d)?.strip_prefix('/').map(|rest| (*d, rest)));
+    let base = match os {
+        Some((d, _)) => os_dir.join(d),
+        None => app_dir.to_path_buf(),
     };
+    let rel = os.map_or(&path[1..], |(_, rest)| rest);
     let full = base.join(rel).canonicalize().ok()?;
     let root = base.canonicalize().ok()?;
     (full.starts_with(&root) && full.is_file()).then_some(full)
@@ -288,8 +295,8 @@ pub fn serve(app: &tauri::AppHandle, request: &tauri::http::Request<Vec<u8>>) ->
     let state = app.state::<Mutex<AppState>>();
     let Ok(app_state) = state.lock() else { return not_found() };
     let Ok(dir) = app_dir(&app_state, id) else { return not_found() };
-    let shared = bundled_app_dirs().into_iter().map(|d| d.join("shared")).find(|d| d.is_dir());
-    let Some(file) = shared.and_then(|s| resolve(&dir, &s, path)) else { return not_found() };
+    let os_dir = bundled_app_dirs().into_iter().find(|d| d.join("shared").is_dir());
+    let Some(file) = os_dir.and_then(|o| resolve(&dir, &o, path)) else { return not_found() };
     match fs::read(&file) {
         Ok(bytes) => tauri::http::Response::builder()
             .header("Content-Type", mime(&file))
@@ -313,19 +320,25 @@ mod tests {
     }
 
     #[test]
-    fn paths_stay_in_the_app_or_shared() {
+    fn paths_stay_in_the_app_or_the_os_code() {
         let root = std::env::temp_dir().join(format!("zyl-store-rs-{}", std::process::id()));
-        let (app, shared) = (root.join("app"), root.join("shared"));
+        let (app, os) = (root.join("app"), root.join("os"));
         fs::create_dir_all(app.join("js")).unwrap();
-        fs::create_dir_all(&shared).unwrap();
+        fs::create_dir_all(os.join("shared")).unwrap();
+        fs::create_dir_all(os.join("keyboard/js")).unwrap();
+        fs::create_dir_all(os.join("settings")).unwrap();
         fs::write(app.join("index.html"), "x").unwrap();
-        fs::write(shared.join("bridge.js"), "x").unwrap();
+        fs::write(os.join("shared/bridge.js"), "x").unwrap();
+        fs::write(os.join("keyboard/js/inpage.js"), "x").unwrap();
+        fs::write(os.join("settings/x.js"), "x").unwrap();
         fs::write(root.join("secret"), "x").unwrap();
-        assert!(resolve(&app, &shared, "/index.html").is_some());
-        assert!(resolve(&app, &shared, "/shared/bridge.js").is_some());
-        assert!(resolve(&app, &shared, "/../secret").is_none());
-        assert!(resolve(&app, &shared, "/shared/../secret").is_none());
-        assert!(resolve(&app, &shared, "/js").is_none());
+        assert!(resolve(&app, &os, "/index.html").is_some());
+        assert!(resolve(&app, &os, "/shared/bridge.js").is_some());
+        assert!(resolve(&app, &os, "/keyboard/js/inpage.js").is_some());
+        assert!(resolve(&app, &os, "/settings/x.js").is_none());
+        assert!(resolve(&app, &os, "/../secret").is_none());
+        assert!(resolve(&app, &os, "/shared/../secret").is_none());
+        assert!(resolve(&app, &os, "/js").is_none());
         assert_eq!(mime(Path::new("a.JS")), "text/javascript");
         let _ = fs::remove_dir_all(&root);
     }

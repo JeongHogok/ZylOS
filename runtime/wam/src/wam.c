@@ -501,19 +501,19 @@ static void on_webkit_bridge_message(WebKitUserContentManager *manager,
 
 /* Served from memory: what was hashed is what the app gets. A user-installed
    app's file is served only if it is byte for byte what was sealed — code
-   changed after install never runs. The OS's own (/shared/, system apps) is
-   under dm-verity. */
+   changed after install never runs. The OS's own (zyl_app_scheme_is_os,
+   system apps) is under dm-verity. */
 static void on_app_request(WebKitURISchemeRequest *req, gpointer user_data) {
     ZylWam *wam = user_data;
     GUri *uri = g_uri_parse(webkit_uri_scheme_request_get_uri(req), G_URI_FLAGS_NONE, NULL);
     const char *path = uri ? g_uri_get_path(uri) : NULL;
     ZylAppManifest *m = uri && g_uri_get_host(uri)
                         ? g_hash_table_lookup(wam->manifests, g_uri_get_host(uri)) : NULL;
-    char *file = m ? zyl_app_scheme_file(m->base_path, WAM_SHARED_DIR, path) : NULL;
+    char *file = m ? zyl_app_scheme_file(m->base_path, WAM_APP_DIR, path) : NULL;
     gchar *data = NULL;
     gsize len = 0;
     bool ok = file && g_file_get_contents(file, &data, &len, NULL);
-    if (ok && !m->is_system && !g_str_has_prefix(path, "/shared/")) {
+    if (ok && !m->is_system && !zyl_app_scheme_is_os(path)) {
         ZylSeal *seal = g_hash_table_lookup(wam->seals, m->id);
         ok = seal && zyl_seal_bytes_ok(seal, path + 1, data, len);
         if (!ok) g_warning("WAM: %s%s is not as sealed — not served", m->id, path);

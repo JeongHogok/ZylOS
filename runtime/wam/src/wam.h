@@ -20,7 +20,6 @@
 #include "shell/shell.h"
 
 #define WAM_APP_DIR     "/usr/share/zyl-os/apps"
-#define WAM_SHARED_DIR  WAM_APP_DIR "/shared"   /* the OS code every app includes */
 /* Apps the user installed (the store's install directory, zyl-wam.service) */
 #define WAM_USER_DIR    "/data/apps"
 /* One container per app: its private data, files and WebKit storage —
