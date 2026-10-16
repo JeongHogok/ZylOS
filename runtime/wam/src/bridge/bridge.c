@@ -42,12 +42,6 @@ static void handle_app_close(const char *type, gpointer msg_obj,
 static void handle_app_launch(const char *type, gpointer msg_obj,
                               ZylAppManifest *manifest,
                               ZylBridgeReplyCtx *reply_ctx, gpointer data);
-static void handle_battery_get_level(const char *type, gpointer msg_obj,
-                                     ZylAppManifest *manifest,
-                                     ZylBridgeReplyCtx *reply_ctx, gpointer data);
-static void handle_wifi_scan(const char *type, gpointer msg_obj,
-                             ZylAppManifest *manifest,
-                             ZylBridgeReplyCtx *reply_ctx, gpointer data);
 static void handle_service_request(const char *type, gpointer msg_obj,
                                    ZylAppManifest *manifest,
                                    ZylBridgeReplyCtx *reply_ctx, gpointer data);
@@ -63,8 +57,6 @@ void zyl_bridge_init(void)
 
     zyl_bridge_register_handler("app.close",           handle_app_close, NULL);
     zyl_bridge_register_handler("app.launch",          handle_app_launch, NULL);
-    zyl_bridge_register_handler("battery.getLevel",    handle_battery_get_level, NULL);
-    zyl_bridge_register_handler("wifi.scan",           handle_wifi_scan, NULL);
     zyl_bridge_register_handler("service.request",     handle_service_request, NULL);
 }
 
@@ -320,10 +312,6 @@ void zyl_bridge_dispatch(WebKitWebView    *webview,
     int callback_id = -1;
     if (json_object_has_member(msg, "callbackId")) {
         callback_id = (int)json_object_get_int_member(msg, "callbackId");
-    }
-    /* Also support legacy _cbId from bridge.js */
-    if (callback_id < 0 && json_object_has_member(msg, "_cbId")) {
-        callback_id = (int)json_object_get_int_member(msg, "_cbId");
     }
 
     g_message("Bridge message from %s: type=%s callbackId=%d",
@@ -581,75 +569,6 @@ static void handle_app_launch(const char *type, gpointer msg_obj,
 
     g_info("Bridge: app.launch from %s -> target=%s",
            app_id, target ? target : "(none)");
-}
-
-/* -- Battery: async D-Bus query to PowerManager ------------ */
-static void handle_battery_get_level(const char *type, gpointer msg_obj,
-                                     ZylAppManifest *manifest,
-                                     ZylBridgeReplyCtx *reply_ctx, gpointer data)
-{
-    (void)type; (void)msg_obj; (void)data;
-    const char *app_id = (manifest && manifest->id) ? manifest->id : "unknown";
-    g_info("Bridge: battery.getLevel from %s", app_id);
-
-    if (reply_ctx->callback_id < 0) return; /* no response needed */
-
-    GError *err = NULL;
-    GDBusConnection *conn = g_bus_get_sync(G_BUS_TYPE_SYSTEM, NULL, &err);
-    if (err) {
-        zyl_bridge_reply_error(reply_ctx, "dbus unavailable");
-        g_error_free(err);
-        return;
-    }
-
-    DbusReplyCtx *ctx = g_new(DbusReplyCtx, 1);
-    ctx->webview     = reply_ctx->webview;
-    ctx->callback_id = reply_ctx->callback_id;
-    /* Transfer conn ownership to the callback via g_object_ref */
-    g_object_ref(conn);
-
-    g_dbus_connection_call(conn,
-        "org.zylos.PowerManager", "/org/zylos/PowerManager",
-        "org.zylos.PowerManager", "GetBatteryLevel",
-        NULL, NULL,
-        G_DBUS_CALL_FLAGS_NONE, 3000, NULL,
-        on_dbus_call_done, ctx);
-
-    g_object_unref(conn);
-}
-
-/* -- WiFi scan: async D-Bus query to WifiService ----------- */
-static void handle_wifi_scan(const char *type, gpointer msg_obj,
-                             ZylAppManifest *manifest,
-                             ZylBridgeReplyCtx *reply_ctx, gpointer data)
-{
-    (void)type; (void)msg_obj; (void)data;
-    const char *app_id = (manifest && manifest->id) ? manifest->id : "unknown";
-    g_info("Bridge: wifi.scan from %s", app_id);
-
-    if (reply_ctx->callback_id < 0) return;
-
-    GError *err = NULL;
-    GDBusConnection *conn = g_bus_get_sync(G_BUS_TYPE_SYSTEM, NULL, &err);
-    if (err) {
-        zyl_bridge_reply_error(reply_ctx, "dbus unavailable");
-        g_error_free(err);
-        return;
-    }
-
-    DbusReplyCtx *ctx = g_new(DbusReplyCtx, 1);
-    ctx->webview     = reply_ctx->webview;
-    ctx->callback_id = reply_ctx->callback_id;
-    g_object_ref(conn);
-
-    g_dbus_connection_call(conn,
-        "org.zylos.WifiService", "/org/zylos/WifiService",
-        "org.zylos.WifiService", "Scan",
-        NULL, NULL,
-        G_DBUS_CALL_FLAGS_NONE, 10000, NULL,
-        on_dbus_call_done, ctx);
-
-    g_object_unref(conn);
 }
 
 /* == service.request → D-Bus dispatch ====================== */

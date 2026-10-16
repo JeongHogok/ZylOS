@@ -82,26 +82,6 @@ static void test_dispatch_routes_callback_id(void)
     free_manifest_members(&manifest);
 }
 
-static void test_dispatch_supports_legacy_cbid(void)
-{
-    WebKitWebView view = {0};
-    ZylAppManifest manifest = make_manifest();
-
-    zyl_bridge_init();
-    assert(zyl_bridge_register_handler("test.echo", test_handler,
-                                       "{\"ok\":true}") == 0);
-
-    zyl_bridge_dispatch(&view, &manifest,
-                        "{\"type\":\"test.echo\",\"_cbId\":9}");
-
-    assert(view.last_script != NULL);
-    assert(strstr(view.last_script, "_zylCb_9") != NULL);
-
-    zyl_bridge_cleanup();
-    reset_webview(&view);
-    free_manifest_members(&manifest);
-}
-
 static void test_unknown_type_returns_error(void)
 {
     WebKitWebView view = {0};
@@ -118,6 +98,30 @@ static void test_unknown_type_returns_error(void)
     zyl_bridge_cleanup();
     reset_webview(&view);
     free_manifest_members(&manifest);
+}
+
+/* Every app can post to the bridge, so a message type that reaches a service
+   without the permission check is a way around it (wifi.scan handed any app
+   the nearby networks). Only service.request reaches services. */
+static void test_no_unchecked_service_shortcut(void)
+{
+    const char *gone[] = { "wifi.scan", "battery.getLevel" };
+    for (size_t i = 0; i < sizeof(gone) / sizeof(gone[0]); i++) {
+        WebKitWebView view = {0};
+        ZylAppManifest manifest = make_manifest();
+        char msg[96];
+
+        zyl_bridge_init();
+        snprintf(msg, sizeof(msg), "{\"type\":\"%s\",\"callbackId\":7}", gone[i]);
+        zyl_bridge_dispatch(&view, &manifest, msg);
+
+        assert(view.last_script != NULL);
+        assert(strstr(view.last_script, "unknown message type") != NULL);
+
+        zyl_bridge_cleanup();
+        reset_webview(&view);
+        free_manifest_members(&manifest);
+    }
 }
 
 static void test_malformed_json_does_not_respond(void)
@@ -646,8 +650,8 @@ int main(void)
 {
     printf("=== Zyl OS Bridge Dispatch Tests ===\n");
     RUN_TEST(test_dispatch_routes_callback_id);
-    RUN_TEST(test_dispatch_supports_legacy_cbid);
     RUN_TEST(test_unknown_type_returns_error);
+    RUN_TEST(test_no_unchecked_service_shortcut);
     RUN_TEST(test_malformed_json_does_not_respond);
     RUN_TEST(test_only_one_json_object_accepted);
     RUN_TEST(test_policy_unknown_app_is_denied);

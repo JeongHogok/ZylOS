@@ -26,7 +26,7 @@
  */
 typedef struct {
     WebKitWebView *webview;     /* target view for the response */
-    int            callback_id; /* JS _cbId; -1 = no response expected */
+    int            callback_id; /* message callbackId; -1 = no response expected */
 } ZylBridgeReplyCtx;
 
 /*
