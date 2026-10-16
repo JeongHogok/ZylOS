@@ -7,6 +7,14 @@ Wants=network-online.target
 Type=dbus
 BusName=org.zylos.Push
 ExecStart=/usr/bin/zyl-push
+# Its own user (system/sysusers.d/zyl-services.conf): what it parses comes from
+# the network — taken over, it is no root, owns no other service's bus name and
+# reaches only what system/dbus-1/zyl-os.conf lets it
+User=zyl-push
+Group=zyl-push
+CapabilityBoundingSet=
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
 Restart=on-failure
 RestartSec=10
 TimeoutStopSec=5

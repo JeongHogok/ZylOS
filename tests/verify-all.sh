@@ -623,6 +623,49 @@ else
   pass "유닛의 쓰기 경로 전부 tmpfiles.d 로 생성"
 fi
 
+# D4: 전용 사용자로 도는 유닛(User=)은 그 사용자가 있고(sysusers.d), 쓰는 경로가 그 사용자
+#     소유로 만들어지며(tmpfiles.d), 자기 버스 이름을 그 사용자가 가질 수 있다(zyl-os.conf)
+#     — 하나라도 어긋나면 기동하자마자 쓰기·이름 얻기에 실패한다
+USER_DRIFT=$(python3 - "$ROOT" <<'PYCHK'
+import glob, re, sys
+root = sys.argv[1]
+users = set()
+for f in glob.glob(root + '/system/sysusers.d/*.conf'):
+    users |= set(re.findall(r'^u\s+(\S+)', open(f).read(), re.M))
+owner = {}
+for f in glob.glob(root + '/system/tmpfiles.d/*.conf'):
+    for path, user in re.findall(r'^[dD]\s+(\S+)\s+\S+\s+(\S+)', open(f).read(), re.M):
+        owner[path] = user
+pol = open(root + '/system/dbus-1/zyl-os.conf').read()
+pol = re.sub(r'<!--.*?-->', '', pol, flags=re.S)
+owns = {}
+for user, body in re.findall(r'<policy user="([^"]+)">(.*?)</policy>', pol, re.S):
+    owns.setdefault(user, set()).update(re.findall(r'<allow own="([^"]+)"', body))
+out = []
+for f in sorted(glob.glob(root + '/system/*.service')):
+    body, name = open(f).read(), f.split('/')[-1]
+    m = re.search(r'^User=(\S+)', body, re.M)
+    if not m or m.group(1) == 'root':
+        continue
+    u = m.group(1)
+    if u not in users:
+        out.append('%s: User=%s 가 sysusers.d 에 없음' % (name, u))
+    for line in re.findall(r'^ReadWritePaths=(.*)$', body, re.M):
+        for p in (x.lstrip('-') for x in line.split()):
+            if p.startswith('/data/') and owner.get(p) != u:
+                out.append('%s: %s 의 주인이 %s 가 아님 (tmpfiles: %s)' % (name, p, u, owner.get(p, '-')))
+    b = re.search(r'^BusName=(\S+)', body, re.M)
+    if b and b.group(1) not in owns.get(u, set()):
+        out.append('%s: %s 가 %s 를 가질 수 없음 (zyl-os.conf)' % (name, u, b.group(1)))
+print('; '.join(out))
+PYCHK
+)
+if [ -n "$USER_DRIFT" ]; then
+  fail "전용 사용자 유닛이 계정·경로·버스 이름과 맞지 않음: $USER_DRIFT"
+else
+  pass "전용 사용자 유닛 = sysusers.d 계정·tmpfiles 소유·버스 정책"
+fi
+
 # D3: 유닛이 쓰는 경로를 그 서비스의 AppArmor 프로필도 허용하는지
 #     systemd 는 ReadWritePaths 로 열어 주는데 프로필 경로가 다르면 쓰기가 전부
 #     거부된다. credential 프로필은 .../credential/(s 없이)이라 키체인이 기기에서

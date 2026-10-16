@@ -6,6 +6,14 @@ Wants=network-online.target
 [Service]
 Type=simple
 ExecStart=/usr/bin/zyl-network
+# Its own user (system/sysusers.d/zyl-services.conf): what it parses comes from
+# the network — taken over, it is no root, owns no other service's bus name and
+# reaches only what system/dbus-1/zyl-os.conf lets it
+User=zyl-network
+Group=zyl-network
+CapabilityBoundingSet=
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
 Restart=on-failure
 RestartSec=10
 TimeoutStopSec=5

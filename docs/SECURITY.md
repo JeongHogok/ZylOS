@@ -242,12 +242,23 @@ WAM 이 콘텐츠 뷰를 앱 창 안에 합성하고, 에뮬레이터는 별도 
 
 - 각 유닛(`system/*.service`)이 systemd 샌드박스 지시어로 자기를 좁힙니다. 기본은
   `ProtectSystem=strict` 에 쓰기 경로를 `ReadWritePaths=` 로만 여는 것이고, 유닛마다의
-  지시어와 예외의 이유는 그 유닛 파일에 적혀 있습니다. 서비스 데몬은 root, WAM 은 전용
-  사용자 `zyl-wam` 으로 돕니다.
+  지시어와 예외의 이유는 그 유닛 파일에 적혀 있습니다. WAM 은 전용 사용자 `zyl-wam` 으로
+  돕니다.
+- **외부 입력을 해석하는 서비스는 root 가 아닙니다** — push(푸시 서버 스트림)·location(Wi-Fi
+  조회·GeoIP 응답)·network(앱 대신 받는 응답)는 각자 전용 사용자(`system/sysusers.d/zyl-services.conf`)
+  로, 커널 권한(capability) 없이, `SystemCallFilter=@system-service` 로 돕니다. 버스에서는 자기
+  이름만 갖고 일에 필요한 서비스만 부릅니다(`system/dbus-1/zyl-os.conf` 의 사용자별 정책 —
+  `tests/test_dbus_policy.sh` 가 zyl-push 로 확인). telephony(문자·재난문자)와 appstore(내려받은
+  패키지)는 아직 root 입니다 — ModemManager 는 재난문자 채널 설정을 root 에게만 열고 나머지는
+  이미지에 없는 polkit 에 묻고, NetworkManager(nmcli)도 다른 사용자를 거부하며, appstore 는 WAM
+  소유의 앱·컨테이너 디렉터리를 씁니다. 대신 telephony 는 capability 가 하나도 없고 appstore 는
+  `CAP_DAC_OVERRIDE`·`CAP_CHOWN` 만 남깁니다(다른 서비스 ptrace·다시 마운트·모듈 적재 불가).
+  나머지 서비스 데몬은 root 입니다.
 - AppArmor 프로필은 `system/apparmor/zyl-*` 에 있고, `zyl-apparmor.service` 가 부팅 때 모두
   로드합니다. 프로필 하나라도 로드에 실패하면 그 유닛이 실패합니다.
 - `tests/verify-all.sh` 가 유닛의 쓰기 경로를 두 가지로 대조합니다: 모두 `tmpfiles.d` 로
-  만들어지는지, 그 서비스의 AppArmor 프로필이 그 경로에 쓰기를 허용하는지.
+  만들어지는지, 그 서비스의 AppArmor 프로필이 그 경로에 쓰기를 허용하는지. 전용 사용자 유닛은
+  그 사용자가 있고, 쓰는 `/data` 경로가 그 사용자 소유이며, 버스 이름을 가질 수 있는지도(D4).
 
 ## 8. 키체인
 
