@@ -1,34 +1,37 @@
-# Emulator / Development Board
+# emulator — 에뮬레이션·개발·CI 보드
 
-실기기가 아닌 **에뮬레이션·개발·CI 전용** 타겟입니다.
-호스트 아키텍처로 빌드하며 디바이스 트리와 크로스 컴파일이 없습니다.
+실기기가 아닌 보드입니다. 호스트 아키텍처로 빌드하고 HAL 은 `emulator` 백엔드
+(`runtime/hal/hal_emulator.c`)를 씁니다. 하드웨어 제약이 없으므로 모든 프로파일을
+받습니다 — 폼팩터 정책·앱 집합·서비스 집합을 하드웨어 선택과 떼어 검증하는 자리입니다.
+실기기 보드는 하드웨어가 감당하는 프로파일만 `board_form_factors` 에 선언하므로,
+그 보드가 받지 않는 프로파일도 여기서는 빌드됩니다.
 
-## 왜 있는가
+## 쓰는 곳
 
-실기기 보드는 하드웨어 사실에 따라 지원 폼팩터를 제한합니다
-(`bpi-f3`는 워치 전력 예산을 못 맞추고, `generic-x86_64`는 모뎀·CAN이 없습니다).
-그래서 하드웨어가 정해지기 전에는 일부 폼팩터를 **빌드조차 할 수 없었습니다**.
+- 이미지 레인: 조립 → QEMU 부팅 → 자기점검 (`.github/workflows/image.yml` 의 `qemu-boot`)
+- 프로파일마다 이미지가 성립하는지: `tests/test_image_profiles.sh`
 
-이 보드는 그 제약이 없으므로 8개 폼팩터 전부를 빌드·테스트할 수 있습니다.
-런타임(폼팩터 정책·포커스 내비게이션·앱 집합)을 하드웨어 선택과 분리해
-검증하는 경로입니다.
+## 쓰는 법
 
 ```bash
-# 워치 프로파일을 실기기 없이 빌드
-meson setup builddir-watch -Dboard=emulator -Dprofile=watch
-ninja -C builddir-watch
-
-# 8개 프로파일 전부 configure 되는지 확인
-for p in phone tablet tv auto watch desktop appliance pda; do
-  meson setup "bd-$p" -Dboard=emulator -Dprofile=$p >/dev/null && echo "ok $p"
-done
+meson setup builddir --prefix=/usr -Dboard=emulator -Dprofile=<프로파일>
+ninja -C builddir
+sudo tools/build-image.sh --builddir builddir --out out/image --with-kernel
+tools/run-qemu.sh --image out/image/zyl-os-emulator-<프로파일>.img --builddir builddir --check
 ```
 
-## 쓰지 말아야 할 때
+호스트 아키텍처의 QEMU 가 필요합니다. 맥에서는 `tools/ci-local.sh qemu-boot` 가 같은
+레인을 컨테이너에서 돌립니다. 자기점검이 보는 것과 보지 않는 것은
+[DEPLOYMENT_GUIDE.md](../../docs/DEPLOYMENT_GUIDE.md) §4.
 
-**실기기에 플래시하지 마십시오.** `board_dts`가 비어 있어 디바이스 트리
-오버레이가 설치되지 않고, HAL 백엔드가 `emulator`입니다. 실기기용 이미지는
-해당 보드 디스크립터(`board/bpi-f3` 등)로 빌드해야 합니다.
+## 실기기에 쓰지 않는다
 
-실제 워치를 지원하려면 워치급 SoC의 보드 디스크립터를 추가하고
-`board_form_factors`에 `watch`를 선언하면 됩니다. 런타임 쪽은 변경이 필요 없습니다.
+서비스가 하드웨어를 만지지 않는 HAL 백엔드이고, 디스크 노드는 virtio 이며, 부트로더와
+서명 경로가 없습니다. 실기기 이미지는 그 기기의 보드로 만듭니다
+([board/bpi-f3](../bpi-f3/README.md)).
+
+## 계약 파일
+
+- `meson.build` — 보드 계약 (설명: `board/meson.build`)
+- `partitions.conf` — 디스크 레이아웃. 실기기와 같은 파티션 번호를 쓰고 디스크 노드와
+  크기만 다릅니다 — 이미지 조립 코드가 보드마다 갈라지지 않게 하려는 것입니다

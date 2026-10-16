@@ -4,427 +4,259 @@
   SPDX-License-Identifier: MIT
 -->
 
-# Zyl OS 시스템 아키텍처
+# Zyl OS 아키텍처
 
-## 개요
+Zyl OS 가 어떻게 나뉘고 각 부분이 무엇을 책임지는지, 그 나눔이 지켜야 하는 불변식을 적는다.
+지켜야 할 규칙의 목록은 [CLAUDE.md](../CLAUDE.md), 보안 모델은 [SECURITY.md](SECURITY.md),
+이미지 조립·배포는 [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md), 앱 작성은
+[APP_DEVELOPMENT_GUIDE.md](APP_DEVELOPMENT_GUIDE.md) 에 있다.
 
-Zyl OS는 BPI-F3 (SpacemiT K1 RISC-V) 보드를 위한 커스텀 모바일 운영체제입니다.
-Linux 커널 위에 Wayland 컴포지터 + WebKitGTK 앱 런타임으로 구성됩니다.
-375개 파일, ~66,300 LoC 규모의 코드베이스입니다.
+## 큰 그림
 
-## 시스템 스택
+Zyl OS 는 리눅스 위의 웹 앱 OS 다. 앱은 HTML/CSS/ES5 JS 이고 WebKit 에서 돈다.
+같은 앱(`apps/`)이 두 곳에서 돈다.
+
+- **기기** — 커널 → systemd → 컴포지터·WAM·C 서비스. 실제 OS 다.
+- **에뮬레이터** — 개발 호스트의 Tauri 앱. 앱을 프레임에 띄우는 컨테이너일 뿐이고,
+  OS 의 판단은 OS 이미지의 JS(`apps/system/`)가 한다.
 
 ```
-┌─────────────────────────────────────────────────────┐
-│          Web Apps (HTML/CSS/JS, ES5)                 │  ← 홈, 설정, 브라우저, 전화 등 22개
-├─────────────────────────────────────────────────────┤
-│  OS 프레임워크 (apps/system/)                         │  ← 인텐트 해석, 권한 판정, 앱 레지스트리
-│  Intent / ContentProvider / ZylPermissions          │
-├─────────────────────────────────────────────────────┤
-│     WebKitGTK Web Runtime (WAM)                     │  ← 앱별 WebView 프로세스
-├─────────────────────────────────────────────────────┤
-│   JS-Native Bridge (postMessage IPC + requestId)    │  ← Promise 매칭, 4모드 자동 감지
-├─────────────────────────────────────────────────────┤
-│  JS 서비스 모듈 (apps/system/services/ — 33개)        │  ← 비즈니스 로직 (OS 이미지 소유)
-├─────────────────────────────────────────────────────┤
-│      C 서비스 (D-Bus IPC — 32개 디렉토리)             │  ← 32개 D-Bus 데몬
-├─────────────────────────────────────────────────────┤
-│  Wayland Compositor (wlroots 기반)                   │  ← 윈도우/터치/제스처 관리
-├─────────────────────────────────────────────────────┤
-│       HAL (Hardware Abstraction — 15개)               │  ← Linux 드라이버 ↔ 서비스 연결
-├─────────────────────────────────────────────────────┤
-│   Linux Kernel (SpacemiT BSP 6.6)                   │  ← DRM, GPU, 터치, 센서, 모뎀
-├─────────────────────────────────────────────────────┤
-│        U-Boot + OpenSBI + Verified Boot             │  ← RISC-V 부트로더 + 부트체인 검증
-└─────────────────────────────────────────────────────┘
+              앱 (apps/<앱>/)  +  OS 공용 코드 (apps/shared/)
+                              │ ZylBridge
+           ┌──────────────────┴───────────────────┐
+  에뮬레이터 (emulator-app/)                 기기
+  프레임 · IPC 라우팅                         WAM (runtime/wam/) ── 컴포지터 (compositor/)
+           │                                       │ D-Bus 시스템 버스
+  OS 계층 JS (apps/system/)                   C 서비스 (runtime/services/)
+           │ Tauri 커맨드                          │
+  호스트의 사실 (emulator-app/src/)           HAL (runtime/hal/) → 커널 드라이버
 ```
 
-## 모듈 구조
+## 계층
 
-### Compositor (compositor/)
-- wlroots 0.18 기반 Wayland 컴포지터
-- 모바일 전용: 풀스크린 앱 스택, 제스처, 상태바
-- 모듈: main, input/gesture, ipc/os_bus, output, view
-- 제스처 → WAM D-Bus 메서드 GoHome·GoBack·SwitchApp (무엇이 앞에 올지는 WAM 의 셸 정책 —
-  컴포지터는 창을 직접 올리지 않는다)
-- 터치·클릭 → 전원 서비스 UserActivity (쓰는 동안 화면이 어두워지거나 꺼지지 않게, 초당 1회)
+### 앱 — `apps/<앱>/`
 
-### WAM - Web Application Manager (runtime/wam/)
-- WebKitGTK 기반 앱 실행 환경
-- 앱별 독립 WebView 프로세스
-- 모듈: manifest, lifecycle (suspend/resume/close), bridge, dbus_service, intent, shell
-- 셸 정책(shell): 부팅 시 OOBE/잠금 화면, 화면 꺼짐 잠금, 홈·뒤로·앱 전환, 잠금 해제는
-  잠금 화면만 — 에뮬레이터의 `apps/system/shell.js` 와 같은 규칙
-- JS Bridge: webkit.messageHandlers → D-Bus → 시스템 서비스
+- 앱은 `app.json` 으로 자신을 선언한다(권한, 인텐트 필터, 지원 폼팩터, 런처 노출).
+  선언은 요청일 뿐이고 허락은 OS 가 한다.
+- OS 와는 `ZylBridge` 로만, 다른 앱과는 인텐트로만 이야기한다. 다른 앱의 코드·파일·DOM 에
+  직접 닿지 않는다.
+- 홈·잠금 화면·첫 설정(OOBE)·상태바도 앱이다. 셸 정책이 이 앱들의 역할을 알 뿐이다.
 
-### C 시스템 서비스 (32개 — runtime/services/, 주요 서비스)
+### OS 공용 코드 — `apps/shared/`
 
-서비스는 **시스템 버스**에 이름을 올립니다. 유닛이 `Type=dbus` + `BusName=` 이므로
-systemd 가 기다리는 버스가 시스템 버스이고, 로그인 세션이 없는 기기 부팅에서 세션 버스를
-띄워 줄 주체도 없기 때문입니다. 누가 이름을 갖고 누가 부를 수 있는지는
-`system/dbus-1/zyl-os.conf` 한 곳이 정합니다 (기본 거부 — 서비스 데몬과 WAM 만 허용).
-`tests/test_dbus_policy.sh` 가 그 정책을 올린 실제 버스에서 소유·호출·거부를 검증합니다.
+모든 앱이 포함하는 OS 의 코드다. 두 호스트에서 같은 파일이 돈다.
 
-#### D-Bus 데몬 서비스:
+- `bridge.js` — `ZylBridge`·`ZylIntent`. 호스트를 알아보고 전송로를 고른다(기기: WebKit
+  메시지 핸들러, 에뮬레이터: 부모 프레임). OS 가 시키면 인텐트 선택 시트와 "앱 없음" 안내를
+  앱 화면에 그리고, 텍스트 입력에 포커스가 가면 화면 키보드(`apps/keyboard`)를 앱 안에 띄운다.
+- `form-factor.js` — 폼팩터 판정과 적용 ([폼팩터](#폼팩터--보드--프로파일)).
+- `i18n.js` — 번역 엔진. 각 앱은 자기 키를 `addTranslations` 로 등록한다.
 
-| 서비스 | D-Bus 이름 | 역할 |
-|--------|-----------|------|
-| accessibility | org.zylos.Accessibility | 고대비, 폰트 스케일링 |
-| alarm | org.zylos.AlarmService | 알람 스케줄링 |
-| audio | org.zylos.AudioService | PipeWire 오디오, 5개 볼륨 카테고리 |
-| bluetooth | org.zylos.BluetoothService | BlueZ 연동, BT 스캔/연결 |
-| camera | org.zylos.CameraService | V4L2 카메라 제어 |
-| credential | org.zylos.CredentialManager | AES-256-GCM + PBKDF2 키체인 |
-| display | org.zylos.DisplayManager | 해상도, 회전, DPI |
-| input | org.zylos.InputService | 가상 키보드, IME, 하드웨어 키 |
-| location | org.zylos.LocationService | GPS (GPSD) + GeoIP 퓨전 |
-| logger | org.zylos.Logger | JSON 구조화 로깅 |
-| notification | org.zylos.Notification | 알림 생성/조회/채널 관리 |
-| power | org.zylos.PowerManager | Doze 상태머신, CPU 거버너, 웨이크락 |
-| sensors | org.zylos.SensorService | 가속도계, 자이로, 근접, 조도 |
-| telemetry | org.zylos.Telemetry | 익명 사용 통계 |
-| telephony | org.zylos.Telephony | ModemManager 통합, 통화/SMS |
-| usb | org.zylos.UsbManager | USB 가젯 모드 (MTP/PTP/ADB) |
-| user | org.zylos.UserManager | 멀티유저, 앱별 UID |
-| wifi | org.zylos.WifiService | wpa_supplicant 연동, WiFi 스캔/연결 |
+### OS 계층 — 같은 규칙, 두 구현
 
-appstore(`org.zylos.AppStore`)와 updater(`org.zylos.Updater`)는 D-Bus 데몬이다.
+OS 의 판단 — 무엇이 앞에 올지, 누가 인텐트를 받을지, 어느 앱이 무엇을 부를 수 있는지,
+설치된 앱의 코드가 서명된 그대로인지 — 은 두 번 구현된다. 에뮬레이터에서는 `apps/system/` 의
+JS, 기기에서는 `runtime/` 의 C 다(`apps/system/` 은 기기 이미지에 설치되지 않는다).
+둘이 어긋나면 에뮬레이터에서 되는 일이 기기에서 안 되므로, 쌍마다 둘을 대조하는 검사가 있다.
 
-### JS 서비스 모듈 (33개 — apps/system/services/)
+| 규칙 | 에뮬레이터 (JS) | 기기 (C) | 같음을 지키는 것 |
+|---|---|---|---|
+| 셸 정책 | `apps/system/shell.js` | `runtime/wam/src/shell/` | `tests/test_shell.c` 와 `tests/test_services.js` 의 같은 시나리오 |
+| 인텐트 해석 | `apps/system/intent.js` | `runtime/wam/src/intent/` | `tests/test_intent.c`, `tests/test_services.js` |
+| 서비스·메서드 권한, 받을 수 있는 이벤트 | `apps/system/permissions.js` (권위) | `runtime/wam/src/bridge/bridge.c` 의 표 | `tests/verify-all.sh` 가 표를 대조 |
+| 네트워크 허용 도메인 | `apps/system/sandbox.js` (권위) | `runtime/services/network/network.c` | `tests/verify-all.sh` |
+| 앱 봉인 | `apps/system/services/app-seal.js` | `runtime/lib/app_seal.c` | `tests/test_app_seal.c`, `tests/test_services.js` |
+| 앱이 부르는 서비스 계약 | 앱의 `requestService` 호출 | 서비스의 D-Bus 메서드·인자 | `tests/verify-all.sh` 의 계약 공백 검사 |
 
-서비스 비즈니스 로직은 OS 이미지(`apps/system/services.js` 라우터 + `services/*.js` 모듈)에 소유되며,
-에뮬레이터는 순수 IPC 라우터로서 앱↔서비스 간 메시지만 전달합니다.
+한쪽을 바꾸면 다른 쪽과 그 검사를 같은 변경에서 바꾼다.
 
-| 서비스 | 역할 |
-|--------|------|
-| accessibility | 고대비, 폰트 스케일 |
-| apps | 설치된 앱 목록/관리 |
-| appstore | 서명된 카탈로그, .zpkg 봉인 검증/설치·삭제, 개발 빌드(프로비저닝) |
-| audio | 5개 볼륨 카테고리, 키클릭, 알림음, 진동 |
-| bluetooth | BT 디바이스 조회 (비동기) |
-| clipboard | 텍스트/mimeType 클립보드 copy/paste/clear |
-| contacts | 연락처 CRUD, 검색, 그룹 관리 |
-| credential | 암호화 키체인 |
-| device | 디바이스 메타데이터 |
-| display | 해상도/회전/DPI |
-| fs | 마운트 디스크 이미지 I/O |
-| input | 키보드/IME 상태 |
-| location | IP 기반 geolocation (비동기) |
-| logger | JSON 구조화 로깅 |
-| messaging | SMS/MMS 대화 스레드 |
-| network | HTTP fetch (비동기) |
-| notification | 채널 기반 알림 (post/cancel/clear) |
-| power | 밝기, 배터리, 절전 모드 |
-| sandbox | iframe sandbox + CSP + Permissions Policy |
-| sensors | 가속도/자이로/근접/조도 |
-| settings | 영속 설정 JSON |
-| storage | 디스크 사용량 조회 |
-| telephony | 통화 발신/수신/종료, SIM 정보 |
-| updater | A/B 파티션 OTA 업데이트, 버전 비교 |
-| usb | configfs 가젯 (MTP/ADB) |
-| user | 사용자 프로필 |
-| wifi | WiFi 스캔/연결 (비동기) |
+서비스도 두 벌이다. 에뮬레이터는 `apps/system/services/` 의 모듈(`apps/system/services.js` 가
+라우팅), 기기는 `runtime/services/` 의 데몬이다. 앱이 보는 서비스·메서드 이름은 같다.
 
-### OS 프레임워크 (apps/system/)
+### 에뮬레이터 — `emulator-app/`
 
-#### 권한 시스템 (permissions.js)
-`ZylPermissions`가 모든 서비스 요청을 `app.json` 권한과 대조하여 **실행 시점에 차단**합니다.
-미선언 권한은 즉시 에러 응답.
+빈 깡통 컨테이너다. 하는 일은 셋뿐이다.
 
-#### 보안 관리 (security.js)
-파일시스템 보호, 자격증명 격리 등 OS 레벨 보안 정책을 관리합니다.
+- **프레임** — 앱 프레임과 시스템 UI 프레임을 띄우고 바꾼다.
+- **IPC 라우팅** — 두 프레임의 메시지를 OS 계층 JS(`ZylSystemServices`·`ZylShell`·`ZylIntent`)에
+  넘기고, 그 답대로 띄운다.
+- **Tauri 커맨드** — 호스트에서만 알 수 있는 사실과 입출력(가상 저장소의 파일, 호스트의
+  Wi-Fi·블루투스·배터리, HTTP, 스토어 패키지 입출력)을 OS 계층 JS 에 준다.
 
-#### Intent 시스템 (intent.js)
-Android 스타일 인텐트 — 명시적(targetApp 지정) / 암시적(action 매칭) 앱 간 통신.
-표준 액션: VIEW, SEND, PICK, EDIT, DIAL, CAPTURE, SEARCH.
-앱은 `ZylIntent.registerFilter(appId, action, mimeType)`로 인텐트 필터를 등록하고,
-`ZylIntent.startActivity(intent)`로 다른 앱을 기동합니다.
+권한·셸·인텐트·봉인 같은 정책은 여기에 두지 않는다(CLAUDE.md 규칙 2).
+실행법과 구조는 [emulator-app/README.md](../emulator-app/README.md).
 
-#### ContentProvider (content-provider.js)
-URI 기반 앱 간 데이터 공유 게이트웨이.
-형식: `content://authority/path?query`
-앱은 `ZylContentProvider.registerProvider(authority, impl)`로 데이터를 노출하고,
-`ZylContentProvider.query(callerAppId, uri)`로 다른 앱 데이터에 접근합니다.
-쿼리 시 `ZylPermissions`를 통한 권한 체크가 선행됩니다.
+### 기기
 
-#### 앱 레지스트리 (app-registry.js)
-`app.json` 메타데이터 기반 동적 앱 로딩. 홈/런처의 단일 진실 소스.
-`iconSvg` 필드로 인라인 SVG 아이콘 정의.
+#### systemd 와 시스템 버스
 
-#### Zygote 패턴
-신규 앱 WebView 프로세스는 기본 상태로 초기화된 Zygote 프로세스에서 fork하여
-앱 기동 시간을 단축합니다.
+부트로더가 검증한 커널이 systemd 를 띄우고, systemd 는 `zyl-os.target` 을 올린다.
+이 타깃은 빌드가 생성한다(`system/zyl-os.target.in`). 프로파일이 설치한 유닛만 들어가므로
+목록이 빌드와 어긋날 수 없다. 컴포지터와 WAM 은 필수, 나머지 서비스는 프로파일에 따른다.
 
-### 서비스 코드패스 설계 (3중 환경)
+모든 구성요소는 **D-Bus 시스템 버스**에서 만난다. 서비스 유닛이 `Type=dbus` + `BusName=` 이라
+systemd 가 기다리는 버스가 시스템 버스이고, 로그인 세션이 없는 기기 부팅에는 세션 버스가 없다.
+누가 `org.zylos.*` 이름을 갖고 누가 부를 수 있는지는 `system/dbus-1/zyl-os.conf` 한 곳이
+정한다(기본 거부, 서비스 데몬과 WAM 만 허용). 앱은 버스에 닿지 않는다 — 앱의 호출은 WAM 이
+받아 판정한 뒤 대신 보낸다.
 
-일부 서비스(notification, credential 등)는 세 개의 코드패스가 존재합니다:
+#### C 서비스 — `runtime/services/<이름>/`
 
-| 환경 | 코드패스 | 설명 |
-|------|----------|------|
-| **실기기** | `runtime/services/*.c` → D-Bus | 네이티브 C 서비스 |
-| **에뮬레이터** | `emulator-app/src/commands/*.rs` → Tauri IPC | Rust 백엔드 |
-| **브라우저** | `apps/system/services.js` → Web API fallback | 독립 실행 |
+- 서비스마다 데몬 하나, 버스 이름 하나(`org.zylos.*`), 유닛 하나(`system/zyl-<이름>.service`).
+- 하드웨어에는 HAL 로만 닿는다. 명령행 도구나 sysfs 를 직접 부르지 않는다.
+- 누가 불렀는지는 WAM 이 채운 인자로 안다([신원](#앱이-누구인지는-os-가-말한다)).
+- 상태가 바뀌면 시그널을 낸다. WAM 이 그 서비스를 부를 수 있는 앱에만 전달한다.
+- 앱별 상태를 가지면 앱이 지워질 때(`org.zylos.AppStore` 의 `AppRemoved`) 함께 지운다.
+- 어떤 서비스가 이미지에 들어가는지는 프로파일이 정한다(`meson.build` 의 `zyl_profile_extras`).
 
-이것은 의도적 설계입니다:
-- **실기기**는 D-Bus 데몬 서비스만 사용 (C 구현이 유일한 권위)
-- **에뮬레이터**는 Rust 백엔드가 호스트 OS 리소스를 직접 관리 (파일시스템, 네트워크 등)
-- **브라우저 모드**는 Web API로 가능한 범위까지만 폴백 (테스트/데모용)
+#### WAM — `runtime/wam/`
 
-`apps/system/services.js`의 `_invoke()` 추상화가 런타임에 올바른 코드패스를 선택합니다.
+앱 창과 OS 사이의 유일한 관문이다.
 
-### HAL - Hardware Abstraction Layer (runtime/hal/)
-
-15개:
-
-| 파일 | 인터페이스 | 구현 |
-|------|-----------|------|
-| hal_wifi.c | WiFi 스캔/연결 | wpa_supplicant (실기기) |
-| hal_bt.c | BT 스캔/페어링 | BlueZ (실기기) |
-| hal_display.c | 해상도/밝기/회전 | DRM/KMS sysfs (실기기) |
-| hal_audio.c | 볼륨/믹서 | PipeWire (실기기) |
-| hal_battery.c | 배터리 상태/충전 | sysfs (실기기) |
-| hal_storage.c | 블록 디바이스 I/O | sysfs (실기기) |
-| hal_cpu.c | CPU 거버너/코어 온오프 | sysfs cpufreq (실기기) |
-| hal_board.c | 보드 정보 (모델·SoC·메모리·기기 ID) | device tree, /proc (실기기) |
-| hal_boot.c | A/B 슬롯·부트로더 잠금 상태 | U-Boot 환경 (실기기) |
-| hal_torch.c | 손전등 | LED sysfs (실기기) |
-| hal_vibrator.c | 진동 | force-feedback / sysfs (실기기) |
-| hal_sensors.c | 가속도/자이로/근접/조도/자기장 | IIO sysfs (실기기) |
-| hal_input.c | 하드웨어 키 | evdev — 키를 가진 장치 전부 (실기기) |
-| hal_camera.c | 사진 한 장 | V4L2 (실기기). 보드가 `board_hal_camera` 로 교체 가능 |
-| hal_emulator.c | 에뮬레이터 보드 | 하드웨어 없음 — 없다고 보고 |
-
-에뮬레이터 구현: `hal_emulator.c` — 하드웨어 없음을 그대로 보고한다 (에뮬레이터의 하드웨어 사실은 Tauri 명령이 OS 서비스 모듈에 준다)
-
-### 폼팩터 아키텍처 (board × profile)
-
-Zyl OS는 하나의 OS에 N개 폼팩터 프로파일을 둔다. 폼팩터마다 별도 OS를 두면
-유지보수가 N배가 되고 `verify-all.sh`가 지켜주는 일관성이 깨진다.
-
-**빌드 타임 — 무엇을 담을지**
-
-```bash
-meson setup builddir -Dboard=bpi-f3 -Dprofile=tv
-```
-
-| 축 | 소유 | 역할 |
-|---|---|---|
-| `-Dboard` | `board/<id>/meson.build` | SoC, arch, HAL 백엔드, DTS, 크로스 파일, **지원 폼팩터 선언** |
-| `-Dprofile` | `meson.build` 의 `zyl_profile_extras` | 빌드/설치할 C 서비스 집합 |
-
-보드가 선언하지 않은 조합은 configure 단계에서 실패한다
-(`generic-x86_64 × phone` → 모뎀/PMIC 없음, `bpi-f3 × watch` → 전력 예산 불가).
-
-보드 3종: `bpi-f3`(실기기), `generic-x86_64`(이식성 기준선),
-`emulator`(에뮬레이션·CI 전용, 물리 제약이 없어 8개 폼팩터 전부 지원).
-실기기 하드웨어가 정해지기 전에도 모든 폼팩터를 빌드·검증할 수 있는 경로이며,
-CI 가 매 빌드마다 8개 프로파일의 configure 를 확인한다.
-`system/zyl-os.target` 은 `.target.in` 에서 생성되므로 `Wants=` 가 실제 빌드된
-유닛 집합과 어긋날 수 없다.
-
-프로파일별 서비스 수: phone 26 / auto 24 / pda 24 / tablet 24 / desktop 23 /
-watch 22 / tv 21 / appliance 16.
-
-**런타임 — 어떻게 보일지**
-
-| 파일 | 역할 |
+| 모듈 | 책임 |
 |---|---|
-| `apps/shared/form-factor.js` | 8개 프로파일 테이블(navModel/inputModel/fontScale/touchTarget), 기기 선언(WAM 이 빌드 프로파일을 `window.__zylFormFactor` 로) 또는 하드웨어 감지, `<html>` 에 `.ff-<id>` + `--ff-*` 적용 — 사용자 설정이 아님 |
-| `apps/shared/focus-nav.js` | 방향 포커스 내비게이션 — 포인터 없는 기기(리모컨 D-pad, 로터리, 크라운)용 공간 탐색 |
-| `apps/shared/responsive.css` | 폼팩터 변수, 포커스 링, 상태바/선택 정책 |
-| `app.json` 의 `formFactors` | 앱이 지원하는 기기 종류. `app-registry.isHiddenFromGrid` 가 걸러낸다 |
+| `manifest/` | 시스템 앱 디렉터리와 사용자 앱 디렉터리의 `app.json` 을 읽는다. 사용자 앱은 시스템 앱의 id 를 차지할 수 없다 |
+| `lifecycle/` | 앱마다 창·웹뷰 하나. 실행·일시정지·재개·종료, 시스템 UI 의 표면 |
+| `bridge/` | 웹뷰에 브리지를 주입하고 메시지를 받는다. 권한 판정, 신원 인자 채우기, D-Bus 호출, 서비스 시그널 전달 |
+| `shell/` | 셸 정책 — 설정·잠금 상태, 앞에 올 수 있는 앱, 시스템 UI 크기 |
+| `intent/` | 인텐트 해석 |
+| `scheme/` | `zyl-app://<id>/` — 앱마다 자기 출처. `/shared/` 는 OS 공용 코드, 나머지는 앱 디렉터리이고 둘 밖은 내주지 않는다 |
+| `oom/` | 메모리가 모자라면 앞에 있지 않은 앱을 오래된 순으로 닫는다 |
+| `dbus/` | `org.zylos.WebAppManager` — 앱 실행·목록, 컴포지터가 부르는 내비게이션 |
 
-두 모듈은 로드 시 자가 적용되므로 앱은 opt-in 코드가 필요 없다.
+- 사용자 앱은 봉인이 맞을 때만 등록·실행되고, 그 파일은 봉인된 바이트와 같을 때만 내준다.
+  시스템 앱과 공용 코드는 검증된 시스템 파티션에 있다.
+- 앱의 웹 저장소(쿠키·캐시·로컬 저장소)는 그 앱의 컨테이너에 있다.
+- 웹 프로세스는 WebKit 샌드박스 안에서 돈다.
 
-**폼팩터 결정 우선순위**
+#### 컴포지터 — `compositor/`
 
-1. 사용자/프로비저닝 오버라이드 (설정 > 기기 유형) — 커스텀 단말·PDA·TV 등
-2. 기하 + 입력 능력 감지 — phone/tablet/tv/desktop/watch 자동 판별
+wlroots 기반 Wayland 컴포지터다. 창을 그리고 입력을 나눌 뿐, 무엇이 앞에 올지는 정하지 않는다.
 
-Zyl OS는 디바이스 픽셀을 레이아웃 픽셀로 1:1 매핑하므로 크기로는 폰과 태블릿을
-구분할 수 없다. 종횡비가 유일한 신호다(폰 16:9 이상, 태블릿 16:10 이하).
-`auto`/`appliance`/`pda` 는 기하적 서명이 없어 오버라이드가 필요하다.
+- **입력** — 터치·포인터·키를 포커스된 앱 표면에 보낸다. 화면 가장자리에서 시작한 터치가
+  제스처로 판정되면 앱의 터치를 취소하고 WAM 의 내비게이션 메서드(홈·뒤로·앱 전환·알림판·
+  최근 앱)를 부른다. 판정은 wlroots 없는 순수 함수다(`compositor/src/input/gesture_detect.c`).
+- **활성화** — WAM 이 창을 앞으로 부르면(xdg-activation) 그대로 따른다. 판단은 이미 셸 정책이
+  했다. 컴포지터가 스스로 창을 올리면 잠금 화면 위로 앱이 올라올 수 있다.
+- **시스템 UI** — 시스템 UI 앱의 표면은 언제나 맨 위, 앱 창은 상태바 아래에 놓는다.
+- **사용자 활동** — 입력이 있으면 전원 서비스에 `UserActivity` 를 알린다(묶어서). 쓰는 동안
+  화면이 어두워지거나 잠기지 않는다.
 
-**루트 스케일링 주의**
+#### HAL — `runtime/hal/`
 
-앱 CSS는 px로 작성되어 있다(1,776개 px 값, rem 0개). 폼팩터 적응은 루트 `zoom`
-으로 처리하는데, legacy `zoom` 속성은 표준 캐스케이드 밖에서 파싱되어 `var()`
-치환을 **무시한다**. 따라서 `ZylFormFactor.apply()` 가 인라인으로 적용하며
-CSS에 `zoom: var(...)` 를 쓰면 조용히 1이 된다. `zoom` 은 vw/vh 를 스케일하지
-않으므로(앱 CSS에 27개) 해당 값은 폼팩터 변수로 바꿔야 한다.
+- `hal.h` 는 서비스가 하드웨어에 닿는 유일한 포트다.
+- 각 모듈은 그 하드웨어가 이 보드에 있는지도 답한다. 없으면 기능은 남고 비활성으로
+  보인다 — 지어내지 않는다.
+- 구현은 보드 계약의 `board_hal_backend` 가 고른다. `linux` 는 커널 드라이버와
+  PipeWire·NetworkManager·BlueZ·sysfs(`hal_<모듈>.c`), `emulator` 는 VM·개발 호스트용
+  (`hal_emulator.c`)이다. `emulator` 백엔드는 `-Dboard=emulator` 이미지(QEMU)의 것이고
+  Tauri 에뮬레이터와는 관계없다.
+- 보드 고유 경로가 필요한 모듈은 보드 계약이 소스를 바꿔 끼운다. 카메라가 그렇다 —
+  `board_hal_camera` 가 없으면 V4L2(`hal_camera.c`).
 
-### Apps (apps/ — 22개 시스템 앱)
-- 모든 앱은 HTML/CSS/JS (ES5, WebKitGTK에서 실행)
-- 시스템 앱: home, lockscreen, statusbar, oobe, settings, browser, files, camera, gallery, music, clock, calc, notes, weather, store, phone, messages, contacts, keyboard, shared
+#### 공유 C 코드 — `runtime/lib/`
 
-### i18n 아키텍처
-- **공유 엔진**: `apps/shared/i18n.js` — 번역, DOM 자동 번역, 로케일 감지
-- **앱별 데이터**: 각 앱이 `addTranslations(locale, keys)`로 자체 번역 키 등록
-- **에뮬레이터 i18n**: `emulator-app/ui/js/emu-i18n.js` — 컴포지터 UI 번역
-- **지원 언어**: ko, en, ja, zh, es (5개)
+둘 이상의 구성요소가 쓰는 코드는 여기서 한 번 컴파일한다. 한 서비스 디렉터리가 다른
+서비스의 라이브러리가 되지 않게 하기 위해서다. 앱 컨테이너 경로, 서명 검증(OTA·스토어
+패키지·봉인), 앱 봉인, 사용자와 그 파일의 위치가 여기 있다.
 
-### Emulator — IPC 라우터 + 컴포지터 (emulator-app/)
-- Tauri 2.x (Rust + WebView) 기반 독립 실행파일
-- **역할**: 서비스 비즈니스 로직은 OS 이미지 소유, 에뮬레이터는 순수 IPC 라우터 + 컴포지터
-- Rust 백엔드: 파일시스템 보호 (settings.json, .credentials/, .system/ 접근 차단)
-- 크리덴셜 암호화: aes-gcm + pbkdf2 Rust crate
-- 배포: macOS (.app/.dmg), Linux (.deb/.AppImage)
-
-## 데이터 흐름
-
-### IPC 흐름 (requestId + Promise 매칭)
-```
-앱 (JS) → ZylBridge.requestService(service, method, params)
-  → UUID requestId 생성
-  → postMessage { type: 'service.request', requestId, service, method, params }
-  → [IPC 라우터가 서비스로 전달]
-  → 서비스 처리 완료
-  → postMessage { type: 'service.response', requestId, result }
-  → _pendingRequests[requestId].resolve(result)
-  → 앱 Promise 해결
-```
-
-### 실기기 (D-Bus 경로)
-```
-앱 (JS) → ZylBridge.notify()
-  → webkit.messageHandlers
-  → WAM Bridge Dispatch (핸들러 레지스트리)
-  → D-Bus 메서드 호출
-  → C 서비스 처리 (HAL 경유)
-  → D-Bus 시그널 응답
-  → WAM → JS 콜백
-```
-
-### 에뮬레이터 (Tauri 경로)
-```
-앱 (JS) → postMessage IPC
-  → 에뮬레이터 IPC 라우터 (메시지 전달만)
-  → OS 서비스 (apps/system/services.js — 비즈니스 로직)
-  → ZylPermissions 권한 검증 (apps/system/permissions.js)
-  → Rust 백엔드 (파일시스템 보호, 리소스 관리)
-  → postMessage { type: 'service.response', requestId, result }
-  → 앱 Promise 해결
-```
-
-### Intent 흐름
-```
-앱 A → ZylIntent.startActivity({ action: 'zyl.intent.action.VIEW', mimeType: 'image/*' })
-  → ZylIntent.resolve() — 인텐트 필터 레지스트리 검색
-  → 매칭된 앱 목록 반환
-  → 단일 매칭: 즉시 기동 / 복수 매칭: 앱 선택 다이얼로그
-  → ZylAppRegistry.launch(resolvedAppId, extras)
-  → 앱 B 기동 (extras 데이터 전달)
-```
-
-### ContentProvider 흐름
-```
-앱 A → ZylContentProvider.query('com.zylos.contacts', 'content://com.zylos.contacts/all')
-  → ZylPermissions.check(appA.id, 'contacts') → 권한 없으면 차단
-  → _providers['com.zylos.contacts'].query(path, projection)
-  → 연락처 앱이 등록한 프로바이더 실행
-  → Promise<rows>
-```
-
-### 권한 판정 흐름
-```
-앱 → 서비스 호출 (ZylBridge)
-  → OS 가 판정: 시스템 앱이면 통과, 아니면 app.json 선언 + 사용자 설정
-     (에뮬레이터 ZylPermissions.checkPermission, 기기 bridge.c app_may_call)
-  → 설정에서 끈 권한이면 거부 (settings 서비스의 app_permissions —
-     기기에서는 WAM 이 그 변경을 따라간다)
-  → 통과 → 서비스 요청 처리 / 거부 → 에러 응답
-```
-
-첫 사용 시 사용자에게 묻는 동의 창(iOS·안드로이드 식)은 **없습니다**. 권한은 설치
-시점에 `app.json` 선언으로 정해지고, 사용자는 설정에서 끌 수 있습니다.
-
-## 보안 모델
-
-### 6계층 보안
-1. **Verified Boot**: FIT 이미지 서명 (RSA-2048) + dm-verity (rootfs 무결성)
-2. **앱 프로세스**: WebKitGTK 샌드박스 — bubblewrap 네임스페이스 + seccomp
-   (webkitgtk-6.0 은 상시 ON, 4.1 폴백은 WAM 이 켠다)
-3. **데몬**: systemd 하드닝 + AppArmor 프로필 (`system/apparmor/zyl-*`)
-4. **앱 컨테이너**: `/data/appdata/<id>/` — 파일·웹 저장소·출처가 앱마다 분리
-5. **IPC**: D-Bus 버스 정책 (`system/dbus-1/zyl-os.conf` — org.zylos.* 소유·호출은 서비스와 WAM 만)
-6. **앱 권한 시행**: 서비스 호출마다 OS 가 판정 (ZylPermissions / bridge.c), 사용자가 설정에서 끈 권한은 거부
-
-### 앱 격리
-앱 코드는 WAM 이 띄우는 WebKitGTK 웹 프로세스에서 돌고, 그 프로세스는 WebKit 이 직접
-격리합니다 (bubblewrap + seccomp + xdg-dbus-proxy). 앱별 Linux UID 는 쓰지 않습니다 —
-WAM 한 프로세스가 모든 웹뷰를 띄우므로 UID 로는 앱이 갈라지지 않고, 갈라야 하는 지점은
-따로 있습니다: 저장소는 `zyl-app://<id>/` 출처와 앱별 WebKit 세션, 파일은 컨테이너,
-서비스 호출은 브릿지가 채운 `caller` 기준 OS 권한 검사.
-자세한 내용은 [SECURITY.md](SECURITY.md) 참조.
-
-### 크리덴셜 보안
-- 저장 포맷: `[salt(16B)][iv(12B)][ciphertext(N)][tag(16B)]`
-- 암호화: AES-256-GCM (OpenSSL EVP API)
-- 키 파생: PBKDF2-HMAC-SHA256, 100,000 iterations
-
-### Verified Boot
-- 부트로더: `tools/build-bootloader.sh` — FSBL(루트 키) → OpenSBI·U-Boot FIT → OS FIT,
-  부트 정책 내장, eMMC 부트 영역 쓰기 보호, eFuse 굽기는 빌드 선택 (docs/SECURITY.md)
-- 부트 키 생성: `tools/gen-boot-keys.sh` (RSA-2048)
-- FIT 이미지 서명 + dm-verity: `tools/sign-image.sh`
-- dm-verity: rootfs 블록 단위 해시 트리, 변조 감지 시 패닉 또는 읽기 전용 마운트
-
-### 앱 서명
-- RSA-2048 + SHA-256 패키지 서명 (OpenSSL EVP API)
-- 개발자 인증서 신뢰 저장소
-- 서명 없는 앱 설치 차단 (개발자 모드 예외)
-- ZIP 매직 바이트 검증 + 경로 순회 공격 탐지
-
-### 파일시스템 보호 (Rust 백엔드)
-- `settings.json`: settings 서비스에서만 접근 허용 (fs 서비스 직접 접근 차단)
-- `.credentials/`: credential 서비스를 통해서만 접근
-- `.system/`: 시스템 설정 디렉토리 — 직접 접근 차단
-
-## 전력 관리
-
-### Doze 상태머신
-```
-ACTIVE → [화면 OFF 5분] → DOZE → [추가 대기] → SUSPEND
-  ↑                                    ↓
-  └──────── [웨이크락 획득 / 인터럽트] ──┘
-```
-- Doze 진입 후 CPU 거버너를 powersave로 전환
-- 웨이크락 최대 보유 시간: 600초 (자동 release 타이머)
-
-### CPU 거버너 (hal_cpu.c)
-- 상태별 거버너: ACTIVE → performance/schedutil, DOZE/SUSPEND → powersave
-- 코어 온오프: `zyl_cpu_set_core_online(core, online)` via sysfs
-
-### LMK (Low Memory Killer)
-- cgroup v2 memory.pressure 이벤트 기반
-- 백그라운드 앱 → 캐시 앱 → 사용자 앱 순으로 OOM 처리
-
-## 부팅 순서
+## 앱의 호출이 지나가는 길
 
 ```
-U-Boot
-  → OpenSBI
-  → Verified Boot 검증 (FIT 서명 + dm-verity)
-  → Linux Kernel 6.6
-  → systemd (35개 서비스 유닛)
-    → Plymouth 부트 스플래시
-    → zyl-compositor.service (Wayland)
-    → zyl-wam.service (WAM)
-    → zyl-notification.service
-    → zyl-power.service
-    → zyl-credential.service
-    → zyl-wifi.service
-    → ... (나머지 서비스)
-    → 잠금화면 표시
-    → PIN 입력 → 홈 화면
+앱 ─ ZylBridge.requestService(service, method, params) ─▶ Promise (requestId 로 짝짓기)
+ │
+ ├─ 에뮬레이터: postMessage → 컨테이너가 보낸 프레임으로 앱을 정한다
+ │     → ZylSystemServices.handleRequest (apps/system/services.js)
+ │        권한(ZylPermissions) → 보호 경로 → 서비스 모듈 → 필요하면 Tauri 커맨드
+ │     → service.response
+ │
+ └─ 기기: WebKit 메시지 핸들러 → WAM (bridge.c)
+       권한(서비스·메서드 표) → 신원 인자 채우기 → 시스템 버스 메서드 호출
+       → C 서비스 (→ HAL) → 답을 앱의 콜백으로
 ```
 
+서비스에서 앱으로 가는 이벤트(`service.event`)도 OS 가 거른다. 받을 수 있는 앱에만 간다
+(에뮬레이터 `ZylPermissions.mayReceive`, 기기 `bridge.c`).
 
-## OTA 업데이트
+### 앱이 누구인지는 OS 가 말한다
 
-- A/B 파티션 기반 원자적 업데이트 — `zyl-updater` (org.zylos.Updater), 설정 > 소프트웨어 업데이트
-- 패키지(`tools/build-ota.sh`): rootfs + 슬롯별 verity 트리·서명 FIT. 비활성 슬롯에만 기록한 뒤 부트로더 플래그 전환
-- **RSA-2048+SHA-256 서명 검증** (OpenSSL EVP API) — 서명 없는 패키지 거부
-- SHA-256 해시 무결성 검증
-- 부팅 후 상태 점검 통과 시 슬롯 확정, 3회 안에 확정되지 않으면 U-Boot 가 이전 슬롯으로 롤백
-- 전체 이미지만 설치 (dm-verity rootfs 와 맞출 수 없는 delta·앱만·커널만은 거부)
+- 보낸 앱은 메시지가 아니라 통로로 정한다. 에뮬레이터는 메시지가 온 프레임(시스템 UI
+  프레임이면 시스템 UI, 아니면 앞에 있는 앱), 기기는 메시지가 온 웹뷰의 매니페스트다.
+- 서비스에 넘기는 신원 인자는 OS 가 채운다. `caller` 는 언제나 호출한 앱, `container` 는
+  시스템 앱이면 `""`(사용자의 공유 파일) 아니면 그 앱, `app_id` 는 제3자 앱이면 그 앱 자신이다.
+  요청에 적힌 값은 쓰지 않는다. 에뮬레이터도 같은 규칙으로 제3자 앱의 `appId` 를 덮는다.
+- 시스템 앱인지도 OS 가 정한다. 에뮬레이터는 `ZylPermissions.SYSTEM_APPS`, 기기는 검증된
+  시스템 앱 디렉터리에 있는지로 본다(두 집합은 `tests/verify-all.sh` 가 대조). 앱이 스스로
+  시스템 앱이라고 적어도 믿지 않는다.
+- 사용자가 설정에서 끈 권한은 두 게이트 모두에서 거부한다(CLAUDE.md 규칙 8).
+
+### 인텐트
+
+앱이 `ZylIntent.startActivity()` 로 인텐트를 시작하면 OS 가 받을 앱을 정한다. 명시적이면
+`targetApp`, 암시적이면 `action`·`mimeType` 을 각 앱 `app.json` 의 `intents` 와 맞춘다(시작한
+앱은 제외). 하나면 그 앱을 띄우고, 여럿이면 시작한 앱 화면에 선택 시트를 그리게 하고(고른 앱은
+제시된 것만 받는다), 없으면 "앱 없음"을 알린다. 받는 앱은 `ZylIntent.onIntent()` 로
+`action`·`data`·`mimeType`·`extras` 와 OS 가 채운 `sourceApp` 을 받는다. 앞에 올 수 있는지는
+여기서도 셸 정책이 정한다. 규칙은 CLAUDE.md 규칙 9.
+
+### 앱의 자리 — 컨테이너
+
+앱이 만드는 모든 것(비공개 데이터, 파일, 웹 저장소)은 그 앱의 컨테이너 `/data/appdata/<앱 id>/`
+에만 있다. 앱을 지우면 아무것도 남지 않는다. 앱별 상태를 갖는 서비스는 삭제 때 정리하는 경로를
+함께 가진다. 규칙은 CLAUDE.md 규칙 12, 검증은 `tests/store_e2e.sh`.
+
+## 시스템 UI
+
+- 상태바·알림판·빠른 설정·새 알림 배너·최근 앱은 OS 앱 `apps/statusbar` 하나가 그린다.
+  모든 앱 위의 표면이다.
+- 표면이 얼마나 보일지(bar·banner·full)는 셸 정책이 정한다. 시스템 UI 가 요청하면 셸이 답한다.
+  전체 화면은 사용자가 앱 사이를 오갈 수 있을 때만, 배너는 잠금·첫 설정 중이 아닐 때만 준다.
+  결과는 시스템 UI 에 `panel.mode` 로 알린다.
+- 에뮬레이터는 두 번째 프레임의 크기를 바꾼다. 기기에서는 WAM 이 이 앱을 화면 크기의 투명한
+  창으로 띄우고 입력을 받는 영역만 바꾸며, 컴포지터가 그 창을 언제나 맨 위에 둔다.
+
+## 폼팩터 — 보드 × 프로파일
+
+하나의 OS 에 폼팩터 프로파일이 여럿 있다. 폼팩터는 하드웨어이므로 제조사의 빌드가 정한다.
+사용자 설정이 아니다.
+
+**빌드 시점**
+
+- `-Dboard=<id>` 는 `board/<id>/meson.build` 의 보드 계약을 읽는다. SoC·아키텍처·HAL 백엔드·
+  디바이스 트리·교차 툴체인·지원 폼팩터를 선언한다. 계약 항목은 `board/meson.build` 에 있다.
+- `-Dprofile=<id>` 는 이미지에 들어갈 서비스 집합과 WAM 이 선언할 폼팩터를 정한다.
+- 보드가 지원한다고 선언하지 않은 조합은 configure 에서 실패한다.
+- `emulator` 보드는 물리 제약이 없어 모든 프로파일을 받는다. 실기기 없이도 모든 프로파일의
+  이미지가 성립하는지 검사할 수 있다(`tests/test_image_profiles.sh`).
+
+**실행 시점**
+
+- 기기는 WAM 이 빌드 프로파일을 `window.__zylFormFactor` 로 모든 앱에 선언한다.
+- 에뮬레이터는 하드웨어(화면 크기, 입력 장치 `?zylInput=`)만 알리고 `form-factor.js` 가 판정한다.
+- `form-factor.js` 가 `<html>` 에 `ff-<id>` 클래스와 `--ff-*` 변수를 건다. 앱은 `html.ff-<id>`
+  선택자와 `ZylFormFactor.getProfile()` 로 적응한다. 유효한 ID 는 `PROFILES` 가 유일한 권위다.
+  규칙은 CLAUDE.md 규칙 11.
+
+## 부팅 체인
+
+신뢰는 아래에서 위로 이어진다. 각 단계는 다음 단계의 서명을 검증한 뒤에만 넘긴다.
+
+```
+Boot ROM → FSBL (루트 키) → OpenSBI · U-Boot (서명된 FIT)
+         → OS FIT: 커널 · 디바이스 트리 · initramfs (OS 키)
+         → rootfs (dm-verity, A/B 슬롯) → systemd → zyl-os.target
+```
+
+- 부트 정책은 `board/bpi-f3/u-boot-env.txt` 한 곳에 있다. 부트로더는 `tools/build-bootloader.sh`
+  로만 빌드·서명한다. 파티션 레이아웃은 `board/<id>/partitions.conf` 에 있다.
+- 시스템 파티션은 읽기 전용이고 검증된다. 그래서 시스템 앱 디렉터리에 있다는 사실이 시스템 앱의
+  근거가 된다. 바뀌는 것은 전부 `/data` 에 있다.
+- 키·서명·verity·eFuse 는 [SECURITY.md](SECURITY.md), 이미지 조립·서명·OTA 는
+  [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md), 보드별 사실은 `board/<id>/README.md`.
+
+## 경계를 지키는 것
+
+이 문서의 경계는 검사로 지킨다. `tests/verify-all.sh` 가 경계 규칙과 두 구현의 표를 대조하고,
+위 표의 테스트가 쌍마다 같은 규칙을 확인한다. `tools/run-qemu.sh --check`(기기에서는
+`zyl-selftest`)가 유닛·버스·정책부터 화면 체인까지 기기 경로 전체를 본다. 실행법은 CLAUDE.md 의
+"빌드 & 검증".

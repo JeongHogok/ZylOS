@@ -3,8 +3,7 @@
 #
 # 역할: OS 이미지가 실행 시점에 필요한 배포 패키지 단일 출처 (Debian 계열 이름)
 # 수행범위: 패키지 이름만. 어떻게 설치할지는 tools/build-image.sh 가 안다
-# 의존방향: 없음 (순수 목록). 읽는 쪽: tools/build-image.sh,
-#           docs/DEPLOYMENT_GUIDE.md (손으로 설치할 때의 같은 목록)
+# 의존방향: 없음 (순수 목록). 읽는 쪽: tools/build-image.sh
 # SOLID: SRP — "무엇이 필요한가"만 선언, OCP — 줄을 더하면 이미지에 들어간다
 #
 # 한 줄에 하나. '#' 뒤는 주석. 빠지면 무엇이 깨지는지 적을 것 —

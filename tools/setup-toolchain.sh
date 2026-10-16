@@ -97,7 +97,7 @@ elif [ "$OS" = "Linux" ]; then
         # 아키텍처 개발 패키지와 같은 시스템에 섞으면 libpsl-dev 처럼 man
         # 페이지가 충돌해 dpkg 가 멈춘다. 교차 빌드는 전용 컨테이너에서:
         # CI 의 qemu-boot-riscv64 잡이 패키지 목록의 단일 출처다
-        info "riscv64 개발 라이브러리는 전용 컨테이너에서 — docs/DEPLOYMENT_GUIDE.md §2"
+        info "riscv64 개발 라이브러리는 전용 컨테이너에서 — docs/DEPLOYMENT_GUIDE.md"
 
         need_cmd riscv64-linux-gnu-gcc
         need_cmd riscv64-linux-gnu-g++

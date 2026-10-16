@@ -104,8 +104,8 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 
 | 사실 | 단일 출처 | 읽는 쪽 |
 |------|-----------|---------|
-| 파티션 레이아웃 | `board/<id>/partitions.conf` | `build-image.sh`, `sign-image.sh`, `u-boot-env.txt`(테스트가 대조) |
-| 실행 시점 패키지 | `system/packages.list` | `build-image.sh`, DEPLOYMENT_GUIDE |
+| 파티션 레이아웃 | `board/<id>/partitions.conf` | `build-image.sh`, `sign-image.sh`, Boot HAL(`runtime/hal/meson.build`), `u-boot-env.txt`(테스트가 대조) |
+| 실행 시점 패키지 | `system/packages.list` | `build-image.sh` |
 | 보드·아키텍처·프로파일·prefix | meson → `builddir/zyl-board.conf` | `build-image.sh`, `run-qemu.sh` |
 | 서비스 집합 | `meson.build` 의 `zyl_profile_extras` | 생성되는 `zyl-os.target` |
 | 버스 접근 권한 | `system/dbus-1/zyl-os.conf` | dbus-daemon, `tests/test_dbus_policy.sh` |
