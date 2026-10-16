@@ -10,12 +10,14 @@ Banana Pi BPI-F3 실기기 보드입니다. 서명 부팅 체인(U-Boot FIT·dm-
 | 파일 | 정하는 것 |
 |------|-----------|
 | `meson.build` | 보드 계약 — SoC, 아키텍처, HAL 백엔드, 교차 파일, 받는 프로파일 (계약 설명은 `board/meson.build`) |
-| `partitions.conf` | 디스크 레이아웃. 이미지 빌더·서명 도구·부트 정책이 읽습니다 |
+| `partitions.conf` | 디스크 레이아웃 (읽는 쪽은 그 파일 머리에) |
 | `u-boot-env.txt` | 부트 정책 — A/B 시도·롤백, 잠금 전환, 부팅 영역 쓰기 보호. `tests/test_boot_env.sh` 가 실행해 보고 `partitions.conf` 와 대조합니다 |
 | `bootloader/` | 제조사 U-Boot 위의 Zyl 패치와 설정 조각 (`tools/build-bootloader.sh`) |
 | `fit-image.its` | OS FIT 의 모양 (`tools/sign-image.sh`) |
 | `keys/` | 키의 기본 위치. 비밀키는 커밋하지 않습니다 |
-| `system/dts/bpi-f3-zyl.dts` | 제조사 BSP 디바이스 트리에 얹는 오버레이 |
+
+제조사 BSP 디바이스 트리에 얹는 오버레이(계약의 `board_dts`)는 보드 디렉터리가 아니라 저장소
+루트의 [`system/dts/bpi-f3-zyl.dts`](../../system/dts/bpi-f3-zyl.dts) 에 있습니다.
 
 ## 빌드
 
@@ -27,19 +29,20 @@ sudo tools/build-image.sh --builddir builddir-f3 --out out/f3
 ```
 
 `--with-kernel` 은 쓰지 않습니다. 커널·DTB·initramfs 는 서명 FIT 으로 오고, 그 요구
-사항은 DEPLOYMENT_GUIDE §5 에 있습니다. 이 보드의 SoC 고유 경로(GPU·모뎀·ISP·eFuse)는
-QEMU 레인이 보지 못하므로 실기기에서만 확인됩니다.
+사항은 DEPLOYMENT_GUIDE §5 에 있습니다. QEMU 레인이 보지 못하는 것
+([DEPLOYMENT_GUIDE.md](../../docs/DEPLOYMENT_GUIDE.md#자기점검-toolszyl-selftest))은 이 보드에서만
+확인됩니다.
 
 ## 직렬 콘솔
 
 `ttyS0`, 115200 (서명된 커널 인자의 `console=`). 여기에 나오는 것:
 
 - U-Boot 메시지 — 잠금 전환 확인 안내(user 버튼), 슬롯 롤백, 서명 검증 실패
-- 커널·systemd 출력과 자기점검 결과
+- 커널·systemd 출력, 그리고 출력을 콘솔로도 보내는 유닛(`StandardOutput=journal+console` —
+  컴포지터·WAM·자기점검)의 로그
 
-로그인 셸은 없습니다 (이미지가 getty 를 막습니다). U-Boot 콘솔도 열리지 않습니다 —
-자동 부팅을 멈출 수 없고, 잠긴 기기는 부팅에 실패하면 재시작합니다. 콘솔이 남는 것은
-잠금 해제된 기기에서 OS 부팅이 실패했을 때뿐입니다 (`u-boot-env.txt` 의 `bootcmd`).
+로그인 셸은 없습니다 (이미지가 getty 를 막습니다). U-Boot 명령 줄이 언제 남는지는
+[INSTALLATION_INFORMATION.md](../../docs/INSTALLATION_INFORMATION.md#부트로더가-지켜야-하는-것).
 
 ## 기록
 
@@ -51,8 +54,8 @@ OS 디스크를 가리키는 값은 모두 같은 매체여야 합니다.
   업데이터가 슬롯을 쓰는 Boot HAL — `runtime/hal/meson.build` 가 여기서 읽는다)
 - `u-boot-env.txt` 의 `zyl_mmc` — U-Boot 가 FIT 을 읽고 잠금 전환 때 `/data` 를 지우는 장치
 
-FSBL 이 있는 eMMC 는 `zyl_emmc` 이고, U-Boot 가 OS 로 넘기기 전에 그 boot0 를 다음
-전원 차단까지 쓰기 금지합니다.
+FSBL 이 있는 eMMC 는 `zyl_emmc` 이고, 그 boot0 는 OS 가 도는 동안 쓰기 금지입니다
+([INSTALLATION_INFORMATION.md](../../docs/INSTALLATION_INFORMATION.md#부트로더가-지켜야-하는-것)).
 
 ### 순서
 
@@ -91,10 +94,9 @@ FSBL 이 있는 eMMC 는 `zyl_emmc` 이고, U-Boot 가 OS 로 넘기기 전에 �
 
 ## eFuse
 
-기본 부트로더는 eFuse 를 굽지 않습니다. `tools/build-bootloader.sh --burn-rotpk` 로 빌드한
-부트로더만 잠긴 기기에서 루트 키 해시(`rotpk-sha256.txt`)를 굽고, **되돌릴 수 없습니다**.
-굽기 전에 읽기 전용 `zyl_rotpk show` 로 형식을 대조하고 버려도 되는 보드에서 먼저
-확인하십시오 — [INSTALLATION_INFORMATION.md](../../docs/INSTALLATION_INFORMATION.md).
+기본 부트로더는 eFuse 를 굽지 않습니다. 굽는 빌드와 굽기 전 확인은 **되돌릴 수 없으므로**
+[INSTALLATION_INFORMATION.md](../../docs/INSTALLATION_INFORMATION.md#efuse--루트-키-해시-굽기-빌드-선택)
+를 따르십시오.
 
 ## 잠금 해제·소유자 빌드
 

@@ -8,31 +8,18 @@ virtio 입니다.
 
 ## 쓰는 법
 
-```bash
-meson setup builddir-rv64 --prefix=/usr --cross-file tools/cross/riscv64.ini \
-      -Dboard=generic-riscv64 -Dprofile=<프로파일>
-ninja -C builddir-rv64
-sudo tools/build-image.sh --builddir builddir-rv64 --out out/rv64 --with-kernel
-tools/run-qemu.sh --image out/rv64/zyl-os-generic-riscv64-<프로파일>.img \
-      --builddir builddir-rv64 --check
-```
+`--cross-file tools/cross/riscv64.ini -Dboard=generic-riscv64 -Dprofile=<프로파일>` 로
+설정하고(meson 은 교차 파일을 보드에서 끌어오지 않습니다), 빌드·이미지 조립(`--with-kernel`)·
+QEMU 부팅은 [DEPLOYMENT_GUIDE.md](../../docs/DEPLOYMENT_GUIDE.md) §2–4 를 따릅니다. 그대로
+도는 명령 순서와 패키지 목록은 `.github/workflows/riscv64.yml` 의 `qemu-boot-riscv64` 잡입니다.
 
-손으로 챙길 것:
+이 보드에서 더 챙길 것:
 
-- `:riscv64` 개발 라이브러리(multiarch)는 전용 컨테이너에 깝니다. 호스트 개발 패키지와
-  섞으면 충돌합니다. 패키지 목록은 `.github/workflows/riscv64.yml` 의
-  `qemu-boot-riscv64` 잡이 기준입니다.
-- rootfs 조립은 2단계 부트스트랩이라 `qemu-user-static` 과 binfmt 등록이 필요합니다.
-  컨테이너라면 binfmt 를 등록할 권한이 있어야 하고(같은 잡이 privileged 로 도는 이유),
-  등록이 됐는지는 riscv64 바이너리가 실제로 실행되는지로 확인합니다.
+- 컨테이너에서 조립한다면 binfmt 를 등록할 권한이 있어야 하고(같은 잡이 privileged 로 도는
+  이유), 등록이 됐는지는 riscv64 바이너리가 실제로 실행되는지로 확인합니다.
 - 에뮬레이션이라 느립니다. `run-qemu.sh --timeout` 을 넉넉히 주십시오.
 
-## 보는 것과 못 보는 것
-
-**보는 것**: riscv64 교차 빌드, riscv64 rootfs 조립, HAL `linux` 백엔드의 빌드와 기동,
-서비스·버스·화면 체인.
-
-**못 보는 것**: SoC 고유 경로(GPU·모뎀·ISP·eFuse)와 U-Boot·서명 FIT·dm-verity·A/B —
+레인이 보지 못하는 것([DEPLOYMENT_GUIDE.md](../../docs/DEPLOYMENT_GUIDE.md#자기점검-toolszyl-selftest))은
 [board/bpi-f3](../bpi-f3/README.md) 와 실기기의 일입니다.
 
 ## 계약 파일

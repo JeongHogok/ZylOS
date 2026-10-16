@@ -9,20 +9,14 @@
 ## 쓰는 곳
 
 - 이미지 레인: 조립 → QEMU 부팅 → 자기점검 (`.github/workflows/image.yml` 의 `qemu-boot`)
-- 프로파일마다 이미지가 성립하는지: `tests/test_image_profiles.sh`
+- 프로파일마다 설정되고 유닛마다 바이너리가 있는지: `tests/test_image_profiles.sh`
 
 ## 쓰는 법
 
-```bash
-meson setup builddir --prefix=/usr -Dboard=emulator -Dprofile=<프로파일>
-ninja -C builddir
-sudo tools/build-image.sh --builddir builddir --out out/image --with-kernel
-tools/run-qemu.sh --image out/image/zyl-os-emulator-<프로파일>.img --builddir builddir --check
-```
-
-호스트 아키텍처의 QEMU 가 필요합니다. 맥에서는 `tools/ci-local.sh qemu-boot` 가 같은
-레인을 컨테이너에서 돌립니다. 자기점검이 보는 것과 보지 않는 것은
-[DEPLOYMENT_GUIDE.md](../../docs/DEPLOYMENT_GUIDE.md) §4.
+`-Dboard=emulator -Dprofile=<프로파일>` 로 설정하고, 빌드·이미지 조립(`--with-kernel`)·QEMU
+부팅은 [DEPLOYMENT_GUIDE.md](../../docs/DEPLOYMENT_GUIDE.md) §2–4 를 따릅니다. 호스트
+아키텍처의 QEMU 가 필요합니다. 맥에서는 `tools/ci-local.sh qemu-boot` 가 같은 레인을
+컨테이너에서 돌립니다.
 
 ## 실기기에 쓰지 않는다
 

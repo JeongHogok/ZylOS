@@ -1,9 +1,3 @@
-<!--
-  Zyl OS: Architecture Document
-  Copyright (c) 2026 Zyl OS Project
-  SPDX-License-Identifier: MIT
--->
-
 # Zyl OS 아키텍처
 
 Zyl OS 가 어떻게 나뉘고 각 부분이 무엇을 책임지는지, 그 나눔이 지켜야 하는 불변식을 적는다.
@@ -48,7 +42,10 @@ Zyl OS 는 리눅스 위의 웹 앱 OS 다. 앱은 HTML/CSS/ES5 JS 이고 WebKit
 
 - `bridge.js` — `ZylBridge`·`ZylIntent`. 호스트를 알아보고 전송로를 고른다(기기: WebKit
   메시지 핸들러, 에뮬레이터: 부모 프레임). OS 가 시키면 인텐트 선택 시트와 "앱 없음" 안내를
-  앱 화면에 그리고, 텍스트 입력에 포커스가 가면 화면 키보드(`apps/keyboard`)를 앱 안에 띄운다.
+  앱 화면에 그리고, 텍스트 입력에 포커스가 가면 화면 키보드를 앱 페이지 안에 불러 띄운다.
+- 화면 키보드(`apps/keyboard/`)도 OS 코드다. `bridge.js` 는 자기가 읽힌 `shared/` 옆의
+  `keyboard/` 에서 그것을 불러오고, 앱의 출처에서는 `/shared/` 와 함께 `/keyboard/` 도 이미지의
+  것이 나간다.
 - `form-factor.js` — 폼팩터 판정과 적용 ([폼팩터](#폼팩터--보드--프로파일)).
 - `i18n.js` — 번역 엔진. 각 앱은 자기 키를 `addTranslations` 로 등록한다.
 
@@ -75,16 +72,9 @@ JS, 기기에서는 `runtime/` 의 C 다(`apps/system/` 은 기기 이미지에 
 
 ### 에뮬레이터 — `emulator-app/`
 
-빈 깡통 컨테이너다. 하는 일은 셋뿐이다.
-
-- **프레임** — 앱 프레임과 시스템 UI 프레임을 띄우고 바꾼다.
-- **IPC 라우팅** — 두 프레임의 메시지를 OS 계층 JS(`ZylSystemServices`·`ZylShell`·`ZylIntent`)에
-  넘기고, 그 답대로 띄운다.
-- **Tauri 커맨드** — 호스트에서만 알 수 있는 사실과 입출력(가상 저장소의 파일, 호스트의
-  Wi-Fi·블루투스·배터리, HTTP, 스토어 패키지 입출력)을 OS 계층 JS 에 준다.
-
-권한·셸·인텐트·봉인 같은 정책은 여기에 두지 않는다(CLAUDE.md 규칙 2).
-실행법과 구조는 [emulator-app/README.md](../emulator-app/README.md).
+빈 깡통 컨테이너다 — 프레임을 띄우고, 메시지를 OS 계층 JS 에 넘겨 그 답대로 띄우고,
+호스트에서만 알 수 있는 사실을 준다. 정책은 두지 않는다(CLAUDE.md 규칙 2). 하는 일과
+실행법은 [emulator-app/README.md](../emulator-app/README.md#하는-일).
 
 ### 기기
 
@@ -92,7 +82,8 @@ JS, 기기에서는 `runtime/` 의 C 다(`apps/system/` 은 기기 이미지에 
 
 부트로더가 검증한 커널이 systemd 를 띄우고, systemd 는 `zyl-os.target` 을 올린다.
 이 타깃은 빌드가 생성한다(`system/zyl-os.target.in`). 프로파일이 설치한 유닛만 들어가므로
-목록이 빌드와 어긋날 수 없다. 컴포지터와 WAM 은 필수, 나머지 서비스는 프로파일에 따른다.
+목록이 빌드와 어긋날 수 없다. 컴포지터·WAM 과 `meson.build` 의 `zyl_core_services` 는 모든
+프로파일에 들어가고, 프로파일마다 다른 것은 `zyl_profile_extras` 뿐이다.
 
 모든 구성요소는 **D-Bus 시스템 버스**에서 만난다. 서비스 유닛이 `Type=dbus` + `BusName=` 이라
 systemd 가 기다리는 버스가 시스템 버스이고, 로그인 세션이 없는 기기 부팅에는 세션 버스가 없다.
@@ -104,10 +95,9 @@ systemd 가 기다리는 버스가 시스템 버스이고, 로그인 세션이 �
 
 - 서비스마다 데몬 하나, 버스 이름 하나(`org.zylos.*`), 유닛 하나(`system/zyl-<이름>.service`).
 - 하드웨어에는 HAL 로만 닿는다. 명령행 도구나 sysfs 를 직접 부르지 않는다.
-- 누가 불렀는지는 WAM 이 채운 인자로 안다([신원](#앱이-누구인지는-os-가-말한다)).
+- 누가 불렀는지는 WAM 이 채운 인자로 안다([SECURITY.md §1](SECURITY.md#1-앱이-누구인지는-os-가-말한다)).
 - 상태가 바뀌면 시그널을 낸다. WAM 이 그 서비스를 부를 수 있는 앱에만 전달한다.
 - 앱별 상태를 가지면 앱이 지워질 때(`org.zylos.AppStore` 의 `AppRemoved`) 함께 지운다.
-- 어떤 서비스가 이미지에 들어가는지는 프로파일이 정한다(`meson.build` 의 `zyl_profile_extras`).
 
 #### WAM — `runtime/wam/`
 
@@ -120,14 +110,12 @@ systemd 가 기다리는 버스가 시스템 버스이고, 로그인 세션이 �
 | `bridge/` | 웹뷰에 브리지를 주입하고 메시지를 받는다. 권한 판정, 신원 인자 채우기, D-Bus 호출, 서비스 시그널 전달 |
 | `shell/` | 셸 정책 — 설정·잠금 상태, 앞에 올 수 있는 앱, 시스템 UI 크기 |
 | `intent/` | 인텐트 해석 |
-| `scheme/` | `zyl-app://<id>/` — 앱마다 자기 출처. `/shared/` 는 OS 공용 코드, 나머지는 앱 디렉터리이고 둘 밖은 내주지 않는다 |
+| `scheme/` | `zyl-app://<id>/` — 앱마다 자기 출처. `/shared/`·`/keyboard/` 는 이미지의 OS 코드, 나머지는 앱 디렉터리이고 그 밖은 내주지 않는다 |
 | `oom/` | 메모리가 모자라면 앞에 있지 않은 앱을 오래된 순으로 닫는다 |
 | `dbus/` | `org.zylos.WebAppManager` — 앱 실행·목록, 컴포지터가 부르는 내비게이션 |
 
-- 사용자 앱은 봉인이 맞을 때만 등록·실행되고, 그 파일은 봉인된 바이트와 같을 때만 내준다.
-  시스템 앱과 공용 코드는 검증된 시스템 파티션에 있다.
-- 앱의 웹 저장소(쿠키·캐시·로컬 저장소)는 그 앱의 컨테이너에 있다.
-- 웹 프로세스는 WebKit 샌드박스 안에서 돈다.
+봉인 확인과 내주는 바이트, 앱의 웹 저장소, 웹 프로세스 격리는 [SECURITY.md](SECURITY.md)
+§5–7.
 
 #### 컴포지터 — `compositor/`
 
@@ -175,20 +163,9 @@ wlroots 기반 Wayland 컴포지터다. 창을 그리고 입력을 나눌 뿐, �
        → C 서비스 (→ HAL) → 답을 앱의 콜백으로
 ```
 
-서비스에서 앱으로 가는 이벤트(`service.event`)도 OS 가 거른다. 받을 수 있는 앱에만 간다
-(에뮬레이터 `ZylPermissions.mayReceive`, 기기 `bridge.c`).
-
-### 앱이 누구인지는 OS 가 말한다
-
-- 보낸 앱은 메시지가 아니라 통로로 정한다. 에뮬레이터는 메시지가 온 프레임(시스템 UI
-  프레임이면 시스템 UI, 아니면 앞에 있는 앱), 기기는 메시지가 온 웹뷰의 매니페스트다.
-- 서비스에 넘기는 신원 인자는 OS 가 채운다. `caller` 는 언제나 호출한 앱, `container` 는
-  시스템 앱이면 `""`(사용자의 공유 파일) 아니면 그 앱, `app_id` 는 제3자 앱이면 그 앱 자신이다.
-  요청에 적힌 값은 쓰지 않는다. 에뮬레이터도 같은 규칙으로 제3자 앱의 `appId` 를 덮는다.
-- 시스템 앱인지도 OS 가 정한다. 에뮬레이터는 `ZylPermissions.SYSTEM_APPS`, 기기는 검증된
-  시스템 앱 디렉터리에 있는지로 본다(두 집합은 `tests/verify-all.sh` 가 대조). 앱이 스스로
-  시스템 앱이라고 적어도 믿지 않는다.
-- 사용자가 설정에서 끈 권한은 두 게이트 모두에서 거부한다(CLAUDE.md 규칙 8).
+서비스에서 앱으로 가는 이벤트(`service.event`)도 OS 가 거른다. 보낸 앱이 누구인지, 신원
+인자, 시스템 앱 판별은 [SECURITY.md §1](SECURITY.md#1-앱이-누구인지는-os-가-말한다), 권한과
+이벤트를 받을 앱은 [§3](SECURITY.md#3-권한).
 
 ### 인텐트
 
@@ -201,17 +178,18 @@ wlroots 기반 Wayland 컴포지터다. 창을 그리고 입력을 나눌 뿐, �
 
 ### 앱의 자리 — 컨테이너
 
-앱이 만드는 모든 것(비공개 데이터, 파일, 웹 저장소)은 그 앱의 컨테이너 `/data/appdata/<앱 id>/`
-에만 있다. 앱을 지우면 아무것도 남지 않는다. 앱별 상태를 갖는 서비스는 삭제 때 정리하는 경로를
-함께 가진다. 규칙은 CLAUDE.md 규칙 12, 검증은 `tests/store_e2e.sh`.
+앱이 만드는 모든 것은 그 앱의 컨테이너에만 있고, 앱을 지우면 아무것도 남지 않는다 —
+[SECURITY.md §5](SECURITY.md#5-앱-컨테이너--지우면-아무것도-남지-않는다).
 
 ## 시스템 UI
 
 - 상태바·알림판·빠른 설정·새 알림 배너·최근 앱은 OS 앱 `apps/statusbar` 하나가 그린다.
   모든 앱 위의 표면이다.
-- 표면이 얼마나 보일지(bar·banner·full)는 셸 정책이 정한다. 시스템 UI 가 요청하면 셸이 답한다.
-  전체 화면은 사용자가 앱 사이를 오갈 수 있을 때만, 배너는 잠금·첫 설정 중이 아닐 때만 준다.
-  결과는 시스템 UI 에 `panel.mode` 로 알린다.
+- 표면이 얼마나 보일지(bar·banner·full)는 셸 정책이 정한다. 시스템 UI 가 요청하면 셸이 답하고
+  ([SECURITY.md §4](SECURITY.md#4-셸-정책--무엇이-앞에-오고-누가-잠금을-푸는가)), 결과는 시스템
+  UI 에 `panel.mode` 로 알린다.
+- 막대와 배너의 높이는 `runtime/wam/src/shell/shell.h` 의 `ZYL_SHELL_BAR_PX`·`ZYL_SHELL_BANNER_PX`
+  가 정한다. 그것을 그리는 CSS(상태바 앱, 에뮬레이터 프레임)가 같은지는 `tests/verify-all.sh` 가 본다.
 - 에뮬레이터는 두 번째 프레임의 크기를 바꾼다. 기기에서는 WAM 이 이 앱을 화면 크기의 투명한
   창으로 띄우고 입력을 받는 영역만 바꾸며, 컴포지터가 그 창을 언제나 맨 위에 둔다.
 
@@ -226,8 +204,8 @@ wlroots 기반 Wayland 컴포지터다. 창을 그리고 입력을 나눌 뿐, �
   디바이스 트리·교차 툴체인·지원 폼팩터를 선언한다. 계약 항목은 `board/meson.build` 에 있다.
 - `-Dprofile=<id>` 는 이미지에 들어갈 서비스 집합과 WAM 이 선언할 폼팩터를 정한다.
 - 보드가 지원한다고 선언하지 않은 조합은 configure 에서 실패한다.
-- `emulator` 보드는 물리 제약이 없어 모든 프로파일을 받는다. 실기기 없이도 모든 프로파일의
-  이미지가 성립하는지 검사할 수 있다(`tests/test_image_profiles.sh`).
+- `emulator` 보드는 물리 제약이 없어 모든 프로파일을 받는다. 그래서 실기기 없이도 모든
+  프로파일이 설정되고 그 유닛마다 바이너리가 있는지 검사한다(`tests/test_image_profiles.sh`).
 
 **실행 시점**
 
@@ -251,12 +229,14 @@ Boot ROM → FSBL (루트 키) → OpenSBI · U-Boot (서명된 FIT)
   로만 빌드·서명한다. 파티션 레이아웃은 `board/<id>/partitions.conf` 에 있다.
 - 시스템 파티션은 읽기 전용이고 검증된다. 그래서 시스템 앱 디렉터리에 있다는 사실이 시스템 앱의
   근거가 된다. 바뀌는 것은 전부 `/data` 에 있다.
-- 키·서명·verity·eFuse 는 [SECURITY.md](SECURITY.md), 이미지 조립·서명·OTA 는
+- 키·서명·verity 는 [SECURITY.md](SECURITY.md#9-검증-부팅-verified-boot), 부트로더 잠금과
+  eFuse 는 [INSTALLATION_INFORMATION.md](INSTALLATION_INFORMATION.md), 이미지 조립·서명·OTA 는
   [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md), 보드별 사실은 `board/<id>/README.md`.
 
 ## 경계를 지키는 것
 
 이 문서의 경계는 검사로 지킨다. `tests/verify-all.sh` 가 경계 규칙과 두 구현의 표를 대조하고,
-위 표의 테스트가 쌍마다 같은 규칙을 확인한다. `tools/run-qemu.sh --check`(기기에서는
-`zyl-selftest`)가 유닛·버스·정책부터 화면 체인까지 기기 경로 전체를 본다. 실행법은 CLAUDE.md 의
-"빌드 & 검증".
+위 표의 테스트가 쌍마다 같은 규칙을 확인한다. QEMU 레인(`tools/run-qemu.sh --check`)이 이미지를
+부팅해 유닛·버스부터 화면 체인까지 본다 —
+[DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md#자기점검-toolszyl-selftest). 실행법은
+[CONTRIBUTING.md](../CONTRIBUTING.md#테스트-돌리기).

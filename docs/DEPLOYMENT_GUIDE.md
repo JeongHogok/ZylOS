@@ -1,9 +1,3 @@
-<!--
-  Zyl OS: Deployment Guide
-  Copyright (c) 2026 Zyl OS Project
-  SPDX-License-Identifier: MIT
--->
-
 # Zyl OS 배포 가이드
 
 소스에서 동작하는 기기까지 가는 길입니다. 여기에는 순서와 지켜야 할 규칙만 적습니다.
@@ -13,10 +7,8 @@
 
 - **이미지 한 장 = 보드 × 프로파일.** `meson setup` 한 번이 둘을 고르고, 그 빌드
   디렉터리에서 나오는 이미지는 그 조합 하나입니다 (`zyl-os-<보드>-<프로파일>.img`).
-- **도구는 사실을 들고 있지 않습니다.** 이미지에 들어갈 파일은 `ninja install`,
-  디스크 배치는 `board/<id>/partitions.conf`, 실행 시점 패키지는 `system/packages.list`,
-  보드·아키텍처·프로파일·prefix 는 meson 이 만든 `builddir/zyl-board.conf` 가 정합니다.
-  손으로 파일을 복사하는 절차는 없습니다.
+- **손으로 파일을 복사하는 절차는 없습니다.** 이미지에 들어갈 파일은 `ninja install` 이
+  정합니다.
 - **기기에는 셸이 없습니다.** 이미지 빌드가 로그인 콘솔(getty)을 막습니다. 진단은
   직렬 콘솔 출력과 자기점검(`zyl-selftest`)으로 합니다.
 - **보드 없이 확인할 수 있는 것은 보드 없이 확인합니다.** QEMU 레인이 매 커밋 이미지
@@ -28,7 +20,7 @@
 호스트 도구는 `tools/setup-toolchain.sh` 가 설치하고, 정확한 패키지 목록은 CI 잡의
 설치 단계가 기준입니다 (`.github/workflows/image.yml`, `riscv64.yml`, `bootloader.yml`).
 맥에서는 `tools/ci-local.sh qemu-boot`(또는 `qemu-boot-riscv64`)로 같은 레인을
-컨테이너에서 돌릴 수 있습니다.
+컨테이너에서 돌릴 수 있습니다 ([CONTRIBUTING.md](../CONTRIBUTING.md#로컬-ci--푸시-전-관문)).
 
 ## 2. 설정과 빌드
 
@@ -90,8 +82,8 @@ tools/run-qemu.sh --image <outdir>/zyl-os-<보드>-<프로파일>.img --builddir
 ```
 
 - 아키텍처는 `zyl-board.conf`, 루트 장치는 그 보드 `partitions.conf` 의 슬롯 A 입니다.
-- 커널은 이미지 옆의 `vmlinuz`(`--with-kernel`)를 먼저 쓰고, 없으면 `--kernel`/`--initrd`,
-  그다음 호스트의 `/boot` 를 씁니다.
+- 커널·initrd 는 `--kernel`/`--initrd` 로 준 것, 없으면 이미지 옆의 `vmlinuz`·`initrd.img`
+  (`--with-kernel`), 그것도 없으면 호스트 `/boot` 의 최신 것을 씁니다.
 - `--check` 는 커널 인자 `systemd.wants=zyl-selftest.service` 로 자기점검을 켜고,
   결과(PASS/FAILED)를 종료 코드로 돌려줍니다. `--timeout`·`--mem` 으로 조정합니다.
 
@@ -117,14 +109,14 @@ QEMU 레인과 그 명령 순서의 기준이 되는 워크플로:
 `test_build_ota.sh`·`test_updater.c` 의 몫입니다. SoC 고유 경로(GPU·모뎀·ISP·eFuse)는
 실기기에서만 확인됩니다.
 
-기기에서는 `systemctl start zyl-selftest`, 또는 같은 커널 인자로(공장 검사) 돌립니다.
-결과는 직렬 콘솔과 journal 에 남습니다.
+기기에는 셸이 없으므로 같은 커널 인자 `systemd.wants=zyl-selftest.service` 로 돌립니다
+(공장 검사). 결과는 직렬 콘솔에 남습니다.
 
 ## 5. 실기기 — 키, 부트로더, 서명, 기록
 
 서명 부팅 도구(`tools/gen-boot-keys.sh`, `tools/build-bootloader.sh`,
 `tools/sign-image.sh`)는 BPI-F3 의 U-Boot 체인을 대상으로 합니다. 체인이 무엇을
-검증하는지는 [SECURITY.md](SECURITY.md) 의 Verified Boot 에 있습니다.
+검증하는지는 [SECURITY.md](SECURITY.md#9-검증-부팅-verified-boot) 에 있습니다.
 
 ### 운영자가 가져야 할 키
 
@@ -146,10 +138,8 @@ tools/build-bootloader.sh --key-dir <키 디렉터리> <출력 디렉터리>
 
 고정한 제조사 U-Boot·OpenSBI 위에 `board/bpi-f3/bootloader`(패치·설정 조각)를 얹고,
 부트 정책 `board/bpi-f3/u-boot-env.txt` 를 기본 환경으로 내장해 빌드·서명합니다. 결과는
-스스로 검증합니다. 저장소의 환경에서는 그 파일의 "Runtime state" 변수만 읽으므로,
-환경 이미지를 따로 만들어 부트 로직을 바꾸는 길은 없습니다. `--burn-rotpk` 는 eFuse 를
-굽는 빌드입니다 — 기본은 끔, 되돌릴 수 없음
-([INSTALLATION_INFORMATION.md](INSTALLATION_INFORMATION.md)).
+스스로 검증합니다. 부트로더가 무엇을 막는지와 eFuse 를 굽는 `--burn-rotpk` 는
+[INSTALLATION_INFORMATION.md](INSTALLATION_INFORMATION.md#부트로더가-지켜야-하는-것).
 
 ### OS 이미지 서명
 
@@ -192,23 +182,14 @@ ZYL_KERNEL=… ZYL_DTB=… ZYL_INITRAMFS=… \
 버전은 숫자와 점만, URL 은 https 만 받습니다. 요청 형식은
 `runtime/services/updater/updater.c` 가 정합니다.
 
-기기 쪽(`zyl-updater`, 설정 > 소프트웨어 업데이트)의 규칙:
+기기 쪽(`zyl-updater`, 설정 > 소프트웨어 업데이트)에 이미지가 갖춰야 할 것:
 
-- **받을 조건**: U-Boot 환경을 읽을 수 있고(`fw_printenv`), 공개키
-  `/etc/zyl-os/ota-signing-key.pem` 이 있을 것(`-Dota_public_key`). 하나라도 없으면
-  업데이트를 받지 않습니다.
-- **서버 주소**: `/etc/zyl-os/update-server` 한 줄, 없으면 업데이터의 기본 주소.
+- 공개키 — `-Dota_public_key` 로 빌드하면 `/etc/zyl-os/ota-signing-key.pem` 으로 들어갑니다.
+- 서버 주소 — `/etc/zyl-os/update-server` 한 줄, 없으면 업데이터의 기본 주소.
   rootfs 는 읽기 전용이므로 이미지 안에 있어야 합니다.
-- **검증**: SHA-256 과 서명을 통과한 전체 이미지 패키지만 설치합니다. 델타·앱만·커널만
-  패키지는 dm-verity rootfs 와 맞출 수 없어 거부합니다.
-- **설치**: 비활성 슬롯에만 rootfs → verity 트리 → FIT 순서로 씁니다 (FIT 는 임시
-  이름으로 쓰고 교체). 지금 부팅이 아직 확정되지 않은 시험 부팅이면 설치하지 않습니다 —
-  돌아갈 슬롯을 덮지 않기 위해서입니다.
-- **전환**: 모든 기록이 끝난 뒤에만 `zyl_next_slot` 을 지정합니다. 재시작하면 U-Boot 가
-  새 슬롯의 FIT 서명을, 커널이 dm-verity 로 rootfs 를 확인합니다.
-- **확정과 롤백**: 부팅 뒤 업데이터가 컴포지터와 WAM 이 떠 있으면 슬롯을 확정하고,
-  아니면 재시작합니다. 정해진 횟수(`u-boot-env.txt` 의 `zyl_boot_limit`) 안에 확정되지
-  않으면 U-Boot 가 이전 슬롯으로 돌아갑니다.
+
+기기가 무엇을 확인하고 어떻게 설치·전환·롤백하는지는
+[SECURITY.md](SECURITY.md#10-ota).
 
 ## 관련 문서
 

@@ -45,7 +45,8 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 
 - 사용자에게 보이는 **모든 텍스트**는 `zylI18n.t('key')` 경유
 - 하드코딩된 영어/한국어 문자열 금지
-- 새 키는 지원하는 **모든 언어**(`apps/shared/i18n.js` 의 `getSupportedLocales`)에 동시 추가
+- 앱의 번역은 **ko·en·ja·zh·es** 를 함께 갖춘다 — 새 키는 다섯 언어에 동시 추가
+  (verify-all A6, 제3자 앱은 `tools/zyl validate` 가 검사)
 - i18n 키는 `{앱이름}.{키이름}` 네이밍 규칙 준수
 
 ### 5. Mock/Demo 데이터 절대 금지

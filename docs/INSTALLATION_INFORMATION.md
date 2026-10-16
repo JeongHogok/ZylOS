@@ -94,6 +94,11 @@ ZYL_KERNEL=<vmlinuz> ZYL_DTB=<보드.dtb> ZYL_INITRAMFS=<initramfs.cpio.gz> \
 - U-Boot 셸·자동 부팅 중단·fastboot 의 환경·설정 접근이 없고, 서명 없는 이미지 형식
   (레거시·Android)을 부팅하지 않습니다
 - 제조사 U-Boot 의 bootfs·네트워크 환경 가져오기, SD 카드 자동 플래싱, 요청 셸을 끕니다
+- 잠긴 기기는 검증되는 슬롯을 부팅하지 못하면 셸 없이 재시작합니다. U-Boot 명령 줄이
+  직렬 콘솔에 남는 것은 **잠금 해제된 기기에서, 시험 중인 업데이트(`zyl_next_slot`)가
+  없을 때 슬롯의 FIT 를 읽거나 부팅하지 못한 경우**뿐입니다 (`u-boot-env.txt` 의 `bootcmd`)
+- OS 로 넘기기 전에 FSBL 이 있는 eMMC boot0 를 다음 전원 차단까지 쓰기 금지합니다 —
+  침해된 OS 가 부트로더를 바꿀 수 없습니다
 - 기기 ID 는 칩 ID 에서 옵니다
 - 커널 인자는 환경이 아니라 서명되는 DTB 안에 있습니다
 
@@ -133,10 +138,8 @@ tools/build-bootloader.sh --key-dir <keys> --burn-rotpk out/
 ### 굽기 전에 — `zyl_rotpk show`
 
 모든 Zyl 빌드에 **읽기 전용** 명령 `zyl_rotpk show` 가 있어, 되돌릴 수 없는 쓰기 전에
-형식을 맞춰 볼 수 있습니다. U-Boot 명령 줄은 평소에는 열리지 않습니다 — 자동 부팅을 멈출 수
-없고 잠긴 기기는 부팅에 실패하면 재시작합니다. 명령 줄이 직렬 콘솔에 남는 것은 **잠금
-해제된 기기에서, 시험 중인 업데이트(`zyl_next_slot`)가 없을 때 슬롯의 FIT 를 읽거나
-부팅하지 못한 경우**뿐입니다 (`u-boot-env.txt` 의 `bootcmd`).
+형식을 맞춰 볼 수 있습니다. 명령 줄이 남는 경우는 [부트로더가 지켜야 하는
+것](#부트로더가-지켜야-하는-것)에 있습니다.
 
 ```
 => zyl_rotpk show

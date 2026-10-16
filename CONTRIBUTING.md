@@ -1,9 +1,3 @@
-<!--
-  Zyl OS: Contributing Guide
-  Copyright (c) 2026 Zyl OS Project
-  SPDX-License-Identifier: GPL-3.0-only
--->
-
 # Zyl OS 기여 가이드
 
 지켜야 할 규칙(아키텍처 경계, ES5, i18n, 파일 헤더, 보안, 사실의 단일 출처)은
@@ -60,8 +54,8 @@ git config core.hooksPath tools/hooks    # 클론마다 한 번
 | HTML 첫 줄 DOCTYPE | `bash tests/test_doctype.sh` | `lint-html` |
 | 에뮬레이터(Rust) | `cargo test --manifest-path emulator-app/Cargo.toml --locked` | `test-emulator` |
 | 부트 정책·서명·OTA·잡 선택 | `bash tests/test_boot_env.sh`, `tests/test_sign_image.sh`, `tests/test_build_ota.sh`, `tests/test_ci_select.sh` | `test-integration` |
-| 프로파일마다 이미지가 성립하는지 | `bash tests/test_image_profiles.sh` (meson 필요) | `qemu-boot` |
-| 이미지 → QEMU 부팅 → 자기점검 | [README](README.md#이미지를-만들어-qemu-로-부팅하기) | `qemu-boot`, `qemu-boot-riscv64` |
+| 프로파일마다 설정되고 유닛이 바이너리와 맞는지 | `bash tests/test_image_profiles.sh` (meson 필요) | `qemu-boot` |
+| 이미지 → QEMU 부팅 → 자기점검 | [DEPLOYMENT_GUIDE](docs/DEPLOYMENT_GUIDE.md#4-보드-없이-부팅--toolsrun-qemush) | `qemu-boot`, `qemu-boot-riscv64` |
 | 부트로더 빌드·서명 | `tools/build-bootloader.sh` ([DEPLOYMENT_GUIDE](docs/DEPLOYMENT_GUIDE.md)) | `build-bootloader` |
 | 재현 가능한 빌드 환경 | `docker build --target builder -t zylos-build .` | `build-docker` |
 | 라이선스 호환 | `bash tests/audit_licenses.sh` | `audit-licenses` |
@@ -98,8 +92,8 @@ node tests/perf/run.js                 # 전 앱 (--app=<이름>, --runs=N)
 ```
 
 앱마다 시작 시간·메인스레드 블로킹·힙·DOM 노드·레이아웃 수를 CPU 스로틀 + GPU
-없이 재서 `tests/perf/budgets.json` 과 비교한다. Node 22 이상과 Chrome/Chromium 이
-필요하다(못 찾으면 `CHROME_PATH`). 의도한 변경으로 수치가 바뀌면
+없이 재서 `tests/perf/budgets.json` 과 비교한다. Node(버전은 `.github/workflows/web.yml`
+의 `perf` 잡)와 Chrome/Chromium 이 필요하다(못 찾으면 `CHROME_PATH`). 의도한 변경으로 수치가 바뀌면
 `node tests/perf/run.js --update` 로 예산을 다시 쓰고 **그 이유를 커밋에 적는다.**
 예산을 올리는 것으로 회귀를 덮지 않는다.
 
