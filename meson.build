@@ -187,7 +187,7 @@ configure_file(
 )
 
 # Native font defaults + per-language CJK glyph selection (web apps use
-# apps/shared/fonts.css). Requires the Noto packages listed in DEPLOYMENT_GUIDE.
+# apps/shared/fonts.css). Requires the Noto packages in system/packages.list.
 install_data('system/fonts/50-zyl-fonts.conf',
              install_dir: get_option('sysconfdir') / 'fonts' / 'conf.d')
 
@@ -197,8 +197,8 @@ install_data('system/recovery/factory-reset.sh',  install_dir: get_option('datad
 install_data('system/recovery/recovery.service',  install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
 
 # Boot self test: not enabled by default (the unit has no [Install]).
-# `systemctl start zyl-selftest` on a device, or systemd.wants= on the kernel
-# command line in the QEMU lane and factory checks.
+# The device has no shell: systemd.wants= on the kernel command line (the QEMU
+# lane, factory checks).
 install_data('tools/zyl-selftest',
              install_dir: get_option('bindir'), install_mode: 'rwxr-xr-x')
 install_data('system/zyl-selftest.service', install_dir: _systemd_dir)

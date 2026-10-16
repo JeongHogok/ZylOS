@@ -2,7 +2,7 @@
 # ──────────────────────────────────────────────────────────
 # [Clean Architecture] Infrastructure Layer - Test
 #
-# 역할: 폼팩터 프로파일 8종이 **이미지로 성립하는지** 검사
+# 역할: 모든 폼팩터 프로파일이 **이미지로 성립하는지** 검사
 # 수행범위: 프로파일마다 설정만 해서(빌드 없이) 생성된 zyl-os.target 을 읽고,
 #           그 Wants= 의 유닛이 전부 실재하며 각 유닛이 가리키는 바이너리가
 #           그 프로파일에서 빌드되는지, 유닛과 서비스 디렉터리가 짝이 맞는지
@@ -18,7 +18,9 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 command -v meson >/dev/null 2>&1 || { echo "SKIP: meson 없음"; exit 0; }
 
-PROFILES="phone tablet tv auto watch desktop appliance pda"
+# 프로파일 목록은 meson_options.txt 의 profile choices 가 출처
+PROFILES="$(sed -n "/option('profile'/,/)/s/.*choices: *\[\(.*\)\].*/\1/p" "$ROOT/meson_options.txt" | tr -d "',")"
+[ -n "$PROFILES" ] || { echo "  ✗ meson_options.txt 에서 profile choices 를 읽지 못했다"; exit 1; }
 W="$(mktemp -d -t zyl-profiles.XXXXXX)"
 trap 'rm -rf "$W"' EXIT
 

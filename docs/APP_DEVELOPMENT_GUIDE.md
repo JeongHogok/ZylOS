@@ -1,746 +1,402 @@
-<!--
-  Zyl OS: App Development Guide
-  Copyright (c) 2026 Zyl OS Project
-  SPDX-License-Identifier: MIT
--->
-
 # Zyl OS 앱 개발 가이드
 
-Zyl OS용 앱을 개발하기 위한 공식 가이드입니다.
+Zyl OS 앱을 만드는 사람(제3자 앱·이 저장소의 시스템 앱)을 위한 안내다.
+규칙과 계약은 코드에 한 번씩만 적혀 있고, 이 문서는 그 위치와 읽는 법을 알려 준다.
+
+| 알고 싶은 것 | 단일 출처 |
+|---|---|
+| 앱이 쓰는 API (`ZylBridge`, `ZylIntent`) | `apps/shared/bridge.js` |
+| 서비스마다의 메서드·인자·결과 | `apps/system/services/<서비스>.js` (기기의 C 서비스가 같은 계약에 답한다) |
+| 서비스 이벤트 이름·인자 | 기기 `runtime/services/<서비스>/` 의 D-Bus 시그널 선언 |
+| 권한 | `apps/system/permissions.js` (표를 읽는 법: [SECURITY.md §3](SECURITY.md#3-권한)) |
+| 폼팩터 ID와 성질 | `apps/shared/form-factor.js` 의 `PROFILES` |
+| `app.json` 이 갖춰야 할 것 | 3장의 표. 도구가 검사하는 것은 [3장 끝](#3-appjson) |
+| 패키지·봉인·개발 빌드 | [APPSTORE_API.md](APPSTORE_API.md) |
+
+전체 구조는 [ARCHITECTURE.md](ARCHITECTURE.md), 권한·봉인의 보안 모델은 [SECURITY.md](SECURITY.md) 를 본다.
 
 ---
 
-## 목차
+## 1. 앱이란
 
-1. [시작하기](#1-시작하기)
-2. [앱 구조](#2-앱-구조)
-3. [매니페스트 (app.json)](#3-매니페스트-appjson)
-4. [JS-Native Bridge API](#4-js-native-bridge-api)
-5. [Intent 시스템](#5-intent-시스템)
-6. [ContentProvider](#6-contentprovider)
-7. [런타임 권한](#7-런타임-권한)
-8. [클립보드 API](#8-클립보드-api)
-9. [UI 디자인 가이드라인](#9-ui-디자인-가이드라인)
-10. [다국어 지원 (i18n)](#10-다국어-지원-i18n)
-11. [권한 시스템](#11-권한-시스템)
-12. [패키징 및 서명](#12-패키징-및-서명)
-13. [zyl SDK CLI](#13-zyl-sdk-cli)
-14. [앱스토어 배포](#14-앱스토어-배포)
-15. [디버깅](#15-디버깅)
-16. [API 레퍼런스](#16-api-레퍼런스)
-
----
-
-## 1. 시작하기
-
-### 요구사항
-
-- 텍스트 에디터 (VS Code 권장)
-- 웹 브라우저 (Chrome/Firefox — 개발 중 테스트용)
-- Zyl OS SDK CLI (`tools/zyl`) — 패키징/서명에 필요
-
-### 첫 번째 앱 만들기
-
-```bash
-# zyl SDK CLI로 프로젝트 생성 (권장)
-./tools/zyl init my-app
-cd my-app
-
-# 또는 수동 생성
-mkdir -p myapp/{css,js,assets}
-touch myapp/app.json myapp/index.html myapp/css/style.css myapp/js/app.js
-```
-
-**myapp/app.json:**
-```json
-{
-  "id": "com.yourname.myapp",
-  "name": "My App",
-  "version": "1.0.0",
-  "entry": "index.html",
-  "icon": "assets/icon.png",
-  "iconSvg": "<svg viewBox='0 0 24 24'>...</svg>",
-  "permissions": [],
-  "min_os_version": "0.1.0"
-}
-```
-
-**myapp/index.html:**
-```html
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>My App</title>
-  <link rel="stylesheet" href="css/style.css">
-</head>
-<body>
-  <header class="app-header">
-    <h1>My App</h1>
-  </header>
-  <main id="content">
-    <p>Hello, Zyl OS!</p>
-  </main>
-  <script src="js/app.js"></script>
-</body>
-</html>
-```
+- **웹 앱 한 개**다: 자기 디렉터리에 `app.json`, 시작 HTML, CSS, ES5 JavaScript.
+- **기기에서는 자기 출처에서 돈다**: `zyl-app://<앱 id>/`, WAM 이 앱마다 WebKit 뷰를 하나씩
+  띄운다. 에뮬레이터에서는 스토어로 설치한 앱만 그 출처를 갖고, 이미지에 든 앱은 컨테이너
+  페이지의 출처를 함께 쓴다(`apps/system/app-registry.js` 의 `getOrigin`). 어느 쪽이든 앱이
+  보는 API 는 `ZylBridge` 하나다 — 앱은 자기가 기기에 있는지 에뮬레이터에 있는지 알 필요가 없다.
+- **앱 자기 파일과 OS 코드만 읽는다**: OS 코드는 `/shared/`(앱에서는 `../shared/…`)와
+  `bridge.js` 가 불러오는 화면 키보드 `/keyboard/` 이고, 이미지의 것이 나간다. 바깥 스크립트·
+  바깥 주소로의 직접 요청은 막혀 있다(CSP). 바깥 네트워크는 `network` 서비스로만 가고, 그
+  서비스가 허용하는 도메인만 열린다(`apps/system/sandbox.js` 의 `ALLOWED_DOMAINS`).
+- **앱 파일은 읽기 전용이다**: 봉인(14장)과 다른 파일은 앱에 전달되지 않는다. 데이터는
+  9장의 저장소에 둔다.
+- **흔적은 컨테이너에만 남는다**: 앱이 만드는 모든 것은 `/data/appdata/<앱 id>/` 에 있고,
+  앱을 지우면 함께 지워진다 ([SECURITY.md §5](SECURITY.md#5-앱-컨테이너--지우면-아무것도-남지-않는다)).
+- **시스템 앱은 OS 이미지에 실려 오는 앱이다.** 앱이 스스로 시스템 앱이라고 선언할 방법은
+  없다. 제3자 앱과의 차이는 예약 권한(5장), 파일 루트(9장), 남을 대신해 말할 수 있는지(5장)다.
 
 ---
 
-## 2. 앱 구조
+## 2. 디렉터리와 시작 페이지
 
 ```
 myapp/
-├── app.json          # 앱 매니페스트 (필수)
-├── index.html        # 진입점 (필수)
-├── css/
-│   └── style.css     # 스타일시트
-├── js/
-│   ├── app.js        # 애플리케이션 로직
-│   └── i18n.js       # 앱별 번역 데이터 (필수, 5개 언어)
-└── assets/
-    └── icon.png      # 앱 아이콘 (192x192px)
+├── app.json        # 매니페스트 (3장)
+├── index.html      # app.json 의 entry
+├── i18n.js         # 번역 (12장)
+├── css/myapp.css
+└── js/myapp.js
 ```
 
-### 파일 크기 제한
+`tools/zyl init <이름> [id]` 가 이 뼈대를 만든다. `id` 는 자기 도메인을 뒤집은 이름이어야
+한다(개발 빌드 프로필의 앱 id 패턴과 맞아야 한다). 생략하면 자리표시 `com.example.<이름>` 이 들어가니
+바꿀 것. `com.zylos.*` 는 OS 이미지의 앱이다.
 
-| 항목 | 제한 |
-|------|------|
-| 전체 패키지 | 50 MB |
-| 단일 파일 | 10 MB |
-| 아이콘 | 1 MB |
-| 총 파일 수 | 500개 |
+시작 페이지가 읽는 OS 코드와 그 순서는 `apps/notes/index.html` 이 본보기다. `tools/zyl init`
+이 쓰는 `index.html` 도 같은 것을 같은 순서로 넣는다. `bridge.js` 는
+`<script src="…/shared/bridge.js">` 로 읽어야 한다 — 화면 키보드(11장)를 그 위치를 기준으로
+찾는다.
 
 ---
 
-## 3. 매니페스트 (app.json)
+## 3. app.json
 
 ```json
 {
-  "id": "com.yourname.myapp",
-  "name": "My Awesome App",
-  "name_i18n": {
-    "ko": "멋진 앱",
-    "en": "My Awesome App",
-    "ja": "素晴らしいアプリ"
-  },
-  "version": "1.2.3",
-  "description": "A sample Zyl OS application",
-  "author": "Your Name",
-  "email": "you@example.com",
-  "website": "https://example.com",
+  "id": "com.example.myapp",
+  "name": "My App",
+  "version": "1.0.0",
   "entry": "index.html",
-  "icon": "assets/icon.png",
-  "iconSvg": "<svg viewBox='0 0 24 24'>...</svg>",
-  "permissions": [
-    "notification",
-    "storage"
-  ],
-  "min_os_version": "0.1.0",
-  "category": "utility"
+  "permissions": ["notification"],
+  "formFactors": ["*"],
+  "intents": [{ "action": "zyl.intent.action.VIEW", "mimeType": "text/plain" }],
+  "iconSvg": "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z",
+  "color": "icon-blue",
+  "description": "…"
 }
 ```
 
-### 필수 필드
+| 필드 | 뜻 |
+|---|---|
+| `id` | 필수. 역도메인 이름. 앱의 출처(`zyl-app://<id>/`)와 컨테이너(`/data/appdata/<id>/`)의 이름이 된다. 시스템 앱의 id 는 쓸 수 없다 |
+| `name` | 필수. 표시 이름 |
+| `version` | 필수. 숫자와 점(`1.2.3`). 기기는 낮은 버전으로 되돌리는 설치를 받지 않는다 |
+| `entry` | 필수. 시작 HTML, 앱 디렉터리 기준 경로 |
+| `permissions` | 앱이 부를 서비스에 필요한 권한 이름 (5장). 없으면 권한 없음 |
+| `formFactors` | 이 앱이 맞춰 만든 폼팩터 ID 목록, `["*"]` 은 전부. 유효한 ID는 `PROFILES`. 목록 밖의 기기에서는 홈 화면에 나오지 않는다. 늘 적는다 — 없으면 OS 는 전부로 보고, 저장소 앱은 `tests/test_manifests.sh` 가 요구한다 |
+| `intents` | 이 앱이 열어 주는 것 `[{ action, mimeType }]` (7장). `action` 은 `ZylIntent.ACTION` 의 값, `mimeType` 은 `type/subtype`(subtype 은 `*` 가능) |
+| `launcher` | `false` 면 런처·최근 앱에 나오지 않는다 (시스템 UI용). 기본 `true` |
+| `iconSvg` | 아이콘. 24×24 `viewBox` 안의 SVG **path 데이터**(`d` 값) — `<svg>` 요소가 아니다 |
+| `color` | 아이콘 바탕. `apps/home/css/home.css` 의 `.icon-*` 클래스 이름 |
+| `description`·`developer`·`category` | 스토어 카탈로그에 실린다 (`tools/build-store.py`) |
 
-| 필드 | 타입 | 설명 |
-|------|------|------|
-| `id` | string | 역도메인 형식 앱 ID |
-| `name` | string | 앱 이름 (기본 언어) |
-| `version` | string | 시맨틱 버전 (major.minor.patch) |
-| `entry` | string | HTML 진입점 파일 경로 |
-| `icon` | string | 앱 아이콘 경로 (192x192 PNG 권장) |
-| `iconSvg` | string | 인라인 SVG 아이콘 (ZylAppRegistry가 홈/런처에서 사용) |
+검사:
+
+- 저장소 앱 — `tests/test_manifests.sh`.
+- `tools/zyl validate`(앱 디렉터리에서) — `id`·`name`·`version`·`entry` 가 있는지, `version` 이
+  숫자와 점인지, `entry` 파일이 있는지, 모든 JS 파일에 `let`·`const`·`=>` 가 없는지, `i18n.js`
+  에 앱 번역 언어(ko·en·ja·zh·es)가 다 있는지(`i18n.js` 가 없으면 경고만), 시작 페이지 첫 줄이 DOCTYPE 인지.
+- `tools/build-store.py package`(`tools/zyl package` 가 부른다) — `id` 가 역도메인인지,
+  `version` 이 숫자와 점인지, `entry` 페이지가 있는지.
+
+제3자 앱의 `formFactors`·`intents`·`iconSvg`·`color` 는 어느 도구도 검사하지 않는다.
 
 ---
 
-## 4. JS-Native Bridge API
-
-Zyl OS는 `ZylBridge.requestService()`를 통해 서비스를 호출합니다.
-`requestService()`는 **Promise를 반환**합니다. requestId 기반으로 응답이 매칭됩니다.
+## 4. 서비스 부르기
 
 ```javascript
-// requestService(service, method, params) → Promise
-ZylBridge.requestService('power', 'getState', {})
-  .then(function(state) {
-    console.log('Battery:', state.battery_level);
-  })
-  .catch(function(err) {
-    console.error('Service error:', err);
+ZylBridge.requestService(service, method, params)   // → Promise
+```
+
+- 요청마다 `requestId` 가 붙고, 같은 `requestId` 의 응답이 그 Promise 를 끝낸다.
+  앱이 응답 메시지를 직접 듣거나 짝지을 필요는 없다.
+- 결과는 `resolve`, 거부·실패는 `reject` 다. reject 값은 `error` 를 가진 객체다
+  (권한 거부, 인자 오류, 서비스 오류, 시간 초과 모두).
+- 응답이 필요 없으면 `ZylBridge.requestServiceFire(service, method, params)`.
+
+### 계약을 찾는 법
+
+서비스 `X` 의 계약은 `apps/system/services/X.js` 가 돌려주는 객체다. 키가 메서드 이름,
+첫 인자 `p` 의 멤버가 `params`, 반환값이 결과다. `_` 로 시작하는 것은 OS 내부용이라
+앱이 부를 수 없다. 기기에서는 같은 요청이 D-Bus 의 `org.zylos.*` 서비스로 가서
+메서드 이름의 첫 글자를 대문자로 바꾼 메서드(`getItem` → `GetItem`)를 부르고,
+`params` 의 멤버를 같은 이름의 인자에 넣는다(대소문자·`_` 무시, 빠진 인자는 오류).
+
+### 예 1 — 앱 전용 키-값 저장 (`appdata`, 권한 불필요)
+
+```javascript
+ZylBridge.requestService('appdata', 'setItem', { key: 'lastTab', value: 'inbox' })
+  .then(function (stored) {
+    /* true: 저장됨. false: 앱의 할당량을 넘었거나 key·value 가 맞지 않음 */
+  });
+
+ZylBridge.requestService('appdata', 'getItem', { key: 'lastTab' })
+  .then(function (value) {
+    /* 없는 키는 '' */
   });
 ```
 
-### 4.1 앱 관리
+어느 앱의 데이터인지는 요청에 없다. OS 가 부른 앱을 `caller` 로 넣으므로 앱은 다른 앱의
+데이터를 가리킬 수조차 없다 ([앱이 누구인지는 OS 만 말한다](#앱이-누구인지는-os-만-말한다)).
+
+### 예 2 — 알림 올리기 (`notification` 권한)
 
 ```javascript
-// 다른 앱 실행
-navigator.system.launch('com.zylos.settings');
-
-// 앱 종료
-navigator.system.app.close();
-
-// 앱 최소화 (백그라운드)
-navigator.system.app.minimize();
+ZylBridge.notify(zylI18n.t('myapp.done_title'), zylI18n.t('myapp.done_body'), { priority: 2 })
+  .catch(function () { /* 권한이 없거나 사용자가 껐다 */ });
 ```
 
-### 4.2 알림
+`notify` 는 `notification` 서비스 요청이다. 올린 앱은 OS 가 정한다 — 제3자 앱이 `appId`
+를 무엇으로 주든 자기 이름으로 올라간다.
+
+---
+
+## 5. 권한
+
+앱은 `app.json` 의 `permissions` 로 선언하고, OS 가 **요청마다** 판정한다. 앱이 따로
+권한을 요청하는 API 는 없다.
+
+어느 서비스·메서드에 어떤 권한이 필요한지는 `apps/system/permissions.js` 의 표가 정한다 —
+읽는 법은 [SECURITY.md §3](SECURITY.md#3-권한). 예약 권한은 제3자 앱이 선언해도 주어지지
+않고, 사용자가 설정에서 끈 권한은 그 뒤 호출부터 거부된다.
+
+거부는 조용히 사라지지 않고 reject 로 오므로, 앱은 실패 경로에서 무엇이 왜 안 되는지
+사용자에게 알린다. 필요한 권한만 선언한다.
+
+### 앱이 누구인지는 OS 만 말한다
+
+신원을 뜻하는 서비스 인자(`caller`·`container`·`app_id`, 에뮬레이터에서는 `appId`)는 요청
+값을 무시하고 OS 가 채운다. 제3자 앱은 다른 앱을 대신해 말할 수 없다 — 무엇이 어떻게
+채워지는지는 [SECURITY.md §1](SECURITY.md#1-앱이-누구인지는-os-가-말한다).
+
+---
+
+## 6. 서비스 이벤트 받기
 
 ```javascript
-navigator.system.notification.create('제목', '내용', {
-  icon: 'assets/notif-icon.png',
-  actions: [
-    { id: 'reply', label: '답장' },
-    { id: 'dismiss', label: '닫기' }
-  ]
+ZylBridge.onServiceEvent('notification', 'NotificationPosted', function (d) {
+  /* d = 시그널 인자 배열, 선언된 순서대로: [id, app_id, title, body, priority] */
 });
 ```
 
-### 4.3 배터리
+- 이벤트 이름과 인자는 그 서비스가 내는 D-Bus 시그널 그대로다
+  (`runtime/services/<서비스>/` 의 `<signal>` 선언). 인자가 하나면 배열이 아니라 그 값이다.
+- 이벤트는 그 서비스를 **부를 수 있는 앱에게만** 가고, 한 앱의 것에 관한 이벤트는 그 주인에게만
+  간다 (`OWNED_EVENTS`, [SECURITY.md §3](SECURITY.md#3-권한)).
+
+---
+
+## 7. 인텐트 — 다른 앱과 이어지기
+
+앱끼리는 함수를 부르거나 DOM 을 나누지 않는다. 인텐트를 시작하면 OS 가 받을 앱을 정한다
+(에뮬레이터 `apps/system/intent.js`, 기기 `runtime/wam/src/intent` — 같은 규칙).
+
+**시작하기**
 
 ```javascript
-navigator.system.battery.getLevel().then(function(level) {
-  console.log('Battery:', level + '%');
+/* 암시적: 이것을 받을 수 있는 앱 (예: 글 공유) */
+ZylIntent.startActivity({
+  action: ZylIntent.ACTION.SEND,
+  mimeType: 'text/plain',
+  data: shareText
 });
+
+/* 명시적: 특정 앱 열기 */
+ZylIntent.startActivity({ targetApp: 'com.example.viewer' });
 ```
 
-### 4.4 WiFi
+- 받을 앱이 하나면 바로 열린다. 여럿이면 고르는 시트를, 없으면 "열 수 있는 앱 없음" 시트를
+  OS 공용 코드(`bridge.js`)가 시작한 앱 화면에 그린다. 앱이 이 UI 를 만들지 않는다.
+- 시작한 앱 자신은 후보에 오르지 않는다. 사용자는 제시된 앱 중에서만 고를 수 있다.
+- 넘기는 값은 `data`(문자열)와 `extras`(JSON 으로 옮겨지는 객체)뿐이다.
+
+**받기**
+
+1. `app.json` 의 `intents` 에 처리하는 `{ action, mimeType }` 을 선언한다 — 실행 중이 아닌
+   앱도 고를 수 있어야 하므로 실행 중에 등록하는 API 는 없다. 처리하지 않는 action 은
+   선언하지 않는다.
+2. 페이지에서 받는다. 등록 전에 도착한 인텐트는 등록할 때 전달된다.
 
 ```javascript
-navigator.system.wifi.scan().then(function(networks) {
-  networks.forEach(function(net) {
-    console.log(net.ssid, net.signal, net.secured);
-  });
+ZylIntent.onIntent(function (it) {
+  /* it = { action, data, mimeType, extras, sourceApp } — sourceApp 은 OS 가 채운다 */
 });
-```
-
-### 4.5 Bridge 미지원 환경 (브라우저 테스트)
-
-```javascript
-// ZylBridge가 없는 환경에서는 콘솔 폴백 자동 제공
-ZylBridge.launch('com.example.app');
-// → 브라우저: console.log('[ZylBridge] launch: com.example.app')
 ```
 
 ---
 
-## 5. Intent 시스템
+## 8. 뒤로 가기·닫기·화면 상태
 
-Android 스타일 인텐트로 앱 간 기능을 연결합니다.
-
-### 5.1 인텐트 필터 등록 (앱 초기화 시)
-
-```javascript
-// 내 앱이 처리할 수 있는 인텐트 등록
-ZylIntent.registerFilter('com.yourname.myapp', ZylIntent.ACTION.VIEW, 'image/*');
-ZylIntent.registerFilter('com.yourname.myapp', ZylIntent.ACTION.SEND, 'text/plain');
-```
-
-### 5.2 명시적 인텐트 (특정 앱 지정)
+**뒤로 가기** — 사용자가 뒤로 가면 OS 는 먼저 앞에 있는 앱에 `navigation.back` 을 보낸다.
+앱은 곧바로 둘 중 하나로 답한다. 답이 없으면 OS 는 나간 것으로 보고 홈으로 간다
+(멈춘 앱이 사용자를 가두지 못하게).
 
 ```javascript
-// 연락처 앱을 명시적으로 기동
-ZylIntent.startActivity({
-  targetApp: 'com.zylos.contacts',
-  action: ZylIntent.ACTION.PICK,
-  extras: { returnResult: true }
-});
-```
-
-### 5.3 암시적 인텐트 (액션 매칭)
-
-```javascript
-// 이미지를 처리할 수 있는 앱 검색 후 기동
-ZylIntent.startActivity({
-  action: ZylIntent.ACTION.VIEW,
-  mimeType: 'image/jpeg',
-  data: 'content://com.zylos.gallery/image/42'
-});
-// → 매칭 앱 1개: 즉시 기동
-// → 매칭 앱 복수: 앱 선택 다이얼로그 표시
-```
-
-### 5.4 표준 액션
-
-| 액션 | 값 | 용도 |
-|------|-----|------|
-| VIEW | `zyl.intent.action.VIEW` | 데이터 보기 |
-| SEND | `zyl.intent.action.SEND` | 데이터 전송/공유 |
-| PICK | `zyl.intent.action.PICK` | 데이터 선택 |
-| EDIT | `zyl.intent.action.EDIT` | 데이터 편집 |
-| DIAL | `zyl.intent.action.DIAL` | 전화 걸기 |
-| CAPTURE | `zyl.intent.action.CAPTURE` | 카메라/오디오 캡처 |
-| SEARCH | `zyl.intent.action.SEARCH` | 검색 |
-
----
-
-## 6. ContentProvider
-
-URI 기반 앱 간 데이터 공유 게이트웨이.
-
-### 6.1 프로바이더 등록 (데이터 제공 앱)
-
-```javascript
-ZylContentProvider.registerProvider('com.yourname.myapp.data', {
-  query: function(path, projection) {
-    // path: 'items', 'items/42' 등
-    if (path === 'items') {
-      return Promise.resolve([
-        { id: 1, title: 'Item 1' },
-        { id: 2, title: 'Item 2' }
-      ]);
-    }
-    return Promise.resolve([]);
-  },
-  insert: function(path, values) {
-    // 새 항목 삽입
-    return Promise.resolve({ id: 3 });
-  },
-  update: function(path, values) {
-    // 기존 항목 수정
-    return Promise.resolve({ affected: 1 });
-  },
-  'delete': function(path) {
-    // 항목 삭제
-    return Promise.resolve({ affected: 1 });
+window.addEventListener('message', function (e) {
+  if (e.source !== window.parent) return;
+  var msg;
+  try { msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch (err) { return; }
+  if (!msg || msg.type !== 'navigation.back') return;
+  if (detailOpen) {
+    closeDetail();
+    ZylBridge.sendToSystem({ type: 'navigation.handled' });   /* 앱 안에서 처리함 */
+  } else {
+    ZylBridge.sendToSystem({ type: 'navigation.exit' });      /* 앱을 떠난다 */
   }
 });
 ```
 
-### 6.2 데이터 쿼리 (데이터 소비 앱)
+**닫기** — `ZylBridge.closeApp()` 은 자기 앱을 닫는다. 닫아도 되는지는 OS 가 정한다.
+
+**화면 상태** — OS 가 앱을 떠나기 전에 화면 상태를 묻고 다음 실행 때 돌려줄 수 있다.
 
 ```javascript
-// content://authority/path 형식
-ZylContentProvider.query(
-  'com.yourname.viewer',                          // 내 앱 ID (권한 체크)
-  'content://com.yourname.myapp.data/items'       // URI
-).then(function(rows) {
-  rows.forEach(function(row) {
-    console.log(row.id, row.title);
-  });
+ZylBridge.onSaveState(function () {
+  return { view: currentView, draft: input.value };   /* JSON 으로 옮겨지는 작은 객체, 없으면 null */
 });
-
-// 특정 항목
-ZylContentProvider.query(
-  'com.yourname.viewer',
-  'content://com.yourname.myapp.data/items/42'
-).then(function(rows) {
-  console.log(rows[0]);
+ZylBridge.onRestoreState(function (st) {
+  if (st) showView(st.view, st.draft);
 });
 ```
 
-### 6.3 시스템 ContentProvider URI 예시
-
-| URI | 설명 |
-|-----|------|
-| `content://com.zylos.contacts/all` | 전체 연락처 |
-| `content://com.zylos.contacts/id/42` | 특정 연락처 |
-| `content://com.zylos.gallery/images` | 갤러리 이미지 목록 |
+여기에는 열려 있던 화면·쓰다 만 글 같은 UI 상태만 둔다(크기 제한이 있어 넘치면 버려진다).
+OS 는 묻지 않고 앱을 끝낼 수도 있다(메모리가 모자랄 때). 잃으면 안 되는 데이터는 바뀔 때
+곧바로 9장의 저장소에 쓴다.
 
 ---
 
-## 7. 앱 권한
+## 9. 저장
 
-권한은 `app.json` 의 `permissions` 선언으로 정해집니다. 서비스 호출마다 OS 가
-판정하므로 앱이 따로 요청할 API 는 없습니다.
+| 무엇 | 어떻게 | 어디에 |
+|---|---|---|
+| 작은 비공개 값 | `appdata` 서비스 (`getItem`·`setItem`·`removeItem`·`keys`·`clear`) | 앱 컨테이너 |
+| 파일 | `fs` 서비스 (`storage` 또는 `files.*` 권한) | 제3자 앱: 자기 컨테이너가 루트. 시스템 앱: 사용자 공용 파일 |
+| 웹 저장소 | `localStorage`·IndexedDB 등 | 앱 출처마다 따로, 컨테이너 안 |
 
-```json
-{
-  "permissions": ["camera", "storage", "network"]
-}
-```
-
-### 7.1 판정 규칙
-
-- 선언하지 않은 권한이 필요한 서비스는 거부됩니다 (호출이 에러로 돌아옵니다)
-- 예약 권한 `system`, `credential`, `app.manage`, `notification.read` 는 선언해도
-  얻을 수 없습니다 — 시스템 앱만 갖습니다
-- 사용자가 설정 → 애플리케이션에서 끈 권한은 그 다음 호출부터 거부됩니다
-  (에뮬레이터·기기 모두)
-- 첫 사용 시 묻는 동의 창은 아직 없습니다. 거부는 조용히 오지 않고 **에러 응답**으로
-  오므로, 앱은 실패 경로에서 사용자에게 왜 안 되는지 알려야 합니다
-
-```javascript
-ZylBridge.requestService('camera', 'requestAccess', {})
-  .then(function () { startCamera(); })
-  .catch(function () { showWhyCameraIsOff(); });   /* 권한 거부도 이 경로 */
-```
-
-### 7.2 권한 → 서비스
-
-| 권한 | 접근 가능 서비스 |
-|------|-----------------|
-| `camera` | camera |
-| `contacts` | contacts |
-| `messaging` | messaging |
-| `telephony` | telephony |
-| `location` | location |
-| `notification` | notification, alarm |
-| `network` | network |
-| `storage`·`files.read`·`files.write`·`files.delete` | fs |
-| `audio` | audio |
-| `wifi` | wifi |
-| `bluetooth` | bluetooth |
-
-선언 없이 부를 수 있는 서비스: device, storage, apps, display, input, sensors, usb,
-user, logger, accessibility, clipboard, appdata, power.
+- 제3자 앱은 사용자 공용 폴더를 보지 못하고, 다른 앱의 컨테이너도 보지 못한다.
+- 앱을 지우면 컨테이너와 OS 가 그 앱을 위해 갖고 있던 것이 함께 사라진다
+  ([SECURITY.md §5](SECURITY.md#5-앱-컨테이너--지우면-아무것도-남지-않는다)). 컨테이너 밖에
+  흔적을 남기는 방법은 없다.
 
 ---
 
-## 8. 클립보드 API
+## 10. 화면 — 폼팩터와 CSS
 
-앱 간 텍스트 데이터를 클립보드로 공유합니다.
+폼팩터는 하드웨어다. 기기는 이미지의 빌드 프로파일을 선언하고, 에뮬레이터는 하드웨어만 알리며,
+`form-factor.js` 가 판정해 페이지에 적용한다. 앱은 판정하지 않고 결과만 읽는다.
 
-### 8.1 클립보드에 복사
-
-```javascript
-ZylBridge.requestService('clipboard', 'copy', {
-  text: '복사할 텍스트',
-  mimeType: 'text/plain',      // 선택사항, 기본값: 'text/plain'
-  sourceApp: 'com.yourname.myapp'  // 선택사항
-}).then(function(result) {
-  console.log('복사됨:', result);
-});
-```
-
-### 8.2 클립보드에서 붙여넣기
-
-```javascript
-ZylBridge.requestService('clipboard', 'paste', {})
-  .then(function(data) {
-    console.log('클립보드 텍스트:', data.text);
-    console.log('MIME 타입:', data.mimeType);
-    console.log('출처 앱:', data.sourceApp);
-    console.log('복사 시각:', new Date(data.timestamp));
-  });
-```
-
-### 8.3 클립보드 초기화
-
-```javascript
-ZylBridge.requestService('clipboard', 'clear', {})
-  .then(function() {
-    console.log('클립보드 지워짐');
-  });
-```
+- `<html>` 에 `ff-<id>` 클래스와 `data-form-factor`·`data-nav-model` 속성이 붙는다.
+  폼팩터별 스타일은 `html.ff-<id>` 선택자로만 쓴다.
+- JS 에서 기기 성질이 필요하면 `ZylFormFactor.getProfile()` 을 읽는다
+  (`id`, `navModel`, `inputModel`, `fontScale`, `touchTarget`, `density`, `statusBar`).
+  화면 크기로 직접 분기하지 않는다.
+- OS 가 폼팩터 배율로 루트를 확대한다. 그래서:
+  - `vh`/`vw` 대신 `var(--ff-vh)`/`var(--ff-vw)` 를 쓴다 (확대는 뷰포트 단위에 걸리지 않는다).
+  - `zoom: var(...)` 을 쓰지 않는다 (`zoom` 은 `var()` 를 무시한다).
+  - 누르는 대상의 최소 크기는 `var(--ff-touch-target)`.
+- 포인터가 없는 기기(리모컨·다이얼·크라운)에서는 `focus-nav.js` 가 방향키로 포커스를 옮긴다.
+  조작할 요소는 `button`·`a[href]`·입력 요소·`[tabindex]`·`[data-focusable]` 로 만든다.
+- GPU 없이도 그려져야 한다. `backdrop-filter` 에는 불투명에 가까운 배경색 폴백을 함께 주고,
+  무거운 필터·3D 변환은 없어도 동작하는 장식으로만 쓴다.
 
 ---
 
-## 9. UI 디자인 가이드라인
+## 11. 화면 키보드
 
-### 9.1 색상 팔레트
-
-| 용도 | 값 | 변수명 |
-|------|-----|--------|
-| 배경 | `#0a0a1a` | `--bg` |
-| 표면 | `rgba(255,255,255,0.06)` | `--surface` |
-| 텍스트 | `#ffffff` | `--text` |
-| 보조 텍스트 | `rgba(255,255,255,0.5)` | `--text-secondary` |
-| 액센트 | `#4a9eff` | `--accent` |
-| 위험 | `#ef4444` | `--danger` |
-| 성공 | `#22c55e` | `--success` |
-
-### 9.2 필수 CSS 변수
-
-```css
-main {
-  padding-top: var(--safe-top);     /* 36px — 상태바 높이 */
-  padding-bottom: var(--safe-bottom); /* 24px — 하단 제스처 영역 */
-}
-```
-
-### 9.3 컴포넌트 스타일
-
-```css
-.card {
-  background: rgba(255, 255, 255, 0.06);
-  border-radius: 16px;
-  padding: 16px;
-}
-
-.btn-primary {
-  background: var(--accent);
-  color: white;
-  border: none;
-  border-radius: 12px;
-  padding: 12px 24px;
-}
-
-/* backdrop-filter는 반드시 불투명 폴백 제공 (opacity ≥ 0.85) */
-.glass {
-  background: rgba(10, 10, 26, 0.90); /* 폴백 */
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-}
-```
-
-### 9.4 터치 인터랙션
-
-- 터치 타겟 최소 44×44px
-- `:active` 상태에 `transform: scale(0.95)` 적용
-- 스와이프 임계값: 50px
-- 긴 누르기: 500ms
+텍스트 입력에 포커스가 가면 OS 키보드가 앱 페이지 안에 뜬다(마우스·키보드가 입력 장치인
+폼팩터에서는 뜨지 않는다). 키보드가 떠 있는 동안 `body` 에 `keyboard-visible` 클래스와
+`--keyboard-height` 변수가 걸리고 `runtime.css` 가 아래 여백을 준다. 앱은 따로 할 일이 없다.
+화면 아래에 고정한 요소가 있으면 `--keyboard-height` 만큼 올린다. 앱이 자기 키보드를 만들지 않는다.
 
 ---
 
-## 10. 다국어 지원 (i18n)
+## 12. 다국어
 
-### 10.1 앱별 i18n.js 작성 (필수)
-
-**모든 앱은 `js/i18n.js` 파일을 포함해야 합니다.** 5개 언어(ko/en/ja/zh/es) 번역 필수.
+사용자에게 보이는 글은 모두 `zylI18n` 을 거친다. 앱 안에 영어·한국어 문장을 박지 않는다.
 
 ```javascript
-// myapp/js/i18n.js
+/* i18n.js — 앱 디렉터리 루트. 번역 언어 모두를 같은 키로 */
 (function () {
   'use strict';
-  if (!window.zylI18n || !window.zylI18n.addTranslations) return;
-
-  zylI18n.addTranslations('ko', { 'myapp.title': '내 앱' });
-  zylI18n.addTranslations('en', { 'myapp.title': 'My App' });
-  zylI18n.addTranslations('ja', { 'myapp.title': 'マイアプリ' });
-  zylI18n.addTranslations('zh', { 'myapp.title': '我的应用' });
-  zylI18n.addTranslations('es', { 'myapp.title': 'Mi App' });
+  if (typeof zylI18n === 'undefined') return;
+  zylI18n.addTranslations('ko', { 'myapp.title': '내 앱', 'myapp.greeting': '{name}님 안녕하세요' });
+  zylI18n.addTranslations('en', { 'myapp.title': 'My App', 'myapp.greeting': 'Hello, {name}' });
+  /* en·ja·zh·es 도 같은 키로 … */
 })();
 ```
 
-### 10.2 HTML/JS에서 사용
-
-```html
-<span data-i18n="myapp.title">내 앱</span>
-```
-
-```javascript
-var text = zylI18n.t('myapp.title');
-var msg  = zylI18n.t('myapp.welcome', { name: '사용자' });
-```
-
----
-
-## 11. 권한 시스템
-
-> **중요 (v0.1.0)**: 권한은 **실행 시점에 강제 적용**됩니다.
-> `app.json`에 선언되지 않은 권한으로 서비스를 호출하면 요청이 **차단**됩니다.
-
-### 11.1 권한 목록
-
-권한 이름과 서비스의 짝은 `apps/system/permissions.js` 의 `SERVICE_PERMISSIONS` 가
-유일한 출처다 (기기 `bridge.c` 가 같은 표를 쓴다).
-
-| 권한 | 설명 | 위험도 |
-|------|------|--------|
-| `notification` | 자기 알림 올리기 (`appId` 는 OS 가 이 앱으로 채운다) | 보통 |
-| `storage` / `files.read` / `files.write` / `files.delete` | 파일 (제3자 앱은 자기 컨테이너가 루트) | 보통 |
-| `camera` | 카메라 접근 | 높음 |
-| `microphone` | 마이크 접근 | 높음 |
-| `location` | 위치 정보 | 높음 |
-| `wifi` | WiFi 스캔/연결 | 보통 |
-| `bluetooth` | BT 스캔/연결 | 보통 |
-| `contacts` | 연락처 접근 | 높음 |
-| `messaging` | 메시지 접근 | 높음 |
-| `telephony` | 전화 기능 | 높음 |
-| `network` | 허용 도메인으로의 HTTP 요청 | 보통 |
-| `audio` | 소리 재생·볼륨 | 낮음 |
-
-`system`·`credential`·`app.manage`·`notification.read`(다른 앱의 알림 읽기·지우기)는
-예약 권한이다 — `app.json` 에 적어도 제3자 앱에는 주어지지 않는다.
-
-### 11.2 권한 차단 예시
-
-```javascript
-// app.json에 "notification" 없으면 차단
-navigator.system.notification.create('제목', '내용');
-// → Error: Permission denied
-```
+- 앱이 갖출 번역 언어는 ko·en·ja·zh·es 다(규칙: [CLAUDE.md](../CLAUDE.md) 4). 그 밖의
+  언어에서는 OS 가 영어로 대신한다.
+- 키 이름은 `<앱 이름>.<키>`.
+- HTML: `data-i18n`(글), `data-i18n-placeholder`, `data-i18n-aria-label` 은 자동으로 번역된다.
+- JS: `zylI18n.t(key, { name: … })`, 복수형은 `zylI18n.tp(key, count)` (`key.one`·`key.other`),
+  날짜·시간·숫자·용량은 `formatDate`·`formatTime`·`formatRelative`·`formatNumber`·`formatBytes`.
+- 언어는 OS 가 정한다. JS 로 만든 글은 `zylI18n.onLocaleChange(fn)` 에서 다시 그린다.
+- OS 가 앱 대신 띄우는 글(알림 제목, 알람 `title`)도 앱이 번역해서 넘긴다 — OS 는 앱의
+  번역을 갖고 있지 않다.
 
 ---
 
-## 12. 패키징과 서명 (봉인)
+## 13. JavaScript 는 ES5
 
-기기는 **봉인(seal)된 앱만** 설치하고 실행합니다. 봉인은 패키지 안의
-`.zyl-seal/seal.json`(앱의 모든 파일과 SHA-256)과 그 서명입니다. 설치 후
-파일이 하나라도 바뀌거나 늘거나 줄면 그 앱은 실행되지 않습니다. 서명을
-건너뛰는 개발자 모드는 없습니다. 형식은 [APPSTORE_API.md](APPSTORE_API.md)를 따릅니다.
+기기의 WebKitGTK 에서 그대로 돌아야 하므로 앱의 모든 JS 는 ES5 문법만 쓴다.
 
-- **스토어 배포 앱**: 스토어가 자기 키로 봉인합니다 (`tools/build-store.py package --key store.key`)
-- **개발 빌드**: 개발자 키로 봉인합니다. 스토어가 서명한 **개발자 인증서**와
-  **프로비저닝 프로필**(앱 id 패턴, 기기 ID, 기한)이 허락한 기기에서만 설치·실행됩니다
+- `var` 만 (`let`/`const` 없음), `function` 만 (화살표 함수 없음)
+- 문자열 연결 (템플릿 리터럴 없음), 프로토타입 (`class` 없음)
+- `Promise` 의 `.then()`/`.catch()` (`async`/`await` 없음)
+- 구조 분해·전개·기본 매개변수 없음
 
-### 12.1 개발 빌드 흐름
+`tools/zyl validate` 가 기본 위반을 찾는다.
+
+---
+
+## 14. 패키징과 개발 빌드
+
+기기는 **봉인된 앱만** 설치·실행하고, 봉인을 건너뛰는 개발자 모드는 없다 — 언제 다시
+확인하고 무엇을 내주는지는 [SECURITY.md §6](SECURITY.md#6-앱-봉인과-스토어-서명), 봉인·서명의
+형식과 거부 사유는 [APPSTORE_API.md](APPSTORE_API.md).
+
+- **스토어 배포**: 스토어 운영자가 자기 키로 봉인해 카탈로그에 싣는다.
+- **개발 빌드**: 개발자 키로 봉인한다. 스토어가 서명한 개발자 인증서와 프로비저닝 프로필이
+  허락한 기기·앱 id·기한 안에서만 설치·실행된다.
 
 ```bash
-./tools/zyl keygen acme          # ~/.zyl/keys/acme.key(비밀), acme.pub
-# 1) acme.pub 와 테스트할 기기의 ID(설정 > 이 기기 정보 > 기기 ID)를 스토어에 보냄
-# 2) 스토어가 acme.cert.json(+.sig), myapp.profile.json(+.sig) 을 발급
-cd myapp/
+tools/zyl keygen acme       # ~/.zyl/keys/acme.key(비밀), acme.pub — 앱 폴더 밖에 둔다
+# acme.pub 와 시험할 기기의 ID(설정 > 이 기기 정보 > 기기 ID)를 스토어 운영자에게 보내
+# 개발자 인증서(acme.cert.json)와 프로필(myapp.profile.json)을 .sig 와 함께 받는다
+cd myapp
+../tools/zyl validate
 ../tools/zyl package --key ~/.zyl/keys/acme.key \
-    --cert ../acme.cert.json --profile ../myapp.profile.json      # → ../<id>-<version>.zpkg
-# 3) .zpkg 를 기기의 사용자 파일(예: Downloads)에 복사 → 파일 앱에서 열기 → 앱스토어가 설치
+    --cert ../acme.cert.json --profile ../myapp.profile.json   # → ../<id>-<version>.zpkg
 ```
 
-에뮬레이터의 가상 기기도 고유 기기 ID(`EMU-…`)를 가지며 같은 규칙으로 검사합니다.
+`.zpkg` 를 기기의 사용자 파일로 옮겨 파일 앱에서 열면 앱스토어가 확인하고 설치한다.
+에뮬레이터의 가상 기기도 자기 기기 ID 를 가지며 같은 규칙으로 검사한다.
+패키지 크기·파일 수의 상한은 기기 스토어 서비스가 정한다
+(`runtime/services/appstore/store_package.h`, `store_catalog.h`).
 
-### 12.2 설치되지 않을 때
+---
 
-| 안내 | 이유 |
+## 15. 시스템 앱 (이 저장소의 `apps/`)
+
+- 앱 디렉터리 `apps/<이름>/`, 이미지에 싣는 `meson.build` 의 `install_subdir`,
+  OS 화이트리스트 `ZylPermissions.SYSTEM_APPS` 에 함께 넣는다.
+- 저장소 규칙(파일 헤더, mock 데이터 금지, 에뮬레이터 독립 등)은 [CLAUDE.md](../CLAUDE.md) 를
+  따르고 `bash tests/verify-all.sh` 로 확인한다. 앱마다의 성능 예산은
+  [CONTRIBUTING.md](../CONTRIBUTING.md#성능-예산).
+
+---
+
+## 16. 문제 찾기
+
+기기에는 셸이 없다. WAM 의 판정은 직렬 콘솔에 남는다(`system/zyl-wam.service` 의
+`StandardOutput=journal+console`). 보드에서 콘솔을 보는 법은 `board/<id>/README.md`.
+
+| 증상 | 로그 / 원인 |
 |---|---|
-| 이 기기에서 실행하도록 허락된 개발 빌드가 아닙니다 | 프로필에 이 기기 ID나 앱 id 가 없음 (`not_provisioned`) |
-| 개발자 인증서나 프로필이 만료되었습니다 | `notAfter` 경과 (`expired`) — 스토어에서 새로 발급 |
-| 앱스토어가 이 개발자의 인증서를 폐기했습니다 | 카탈로그의 `revoked` 목록 (`revoked`) |
-| 앱스토어의 내용을 확인할 수 없어… | 봉인이 없거나 서명·파일이 맞지 않음 (`bad_package`) |
-
----
-
-## 13. zyl SDK CLI
-
-`tools/zyl` 은 개발 빌드까지의 워크플로우를 지원합니다.
-
-```bash
-./tools/zyl init <app-name>      # 새 앱 프로젝트 (보일러플레이트)
-./tools/zyl validate             # app.json + 코드 구조 검증
-./tools/zyl keygen [name]        # 개발자 키 쌍 (~/.zyl/keys — 앱 폴더 밖이어야 패키지에 섞이지 않음)
-./tools/zyl package --key K --cert C --profile P [out-dir]   # 개발 빌드 .zpkg
-```
-
-### zyl validate 검사 항목
-- `app.json` 필수 필드 존재 여부
-- `entry` 파일 존재 여부
-- ES5 호환성 기본 검사
-- i18n 5개 언어
-
----
-
-## 14. 앱스토어 배포
-
-### 등록 절차
-
-1. **개발자 등록**: 스토어 운영자에게 공개 키(`zyl keygen` 의 `.pub`) 제출 → 개발자 인증서 발급
-2. **개발·테스트**: 프로비저닝 프로필로 등록한 기기에서 개발 빌드 실행
-3. **앱 제출**: 앱 소스 디렉토리(또는 개발 빌드) 제출
-4. **심사**: 보안 + 품질 검토
-5. **배포**: 스토어가 자기 키로 봉인해 카탈로그에 게시
-
-### 심사 기준
-
-- **보안**: XSS, 인젝션, 데이터 유출 취약점 없어야 함
-- **성능**: 앱 시작 3초 이내, 메모리 100MB 이하
-- **UX**: 터치 타겟 44px 이상, 접근성 기본 준수
-- **권한**: 기능에 필요한 최소 권한만 요청
-
----
-
-## 15. 디버깅
-
-### 브라우저에서 테스트
-
-```bash
-python3 -m http.server 8080 --directory myapp/
-# 브라우저에서 http://localhost:8080 접속
-```
-
-Bridge API가 없는 환경에서는 `ZylBridge`가 자동으로 콘솔 폴백을 제공합니다.
-
-### Zyl OS에서 디버깅
-
-```bash
-# 앱 로그 확인
-journalctl -u zyl-wam -f
-
-# WebKit Inspector 활성화 (개발자 모드)
-export WEBKIT_INSPECTOR_SERVER=0.0.0.0:8090
-# 호스트 PC Chrome DevTools: chrome://inspect → Configure → [device-ip]:8090
-```
-
-### 공통 문제 해결
-
-| 문제 | 원인 | 해결 |
-|------|------|------|
-| 앱이 설치되지 않음 | 봉인·프로비저닝 | §12.2 의 안내별 이유 확인 |
-| Bridge API 작동 안함 | 일반 브라우저 | ZylBridge 폴백 확인 |
-| 권한 차단 에러 | app.json 미선언 | `permissions` 배열에 권한 추가 |
-| CSS 깨짐 | safe area 미적용 | `--safe-top`, `--safe-bottom` 사용 |
-| requestService 응답 없음 | timeout (기본 10초) | 서비스 이름/메서드명 확인 |
-
----
-
-## 16. API 레퍼런스
-
-### ZylBridge
-
-| 메서드 | 반환 | 설명 |
-|--------|------|------|
-| `requestService(service, method, params)` | Promise | 서비스 호출 (requestId 매칭) |
-| `requestServiceFire(service, method, params)` | void | fire-and-forget 서비스 호출 |
-| `sendToSystem(message)` | void | OS에 메시지 전송 |
-
-### ZylIntent
-
-| 메서드 | 반환 | 설명 |
-|--------|------|------|
-| `registerFilter(appId, action, mimeType)` | void | 인텐트 필터 등록 |
-| `startActivity(intent)` | void | 인텐트 기동 |
-| `resolve(intent)` | string[] | 처리 가능한 앱 목록 반환 |
-| `ACTION.VIEW` | string | 표준 액션 상수 |
-
-### ZylContentProvider
-
-| 메서드 | 반환 | 설명 |
-|--------|------|------|
-| `registerProvider(authority, impl)` | void | 프로바이더 등록 |
-| `query(callerAppId, uri, projection)` | Promise | 데이터 쿼리 |
-| `insert(callerAppId, uri, values)` | Promise | 데이터 삽입 |
-| `update(callerAppId, uri, values)` | Promise | 데이터 수정 |
-| `delete(callerAppId, uri)` | Promise | 데이터 삭제 |
-
-### JS 서비스 (33개 — apps/system/services/)
-
-앱에서 `ZylBridge.requestService(service, method, params)`로 접근:
-
-| # | 서비스 | 주요 메서드 |
-|---|--------|-----------|
-| 1 | fs | getDirectory, getFileContent, writeFile, mkdir, remove |
-| 2 | device | getInfo |
-| 3 | storage | getUsage |
-| 4 | apps | getInstalled, install, uninstall, getAppInfo |
-| 5 | settings | get, set, getAll |
-| 6 | wifi | scan, connect, getConnected |
-| 7 | bluetooth | getDevices, getConnected |
-| 8 | browser | navigate, getHistory |
-| 9 | notification | create, list, dismiss, clearAll |
-| 10 | power | getState, setBrightness, getBattery |
-| 11 | display | getInfo, setRotation, getDPI |
-| 12 | input | getKeyboardState, setIME |
-| 13 | sensors | getAccelerometer, getGyroscope, getProximity, getLight |
-| 14 | location | getPosition |
-| 15 | telephony | getState, getCallState, dial, answer, hangup, sendDTMF, getCallLog, deleteCallLog (기록은 서비스가 통화 상태로 남김) |
-| 16 | usb | getState, setMode |
-| 17 | user | getCurrentUser, listUsers, switchUser |
-| 18 | credential | store, lookup, delete |
-| 19 | appstore | search, install, uninstall, listInstalled |
-| 20 | updater | getState, check, install, restart (시스템 앱 전용) |
-| 21 | sandbox | getPolicy |
-| 22 | logger | getLogs, clearLogs |
-| 23 | accessibility | getState, setFontScale, setHighContrast, setScreenReader, speak |
-| 24 | audio | getVolume, setVolume ({stream: media·notif·alarm·ringtone·system, value}), setMicMute, playNotificationSound, vibrate |
-| 25 | contacts | getAll, getById, create, update, delete, search |
-| 26 | messaging | getConversations, getMessages, sendMessage, deleteMessage |
-| 27 | clipboard | copy, paste, clear |
-| 28 | network | fetch |
-| 29 | alarm | set, cancel, list — 앱이 닫혀 있어도 울린다 (OS 가 알림을 띄움) |
-
-### zylI18n (공유 모듈)
-
-| 메서드 | 반환 | 설명 |
-|--------|------|------|
-| `t(key, params)` | string | 번역 |
-| `formatDate(date)` | string | 날짜 포맷 |
-| `setLocale(locale)` | void | 로케일 변경 |
-| `getLocale()` | string | 현재 로케일 |
-| `addTranslations(locale, keys)` | void | 앱별 번역 키 등록 |
-| `applyTranslations()` | void | DOM data-i18n 재적용 |
-
----
-
-## 라이선스
-
-Zyl OS SDK와 이 가이드는 MIT 라이선스 하에 배포됩니다.
+| 서비스 호출이 reject | `denied <서비스>.<메서드> (missing permission)` — `permissions` 에 없거나 사용자가 껐거나 예약 권한 |
+| 앱이 목록에 없거나 열리지 않음 | `<id> refused: …` — 봉인·인증서·프로필 문제 (사유는 APPSTORE_API.md) |
+| 일부 파일만 안 읽힘 | `<id>/<경로> is not as sealed — not served` — 앱이 등록된 뒤 바뀐 파일 |
+| 응답이 늦게 reject | 시간 초과 — 서비스 이름·메서드 이름 확인 |
+| 홈 화면에 안 보임 | `formFactors` 에 이 기기의 폼팩터가 없음, 또는 `launcher: false` |

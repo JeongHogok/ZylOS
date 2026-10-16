@@ -1,32 +1,29 @@
-# Generic RISC-V 64 (QEMU virt)
+# generic-riscv64 — 일반 riscv64 (QEMU virt)
 
-보드가 없을 때 **실기기와 같은 아키텍처(riscv64)와 같은 HAL 백엔드(`linux`)** 로
-OS 를 돌려 보기 위한 보드입니다. `board/emulator` 는 호스트 아키텍처에서 HAL
-에뮬레이터 백엔드로 돌기 때문에, 기기 코드가 riscv64 에서 처음 겪는 문제를
-잡지 못합니다.
+보드가 없을 때 **실기기와 같은 아키텍처(riscv64)와 같은 HAL 백엔드(`linux`)** 로 OS 를
+돌려 보는 보드입니다. `board/emulator` 는 호스트 아키텍처와 HAL `emulator` 백엔드로 돌기
+때문에, 기기 코드가 riscv64 에서 처음 겪는 문제(교차 빌드, riscv64 rootfs, 실기기 HAL)를
+보지 못합니다. QEMU `-machine virt` 가 디바이스 트리를 주므로 DTS 가 없고, 디스크는
+virtio 입니다.
 
 ## 쓰는 법
 
-교차 빌드 → 이미지 → QEMU 부팅 + 자기점검:
+`--cross-file tools/cross/riscv64.ini -Dboard=generic-riscv64 -Dprofile=<프로파일>` 로
+설정하고(meson 은 교차 파일을 보드에서 끌어오지 않습니다), 빌드·이미지 조립(`--with-kernel`)·
+QEMU 부팅은 [DEPLOYMENT_GUIDE.md](../../docs/DEPLOYMENT_GUIDE.md) §2–4 를 따릅니다. 그대로
+도는 명령 순서와 패키지 목록은 `.github/workflows/riscv64.yml` 의 `qemu-boot-riscv64` 잡입니다.
 
-```bash
-meson setup builddir-rv64 --prefix=/usr \
-    --cross-file tools/cross/riscv64.ini \
-    -Dboard=generic-riscv64 -Dprofile=phone
-ninja -C builddir-rv64
-tools/build-image.sh --builddir builddir-rv64 --out out/rv64 --with-kernel
-tools/run-qemu.sh --image out/rv64/zyl-os-generic-riscv64-phone.img \
-    --builddir builddir-rv64 --check
-```
+이 보드에서 더 챙길 것:
 
-필요한 것: `crossbuild-essential-riscv64`, `:riscv64` 개발 라이브러리(multiarch),
-`qemu-user-static` + binfmt(2단계 부트스트랩), `qemu-system-misc`.
-정확한 패키지 목록은 CI 의 `qemu-boot-riscv64` 잡이 단일 출처입니다.
+- 컨테이너에서 조립한다면 binfmt 를 등록할 권한이 있어야 하고(같은 잡이 privileged 로 도는
+  이유), 등록이 됐는지는 riscv64 바이너리가 실제로 실행되는지로 확인합니다.
+- 에뮬레이션이라 느립니다. `run-qemu.sh --timeout` 을 넉넉히 주십시오.
 
-## 이 보드가 검증하는 것 / 못 하는 것
+레인이 보지 못하는 것([DEPLOYMENT_GUIDE.md](../../docs/DEPLOYMENT_GUIDE.md#자기점검-toolszyl-selftest))은
+[board/bpi-f3](../bpi-f3/README.md) 와 실기기의 일입니다.
 
-**검증**: riscv64 교차 빌드, riscv64 rootfs 조립, 실기기 HAL 백엔드(`linux`)
-빌드·기동, 서비스·버스·화면 체인.
+## 계약 파일
 
-**검증 못 함**: SoC 고유 경로 — GPU(Imagination), 모뎀, ISP, eFuse, U-Boot 정책.
-그것은 `board/bpi-f3` 과 실기기의 일입니다.
+- `meson.build` — 보드 계약 (설명: `board/meson.build`)
+- `partitions.conf` — 디스크 레이아웃. 실기기와 같은 파티션 번호, 노드와 크기만 다름
+- `tools/cross/riscv64.ini` — 교차 툴체인 (`board_cross_file`)

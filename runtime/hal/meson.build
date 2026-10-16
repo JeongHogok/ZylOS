@@ -20,9 +20,30 @@ hal_sources = files(
 # files(...)); the rest take V4L2
 hal_sources += get_variable('board_hal_camera', files('hal_camera.c'))
 
+# A/B slot partitions come from the board's disk layout (board/<id>/partitions.conf,
+# the single source). A board without one has no slots: the Boot HAL is absent
+fs = import('fs')
+boot_layout_args = []
+boot_layout_file = meson.project_source_root() / 'board' / board_id / 'partitions.conf'
+if fs.exists(boot_layout_file)
+  boot_layout = {}
+  foreach line : fs.read(boot_layout_file).split('\n')
+    kv = line.strip().split('=')
+    if kv.length() == 2 and not kv[0].startswith('#')
+      boot_layout += {kv[0]: kv[1]}
+    endif
+  endforeach
+  part = boot_layout['ZYL_DISK_NODE'] + boot_layout['ZYL_PART_SEP']
+  foreach def : [['ZYL_SLOT_A_ROOTFS', 'ZYL_PART_ROOT_A'], ['ZYL_SLOT_A_VERITY', 'ZYL_PART_VERITY_A'],
+                 ['ZYL_SLOT_B_ROOTFS', 'ZYL_PART_ROOT_B'], ['ZYL_SLOT_B_VERITY', 'ZYL_PART_VERITY_B']]
+    boot_layout_args += '-D@0@="@1@@2@"'.format(def[0], part, boot_layout[def[1]])
+  endforeach
+endif
+
 json_glib = dependency('json-glib-1.0')
 cc = meson.get_compiler('c')
 zyl_hal = static_library('zyl-hal', hal_sources,
+  c_args: boot_layout_args,
   include_directories: include_directories('.'),    # hal.h for a board's own sources
   dependencies: [gio, json_glib, cc.find_library('m'), dependency('threads')],
   install: false,

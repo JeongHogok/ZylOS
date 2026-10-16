@@ -49,9 +49,8 @@ zyl_boot_limit=3
 zyl_unlock_button=user
 fit_addr=0x10000000
 
-# Partition layout (eMMC / SD) — board/bpi-f3/README.md
-# p1 boot (fit-image-a.itb, fit-image-b.itb)   p2 rootfs A   p3 verity A
-# p4 rootfs B   p5 verity B   p6 userdata (/data)
+# Partition layout: board/bpi-f3/partitions.conf (tests/test_boot_env.sh checks
+# zyl_boot_part·zyl_data against it). The boot partition holds fit-image-{a,b}.itb
 
 # ── Lock change confirmation: hold the button during a 10 s window ──
 zyl_confirm=\

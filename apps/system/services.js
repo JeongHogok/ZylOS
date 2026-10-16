@@ -222,16 +222,6 @@ window.ZylSystemServices = (function () {
           _modules.audio._loadFromSettings(s);
         }
       }).catch(function () { /* audio settings load failed — use defaults */ });
-      /* Load permission overrides from settings */
-      _modules.settings._loadFromBackend().then(function () {
-        var perms = _modules.settings._getState().app_permissions;
-        if (perms && typeof ZylPermissions !== 'undefined') {
-          Object.keys(perms).forEach(function (appId) {
-            var revoked = String(perms[appId]).split(',').filter(Boolean);
-            ZylPermissions.setAppOverride(appId, revoked);
-          });
-        }
-      }).catch(function () { /* permission overrides load failed — use defaults */ });
     }
 
     /* Pre-load app list */

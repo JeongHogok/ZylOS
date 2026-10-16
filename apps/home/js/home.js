@@ -32,13 +32,18 @@
   /* Icons are loaded from app.iconSvg (sourced from each app's app.json).
      What shows here and what can be deleted come with the app list (its
      launcher and system fields); the default dock is the home.dock setting. */
-  var _FALLBACK_ICON = '<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/></svg>';
+  var _FALLBACK_ICON = 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z';
+  var SVG_NS = 'http://www.w3.org/2000/svg';
 
-  function getIconSvg(app) {
-    if (app && app.iconSvg) {
-      return '<svg viewBox="0 0 24 24"><path d="' + app.iconSvg + '"/></svg>';
-    }
-    return _FALLBACK_ICON;
+  /* iconSvg is a third-party app's path data: set as an attribute, never
+     spliced into markup (a quote in it would put the app's script in home) */
+  function setIcon(el, app) {
+    var svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    var path = document.createElementNS(SVG_NS, 'path');
+    path.setAttribute('d', (app && app.iconSvg) || _FALLBACK_ICON);
+    svg.appendChild(path);
+    el.appendChild(svg);
   }
 
   /* ─── Data Model ─── */
@@ -148,7 +153,7 @@
 
     var iconWrap = document.createElement('div');
     iconWrap.className = 'dock-icon ' + app.color;
-    iconWrap.innerHTML = getIconSvg(app);
+    setIcon(iconWrap, app);
 
     var nameEl = document.createElement('span');
     if (hasLabel(app)) nameEl.setAttribute('data-i18n', app.nameKey);
@@ -316,7 +321,7 @@
 
         var iconWrap = document.createElement('div');
         iconWrap.className = 'app-icon-wrap ' + app.color;
-        iconWrap.innerHTML = getIconSvg(app);
+        setIcon(iconWrap, app);
 
         var nameEl = document.createElement('div');
         nameEl.className = 'app-name';

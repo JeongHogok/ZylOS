@@ -166,6 +166,24 @@ var settingsTests = (function () {
         assert.strictEqual(d.brightness, 80);
       });
     });
+  }).then(function () {
+    /* The OS applies a permission the user turned off — on load and on update —
+       not the emulator watching settings traffic */
+    return asyncTest('revoked app permissions reach the permission gate', function () {
+      var applied = {};
+      var saved = ZylPermissions.setAppOverride;
+      ZylPermissions.setAppOverride = function (appId, revoked) { applied[appId] = revoked; };
+      var inv = createMockInvoker({ 'load_settings': { app_permissions: { 'com.example.a': 'camera,location' } }, 'save_settings': true });
+      var s2 = ns.settings({ invoke: inv });
+      return s2._loadFromBackend().then(function () {
+        assert.deepStrictEqual(applied['com.example.a'], ['camera', 'location']);
+        s2.update({ category: 'app_permissions', key: 'com.example.b', value: 'contacts' });
+        assert.deepStrictEqual(applied['com.example.b'], ['contacts']);
+        s2.update({ category: 'display', key: 'brightness', value: 10 });
+        assert.strictEqual(Object.keys(applied).length, 2);
+      }).then(function () { ZylPermissions.setAppOverride = saved; },
+               function (e) { ZylPermissions.setAppOverride = saved; throw e; });
+    });
   });
 })();
 
@@ -1454,7 +1472,7 @@ var gateTests = (function () {
         return ask('notification', 'cancel', { id: r.id }, 'com.example.chat');
       }).then(function (r) {
         assert.strictEqual(r.success, true);
-        return ask('notification', 'cancel', { id: 1, appId: '' }, 'com.zylos.statusbar');   /* bridge.js clearNotification */
+        return ask('notification', 'cancel', { id: 1, appId: '' }, 'com.zylos.statusbar');
       }).then(active).then(function (a) {
         assert.deepStrictEqual(a.map(function (n) { return n.appId; }), ['com.zylos.settings']);
       });

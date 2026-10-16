@@ -58,7 +58,7 @@ var ZylBootSequence = (function () {
 
     // 버전 표시
     var versionEl = document.getElementById('boot-version');
-    if (versionEl) versionEl.textContent = 'v' + (config.os_version || '0.1.0');
+    if (versionEl) versionEl.textContent = 'v' + (config.os_version || ZylRelease.version);
 
     // 프로그레스 + 로그
     var progressBar = document.getElementById('boot-progress-bar');
@@ -67,7 +67,7 @@ var ZylBootSequence = (function () {
 
     var ramLabel = config.ram_mb >= 1024 ? (config.ram_mb / 1024) + ' GB' : config.ram_mb + ' MB';
     var storageLabel = config.storage_gb + ' GB';
-    var version = config.os_version || '0.1.0';
+    var version = config.os_version || ZylRelease.version;
 
     // Tauri 리소스 예약 (병렬)
     var resourceReady = false;

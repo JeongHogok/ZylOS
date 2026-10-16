@@ -2,17 +2,6 @@
 
 이 파일은 AI 어시스턴트와 모든 개발자가 반드시 따라야 하는 프로젝트 규칙입니다.
 
-## 코드베이스 현황 (2026-10-15)
-
-- **파일 수**: 528개 (`git ls-files`)
-- **LoC**: ~74,600줄 (추적 중인 .c .h .js .css .html .rs .sh .py)
-- **C 서비스 디렉토리**: 32개 (runtime/services/, 전부 D-Bus 데몬)
-- **systemd 서비스**: 35개 (system/*.service — 서비스 32 + wam·compositor·apparmor)
-- **JS 서비스 모듈**: 33개 (apps/system/services/)
-- **HAL 구현체**: 15개 (runtime/hal/)
-- **시스템 앱**: 22개 (apps/, shared 포함)
-- **에뮬레이터**: Tauri 2.x (Rust), aes-gcm 암호화
-
 ## 아키텍처 경계 — 절대 규칙
 
 ### 1. OS 이미지(apps/)는 에뮬레이터(emulator-app/)에 절대 의존하지 않는다
@@ -21,7 +10,7 @@
 - `window.__TAURI__` 참조 금지
 - `__TAURI__.core.invoke` 호출 금지
 - `window.parent.postMessage()` 직접 호출 금지 → 반드시 `ZylBridge.sendToSystem()` 사용
-- 에뮬레이터 전용 커맨드명(`boot_device`, `shutdown_device` 등) 참조 금지
+- 에뮬레이터의 Tauri 커맨드명(`boot_device` 등) 참조 금지
 - `emulator-app/` 경로의 파일 import/참조 금지
 
 **필수 패턴:**
@@ -56,7 +45,8 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 
 - 사용자에게 보이는 **모든 텍스트**는 `zylI18n.t('key')` 경유
 - 하드코딩된 영어/한국어 문자열 금지
-- 새 키 추가 시 반드시 **5개 언어** (ko, en, ja, zh, es) 동시 추가
+- 앱의 번역은 **ko·en·ja·zh·es** 를 함께 갖춘다 — 새 키는 다섯 언어에 동시 추가
+  (verify-all A6, 제3자 앱은 `tools/zyl validate` 가 검사)
 - i18n 키는 `{앱이름}.{키이름}` 네이밍 규칙 준수
 
 ### 5. Mock/Demo 데이터 절대 금지
@@ -84,7 +74,9 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 
 ### 8. 보안 원칙
 
-- 시스템앱 판별은 OS 화이트리스트(`ZylPermissions.SYSTEM_APPS`)가 유일한 권위
+- 시스템 앱은 OS 이미지에 들어간 앱이다 — 기기는 이미지의 앱 디렉터리(`meson.build` 의
+  `install_subdir`), 에뮬레이터는 `ZylPermissions.SYSTEM_APPS`. 두 집합은 같아야 한다
+  (verify-all 대조). 이미지 밖에서 온 앱(스토어·개발 빌드)은 무엇을 선언하든 제3자 앱
 - 어느 앱이 앞에 올지(OOBE·잠금 화면·홈·최근 앱·앱 전환)는 OS 만 정한다: 에뮬레이터
   `apps/system/shell.js`, 기기 `runtime/wam/src/shell` (같은 규칙, `tests/test_shell.c`
   ·`test_services.js` 가 같은 시나리오로 검증). 에뮬레이터·컴포지터는 그 답대로 띄우기만
@@ -96,7 +88,6 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
   정책(`panelMode`)이 정한다. 에뮬레이터·컴포지터가 이런 UI 를 직접 그리지 말 것
 - 서비스 이벤트 중 한 앱의 것(알림, 지오펜스)은 제3자 앱에 자기 것만 간다 —
   `permissions.js` 의 `OWNED_EVENTS` 가 권위, `bridge.c` 사본(verify-all 대조)
-- 앱이 스스로를 시스템앱으로 선언하는 것을 신뢰하지 않음
 - `settings.json`, `.credentials/`, `.system/`은 보호 경로
 - 서비스 권한 체크는 OS 레이어에서만 수행
 - 사용자가 설정에서 끈 권한(`settings` 의 `app_permissions`)은 두 게이트 모두에서
@@ -114,10 +105,10 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 
 | 사실 | 단일 출처 | 읽는 쪽 |
 |------|-----------|---------|
-| 파티션 레이아웃 | `board/<id>/partitions.conf` | `build-image.sh`, `sign-image.sh`, `u-boot-env.txt`(테스트가 대조) |
-| 실행 시점 패키지 | `system/packages.list` | `build-image.sh`, DEPLOYMENT_GUIDE |
+| 파티션 레이아웃 | `board/<id>/partitions.conf` | `build-image.sh`, `sign-image.sh`, Boot HAL(`runtime/hal/meson.build`), `u-boot-env.txt`(테스트가 대조) |
+| 실행 시점 패키지 | `system/packages.list` | `build-image.sh` |
 | 보드·아키텍처·프로파일·prefix | meson → `builddir/zyl-board.conf` | `build-image.sh`, `run-qemu.sh` |
-| 서비스 집합 | `meson.build` 의 `zyl_profile_extras` | 생성되는 `zyl-os.target` |
+| 서비스 집합 | `meson.build` 의 `zyl_core_services` + `zyl_profile_extras` | 생성되는 `zyl-os.target` |
 | 버스 접근 권한 | `system/dbus-1/zyl-os.conf` | dbus-daemon, `tests/test_dbus_policy.sh` |
 | 서비스 권한 정책 | `apps/system/permissions.js` | `bridge.c`(verify-all 이 대조) |
 | 교차 툴체인 | `tools/cross/<arch>.ini` | 보드의 `board_cross_file` |
@@ -145,14 +136,12 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 - 암시적 인텐트 resolve가 0개면 "앱 없음" 다이얼로그, 복수면 앱 선택 다이얼로그
   (시작한 앱 화면에 OS 공용 코드 `shared/bridge.js` 가 그림, 고른 앱은 제시된 것만)
 
-### 10. ContentProvider 경계 규칙
+### 10. 앱 간 데이터 공유
 
-- 앱 간 데이터 공유는 직접 파일 접근 금지 → 반드시 ContentProvider URI 경유
-- `ZylContentProvider.query(callerAppId, uri)` — callerAppId 생략 금지
-- 프로바이더 등록 시 `ZylPermissions` 체크 로직을 impl 내부에 포함하지 않음
-  (권한 체크는 ZylContentProvider가 직접 수행)
-- content:// URI 형식 엄수: `content://authority/path`
-
+- 앱의 데이터는 그 앱 컨테이너 안에만 있다(규칙 12). 다른 앱과 나누는 길은 둘뿐:
+  OS 서비스(권한이 지킨다 — 예: 연락처는 `contacts` 서비스와 `contacts.read`)와
+  인텐트의 `extras`(규칙 9)
+- 앱이 다른 앱의 파일·저장소·DOM 을 직접 읽는 경로를 만들지 말 것
 
 ### 11. 폼팩터 — 1 OS × N 프로파일
 
@@ -184,7 +173,7 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
   `webkit/` 세션). 앱이 공유 위치에 흔적을 남기는 API 를 새로 만들지 말 것
 - 앱별 상태를 갖는 서비스를 추가하면 삭제 때 정리 경로도 함께:
   기기 `org.zylos.AppStore` 의 `AppRemoved` 시그널 구독, 에뮬레이터 모듈의
-  `_forgetApp(appId)`. `tests/store_e2e.sh` 가 삭제 후 흔적 0 을 검증한다
+  `_forgetApp(appId)`. 삭제 후 흔적 0 은 `tests/store_e2e.sh` 와 그 서비스의 단위 테스트가 검증한다
 - 앱이 누구인지는 OS 만 말한다: in-arg `caller`(항상 호출 앱), `container`
   (시스템 앱이면 "", 아니면 그 앱), `app_id`(제3자 앱이면 그 앱) — 요청 값 무시
 - 스토어 패키지·카탈로그는 스토어 키 서명(패키지 전체의 SHA-256) 없이는 설치하지
@@ -199,74 +188,20 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 
 ## 빌드 & 검증
 
-### CI 는 로컬에서 — 푸시 전 관문
-```bash
-tools/ci-local.sh                 # main 대비 바뀐 것(커밋 안 한 것 포함)에 걸리는 잡만 act 로
-tools/ci-local.sh --dry-run       # 무엇이 걸리는지만
-tools/ci-local.sh lint-js fuzz    # 잡 이름으로 골라서 / --all 은 전부
-```
-워크플로는 관심사별로 나뉘어 있고(web·native·image·riscv64·docker·licenses·emulator·
-bootloader), **각 워크플로의 `pull_request.paths` 가 "어떤 변경이 이 검사를
-부르는가" 의 유일한 출처**다 — 원격 PR 과 `ci-local.sh` 가 같은 목록을 읽는다
-(`tests/test_ci_select.sh` 가 규칙을 검증). 새 검사를 넣으면 그 검사가 읽는
-경로를 그 워크플로의 paths 에 함께 적을 것.
-**로컬에서 녹색을 본 뒤에만 푸시한다** — 원격 GitHub Actions 는 같은 워크플로의
-기록일 뿐 검증 수단이 아니다. 워크플로를 바꾸면 로컬에서도 돌아야 한다
-(ARM 맥: Arch 이미지 잡만 amd64 에뮬레이션, 나머지는 네이티브).
+명령과 잡 목록은 [CONTRIBUTING.md](CONTRIBUTING.md)(로컬 CI·테스트·퍼저·성능 예산·훅),
+보드 없이 이미지를 만들어 QEMU 로 부팅하는 레인은 [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)
+에 있다. 여기에는 지킬 것만 적는다.
 
-### 전체 검증 (모든 영역)
-```bash
-bash tests/verify-all.sh
-```
-11개 섹션에서 다음을 검사합니다:
-- **[1] OS 이미지 독립성** — Tauri 참조, postMessage 직접호출, 에뮬레이터 참조
-- **[2] ES5 호환성** — let/const/arrow function
-- **[3] i18n 완전성** — 하드코딩 문자열, 5개 언어 키 균등
-- **[4] Clean Architecture 헤더** — 모든 JS/CSS 파일
-- **[5] CSS 렌더링 호환** — backdrop-filter 폴백
-- **[6] Mock/Demo 금지** — 가짜 데이터 키워드
-- **[7] 앱 매니페스트** — app.json 필수 필드
-- **[8] 에뮬레이터 규칙** — 비즈니스 로직 금지, Rust 빌드
-- **[9] runtime/ C 코드** — TODO/FIXME, 빈 함수, CA 헤더
-- **[10] systemd 서비스** — unit 파일 존재
-- **[11] 전체 기술부채** — TODO 수, console.log, 하드코딩 비밀
-
-### 개별 검증
-```bash
-bash tests/check-os-independence.sh  # OS 이미지만
-bash tests/test_js_syntax.sh         # JS 문법
-bash tests/test_manifests.sh         # app.json
-bash tests/test_image_profiles.sh    # 폼팩터 8종이 이미지로 성립하는지 (meson 필요)
-node tests/perf/run.js               # 앱 성능 예산 (Chrome 필요, CI 'perf' 잡)
-```
-
-### 보드 없이 전체 경로 검증 (리눅스/컨테이너, root)
-```bash
-meson setup builddir --prefix=/usr -Dboard=emulator -Dprofile=phone
-ninja -C builddir
-tools/build-image.sh --builddir builddir --out out/image --with-kernel
-#   --with-kernel: QEMU 게스트는 이미지 안의 커널·모듈로 부팅해야 DRM·입력이
-#   보인다. 실기기는 서명 FIT 으로 커널을 받으므로 기본은 끔
-tools/run-qemu.sh --image out/image/zyl-os-emulator-phone.img \
-                  --builddir builddir --check                  # 부팅 + 자기점검
-```
-자기점검은 유닛·버스·정책·앱 디렉터리·`/data` 와 화면 체인(DRM → Wayland 소켓
-→ WAM 이 띄운 앱)까지 본다. riscv64(실기기와 같은 아키텍처·HAL 백엔드)로도 같은 레인을 돌린다 — 교차 빌드
-(`--cross-file tools/cross/riscv64.ini -Dboard=generic-riscv64`) + binfmt 2단계
-부트스트랩. CI 의 `qemu-boot`·`qemu-boot-riscv64` 잡이 매 커밋 같은 일을 한다.
-이 레인이 **검증하지 않는 것**:
-U-Boot·서명 FIT·dm-verity·A/B 전환(부트로더 빌드와 `tools/sign-image.sh`·
-`tests/test_boot_env.sh` 소관), SoC 고유 경로(GPU·모뎀·ISP·eFuse).
-기기에서도 같은 자기점검을 돌릴 수 있다: `systemctl start zyl-selftest`.
-
-### 성능 예산
-앱마다 시작 시간·메인스레드 블로킹·힙·DOM 노드·레이아웃 수를 CPU 스로틀 +
-GPU 없이 측정해 `tests/perf/budgets.json` 과 비교한다. 의도된 변경으로 수치가
-바뀌면 `node tests/perf/run.js --update` 로 예산을 갱신하고 그 이유를 커밋에 적는다.
-예산을 올리는 것으로 회귀를 덮지 말 것.
-
-### Git Pre-Commit Hook
-커밋 시 자동으로 apps/ 변경분에 대해 검사 실행:
-- Tauri 참조 차단
-- postMessage 직접 호출 차단
-- ES5 위반 차단
+- **로컬에서 녹색을 본 뒤에만 푸시한다** — `tools/ci-local.sh`. 원격 GitHub Actions 는
+  같은 워크플로의 기록일 뿐 검증 수단이 아니다
+- 각 워크플로의 `pull_request.paths` 가 "어떤 변경이 이 검사를 부르는가" 의 유일한
+  출처다(원격 PR 과 `ci-local.sh` 가 같은 목록을 읽고, `tests/test_ci_select.sh` 가 규칙을
+  검증). 새 검사를 넣으면 그 검사가 읽는 경로를 그 워크플로의 paths 에 함께 적을 것.
+  워크플로를 바꾸면 로컬에서도 돌아야 한다
+- `tests/verify-all.sh`(CI `verify-all`)는 이 파일의 규칙과 사본 대조의 기계 검사다.
+  규칙이나 사본을 더하면 검사도 더할 것. 무엇을 보는지는 스크립트가 출처다
+- 테스트는 판정 코드의 복사본이 아니라 실제 소스를 시험한다
+- 성능 예산(`tests/perf/budgets.json`)을 올려 회귀를 덮지 말 것. 의도한 변경으로 갱신하면
+  그 이유를 커밋에 적는다
+- QEMU 레인이 보지 못하는 것(U-Boot·서명 FIT·dm-verity·A/B 전환, SoC 고유 경로)은
+  부트로더·서명 테스트와 보드가 맡는다 — 레인이 녹색이라고 그 경로가 검증된 것이 아니다

@@ -180,14 +180,6 @@ var ZylBridge = (function () {
     return !!(window.navigator && window.navigator.system);
   }
 
-  /**
-   * Check whether the WebKit message handler bridge is available.
-   * @returns {boolean}
-   */
-  function isWebKitAvailable() {
-    return !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.bridge);
-  }
-
   /* ─── App Lifecycle ─── */
 
   /**
@@ -228,70 +220,6 @@ var ZylBridge = (function () {
     return Promise.resolve(true);
   }
 
-  /* ─── System Settings ─── */
-
-  /**
-   * Set the system locale.
-   * @param {string} locale - e.g. 'ko', 'en'
-   * @returns {Promise<boolean>}
-   */
-  function setLocale(locale) {
-    log('setLocale', locale);
-    if (isWebKitAvailable()) {
-      try {
-        window.webkit.messageHandlers.bridge.postMessage(
-          JSON.stringify({ type: 'system.setLocale', locale: locale })
-        );
-        return Promise.resolve(true);
-      } catch (e) {
-        return Promise.reject(e);
-      }
-    }
-    log('setLocale (no bridge):', locale);
-    return Promise.resolve(false);
-  }
-
-  /**
-   * Send a generic message through the WebKit bridge.
-   * @param {string} type - Message type identifier
-   * @param {Object} [payload] - Additional data
-   * @returns {Promise<boolean>}
-   */
-  function sendMessage(type, payload) {
-    log('sendMessage', type, payload);
-    if (isWebKitAvailable()) {
-      try {
-        var msg = { type: type };
-        if (payload) {
-          Object.keys(payload).forEach(function (k) {
-            msg[k] = payload[k];
-          });
-        }
-        window.webkit.messageHandlers.bridge.postMessage(JSON.stringify(msg));
-        return Promise.resolve(true);
-      } catch (e) {
-        return Promise.reject(e);
-      }
-    }
-    log('sendMessage (no bridge):', type, payload);
-    return Promise.resolve(false);
-  }
-
-  /* ─── Hardware ─── */
-
-  /**
-   * Get battery information.
-   * @deprecated Use power service via postMessage instead of direct navigator.getBattery.
-   * @returns {Promise<{ level: number, charging: boolean }>}
-   */
-  function getBattery() {
-    /* Delegate to OS power service via postMessage IPC.
-       Direct navigator.getBattery() is a Clean Architecture violation —
-       battery state must come from the power service. */
-    requestService('power', 'getState', {});
-    return Promise.resolve({ level: -1, charging: false });
-  }
-
   /* ─── Notifications ─── */
 
   /**
@@ -316,22 +244,6 @@ var ZylBridge = (function () {
       priority: opts.priority || 1,
       actions: actions
     }).then(function (r) { return r && r.id !== undefined ? r.id : null; });
-  }
-
-  /**
-   * Dismiss a notification by ID: the app's own. appId '' is a system app's
-   * "any app's"; the OS replaces it with the caller for every other app.
-   * @param {number} id
-   */
-  function clearNotification(id) {
-    return requestService('notification', 'cancel', { id: id, appId: '' }).then(function () { return true; });
-  }
-
-  /**
-   * Clear all notifications (notification.read: the status bar's).
-   */
-  function clearAllNotifications() {
-    return requestService('notification', 'clearAll', {}).then(function () { return true; });
   }
 
   /* ─── Incoming Message Handler (emulator → app iframe) ─── */
@@ -651,8 +563,6 @@ var ZylBridge = (function () {
 
   /* ─── Public API ─── */
   return {
-    isAvailable: isAvailable,
-    isWebKitAvailable: isWebKitAvailable,
     getIpcMode: getIpcMode,
     sendToSystem: sendToSystem,
     requestService: requestService,
@@ -662,11 +572,6 @@ var ZylBridge = (function () {
     onServiceEvent: onServiceEvent,
     launch: launch,
     closeApp: closeApp,
-    setLocale: setLocale,
-    sendMessage: sendMessage,
-    getBattery: getBattery,
     notify: notify,
-    clearNotification: clearNotification,
-    clearAllNotifications: clearAllNotifications,
   };
 })();

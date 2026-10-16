@@ -1,391 +1,200 @@
-<!--
-  Zyl OS: Deployment Guide
-  Copyright (c) 2026 Zyl OS Project
-  SPDX-License-Identifier: MIT
--->
+# Zyl OS 배포 가이드
 
-# Zyl OS 배포 및 플래싱 가이드
+소스에서 동작하는 기기까지 가는 길입니다. 여기에는 순서와 지켜야 할 규칙만 적습니다.
+목록·표·크기는 그 사실을 가진 파일을 가리킵니다 ([CLAUDE.md](../CLAUDE.md) §8-1).
 
-BPI-F3 (SpacemiT K1 RISC-V) 보드에 Zyl OS를 빌드하고 설치하는 방법입니다.
+## 원칙
 
----
+- **이미지 한 장 = 보드 × 프로파일.** `meson setup` 한 번이 둘을 고르고, 그 빌드
+  디렉터리에서 나오는 이미지는 그 조합 하나입니다 (`zyl-os-<보드>-<프로파일>.img`).
+- **손으로 파일을 복사하는 절차는 없습니다.** 이미지에 들어갈 파일은 `ninja install` 이
+  정합니다.
+- **기기에는 셸이 없습니다.** 이미지 빌드가 로그인 콘솔(getty)을 막습니다. 진단은
+  직렬 콘솔 출력과 자기점검(`zyl-selftest`)으로 합니다.
+- **보드 없이 확인할 수 있는 것은 보드 없이 확인합니다.** QEMU 레인이 매 커밋 이미지
+  조립과 부팅을 돌리고, 실기기에서만 볼 수 있는 것은 따로 적어 둡니다.
 
-## 1. 요구사항
+## 1. 준비
 
-### 호스트 PC
-- Ubuntu 24.04+ 또는 Debian 13+
-- 최소 50GB 디스크 여유 공간
-- 16GB+ RAM 권장
+리눅스(또는 리눅스 컨테이너)가 필요합니다. 이미지 조립은 root 로 돕니다 (debootstrap).
+호스트 도구는 `tools/setup-toolchain.sh` 가 설치하고, 정확한 패키지 목록은 CI 잡의
+설치 단계가 기준입니다 (`.github/workflows/image.yml`, `riscv64.yml`, `bootloader.yml`).
+맥에서는 `tools/ci-local.sh qemu-boot`(또는 `qemu-boot-riscv64`)로 같은 레인을
+컨테이너에서 돌릴 수 있습니다 ([CONTRIBUTING.md](../CONTRIBUTING.md#로컬-ci--푸시-전-관문)).
 
-### 대상 디바이스
-- Banana Pi BPI-F3 (SpacemiT K1)
-- 4GB/8GB/16GB RAM 모델
-- microSD 카드 (최소 16GB) 또는 eMMC
-
-### 필수 도구
-```bash
-sudo apt install -y \
-  gcc-riscv64-linux-gnu g++-riscv64-linux-gnu \
-  meson ninja-build pkg-config cmake git \
-  qemu-system-riscv64 qemu-user-static \
-  libwayland-dev wayland-protocols \
-  libwlroots-dev libxkbcommon-dev \
-  libpixman-1-dev libinput-dev libdrm-dev \
-  libegl-dev libgles2-mesa-dev libgbm-dev \
-  libgtk-4-dev libwebkitgtk-6.0-dev libjson-glib-dev \
-  libssl-dev libzip-dev libcurl4-openssl-dev \
-  u-boot-tools device-tree-compiler veritysetup \
-  debootstrap fdisk e2fsprogs systemd dbus
-```
-
-또는 자동 설치:
-```bash
-./tools/setup-toolchain.sh
-```
-
----
-
-## 2. 소스 빌드
-
-### 네이티브 빌드 (호스트 테스트)
-```bash
-meson setup builddir
-ninja -C builddir
-```
-
-### 크로스 컴파일 (RISC-V 타겟)
-```bash
-dpkg --add-architecture riscv64 && apt-get update
-apt-get install crossbuild-essential-riscv64   # + :riscv64 개발 라이브러리
-meson setup builddir-riscv --prefix=/usr --cross-file tools/cross/riscv64.ini \
-      -Dboard=bpi-f3 -Dprofile=phone
-ninja -C builddir-riscv
-```
-
-개발 라이브러리는 multiarch(`:riscv64`)로 깔립니다. 정확한 목록은 CI 의
-`qemu-boot-riscv64` 잡이 단일 출처입니다 — 호스트 아키텍처 개발 패키지와
-섞어 깔면 `libpsl-dev` 처럼 man 페이지가 충돌하는 패키지가 있으므로,
-교차 빌드는 전용 컨테이너에서 하십시오.
-
-### 보드 없이 riscv64 로 돌려 보기
-실기기와 **같은 아키텍처·같은 HAL 백엔드**로 부팅까지 확인합니다
-(`board/generic-riscv64`, QEMU `-machine virt`):
-```bash
-meson setup builddir-rv64 --prefix=/usr --cross-file tools/cross/riscv64.ini \
-      -Dboard=generic-riscv64 -Dprofile=phone
-ninja -C builddir-rv64
-tools/build-image.sh --builddir builddir-rv64 --out out/rv64 --with-kernel
-tools/run-qemu.sh --image out/rv64/zyl-os-generic-riscv64-phone.img \
-      --builddir builddir-rv64 --check
-```
-rootfs 조립에는 `qemu-user-static` + binfmt 가 필요합니다 (다른 아키텍처라
-debootstrap 이 2단계로 돌아갑니다). riscv64 데비안 커널은 `vmlinuz` 가 아니라
-`vmlinux`(ELF)로 설치됩니다 — 이미지 빌드가 둘 다 찾습니다.
-
-### Docker 재현 가능 빌드
-```bash
-docker build -t zylos-build .
-docker run --rm -v $(pwd)/output:/output zylos-build
-```
-
-Docker 빌드는 호스트 환경에 무관하게 동일한 바이너리를 생성합니다.
-
-### 빌드 결과물
-```
-builddir-riscv/
-├── compositor/zyl-compositor         # Wayland 컴포지터
-├── runtime/wam/zyl-wam               # 웹 앱 매니저
-├── runtime/services/
-│   ├── accessibility/zyl-accessibility
-│   ├── alarm/zyl-alarm
-│   ├── audio/zyl-audio
-│   ├── bluetooth/zyl-bluetooth
-│   ├── camera/zyl-camera
-│   ├── credential/zyl-credential
-│   ├── display/zyl-display
-│   ├── input/zyl-input
-│   ├── location/zyl-location
-│   ├── logger/zyl-logger
-│   ├── notification/zyl-notification
-│   ├── power/zyl-power
-│   ├── sensors/zyl-sensors
-│   ├── telemetry/zyl-telemetry
-│   ├── telephony/zyl-telephony
-│   ├── usb/zyl-usb
-│   ├── user/zyl-user
-│   └── wifi/zyl-wifi
-│   (라이브러리: appstore, dbus, sandbox, updater — 별도 데몬 없음)
-```
-
----
-
-## 3. Verified Boot 키 생성 및 이미지 서명
-
-프로덕션 배포 전 반드시 수행해야 합니다.
-
-### 3.1 부트 키 생성
-```bash
-# 부팅 체인의 RSA-2048 키 — 없는 것만 만들고 있는 키는 그대로 둔다
-./tools/gen-boot-keys.sh board/bpi-f3/keys
-
-# 출력 (*.key 는 비밀키 — 절대 배포 금지!):
-#   zylos-boot-key.{key,crt,pub}   OS FIT (U-Boot 가 검증)
-#   zylos-fw-key.{key,crt,pub}     OpenSBI·U-Boot FIT (SPL 이 검증)
-#   zylos-spl-key.{key,pub}        FSBL 안의 SPL (Boot ROM 이 검증)
-#   zylos-rotpk.{key,pub}          루트 키 — 해시가 eFuse 에 (선택)
-```
-
-### 3.1.1 부트로더 빌드
-```bash
-# 고정한 제조사 U-Boot·OpenSBI + Zyl 부트 정책, 서명하고 결과를 스스로 검증
-./tools/build-bootloader.sh --key-dir board/bpi-f3/keys build/bootloader
-# eFuse 에 루트 키 해시를 굽는 부트로더 (되돌릴 수 없음): --burn-rotpk
-# 설치 위치: board/bpi-f3/README.md "Bootloader"
-```
-
-### 3.2 FIT 이미지 서명 + dm-verity 생성
-```bash
-# FIT 이미지 서명 (커널+DTB+램디스크) + rootfs dm-verity 해시 트리
-./tools/sign-image.sh rootfs.img build/signed
-
-# 출력 (슬롯 a, --slot b 면 b):
-#   build/signed/fit-image-a.itb        ← 서명된 FIT (커널 인자가 서명되는 DTB 안에)
-#   build/signed/verity-hashtree-a.img  ← dm-verity 해시 트리 (verity 파티션용)
-#   build/signed/cmdline-a.txt          ← 그 커널 인자
-#   build/signed/verity-params-a.txt    ← dm-verity 파라미터
-#   build/signed/MANIFEST.sha256
-```
-
-### 3.3 dm-verity rootfs 마운트 인자
-```
-verity-params.txt 내용 예시:
-  root-hash=<sha256-root-hash>
-  data-blocks=<N>
-  hash-offset=<offset>
-
-U-Boot bootargs에 추가:
-  dm-mod.create="vroot none rw 0, 0 <data-blocks> verity V1 PARTUUID=<rootfs-uuid> PARTUUID=<hash-uuid> 4096 4096 <data-blocks> <hash-offset> sha256 <root-hash> <salt>"
-```
-
----
-
-## 4. 이미지 만들기
-
-소스에서 **설치 가능한 디스크 이미지 한 장**이 나옵니다. 손으로 파일을 복사하는
-절차는 없습니다 — 무엇이 들어가는지는 `ninja install` 이, 어디에 들어가는지는
-`board/<id>/partitions.conf` 가, 어떤 패키지가 필요한지는 `system/packages.list`
-가 정합니다.
+## 2. 설정과 빌드
 
 ```bash
-# 리눅스(또는 컨테이너)에서, root 로
-meson setup builddir --prefix=/usr -Dboard=bpi-f3 -Dprofile=phone
-ninja -C builddir
-sudo tools/build-image.sh --builddir builddir --out out/image
+meson setup <builddir> --prefix=/usr -Dboard=<보드> -Dprofile=<프로파일> \
+      [--cross-file tools/cross/<arch>.ini] [-Dota_public_key=<공개키.pem>]
+ninja -C <builddir>
 ```
 
-출력:
+- 고를 수 있는 보드·프로파일은 `meson_options.txt`, 보드가 받는 프로파일은
+  `board/<id>/meson.build` 의 `board_form_factors` 에 있습니다. 보드가 받지 않는
+  조합은 `meson setup` 에서 실패합니다. 보드 계약 전체는 `board/meson.build`.
+- `--prefix=/usr` 가 아니면 이미지 조립이 거부합니다 (유닛의 `ExecStart` 가 `/usr/bin`).
+- **교차 빌드**: meson 은 교차 파일을 보드에서 끌어오지 않습니다. 보드의
+  `board_arch` 가 호스트와 다르면 그 보드의 `board_cross_file` 을 `--cross-file` 로
+  직접 넘기십시오. `:riscv64` 개발 라이브러리(multiarch)는 호스트 개발 패키지와 섞으면
+  충돌하므로 전용 컨테이너에 깝니다 — 목록은 `riscv64.yml` 의 `qemu-boot-riscv64` 잡.
+- `-Dota_public_key` 는 OTA 를 받을 기기에만 필요합니다 (§6). 경로는 소스 루트 기준
+  또는 절대 경로입니다.
 
-```
-out/image/zyl-os-bpi-f3-phone.img   디스크 이미지 (GPT, 슬롯 A 기록, /data 포맷)
-out/image/rootfs-phone.img          rootfs 단독 — tools/sign-image.sh 의 입력
-```
-
-- `--prefix=/usr` 가 아니면 거부합니다 (유닛의 `ExecStart` 가 `/usr/bin` 을 가리킴)
-- 다른 아키텍처면 2단계 부트스트랩을 합니다 — `qemu-user-static` 과 binfmt 등록이 필요합니다
-- 슬롯 B·verity 는 비워 둡니다. 채우는 쪽은 `tools/sign-image.sh` 와 OTA 입니다
-- `--rootfs-only` 로 rootfs 이미지만 만들 수 있습니다 (서명·verity 작업용)
-
-### 보드 없이 검증 (QEMU)
+## 3. 이미지 조립 — `tools/build-image.sh`
 
 ```bash
-sudo tools/run-qemu.sh --image out/image/zyl-os-emulator-phone.img \
-     --builddir builddir --check
+sudo tools/build-image.sh --builddir <builddir> --out <outdir> [--with-kernel]
 ```
 
-`--check` 는 커널 인자로 자기점검(`zyl-selftest`)을 켜고, 그 결과를 종료 코드로
-돌려줍니다. 검증 범위: systemd 유닛 기동, 시스템 버스와 정책, 서비스 이름,
-앱 디렉터리·`/data`, 화면 체인(`/dev/dri` → Wayland 소켓 → WAM 이 띄운 앱).
-**검증하지 않는 것**: U-Boot·서명 FIT·dm-verity·A/B 전환
-(부트로더 빌드와 `tools/sign-image.sh`·`tests/test_boot_env.sh` 소관), SoC 고유
-경로(GPU·모뎀·ISP). CI 의 `qemu-boot` 잡이 매 커밋 같은 일을 합니다.
+하는 일, 순서대로:
 
-기기에서도 같은 자기점검을 손으로 돌릴 수 있습니다: `systemctl start zyl-selftest`.
+1. `ninja install` 을 staging 디렉터리로
+2. 최소 rootfs 부트스트랩 + `system/packages.list` (`--suite`·`--mirror` 로 배포판을
+   바꿀 수 있음). 다른 아키텍처면 2단계 부트스트랩이라 `qemu-user-static` 과 binfmt
+   등록이 필요합니다
+3. 링크 검사 — 설치한 `zyl-*` 바이너리가 요구하는 공유 라이브러리가 rootfs 에 없으면
+   실패합니다. 그 라이브러리를 주는 패키지를 `system/packages.list` 에 더하십시오
+4. 부팅 설정 — fstab(슬롯 A 루트, `/data`), 기본 타겟 → `zyl-os.target`, 서비스
+   사용자·디렉터리, 로그인 콘솔 차단
+5. rootfs ext4 → 보드 레이아웃 그대로 GPT 디스크를 만들고 슬롯 A 에 rootfs, `/data`
+   포맷. 만들어진 파티션 순서가 선언과 다르면 실패합니다
 
-### 실행 시점 패키지
+`<outdir>` 에 남는 것:
 
-이미지에 들어가는 패키지는 `system/packages.list` 한 곳에 있습니다. 줄마다
-없을 때 무엇이 깨지는지 적혀 있고, 아래 설명은 그중 눈여겨볼 것들입니다.
+| 파일 | 쓰임 |
+|------|------|
+| `zyl-os-<보드>-<프로파일>.img` | 디스크 이미지 |
+| `rootfs-<프로파일>.img` | rootfs 단독 — 디스크 슬롯 A 와 같은 바이트. 서명(§5)과 OTA(§6)의 입력 |
+| `vmlinuz`, `initrd.img` | `--with-kernel` 일 때만 |
 
-### 글꼴 패키지 (필수)
+`--rootfs-only` 는 rootfs 이미지까지만 만듭니다. 슬롯 B·verity·부트 파티션은 비어
+있습니다 — 실기기에서 채우는 쪽은 서명 도구와 OTA 입니다.
 
-최소 rootfs 에는 CJK·컬러 이모지 글꼴이 없습니다. 넣지 않으면
-한국어·일본어·중국어 UI 와 이모지가 전부 두부(▯)로 표시됩니다 — 5개 언어
-번역이 있어도 보이지 않습니다.
+**`--with-kernel`** 은 배포판 커널과 그 모듈을 rootfs 에 넣고 커널·initrd 를 꺼내 둡니다.
+QEMU 레인에서 켭니다 — 게스트가 이미지 자신의 커널로 떠야 모듈이 맞아 DRM·입력이
+올라옵니다. 실기기 이미지는 끕니다. 커널은 서명 FIT 으로 옵니다.
 
-`system/packages.list` 의 `fonts-noto-*` 네 줄이 이것입니다
-(Arch 계열 rootfs 를 쓸 때는 `noto-fonts noto-fonts-cjk noto-fonts-emoji`).
-
-`ninja install` 이 `/etc/fonts/conf.d/50-zyl-fonts.conf` 를 설치해 기본 글꼴과
-언어별 한자 자형(한·중·일은 같은 코드포인트를 다르게 그린다)을 정합니다.
-
-### 앱 격리 패키지 (필수)
-
-앱 코드가 도는 WebKitGTK 웹 프로세스는 WebKit 이 bubblewrap 으로 격리합니다. 이 두
-패키지가 없으면 샌드박스가 **조용히 꺼진 채** 앱이 정상 동작하므로 눈치채기 어렵습니다.
-
-`system/packages.list` 의 `bubblewrap`·`xdg-dbus-proxy` 두 줄이 이것입니다.
-
-확인: 앱을 띄운 뒤 `ps -o args= -C WebKitWebProcess` 에 `bwrap` 이 보여야 합니다.
-
-### 네트워크·모뎀 패키지 (필수)
-
-모바일 데이터, 데이터 한도, 재난문자는 NetworkManager·ModemManager 위에서
-동작합니다. APN 은 통신사별 표를 OS 에 두지 않고 `mobile-broadband-provider-info`
-데이터베이스에서 자동으로 고릅니다 (`gsm.auto-config`).
-
-`system/packages.list` 의 `network-manager`·`modemmanager`·
-`mobile-broadband-provider-info` 세 줄이 이것입니다.
-
-| 구성요소 | 최소 버전 | 없을 때 |
-|---------|----------|--------|
-| ModemManager | 1.24 | 재난문자(Cell Broadcast) 수신 불가 |
-| NetworkManager | 1.22 | APN 자동 설정 불가 |
-| NetworkManager | 1.58 | IPv6 전용망에서 IPv4 앱 불가 (464XLAT CLAT) — 이중 스택은 동작 |
-
-## 5. 파티션 레이아웃
-
-A/B OTA 와 dm-verity 를 위한 배치입니다. **단일 출처는
-`board/<id>/partitions.conf`** 이고, 이미지 빌더(`tools/build-image.sh`)·서명
-도구(`tools/sign-image.sh`)·부트 정책(`board/bpi-f3/u-boot-env.txt` 의
-`zyl_boot_part`·`zyl_data`)이 모두 그 파일을 읽습니다.
-`tests/test_boot_env.sh` 가 부트 정책과 레이아웃이 어긋나면 실패시킵니다.
-
-```
-p1  boot       256 MiB   슬롯별 서명 FIT (fit-image-a.itb, fit-image-b.itb)
-p2  rootfs_a  4096 MiB   루트파일시스템 슬롯 A (dm-verity)
-p3  verity_a   256 MiB   슬롯 A 해시 트리
-p4  rootfs_b  4096 MiB   슬롯 B (OTA 가 받는 쪽)
-p5  verity_b   256 MiB   슬롯 B 해시 트리
-p6  userdata   나머지    /data — 부트로더 잠금 상태가 바뀌면 지워진다
-```
-
-첫 파티션 앞 4 MiB 는 부트로더 영역(FSBL·OpenSBI·U-Boot·env)으로 비워 둡니다.
-`parted` 로 손으로 나눌 필요는 없습니다 — 이미지 빌더가 이 표대로 만들고,
-만든 순서가 선언과 어긋나면 실패합니다.
-
-`/data` 는 지워진 뒤 빈 파티션이 되므로 처음 마운트할 때 포맷되게 둘 수 있습니다:
-
-```
-PARTLABEL=userdata  /data  ext4  defaults,noatime,x-systemd.makefs,x-systemd.growfs  0 2
-```
-
----
-
-## 6. U-Boot 설정
-
-부트 로직(A/B 시도·롤백, 부트로더 잠금)은 `board/bpi-f3/u-boot-env.txt` 가 유일한
-출처입니다. 문서에 스크립트를 따로 적지 않습니다 — 출하용은 U-Boot 기본 환경으로
-빌드에 넣고(`CONFIG_USE_DEFAULT_ENV_FILE`), 개발 보드에서는 환경 이미지로 씁니다:
+## 4. 보드 없이 부팅 — `tools/run-qemu.sh`
 
 ```bash
-mkenvimage -s 0x20000 -o uboot.env board/bpi-f3/u-boot-env.txt
+tools/run-qemu.sh --image <outdir>/zyl-os-<보드>-<프로파일>.img --builddir <builddir> --check
 ```
 
-슬롯별 이미지 서명과 소유자 빌드 설치 절차, 출하용 U-Boot 필수 설정은
-[INSTALLATION_INFORMATION.md](INSTALLATION_INFORMATION.md) 를 보세요.
+- 아키텍처는 `zyl-board.conf`, 루트 장치는 그 보드 `partitions.conf` 의 슬롯 A 입니다.
+- 커널·initrd 는 `--kernel`/`--initrd` 로 준 것, 없으면 이미지 옆의 `vmlinuz`·`initrd.img`
+  (`--with-kernel`), 그것도 없으면 호스트 `/boot` 의 최신 것을 씁니다.
+- `--check` 는 커널 인자 `systemd.wants=zyl-selftest.service` 로 자기점검을 켜고,
+  결과(PASS/FAILED)를 종료 코드로 돌려줍니다. `--timeout`·`--mem` 으로 조정합니다.
 
----
+QEMU 레인과 그 명령 순서의 기준이 되는 워크플로:
 
-## 7. 첫 부팅
+| 보드 | 무엇을 보나 | 워크플로 |
+|------|-------------|----------|
+| [`emulator`](../board/emulator/README.md) | 호스트 아키텍처, HAL `emulator` 백엔드 | `image.yml` (`qemu-boot`) |
+| [`generic-riscv64`](../board/generic-riscv64/README.md) | 실기기와 같은 아키텍처·HAL `linux` 백엔드 | `riscv64.yml` (`qemu-boot-riscv64`) |
 
-1. SD 카드를 BPI-F3에 삽입
-2. 전원 연결
-3. U-Boot → Verified Boot 검증 → Plymouth 부트 스플래시 (10~15초)
-4. 잠금화면 표시
-5. PIN 입력 (기본: 0000)
-6. 홈 화면 진입
+### 자기점검 (`tools/zyl-selftest`)
 
-### 부팅 문제 해결
+기대 목록을 스스로 갖지 않고 설치된 유닛에서 끌어냅니다. 프로파일마다 서비스 집합이
+달라도 같은 점검이 맞습니다.
 
-| 증상 | 원인 | 해결 |
-|------|------|------|
-| 화면 안 나옴 | GPU 드라이버 누락 | Bianbu OS의 img-gpu-powervr 패키지 설치 |
-| 터치 안 됨 | I2C 터치 드라이버 | dmesg 확인, DT overlay 수정 |
-| 컴포지터 크래시 | EGL/GBM 호환성 | `WLR_RENDERER=pixman` 환경변수로 소프트웨어 렌더링 |
-| WiFi 안 됨 | SDIO 드라이버 | `modprobe` 확인, firmware 경로 확인 |
-| Verified Boot 실패 | FIT 서명 불일치 | `tools/sign-image.sh`로 재서명 후 플래싱 |
-| dm-verity 패닉 | rootfs 변조 감지 | 슬롯 B로 롤백 또는 rootfs 재설치 |
+- 설치된 `zyl-*.service` 가 활성인가 (하드웨어 조건이 맞지 않아 건너뛴 유닛은 실패가 아님)
+- 그 유닛의 `BusName=` 이 시스템 버스에 있는가
+- 앱 디렉터리·WAM 브리지·`/data` 마운트·`/etc/zyl-release`
+- 화면 체인: DRM 장치 → Wayland 소켓 → WAM 이 띄운 앱 (DRM 이 없으면 건너뜀)
 
----
+**보지 않는 것**: U-Boot·서명 FIT·dm-verity·A/B 전환 — 이것은
+`tools/build-bootloader.sh` 의 자체 검증과 `tests/test_boot_env.sh`·`test_sign_image.sh`·
+`test_build_ota.sh`·`test_updater.c` 의 몫입니다. SoC 고유 경로(GPU·모뎀·ISP·eFuse)는
+실기기에서만 확인됩니다.
 
-## 8. OTA 업데이트
+기기에는 셸이 없으므로 같은 커널 인자 `systemd.wants=zyl-selftest.service` 로 돌립니다
+(공장 검사). 결과는 직렬 콘솔에 남습니다.
 
-### 패키지 만들기
-```bash
-# 두 슬롯(a·b)용 verity 트리와 서명 FIT 를 만들고 rootfs 와 함께 묶어 서명
-./tools/build-ota.sh --url https://update.example.com/zylos-0.2.0.pkg 0.2.0 rootfs.img build/ota
-#   build/ota/zylos-0.2.0.pkg   ← tar.gz: rootfs.img, verity-hashtree-{a,b}.img, fit-image-{a,b}.itb
-#   build/ota/zylos-0.2.0.json  ← 서버가 /check 에 돌려줄 응답 (sha256·size·signature 포함)
-```
-패키지는 부트 서명 키(`board/bpi-f3/keys/zylos-boot-key.key`)로 서명합니다.
-기기는 그 공개키를 `/etc/zyl-os/ota-signing-key.pem` 으로 가져야 하며, 빌드 때
-`meson setup ... -Dota_public_key=board/bpi-f3/keys/zylos-boot-key.pub` 로 넣습니다.
-공개키가 없으면 기기는 업데이트를 받지 않습니다.
+## 5. 실기기 — 키, 부트로더, 서명, 기록
 
-### 서버
-```bash
-echo "https://update.example.com/v1" > /etc/zyl-os/update-server
-```
-업데이터는 `GET <서버>/check?version=<현재>&arch=riscv64&slot=<a|b>` 를 보내고,
-새 버전이 있으면 `zylos-<버전>.json` 내용을, 없으면 `{"available": false}` 를 받습니다.
+서명 부팅 도구(`tools/gen-boot-keys.sh`, `tools/build-bootloader.sh`,
+`tools/sign-image.sh`)는 BPI-F3 의 U-Boot 체인을 대상으로 합니다. 체인이 무엇을
+검증하는지는 [SECURITY.md](SECURITY.md#9-검증-부팅-verified-boot) 에 있습니다.
 
-### 업데이트 흐름 (`zyl-updater`, 설정 > 소프트웨어 업데이트)
-1. 확인 → 서버 응답(매니페스트)
-2. 다운로드 → SHA-256 확인 → RSA-SHA256 서명 확인 (서명 없는 패키지 거부)
-3. 비활성 슬롯에만 기록: rootfs → verity 트리 → FIT (FIT 는 임시 이름으로 쓰고 교체)
-4. 모든 기록 후에만 U-Boot 에 새 슬롯 지정 (`zyl_next_slot`, `zyl_boot_count=0`)
-5. 재시작 → U-Boot 가 새 슬롯의 FIT 서명을 확인하고 부팅 → dm-verity 가 rootfs 확인
-6. 부팅 60초 뒤 컴포지터·WAM 이 정상이면 슬롯 확정, 아니면 재시작
-7. 새 슬롯이 3번 안에 확정되지 않으면 U-Boot 가 이전 슬롯으로 돌아감
+### 운영자가 가져야 할 키
 
-전체 이미지만 설치합니다 (delta·앱만·커널만 패키지는 dm-verity rootfs 와 맞출 수 없어 거부).
+| 키 | 쓰임 | 만드는 법 · 자세히 |
+|----|------|--------------------|
+| 부팅 체인 키 (`zylos-rotpk`, `zylos-spl-key`, `zylos-fw-key`, `zylos-boot-key`) | FSBL·OpenSBI·U-Boot·OS FIT 서명. `zylos-boot-key` 는 OTA 패키지도 서명 | `tools/gen-boot-keys.sh <키 디렉터리>` — 없는 키만 만들고 있는 키는 그대로 둔다. [SECURITY.md](SECURITY.md) |
+| 루트 키 `zylos-rotpk` | eFuse 에 해시를 구우면 그 기기와 평생 묶임 | [INSTALLATION_INFORMATION.md](INSTALLATION_INFORMATION.md) |
+| 스토어 키 | 카탈로그·앱 패키지·개발자 인증서 서명. 공개키와 주소는 `system/store.json` | `tools/build-store.py`, [APPSTORE_API.md](APPSTORE_API.md) |
 
----
+비밀키(`*.key`)는 저장소에 넣지 않습니다 (`gen-boot-keys.sh` 가 `.gitignore` 를 둡니다).
+오프라인에 두고 도구에는 `--key-dir` 로 넘기십시오. 소유자가 자기 키로 같은 절차를
+밟는 방법(GPLv3 §6)은 [INSTALLATION_INFORMATION.md](INSTALLATION_INFORMATION.md) 에 있습니다.
 
-## 9. 개발자 모드
+### 부트로더
 
 ```bash
-# 개발자 모드 활성화 (서명 없는 앱 설치 허용)
-dbus-send --session --dest=org.zylos.WebAppManager \
-  /org/zylos/WebAppManager \
-  org.zylos.WebAppManager.SetDevMode \
-  boolean:true
-
-# WebKit Inspector 활성화
-export WEBKIT_INSPECTOR_SERVER=0.0.0.0:8090
-systemctl restart zyl-wam
-# 호스트 PC Chrome에서: chrome://inspect
+tools/build-bootloader.sh --key-dir <키 디렉터리> <출력 디렉터리>
 ```
 
----
+고정한 제조사 U-Boot·OpenSBI 위에 `board/bpi-f3/bootloader`(패치·설정 조각)를 얹고,
+부트 정책 `board/bpi-f3/u-boot-env.txt` 를 기본 환경으로 내장해 빌드·서명합니다. 결과는
+스스로 검증합니다. 부트로더가 무엇을 막는지와 eFuse 를 굽는 `--burn-rotpk` 는
+[INSTALLATION_INFORMATION.md](INSTALLATION_INFORMATION.md#부트로더가-지켜야-하는-것).
 
-## 10. CI/CD 파이프라인
+### OS 이미지 서명
 
-GitHub Actions 자동 빌드/검증:
+1. §2–3 으로 이미지를 만듭니다: `-Dboard=bpi-f3`, `--cross-file tools/cross/riscv64.ini`,
+   `-Dota_public_key=<키 디렉터리>/zylos-boot-key.pub`, `--with-kernel` 없이.
+2. 커널·DTB·initramfs 는 이 저장소가 만들지 않습니다. 보드 커널 빌드에서 가져오되:
+   - 커널은 gzip 압축 (`board/bpi-f3/fit-image.its`), dm-verity 와 `dm-mod.create=`
+     (CONFIG_DM_INIT)를 내장 — 서명된 커널 인자가 그것으로 루트를 세웁니다
+   - rootfs 에는 그 커널의 모듈이 들어가지 않으므로 필요한 드라이버는 커널에 내장합니다
+   - DTB 는 보드 전체 DTB 에 `system/dts/bpi-f3-zyl.dts` 오버레이를 적용한 것
+3. 슬롯 A 서명:
 
-| 잡 | 설명 |
-|----|------|
-| build-native | Meson + Ninja 네이티브 빌드 |
-| build-docker | Docker 재현 가능 빌드 |
-| lint-html | HTML DOCTYPE 검증 |
-| lint-js | ES5 호환성 + 아키텍처 규칙 |
-| test-js | JavaScript 단위 테스트 |
-| audit-licenses | 라이선스 호환성 검사 |
-| fuzz | libFuzzer 기반 퍼징 |
-| test-integration | 통합 테스트 |
+   ```bash
+   ZYL_KERNEL=<vmlinuz> ZYL_DTB=<보드.dtb> ZYL_INITRAMFS=<initramfs.cpio.gz> \
+     tools/sign-image.sh --slot a --key-dir <키 디렉터리> <outdir>/rootfs-<프로파일>.img <서명 출력>
+   ```
 
----
+   rootfs 의 verity 트리를 만들고, 그 루트 해시·슬롯의 파티션·`zyl.slot` 을 담은 커널
+   인자를 DTB `/chosen` 에 넣은 뒤 FIT 로 묶어 서명합니다. 커널 인자는 환경이 아니라
+   서명되는 DTB 안에 있으므로 바꿀 수 없습니다.
+   - 서명할 rootfs 는 **디스크 이미지 슬롯 A 에 들어간 바로 그 파일**이어야 합니다 —
+     루트 해시가 그 바이트에 묶입니다.
+   - `fit_check_sign` 이 없으면 서명 확인을 건너뛰고 경고만 냅니다. 있는 환경에서
+     서명하십시오.
+   - 출력의 `u-boot.dtb` 는 확인용입니다. 기기의 U-Boot DTB 에는 `build-bootloader.sh`
+     가 같은 공개키를 넣습니다.
+4. 기록: [board/bpi-f3/README.md](../board/bpi-f3/README.md).
 
-## 라이선스
+## 6. OTA
 
-Zyl OS는 GNU General Public License v3.0 (GPL-3.0) 하에 배포됩니다.
+```bash
+ZYL_KERNEL=… ZYL_DTB=… ZYL_INITRAMFS=… \
+  tools/build-ota.sh --key-dir <키 디렉터리> --url https://<호스트>/zylos-<버전>.pkg \
+      <버전> <outdir>/rootfs-<프로파일>.img <출력 디렉터리>
+```
+
+두 슬롯용 verity 트리와 서명 FIT 을 `sign-image.sh` 로 만들어 rootfs 와 함께 묶고,
+패키지의 SHA-256 에 `zylos-boot-key` 로 RSA-SHA256 서명합니다. 출력은 패키지
+`zylos-<버전>.pkg` 와 서버가 업데이트 확인에 돌려줄 응답 `zylos-<버전>.json` 입니다.
+버전은 숫자와 점만, URL 은 https 만 받습니다. 요청 형식은
+`runtime/services/updater/updater.c` 가 정합니다.
+
+기기 쪽(`zyl-updater`, 설정 > 소프트웨어 업데이트)에 이미지가 갖춰야 할 것:
+
+- 공개키 — `-Dota_public_key` 로 빌드하면 `/etc/zyl-os/ota-signing-key.pem` 으로 들어갑니다.
+- 서버 주소 — `/etc/zyl-os/update-server` 한 줄, 없으면 업데이터의 기본 주소.
+  rootfs 는 읽기 전용이므로 이미지 안에 있어야 합니다.
+
+기기가 무엇을 확인하고 어떻게 설치·전환·롤백하는지는
+[SECURITY.md](SECURITY.md#10-ota).
+
+## 관련 문서
+
+- [INSTALLATION_INFORMATION.md](INSTALLATION_INFORMATION.md) — 부트로더 잠금 해제, 수정한 빌드 설치, eFuse
+- [SECURITY.md](SECURITY.md) — 부팅 체인과 OTA 검증
+- [APPSTORE_API.md](APPSTORE_API.md) — 스토어 키·카탈로그·개발자 인증서
+- `board/<id>/README.md` — 보드별 손 작업
+- [CONTRIBUTING.md](../CONTRIBUTING.md) — 검증과 CI

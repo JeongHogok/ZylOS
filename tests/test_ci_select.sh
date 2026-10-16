@@ -25,17 +25,21 @@ expect() {   # expect "<설명>" "<기대 잡들(정렬)>" <변경 파일...>
 echo "CI 잡 선택 규칙"
 expect "문서만 바뀌면 아무것도 안 돈다" "" README.md docs/ARCHITECTURE.md
 expect "앱 JS 는 웹 검사 + 이미지 부팅(홈 앱이 떠야 한다)" \
-       "lint-html lint-js perf qemu-boot test-js" apps/home/js/home.js
+       "lint-html lint-js perf qemu-boot test-js verify-all" apps/home/js/home.js
 expect "C 런타임은 네이티브 + 두 부팅 레인" \
-       "build-native fuzz qemu-boot qemu-boot-riscv64 test-integration" runtime/wam/src/wam.c
+       "build-native fuzz qemu-boot qemu-boot-riscv64 test-integration verify-all" runtime/wam/src/wam.c
 expect "Dockerfile 은 docker 빌드만" "build-docker" Dockerfile
-expect "에뮬레이터 Rust 는 에뮬레이터 빌드·테스트만" "test-emulator" emulator-app/src/main.rs
+expect "에뮬레이터 컨테이너 JS 는 웹 검사(test_services 가 읽는다) + 규칙 검사" \
+       "lint-html lint-js perf test-js verify-all" emulator-app/ui/js/emulator.js
+expect "C 단위 테스트는 규칙 검사를 부르지 않는다(셸 스크립트만 읽는다)" \
+       "build-native fuzz test-integration" tests/test_shell.c
+expect "에뮬레이터 Rust 는 에뮬레이터 빌드·테스트 + 규칙 검사" "test-emulator verify-all" emulator-app/src/main.rs
 expect "서비스의 meson.build 는 라이선스 감사도" \
-       "audit-licenses build-native fuzz qemu-boot qemu-boot-riscv64 test-integration" \
+       "audit-licenses build-native fuzz qemu-boot qemu-boot-riscv64 test-integration verify-all" \
        runtime/services/alarm/meson.build
 expect "부트 정책은 네이티브(테스트) + 부트로더" \
-       "build-bootloader build-native fuzz test-integration" board/bpi-f3/u-boot-env.txt
+       "build-bootloader build-native fuzz test-integration verify-all" board/bpi-f3/u-boot-env.txt
 expect "교차 툴체인은 riscv64 레인 (+ tools 를 보는 네이티브)" \
-       "build-native fuzz qemu-boot-riscv64 test-integration" tools/cross/riscv64.ini
+       "build-native fuzz qemu-boot-riscv64 test-integration verify-all" tools/cross/riscv64.ini
 
 [ "$FAIL" = 0 ] && echo "통과" || { echo "실패 $FAIL 건"; exit 1; }

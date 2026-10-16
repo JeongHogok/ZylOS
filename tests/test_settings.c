@@ -4,7 +4,8 @@
  * 역할: 설정 서비스(runtime/services/settings) 단위 테스트
  * 수행범위: 기본값 위 사용자 값 겹치기, 변경분만 저장, 재시작 후 유지, 기본값
  *           변경 반영, 손상 파일 보존, 값 타입 왕복(JSON → v → a{sv} → JSON),
- *           없는 카테고리는 null, OS 기본값 파일이 유효한 객체인지
+ *           없는 카테고리는 null, OS 기본값 파일이 유효한 객체인지,
+ *           지운 앱의 권한 항목이 남지 않는지
  * 의존방향: runtime/services/settings/settings.c (ZYL_TEST), gio, json-glib
  * SOLID: SRP — 설정 저장 계약 검증만 담당
  * ────────────────────────────────────────────────────────── */
@@ -110,6 +111,22 @@ static void test_values_round_trip_through_dbus_types(void) {
     }
 }
 
+/* Rule 12: a removed app leaves nothing — not even the permissions the user
+   turned off for it */
+static void test_removed_app_leaves_no_permission_entry(void) {
+    json_object_unref(settings_update("app_permissions", "com.example.a", json_node_init_string(json_node_alloc(), "camera")));
+    json_object_unref(settings_update("app_permissions", "com.example.b", json_node_init_string(json_node_alloc(), "location")));
+    assert(settings_forget_app("com.example.a"));
+    assert(!settings_forget_app("com.example.a"));
+    assert(!settings_forget_app("com.example.never"));
+    assert(settings_save());
+    char *saved = NULL;
+    g_assert_true(g_file_get_contents(ZYL_SETTINGS_FILE, &saved, NULL, NULL));
+    assert(!strstr(saved, "com.example.a"));
+    assert(strstr(saved, "com.example.b"));
+    g_free(saved);
+}
+
 static void test_os_defaults_file_is_a_settings_object(void) {
     JsonParser *p = json_parser_new();
     g_assert_true(json_parser_load_from_file(p, "system/settings-defaults.json", NULL));
@@ -128,6 +145,7 @@ int main(void) {
     RUN_TEST(test_new_default_reaches_untouched_keys);
     RUN_TEST(test_corrupt_file_is_kept_and_defaults_continue);
     RUN_TEST(test_values_round_trip_through_dbus_types);
+    RUN_TEST(test_removed_app_leaves_no_permission_entry);
     RUN_TEST(test_os_defaults_file_is_a_settings_object);
     printf("\nResults: %d/%d passed\n", tests_pass, tests_run);
     (void)settings_vtable; (void)settings_introspection_xml;

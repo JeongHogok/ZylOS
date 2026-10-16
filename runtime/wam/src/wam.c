@@ -144,8 +144,6 @@ static ZylAppInstance *wam_open(ZylWam *wam, const char *app_id) {
    bar, a banner for a new notification, or the whole screen (panel,
    recents). The shell says which; the surface's input region follows, so
    touches outside it reach the app below ─── */
-#define WAM_PANEL_BAR_PX    36    /* the compositor's statusbar_height_px */
-#define WAM_PANEL_BANNER_PX 136
 
 static ZylAppInstance *system_ui(ZylWam *wam) {
     return wam->iface.get_instance(&wam->iface, ZYL_SHELL_SYSTEM_UI);
@@ -156,7 +154,7 @@ static void wam_set_panel(ZylWam *wam, ZylPanelMode mode) {
     if (!ui || !ui->webview_widget || mode == ZYL_PANEL_NONE) return;
     wam->panel = mode;
     zyl_lifecycle_panel_input(ui, mode == ZYL_PANEL_FULL ? 0 :
-                                  mode == ZYL_PANEL_BANNER ? WAM_PANEL_BANNER_PX : WAM_PANEL_BAR_PX);
+                                  mode == ZYL_PANEL_BANNER ? ZYL_SHELL_BANNER_PX : ZYL_SHELL_BAR_PX);
     JsonObject *d = json_object_new();
     json_object_set_string_member(d, "mode", mode == ZYL_PANEL_FULL ? "full" :
                                              mode == ZYL_PANEL_BANNER ? "banner" : "bar");
@@ -172,7 +170,7 @@ static void wam_start_system_ui(ZylWam *wam) {
     ZylAppInstance *ui = zyl_lifecycle_launch_panel(&wam->iface, &wam->engine, ZYL_SHELL_SYSTEM_UI);
     if (!ui) return;
     wam->panel = ZYL_PANEL_BAR;
-    zyl_lifecycle_panel_input(ui, WAM_PANEL_BAR_PX);
+    zyl_lifecycle_panel_input(ui, ZYL_SHELL_BAR_PX);
 }
 
 /* Home, and where an app the user leaves goes: the lock screen while locked */
@@ -502,19 +500,19 @@ static void on_webkit_bridge_message(WebKitUserContentManager *manager,
 
 /* Served from memory: what was hashed is what the app gets. A user-installed
    app's file is served only if it is byte for byte what was sealed — code
-   changed after install never runs. The OS's own (/shared/, system apps) is
-   under dm-verity. */
+   changed after install never runs. The OS's own (zyl_app_scheme_is_os,
+   system apps) is under dm-verity. */
 static void on_app_request(WebKitURISchemeRequest *req, gpointer user_data) {
     ZylWam *wam = user_data;
     GUri *uri = g_uri_parse(webkit_uri_scheme_request_get_uri(req), G_URI_FLAGS_NONE, NULL);
     const char *path = uri ? g_uri_get_path(uri) : NULL;
     ZylAppManifest *m = uri && g_uri_get_host(uri)
                         ? g_hash_table_lookup(wam->manifests, g_uri_get_host(uri)) : NULL;
-    char *file = m ? zyl_app_scheme_file(m->base_path, WAM_SHARED_DIR, path) : NULL;
+    char *file = m ? zyl_app_scheme_file(m->base_path, WAM_APP_DIR, path) : NULL;
     gchar *data = NULL;
     gsize len = 0;
     bool ok = file && g_file_get_contents(file, &data, &len, NULL);
-    if (ok && !m->is_system && !g_str_has_prefix(path, "/shared/")) {
+    if (ok && !m->is_system && !zyl_app_scheme_is_os(path)) {
         ZylSeal *seal = g_hash_table_lookup(wam->seals, m->id);
         ok = seal && zyl_seal_bytes_ok(seal, path + 1, data, len);
         if (!ok) g_warning("WAM: %s%s is not as sealed — not served", m->id, path);

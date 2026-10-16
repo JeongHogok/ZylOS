@@ -13,7 +13,21 @@
 #include <string.h>
 #include <sys/stat.h>
 
-#define SHARED_PREFIX "/shared/"
+static const char *const OS_DIRS[] = { "shared", "keyboard", NULL };
+
+/* The OS directory a path is in ("shared", "keyboard"), or NULL */
+static const char *os_dir_of(const char *path) {
+    for (int i = 0; OS_DIRS[i]; i++) {
+        size_t n = strlen(OS_DIRS[i]);
+        if (path[0] == '/' && strncmp(path + 1, OS_DIRS[i], n) == 0 && path[1 + n] == '/')
+            return OS_DIRS[i];
+    }
+    return NULL;
+}
+
+gboolean zyl_app_scheme_is_os(const char *path) {
+    return path && os_dir_of(path) != NULL;
+}
 
 /* real is root itself or inside it */
 static gboolean within(const char *real, const char *root) {
@@ -21,17 +35,18 @@ static gboolean within(const char *real, const char *root) {
     return strncmp(real, root, n) == 0 && (real[n] == '/' || real[n] == '\0');
 }
 
-char *zyl_app_scheme_file(const char *app_dir, const char *shared_dir, const char *path) {
-    if (!app_dir || !shared_dir || !path || path[0] != '/') return NULL;
+char *zyl_app_scheme_file(const char *app_dir, const char *os_dir, const char *path) {
+    if (!app_dir || !os_dir || !path || path[0] != '/') return NULL;
     gchar **segs = g_strsplit(path, "/", -1);
     gboolean dotdot = FALSE;
     for (gchar **s = segs; *s; s++) if (strcmp(*s, "..") == 0) dotdot = TRUE;
     g_strfreev(segs);
     if (dotdot) return NULL;
 
-    gboolean shared = g_str_has_prefix(path, SHARED_PREFIX);
-    const char *base = shared ? shared_dir : app_dir;
-    const char *rel = shared ? path + strlen(SHARED_PREFIX) : path + 1;
+    const char *os = os_dir_of(path);
+    char *os_base = os ? g_build_filename(os_dir, os, NULL) : NULL;
+    const char *base = os ? os_base : app_dir;
+    const char *rel = os ? path + 2 + strlen(os) : path + 1;
     char *full = g_build_filename(base, rel, NULL);
     char real[PATH_MAX], root[PATH_MAX];
     struct stat st;
@@ -41,6 +56,7 @@ char *zyl_app_scheme_file(const char *app_dir, const char *shared_dir, const cha
         stat(real, &st) == 0 && S_ISREG(st.st_mode))
         out = g_strdup(real);
     g_free(full);
+    g_free(os_base);
     return out;
 }
 

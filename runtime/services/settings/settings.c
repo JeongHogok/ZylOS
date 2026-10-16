@@ -92,6 +92,11 @@ static gboolean on_save_timer(gpointer data) {
     return G_SOURCE_REMOVE;
 }
 
+static void schedule_save(void) {
+    if (g_save_source) g_source_remove(g_save_source);
+    g_save_source = g_timeout_add(SAVE_DELAY_MS, on_save_timer, NULL);
+}
+
 static JsonObject *member_object(JsonObject *o, const char *key) {
     JsonNode *n = json_object_get_member(o, key);
     return n && JSON_NODE_HOLDS_OBJECT(n) ? json_node_get_object(n) : NULL;
@@ -122,9 +127,19 @@ static JsonObject *settings_update(const char *category, const char *key, JsonNo
         json_object_set_object_member(g_user, category, cat);
     }
     json_object_set_member(cat, key, value);
-    if (g_save_source) g_source_remove(g_save_source);
-    g_save_source = g_timeout_add(SAVE_DELAY_MS, on_save_timer, NULL);
+    schedule_save();
     return settings_get(category);
+}
+
+/* An app was removed (org.zylos.AppStore AppRemoved): what Settings keeps for
+   it goes too — the permissions the user turned off for it (rule 12: nothing
+   of a removed app stays). TRUE when there was something to drop */
+static gboolean settings_forget_app(const char *app_id) {
+    JsonObject *perms = member_object(g_user, "app_permissions");
+    if (!perms || !app_id || !json_object_has_member(perms, app_id)) return FALSE;
+    json_object_remove_member(perms, app_id);
+    schedule_save();
+    return TRUE;
 }
 
 /* ─── D-Bus ─── */
@@ -204,6 +219,15 @@ static void handle_settings_method(GDBusConnection *conn, const gchar *sender,
 static const GDBusInterfaceVTable settings_vtable = { .method_call = handle_settings_method };
 
 #ifndef ZYL_TEST
+static void on_app_removed(GDBusConnection *conn, const gchar *sender, const gchar *path,
+                           const gchar *iface, const gchar *signal, GVariant *params,
+                           gpointer data) {
+    (void)conn; (void)sender; (void)path; (void)iface; (void)signal; (void)data;
+    const gchar *app_id = NULL;
+    g_variant_get(params, "(&s)", &app_id);
+    if (settings_forget_app(app_id)) emit_category_changed("app_permissions");
+}
+
 static void on_settings_bus(GDBusConnection *conn, const gchar *name, gpointer data) {
     (void)name; (void)data;
     g_settings_bus = conn;
@@ -212,6 +236,9 @@ static void on_settings_bus(GDBusConnection *conn, const gchar *name, gpointer d
         g_dbus_connection_register_object(conn, "/org/zylos/Settings",
             info->interfaces[0], &settings_vtable, NULL, NULL, NULL);
     if (info) g_dbus_node_info_unref(info);
+    g_dbus_connection_signal_subscribe(conn, "org.zylos.AppStore", "org.zylos.AppStore",
+        "AppRemoved", "/org/zylos/AppStore", NULL, G_DBUS_SIGNAL_FLAGS_NONE,
+        on_app_removed, NULL, NULL);
 }
 
 static gboolean on_term(gpointer loop) {

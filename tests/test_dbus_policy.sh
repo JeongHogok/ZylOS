@@ -21,7 +21,7 @@ NOTIF="${2:?notification 데몬 경로}"
 POLICY="${3:?정책 파일 경로}"
 
 for c in dbus-daemon gdbus; do
-    command -v "$c" >/dev/null 2>&1 || { echo "SKIP: $c 없음"; exit 0; }
+    command -v "$c" >/dev/null 2>&1 || { echo "SKIP: $c 없음"; exit 77; }  # meson: 건너뜀
 done
 
 R=/tmp/zyl-bus-test

@@ -115,7 +115,7 @@ window.ZylPermissions = (function () {
      installed app could write ["system", "shell", "credential"] and receive
      settings write access, command execution and the keychain.
      Dangerous-but-legitimate permissions (camera, location...) stay grantable;
-     they are gated at runtime by the permission dialog instead. */
+     the user can turn them off per app in Settings (app_permissions). */
   var RESERVED_PERMISSIONS = [
     'system',             /* settings writes, telemetry consent */
     'credential',         /* keychain */

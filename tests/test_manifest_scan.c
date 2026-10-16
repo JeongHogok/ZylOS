@@ -2,7 +2,8 @@
  * [Clean Architecture] Infrastructure Layer - Test
  *
  * 역할: 실기기 앱 디렉토리 스캔 테스트 — 시스템 앱 ID 섀도잉 방지
- * 수행범위: zyl_manifest_scan_dir() (실제 manifest.c), 시스템/사용자 디렉토리
+ * 수행범위: zyl_manifest_scan_dir()·zyl_manifest_parse() (실제 manifest.c), 시스템/사용자
+ *           디렉토리, 잘못된 app.json 거부
  * 의존방향: runtime/wam/src/manifest/manifest.c, glib, json-glib
  * SOLID: SRP — 매니페스트 등록 정책만 검증
  * ────────────────────────────────────────────────────────── */
@@ -117,6 +118,42 @@ static void test_app_info_is_what_apps_see(void) {
     g_hash_table_destroy(t);
 }
 
+static ZylAppManifest *parse_raw(const char *json) {
+    char path[256];
+    reset();
+    mkdir(ROOT "/user/raw", 0755);
+    snprintf(path, sizeof(path), ROOT "/user/raw/app.json");
+    FILE *f = fopen(path, "w");
+    assert(f);
+    fputs(json, f);
+    fclose(f);
+    return zyl_manifest_parse(ROOT "/user/raw");
+}
+
+/* What the WAM refuses to register: no app without an id and a name */
+static void test_broken_manifests_are_refused(void) {
+    const char *bad[] = {
+        "{not json", "", "[]", "\"just a string\"",
+        "{\"name\":\"x\",\"version\":\"1\"}",           /* no id */
+        "{\"id\":\"com.example.x\",\"version\":\"1\"}",  /* no name */
+        "{\"id\":\"\",\"name\":\"x\"}",                  /* empty id */
+        NULL };
+    for (int i = 0; bad[i]; i++) {
+        ZylAppManifest *m = parse_raw(bad[i]);
+        if (m) { printf("\n    accepted: %s\n", bad[i]); assert(0); }
+    }
+}
+
+static void test_unknown_fields_ignored_unicode_kept(void) {
+    ZylAppManifest *m = parse_raw("{\"id\":\"com.example.memo\",\"name\":\"메모 帳\","
+                                  "\"version\":\"1.0.0\",\"entry\":\"index.html\","
+                                  "\"future\":{\"x\":1}}");
+    assert(m);
+    assert(strcmp(m->id, "com.example.memo") == 0);
+    assert(strcmp(m->name, "메모 帳") == 0);
+    zyl_manifest_free(m);
+}
+
 int main(void) {
     printf("=== Zyl OS Manifest Scan Tests ===\n");
     test_user_app_cannot_shadow_a_system_app();
@@ -125,7 +162,11 @@ int main(void) {
     printf("  test_ordinary_user_apps_still_register       PASS\n");
     test_app_info_is_what_apps_see();
     printf("  test_app_info_is_what_apps_see               PASS\n");
+    test_broken_manifests_are_refused();
+    printf("  test_broken_manifests_are_refused            PASS\n");
+    test_unknown_fields_ignored_unicode_kept();
+    printf("  test_unknown_fields_ignored_unicode_kept     PASS\n");
     (void)system("rm -rf " ROOT);
-    printf("\nResults: 3/3 passed\n");
+    printf("\nResults: 5/5 passed\n");
     return 0;
 }

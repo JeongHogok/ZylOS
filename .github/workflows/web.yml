@@ -15,6 +15,7 @@ on:
   pull_request:
     paths:
       - 'apps/**'
+      - 'emulator-app/ui/**'
       - 'tests/test_js_syntax.sh'
       - 'tests/test_manifests.sh'
       - 'tests/test_doctype.sh'

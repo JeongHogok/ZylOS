@@ -6,9 +6,9 @@
 # 의존방향: zyl-os.target (그 뒤에 돈다), tools/zyl-selftest
 # SOLID: SRP — 점검 실행만
 #
-# [Install] 이 없다 = 기본으로 켜지지 않는다. 부를 때만 돈다:
-#   systemctl start zyl-selftest
-#   커널 인자 systemd.wants=zyl-selftest.service  (QEMU 레인·공장 검사)
+# [Install] 이 없다 = 기본으로 켜지지 않는다. 기기에는 셸이 없으니 부르는 길은
+# 커널 인자 systemd.wants=zyl-selftest.service 하나다 (QEMU 레인·공장 검사 —
+# 실기기는 커널 인자가 서명된 이미지에 들어 있어 그 인자로 서명한 이미지가 필요)
 # ──────────────────────────────────────────────────────────
 
 [Unit]

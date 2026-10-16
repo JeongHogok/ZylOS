@@ -23,12 +23,14 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cmd_init() {
     local name="${1:-}"
     if [ -z "$name" ]; then
-        echo "Usage: zyl init <app-name>"
+        echo "Usage: zyl init <app-name> [app-id]"
         echo "  Creates a new Zyl OS app project with boilerplate files."
+        echo "  app-id: your reversed domain (com.example.<app-name> if omitted)."
         exit 1
     fi
 
-    local app_id="com.zylos.${name}"
+    # com.zylos.* is the OS image's own apps
+    local app_id="${2:-com.example.${name}}"
     local dir="$name"
 
     if [ -d "$dir" ]; then
@@ -50,7 +52,7 @@ cmd_init() {
   "description": "A Zyl OS app",
   "permissions": [],
   "formFactors": ["*"],
-  "iconSvg": "<svg viewBox='0 0 24 24'><circle cx='12' cy='12' r='10' fill='#4a90d9'/></svg>"
+  "iconSvg": "M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20z"
 }
 EOF
 
@@ -62,11 +64,13 @@ EOF
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>$name</title>
+  <!-- The OS code, in apps/notes/index.html's order -->
   <link rel="stylesheet" href="../shared/runtime.css">
+  <link rel="stylesheet" href="../shared/responsive.css">
+  <script src="../shared/form-factor.js"></script>
+  <script src="../shared/focus-nav.js"></script>
+  <script src="../shared/touch-scroll.js" defer></script>
   <link rel="stylesheet" href="css/$name.css">
-  <script src="../shared/i18n.js"></script>
-  <script src="../shared/bridge.js"></script>
-  <script src="../shared/touch-scroll.js"></script>
 </head>
 <body>
   <header class="app-header">
@@ -75,7 +79,9 @@ EOF
   <main id="content" role="main">
     <p data-i18n="$name.welcome">Welcome to $name</p>
   </main>
+  <script src="../shared/i18n.js"></script>
   <script src="i18n.js"></script>
+  <script src="../shared/bridge.js"></script>
   <script src="js/$name.js"></script>
 </body>
 </html>
@@ -134,7 +140,7 @@ EOF
 
   zylI18n.addTranslations('ko', {
     '$name.title': '$name',
-    '$name.welcome': '$name에 오신 것을 환영합니다'
+    '$name.welcome': '${name}에 오신 것을 환영합니다'
   });
   zylI18n.addTranslations('en', {
     '$name.title': '$name',
@@ -142,7 +148,7 @@ EOF
   });
   zylI18n.addTranslations('ja', {
     '$name.title': '$name',
-    '$name.welcome': '$nameへようこそ'
+    '$name.welcome': '${name}へようこそ'
   });
   zylI18n.addTranslations('zh', {
     '$name.title': '$name',
@@ -186,10 +192,10 @@ for f in required:
     if f not in m or not m[f]:
         print(f'  ✗ Missing: {f}')
         sys.exit(1)
-# Version semver check
 import re
-if not re.match(r'^\d+\.\d+\.\d+$', m['version']):
-    print(f'  ✗ Invalid version: {m[\"version\"]} (expected semver)')
+# The store's rule (tools/build-store.py VERSION, the device's store_catalog.c)
+if not re.match(r'^[0-9]+(\.[0-9]+)*$', m['version']):
+    print(f'  ✗ Invalid version: {m[\"version\"]} (digits and dots, e.g. 1.2.3)')
     sys.exit(1)
 # Entry file exists
 if not __import__('os').path.exists(m['entry']):
@@ -202,7 +208,8 @@ print(f'  ✓ {m[\"id\"]} v{m[\"version\"]}')
     echo "▸ ES5 compliance..."
     local es6_violations=0
     for f in $(find . -name '*.js' -not -path './node_modules/*'); do
-        if grep -qP '\bconst\b|\blet\b|=>' "$f" 2>/dev/null; then
+        # ERE, not grep -P: macOS grep has no -P, and the error hid every violation
+        if grep -qE '(^|[^A-Za-z0-9_$])(const|let)([^A-Za-z0-9_$]|$)|=>' "$f"; then
             echo "  ✗ ES6+ syntax in $f"
             es6_violations=$((es6_violations + 1))
         fi

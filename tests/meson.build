@@ -23,14 +23,6 @@ test('gesture-detection',
   )
 )
 
-# Test: app.json manifest parsing
-test('manifest-parsing',
-  executable('test-manifest',
-    'test_manifest.c',
-    dependencies: [gio_dep, json_glib_dep],
-  )
-)
-
 # Test: notification service
 test('notification',
   executable('test-notification',

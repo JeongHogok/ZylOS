@@ -22,6 +22,11 @@
 #define ZYL_SHELL_SETUP "com.zylos.oobe"
 /* The surface over every app: status bar, notification panel, recents */
 #define ZYL_SHELL_SYSTEM_UI "com.zylos.statusbar"
+/* Its bar: app windows start below it (compositor), its input region when
+   folded (WAM); and the banner a new notification opens. The CSS that draws
+   them (apps/statusbar, the emulator's frame) must agree — verify-all checks */
+#define ZYL_SHELL_BAR_PX    36
+#define ZYL_SHELL_BANNER_PX 136
 
 typedef enum { ZYL_PANEL_NONE, ZYL_PANEL_BAR, ZYL_PANEL_BANNER, ZYL_PANEL_FULL } ZylPanelMode;
 

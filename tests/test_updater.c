@@ -16,7 +16,10 @@
 #define _GNU_SOURCE
 #define DIR_ "/tmp/zyl-updater-test"
 #define ZYL_STATE_DIR DIR_ "/state"
-#define ZYL_BLOCK_DEV DIR_ "/dev/p"
+#define ZYL_SLOT_A_ROOTFS DIR_ "/dev/p2"   /* as runtime/hal/meson.build passes a layout */
+#define ZYL_SLOT_A_VERITY DIR_ "/dev/p3"
+#define ZYL_SLOT_B_ROOTFS DIR_ "/dev/p4"
+#define ZYL_SLOT_B_VERITY DIR_ "/dev/p5"
 #define ZYL_BOOT_DIR  DIR_ "/boot"
 #define ZYL_OTA_KEY   DIR_ "/ota.pem"
 /* One unit: the board's Boot HAL pointed at scratch partitions, and the updater */

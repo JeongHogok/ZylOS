@@ -2,7 +2,7 @@
 # [Clean Architecture] Infrastructure Layer - CI
 #
 # 역할: 이미지 조립 + QEMU 부팅 + 자기점검 (호스트 아키텍처, 에뮬레이터 보드)
-# 수행범위: 폼팩터 8종 조립, 디스크 이미지, 부팅 후 zyl-selftest
+# 수행범위: 모든 폼팩터 조립, 디스크 이미지, 부팅 후 zyl-selftest
 # 의존방향: debian:trixie, debootstrap, QEMU
 # SOLID: SRP — 이 관심사만. 어떤 경로가 이 검사를 부르는지는 아래 paths 가
 #        유일한 출처다 (원격 PR 과 tools/ci-local.sh 가 같은 목록을 읽는다)
