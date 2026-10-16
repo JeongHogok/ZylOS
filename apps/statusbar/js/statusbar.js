@@ -450,6 +450,9 @@
     var n = { id: d[0], appId: d[1], title: d[2], body: d[3] };
     addNotification(n);
     showBanner(n);
+    /* Sound and buzz: the audio service decides (silent mode, the vibration setting) */
+    ZylBridge.requestService('audio', 'playNotificationSound').then(null, function () {});
+    ZylBridge.requestService('audio', 'vibrate', { pattern: [200] }).then(null, function () {});
   });
   ZylBridge.onServiceEvent('notification', 'NotificationDismissed', function (id) {
     var el = notifList && notifList.querySelector('.notif-item[data-id="' + String(id).replace(/\D/g, '') + '"]');

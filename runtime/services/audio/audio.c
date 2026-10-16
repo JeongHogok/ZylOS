@@ -55,6 +55,31 @@ static bool vibration_wanted(ZylAudioService *svc) {
     return on;
 }
 
+/* A volume the caller set is the user's: Settings keeps it, the same as the
+   emulator's audio service — otherwise the next start brings back the old one */
+static void save_volume(ZylAudioService *svc, const char *stream, int value) {
+    if (!svc->dbus) return;
+    char key[32];
+    snprintf(key, sizeof(key), "%sVolume", stream);
+    g_dbus_connection_call(svc->dbus, "org.zylos.Settings", "/org/zylos/Settings", "org.zylos.Settings",
+        "Update", g_variant_new("(ssv)", "sound", key, g_variant_new_int64(value)),
+        NULL, G_DBUS_CALL_FLAGS_NONE, -1, NULL, NULL, NULL);
+}
+
+/* A new notification: two short tones at the notification volume, as in the
+   emulator — not in silent mode or with the output muted */
+static gboolean second_chime(gpointer data) {
+    ZylAudioService *svc = data;
+    zyl_hal_audio()->play_tone(1100, 120, svc->volumes[ZYL_AUDIO_STREAM_NOTIF]);
+    return G_SOURCE_REMOVE;
+}
+
+static void play_notification_sound(ZylAudioService *svc) {
+    if (svc->silent || svc->muted) return;
+    zyl_hal_audio()->play_tone(880, 150, svc->volumes[ZYL_AUDIO_STREAM_NOTIF]);
+    g_timeout_add(180, second_chime, svc);
+}
+
 /* ─── D-Bus ─── */
 
 static const char *audio_introspection_xml =
@@ -99,6 +124,7 @@ static const char *audio_introspection_xml =
     "      <arg type='i' name='duration_ms' direction='in'/>"
     "    </method>"
     "    <method name='PlayKeyClick'/>"
+    "    <method name='PlayNotificationSound'/>"
     "  </interface>"
     "</node>";
 
@@ -141,8 +167,9 @@ static void handle_audio_method(GDBusConnection *conn, const gchar *sender,
         GVariantBuilder d;
         g_variant_builder_init(&d, G_VARIANT_TYPE("a{sv}"));
         g_variant_builder_add(&d, "{sv}", "stream", g_variant_new_string(name));
-        g_variant_builder_add(&d, "{sv}", "value", g_variant_new_int32(
-            zyl_audio_set_volume(svc, (ZylAudioStream)stream, value)));
+        int set = zyl_audio_set_volume(svc, (ZylAudioStream)stream, value);
+        g_variant_builder_add(&d, "{sv}", "value", g_variant_new_int32(set));
+        save_volume(svc, name, set);
         g_dbus_method_invocation_return_value(inv, g_variant_new("(a{sv})", &d));
     } else if (g_strcmp0(method, "SetMicMute") == 0) {
         gboolean muted = FALSE;
@@ -184,6 +211,9 @@ static void handle_audio_method(GDBusConnection *conn, const gchar *sender,
         /* Keyboard feedback stays quiet in silent mode, unlike PlayTone
            (emergency alerts must sound regardless) */
         if (!svc->silent && !svc->muted) zyl_audio_play_tone(svc, 800, 30);
+        g_dbus_method_invocation_return_value(inv, NULL);
+    } else if (g_strcmp0(method, "PlayNotificationSound") == 0) {
+        play_notification_sound(svc);
         g_dbus_method_invocation_return_value(inv, NULL);
     }
 }

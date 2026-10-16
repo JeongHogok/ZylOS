@@ -74,14 +74,28 @@ static void peer_bus(void) {
 
 /* The "sound" category Settings keeps: 1 on, 0 off, -1 never set */
 static gint saved_silent = 1, saved_vibration = -1, settings_up;
+static gint updated_alarm = -1;   /* sound.alarmVolume as Update last wrote it */
 static const char *SETTINGS_XML =
     "<node><interface name='org.zylos.Settings'><method name='Get'>"
     "<arg type='s' direction='in'/><arg type='a{sv}' direction='out'/>"
+    "</method><method name='Update'>"
+    "<arg type='s' direction='in'/><arg type='s' direction='in'/><arg type='v' direction='in'/>"
     "</method></interface></node>";
 
 static void settings_get(GDBusConnection *c, const gchar *sender, const gchar *path, const gchar *iface,
                          const gchar *method, GVariant *params, GDBusMethodInvocation *inv, gpointer data) {
-    (void)c; (void)sender; (void)path; (void)iface; (void)method; (void)params; (void)data;
+    (void)c; (void)sender; (void)path; (void)iface; (void)data;
+    if (g_strcmp0(method, "Update") == 0) {
+        const gchar *cat = NULL, *key = NULL;
+        GVariant *v = NULL;
+        g_variant_get(params, "(&s&sv)", &cat, &key, &v);
+        if (g_strcmp0(cat, "sound") == 0 && g_strcmp0(key, "alarmVolume") == 0 &&
+            g_variant_is_of_type(v, G_VARIANT_TYPE_INT64))
+            g_atomic_int_set(&updated_alarm, (gint)g_variant_get_int64(v));
+        g_variant_unref(v);
+        g_dbus_method_invocation_return_value(inv, NULL);
+        return;
+    }
     GVariantBuilder d;
     g_variant_builder_init(&d, G_VARIANT_TYPE("a{sv}"));
     if (g_atomic_int_get(&saved_silent) >= 0)
@@ -266,6 +280,30 @@ static void test_mic_mute_and_capabilities_are_the_devices(void) {
     g_variant_unref(r);
 }
 
+/* A volume an app sets is the user's: Settings keeps it (the next start restores it) */
+static void test_a_volume_set_is_saved_in_settings(void) {
+    call_ok("SetVolume", g_variant_new("(si)", "alarm", 144));        /* clamped first */
+    for (int i = 0; i < 500 && g_atomic_int_get(&updated_alarm) != 100; i++)
+        g_main_context_iteration(NULL, FALSE), g_usleep(1000);
+    assert(g_atomic_int_get(&updated_alarm) == 100);
+}
+
+/* A new notification: two tones at the notification volume, none in silent mode */
+static void test_the_notification_sound(void) {
+    svc->silent = false;
+    zyl_audio_set_mute(svc, false);
+    zyl_audio_set_volume(svc, ZYL_AUDIO_STREAM_NOTIF, 40);
+    call_ok("PlayNotificationSound", NULL);
+    for (int i = 0; i < 500 && tones < 2; i++) g_main_context_iteration(NULL, FALSE), g_usleep(1000);
+    assert(tones == 2 && tone_volume == 40);
+    svc->silent = true;
+    call_ok("PlayNotificationSound", NULL);
+    g_usleep(250000);
+    while (g_main_context_iteration(NULL, FALSE)) ;
+    assert(tones == 2);
+    svc->silent = false;
+}
+
 int main(void) {
     printf("=== Zyl OS Audio Service Tests ===\n");
     /* No system bus for the service to take a name on: the test is its bus */
@@ -282,6 +320,8 @@ int main(void) {
     RUN_TEST(test_volume_is_clamped_and_only_media_moves_the_device);
     RUN_TEST(test_dbus_names_the_streams_and_refuses_unknown_ones);
     RUN_TEST(test_silent_mode_quiets_key_clicks_but_not_alerts);
+    RUN_TEST(test_a_volume_set_is_saved_in_settings);
+    RUN_TEST(test_the_notification_sound);
     RUN_TEST(test_muted_output_also_quiets_key_clicks);
     RUN_TEST(test_vibration_follows_the_setting);
     RUN_TEST(test_mic_mute_and_capabilities_are_the_devices);
