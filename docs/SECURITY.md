@@ -76,6 +76,16 @@
 | 화면 공유, 위치(`navigator.geolocation`), 웹 알림, 포인터 잠금 등 | 거부 — OS 서비스(`location`, `notification`)를 쓴다 |
 | `<input type=file>` | 열지 않음 — 데스크톱 대화창이 컨테이너 밖 경로를 건넬 수 있다. 파일은 PICK (§5) |
 
+### 푸시 — 앱 서버가 닿는 길
+
+- 앱마다 토픽 `up` + 영숫자 12자(약 71비트)를 OS 가 만들고, 끝점이 곧 비밀이다 — 아는 쪽만
+  그 앱에 보낼 수 있다. 등록·해제는 `caller`(브리지가 채우는 호출 앱)로만, 받은 메시지
+  (`PushReceived`)는 그 앱에만 갑니다(`OWNED_EVENTS`).
+- 서버(`system/push.json`, https 만)는 본문을 그대로 전달하므로 내용을 볼 수 있습니다 —
+  민감한 것은 앱이 암호화하거나 신호만 보냅니다. 운영은 [PUSH_SERVER.md](PUSH_SERVER.md).
+- 지운 앱의 등록은 `AppRemoved` 로, 공장 초기화는 `/data/push` 를 지웁니다 — 이전 주인 앱의
+  메시지가 계속 오지 않게.
+
 ### 앱이 닿는 곳 — CSP
 
 앱 파일은 OS 가 권한으로 만든 Content-Security-Policy 와 함께 나갑니다. 기기는 WAM 이
