@@ -508,9 +508,16 @@
     return (source === window || source === systemFrame.contentWindow) ? _ipcOrigin : frameOrigin();
   }
 
-  /* Who sent it, as the OS knows: the system UI's frame, or the app in front */
-  function senderOf(source) {
-    return source === systemFrame.contentWindow ? ZylShell.systemUi() : (state.currentApp || '');
+  /* Who sent it, as the OS knows: the system UI's frame, or the app whose
+     document is in the frame — while that document is at the app's origin.
+     During a switch the frame still holds the app being left, and an app may
+     navigate its frame away: neither is the app now named (as the WAM's
+     token, runtime/wam/src/bridge/bridge.js) */
+  function senderOf(e) {
+    if (e.source === systemFrame.contentWindow) return ZylShell.systemUi();
+    if (e.source === window) return state.currentApp || '';
+    var own = (_displayedApp && ZylAppRegistry.getOrigin(_displayedApp)) || window.location.origin;
+    return e.origin === own ? (_displayedApp || '') : '';
   }
 
   /* The OS decided who handles an intent (or gets a pick's answer); once the
@@ -622,7 +629,10 @@
        or the window itself. The OS names the sender, never the message. */
     if (e.source !== appFrame.contentWindow && e.source !== systemFrame.contentWindow &&
         e.source !== window) return;
-    var from = senderOf(e.source);
+    var from = senderOf(e);
+    /* No caller is the OS's own (services.js checks no permission): a frame
+       document that is no app gets nothing */
+    if (!from && e.source === appFrame.contentWindow) return;
     try {
       var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
       if (!msg || !msg.type) return;

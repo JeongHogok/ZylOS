@@ -919,13 +919,18 @@ console.log('\n■ ZylBridge on the device');
 
 var deviceBridgeTests = (function () {
   var vm = require('vm');
-  /* A page as the WAM builds it: messageHandlers.bridge plus the injected
-     navigator.system, and window.postMessage delivering to listeners */
-  function devicePage() {
-    var sent = [], listeners = [];
+  /* A page as the WAM builds it: the WAM's bridge script (its tokens filled
+     in as bridge.c does) in the top document, the message handler WebKit
+     gives every frame, and window.postMessage delivering to listeners */
+  var TOKEN = '0123456789abcdef0123456789abcdef';
+  function devicePage(href) {
+    var sent = [], raw = [], listeners = [];
     var win = {
-      webkit: { messageHandlers: { bridge: { postMessage: function (j) { sent.push(JSON.parse(j)); } } } },
-      navigator: { system: { app: { id: 'com.zylos.settings' } } },
+      webkit: { messageHandlers: { bridge: { postMessage: function (j) {
+        raw.push(j);
+        if (j.indexOf(TOKEN) === 0) sent.push(JSON.parse(j.slice(TOKEN.length)));   /* zyl_bridge_untoken */
+      } } } },
+      navigator: {},
       addEventListener: function (t, fn) { if (t === 'message') listeners.push(fn); },
       postMessage: function (data) {
         setTimeout(function () { listeners.forEach(function (fn) { fn({ data: data, source: win }); }); }, 0);
@@ -934,10 +939,16 @@ var deviceBridgeTests = (function () {
     };
     win.window = win; win.parent = win;
     var ctx = { window: win, navigator: win.navigator, document: { addEventListener: function () {} },
-                console: console, setTimeout: setTimeout, clearTimeout: clearTimeout, JSON: JSON, Promise: Promise };
+                location: { href: href || 'zyl-app://com.zylos.settings/index.html' },
+                console: console, setTimeout: setTimeout, clearTimeout: clearTimeout, JSON: JSON, Promise: Promise,
+                Object: Object };
     vm.createContext(ctx);
+    var wamJs = fs.readFileSync(path.join(__dirname, '..', 'runtime', 'wam', 'src', 'bridge', 'bridge.js'), 'utf8')
+      .split('{{APP_ID}}').join('com.zylos.settings').split('{{APP_NAME}}').join('Settings')
+      .split('{{APP_VERSION}}').join('1.0.0').split('{{BRIDGE_TOKEN}}').join(TOKEN);
+    vm.runInContext(wamJs, ctx);
     vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'apps', 'shared', 'bridge.js'), 'utf8'), ctx);
-    return { win: win, sent: sent, B: win.ZylBridge || ctx.ZylBridge, listeners: listeners };
+    return { win: win, sent: sent, raw: raw, B: win.ZylBridge || ctx.ZylBridge, listeners: listeners };
   }
 
   return Promise.all([
@@ -946,6 +957,26 @@ var deviceBridgeTests = (function () {
       assert.strictEqual(p.B.getIpcMode(), 'webkit');
       p.B.sendToSystem({ type: 'navigation.handled' });
       assert.strictEqual(p.sent.length, 1);
+      assert.strictEqual(p.raw[0].indexOf(TOKEN), 0, 'carries the view\'s token');
+      return Promise.resolve();
+    }),
+    asyncTest('a page that is not the app\'s own sends the WAM nothing', function () {
+      var p = devicePage('https://example.com/');                /* the app's view went elsewhere */
+      p.B.sendToSystem({ type: 'navigation.handled' });
+      p.win.navigator.system.app.close();
+      assert.strictEqual(p.raw.length, 0);
+      return Promise.resolve();
+    }),
+    asyncTest('a frame the app shows is not the OS speaking', function () {
+      var p = devicePage();
+      var heard = false;
+      p.B.onServiceEvent('telephony', 'CallStateChanged', function () { heard = true; });
+      var frame = {};                                            /* a child frame's window */
+      p.listeners.forEach(function (fn) {
+        fn({ source: frame, data: JSON.stringify({ type: 'service.event', service: 'telephony',
+          event: 'CallStateChanged', data: ['IDLE', 'RINGING', 'x'] }) });
+      });
+      assert.strictEqual(heard, false);
       return Promise.resolve();
     }),
     asyncTest('a service request gets its answer through the native callback', function () {

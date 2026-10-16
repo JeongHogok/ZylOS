@@ -26,13 +26,15 @@ var ZylBridge = (function () {
      IPC Mode Detection — runtime environment auto-detection.
      Determines whether we're running in:
      - 'iframe'  : Tauri emulator (app inside iframe, postMessage to parent)
-     - 'webkit'  : Real device WAM (WebKitGTK messageHandlers → D-Bus)
+     - 'webkit'  : Real device WAM (window.__zylPost → WebKit messageHandlers → D-Bus)
      - 'standalone' : Plain browser (no parent, no bridge — fallback)
-     The WAM also injects navigator.system, but that object has no transport
-     of its own: checking it first sent every device message nowhere.
+     On the device the WAM's bridge script gives the app's own top document
+     window.__zylPost, which carries the view's token: the WAM answers nothing
+     else (runtime/wam/src/bridge/bridge.js). A frame inside the app has the
+     message handler but not the token, so it is not the app.
      ═══════════════════════════════════════════════════════════ */
   var IPC_MODE = (function () {
-    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.bridge) return 'webkit';
+    if (typeof window.__zylPost === 'function') return 'webkit';
     if (window.parent && window.parent !== window) return 'iframe';
     return 'standalone';
   })();
@@ -68,7 +70,7 @@ var ZylBridge = (function () {
           };
         }
         try {
-          window.webkit.messageHandlers.bridge.postMessage(json);
+          window.__zylPost(json);
         } catch (e) { log('webkit IPC error:', e); }
         break;
       case 'iframe':
@@ -472,6 +474,9 @@ var ZylBridge = (function () {
   window.ZylIntent = ZylIntentApi;
 
   window.addEventListener('message', function (event) {
+    /* The OS speaks from this window (the WAM's evaluate on the device) or
+       its parent (the emulator); a frame this app shows is not the OS */
+    if (event.source !== window && event.source !== window.parent) return;
     var msg;
     if (typeof event.data === 'string') {
       try { msg = JSON.parse(event.data); } catch (e) { return; }

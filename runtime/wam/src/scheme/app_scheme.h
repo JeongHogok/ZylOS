@@ -38,4 +38,14 @@ char *zyl_app_scheme_uri(const char *app_id, const char *entry);
    frame https pages. The same rule as apps/system/sandbox.js getContentPolicy */
 char *zyl_app_scheme_csp(gboolean system, gboolean network, gboolean webview);
 
+/* Is a document at uri the app's own: zyl-app://<app id>/… */
+gboolean zyl_app_scheme_is_own(const char *app_id, const char *uri);
+
+/* May the app's web view load uri in any of its frames: its own origin, a blank
+   or srcdoc frame, its own blob: — and, for an app allowed to frame the web
+   ("webview", as its CSP), https. Whether such a page became the top document
+   is not seen here (WebKit asks per navigation, not per frame): the WAM checks
+   the top document with zyl_app_scheme_is_own when it loads */
+gboolean zyl_app_scheme_may_load(const char *app_id, const char *uri, gboolean webview);
+
 #endif /* ZYL_WAM_APP_SCHEME_H */

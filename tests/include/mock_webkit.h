@@ -29,6 +29,7 @@ struct _JSCValue { int unused; };
 
 typedef enum {
     WEBKIT_USER_CONTENT_INJECT_ALL_FRAMES = 0,
+    WEBKIT_USER_CONTENT_INJECT_TOP_FRAME = 1,
 } WebKitUserContentInjectedFrames;
 
 typedef enum {

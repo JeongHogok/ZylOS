@@ -77,6 +77,31 @@ static void same_csp(gboolean system, gboolean network, gboolean webview, const 
     g_free(got);
 }
 
+/* The app's view loads its own origin; the web only in a frame of an app
+   allowed it (its top document is checked with is_own as it loads) */
+static void test_the_view_stays_the_apps(void) {
+    const char *id = "com.example.x";
+    assert(zyl_app_scheme_is_own(id, "zyl-app://com.example.x/index.html"));
+    assert(zyl_app_scheme_is_own(id, "zyl-app://com.example.x"));
+    assert(!zyl_app_scheme_is_own(id, "zyl-app://com.example.xy/index.html"));   /* another app */
+    assert(!zyl_app_scheme_is_own(id, "zyl-app://com.zylos.settings/index.html"));
+    assert(!zyl_app_scheme_is_own(id, "https://example.com/"));
+    assert(!zyl_app_scheme_is_own("", "zyl-app:///index.html") && !zyl_app_scheme_is_own(id, NULL));
+    for (int webview = 0; webview <= 1; webview++) {
+        assert(zyl_app_scheme_may_load(id, "zyl-app://com.example.x/b.html", webview));
+        assert(zyl_app_scheme_may_load(id, "about:blank", webview));
+        assert(zyl_app_scheme_may_load(id, "blob:zyl-app://com.example.x/5f1c", webview));
+        assert(!zyl_app_scheme_may_load(id, "blob:zyl-app://com.example.other/5f1c", webview));
+        assert(!zyl_app_scheme_may_load(id, "zyl-app://com.example.other/", webview));
+        assert(!zyl_app_scheme_may_load(id, "http://example.com/", webview));        /* never plain http */
+        assert(!zyl_app_scheme_may_load(id, "file:///etc/passwd", webview));
+        assert(!zyl_app_scheme_may_load(id, "data:text/html,x", webview));
+        assert(!zyl_app_scheme_may_load(id, NULL, webview));
+    }
+    assert(!zyl_app_scheme_may_load(id, "https://example.com/", FALSE));
+    assert(zyl_app_scheme_may_load(id, "https://example.com/", TRUE));
+}
+
 static void test_csp_follows_permissions(void) {
     /* A user-installed app without the network: its own files, nothing out */
     same_csp(FALSE, FALSE, FALSE,
@@ -120,6 +145,7 @@ int main(void) {
     RUN_TEST(test_nothing_outside);
     RUN_TEST(test_mime_and_uri);
     RUN_TEST(test_csp_follows_permissions);
+    RUN_TEST(test_the_view_stays_the_apps);
     assert(system("rm -rf " ROOT_) == 0);
     printf("=== %d/%d passed ===\n", tests_pass, tests_run);
     return tests_pass == tests_run ? 0 : 1;

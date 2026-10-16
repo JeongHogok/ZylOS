@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/random.h>
 #include <json-glib/json-glib.h>
 
 /* == Handler Registry Entry ================================= */
@@ -91,17 +92,40 @@ int zyl_bridge_register_handler(const char       *type,
     return 0;
 }
 
+/* == The view's token ======================================= */
+
+gboolean zyl_bridge_new_token(char out[ZYL_BRIDGE_TOKEN_LEN + 1])
+{
+    unsigned char raw[ZYL_BRIDGE_TOKEN_LEN / 2];
+    out[0] = '\0';
+    if (getrandom(raw, sizeof(raw), 0) != (ssize_t)sizeof(raw)) return FALSE;
+    for (size_t i = 0; i < sizeof(raw); i++)
+        g_snprintf(out + 2 * i, 3, "%02x", raw[i]);
+    return TRUE;
+}
+
+const char *zyl_bridge_untoken(const char *msg, const char *token)
+{
+    if (!msg || !token || strlen(token) != ZYL_BRIDGE_TOKEN_LEN) return NULL;
+    if (strlen(msg) < ZYL_BRIDGE_TOKEN_LEN) return NULL;
+    unsigned char diff = 0;
+    for (size_t i = 0; i < ZYL_BRIDGE_TOKEN_LEN; i++)
+        diff |= (unsigned char)(msg[i] ^ token[i]);
+    return diff ? NULL : msg + ZYL_BRIDGE_TOKEN_LEN;
+}
+
 /* == Load and inject the JS bridge ========================== */
 
 gboolean zyl_bridge_inject(const char      *bridge_js_path,
                            WebKitWebView   *webview,
-                           ZylAppManifest  *manifest)
+                           ZylAppManifest  *manifest,
+                           const char      *token)
 {
     gchar *template = NULL;
     gsize length = 0;
     GError *error = NULL;
 
-    if (!bridge_js_path || !webview || !manifest) {
+    if (!bridge_js_path || !webview || !manifest || !token) {
         g_warning("Bridge: inject called with NULL argument");
         return FALSE;
     }
@@ -131,16 +155,22 @@ gboolean zyl_bridge_inject(const char      *bridge_js_path,
     if (!s3) { g_free(template); return FALSE; }
 
     parts = g_strsplit(s3, "{{APP_VERSION}}", -1);
-    s1 = g_strjoinv(manifest->version, parts);
+    s2 = g_strjoinv(manifest->version, parts);
     g_strfreev(parts);
     g_free(s3);
+    if (!s2) { g_free(template); return FALSE; }
+
+    parts = g_strsplit(s2, "{{BRIDGE_TOKEN}}", -1);
+    s1 = g_strjoinv(token, parts);
+    g_strfreev(parts);
+    g_free(s2);
     if (!s1) { g_free(template); return FALSE; }
 
     WebKitUserContentManager *ucm =
         webkit_web_view_get_user_content_manager(webview);
     WebKitUserScript *user_script = webkit_user_script_new(
         s1,
-        WEBKIT_USER_CONTENT_INJECT_ALL_FRAMES,
+        WEBKIT_USER_CONTENT_INJECT_TOP_FRAME,     /* the token stays out of frames */
         WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START,
         NULL, NULL);
     webkit_user_content_manager_add_script(ucm, user_script);

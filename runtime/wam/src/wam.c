@@ -620,12 +620,63 @@ static void on_webkit_bridge_message(WebKitUserContentManager *manager,
 
     char *msg_str = jsc_value_to_string(value);
 
+    /* Only the app's own top document holds the view's token: a frame it
+       shows, or a page it went to, reaches the handler but is not the app */
+    const char *msg = zyl_bridge_untoken(msg_str, instance->bridge_token);
+    if (!msg) {
+        g_warning("Bridge: %s: dropped a message from outside its own page",
+                  instance->manifest->id);
+        g_free(msg_str);
+        return;
+    }
+
     /* H5: Dispatch via handler registry; H13: error handling inside */
     zyl_bridge_dispatch(WEBKIT_WEB_VIEW(instance->webview_widget),
                         instance->manifest,
-                        msg_str);
+                        msg);
 
     g_free(msg_str);
+}
+
+/* ════════════════════════════════════════════════════════════════
+ *  Where an app's view may go: its own origin. A frame of an app allowed
+ *  the web ("webview") may load https; its top document stays the app's —
+ *  checked as it commits, since WebKit asks per navigation, not per frame.
+ *  A page that got there has run without the bridge (no token) until then
+ * ════════════════════════════════════════════════════════════════ */
+
+static gboolean on_decide_policy(WebKitWebView *webview, WebKitPolicyDecision *decision,
+                                 WebKitPolicyDecisionType type, gpointer user_data) {
+    ZylAppInstance *instance = user_data;
+    (void)webview;
+    if (type == WEBKIT_POLICY_DECISION_TYPE_NEW_WINDOW_ACTION) {   /* no windows of its own */
+        webkit_policy_decision_ignore(decision);
+        return TRUE;
+    }
+    if (type != WEBKIT_POLICY_DECISION_TYPE_NAVIGATION_ACTION) return FALSE;
+    WebKitNavigationAction *action = webkit_navigation_policy_decision_get_navigation_action(
+        WEBKIT_NAVIGATION_POLICY_DECISION(decision));
+    const char *uri = webkit_uri_request_get_uri(webkit_navigation_action_get_request(action));
+    const ZylAppManifest *m = instance->manifest;
+    if (zyl_app_scheme_may_load(m->id, uri, zyl_bridge_app_holds(m, "webview"))) return FALSE;
+    g_warning("WAM: %s may not load %s", m->id, uri ? uri : "(none)");
+    webkit_policy_decision_ignore(decision);
+    return TRUE;
+}
+
+static void on_top_document(WebKitWebView *webview, WebKitLoadEvent event, gpointer user_data) {
+    ZylAppInstance *instance = user_data;
+    /* the top document's: at the start WebKit may still name the one being
+       left, so the new one is seen at the latest when it commits */
+    const char *uri = webkit_web_view_get_uri(webview);
+    if (!uri || zyl_app_scheme_is_own(instance->manifest->id, uri)) return;
+    g_warning("WAM: %s's page went to %s — back to the app", instance->manifest->id, uri);
+    webkit_web_view_stop_loading(webview);
+    if (event == WEBKIT_LOAD_COMMITTED || event == WEBKIT_LOAD_FINISHED) {
+        char *entry = zyl_app_scheme_uri(instance->manifest->id, instance->manifest->entry);
+        webkit_web_view_load_uri(webview, entry);
+        g_free(entry);
+    }
 }
 
 /* ════════════════════════════════════════════════════════════════
@@ -825,8 +876,11 @@ static GtkWidget *webkit_create_webview(ZylWebEngine   *self,
     g_free(cache_dir);
     webkit_web_view_set_settings(webview, settings);
 
-    /* Inject JS bridge from external file */
-    zyl_bridge_inject(WAM_BRIDGE_JS, webview, manifest);
+    /* Inject JS bridge from external file, with the token only it will hold */
+    ZylAppInstance *instance = instance_ctx;
+    if (!zyl_bridge_new_token(instance->bridge_token))
+        g_critical("Bridge: no random source — %s cannot reach the OS", manifest->id);
+    zyl_bridge_inject(WAM_BRIDGE_JS, webview, manifest, instance->bridge_token);
 
     /* The device class is the hardware's: the image's build profile, declared
        before any app script runs (apps/shared/form-factor.js reads it) */
@@ -844,6 +898,8 @@ static GtkWidget *webkit_create_webview(ZylWebEngine   *self,
        along. A change in Settings closes the app (on_permissions_changed). */
     g_signal_connect(webview, "permission-request", G_CALLBACK(on_permission_request), instance_ctx);
     g_signal_connect(webview, "run-file-chooser", G_CALLBACK(on_file_chooser), NULL);
+    g_signal_connect(webview, "decide-policy", G_CALLBACK(on_decide_policy), instance_ctx);
+    g_signal_connect(webview, "load-changed", G_CALLBACK(on_top_document), instance_ctx);
 
     if (zyl_bridge_app_holds(manifest, "network")) {
         const char *const any_https[] = { "https://*/*", NULL };
