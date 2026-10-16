@@ -279,7 +279,7 @@ ZylUpdater *zyl_updater_create(const char *update_server_url,
     if (!u) return NULL;
 
     u->server_url = strdup(update_server_url ? update_server_url
-        : "https://update.zyl-os.dev/v1");
+        : "https://update.zyl-os.com/v1");
     u->cache_dir = strdup(cache_dir ? cache_dir : UPDATE_CACHE_DEFAULT);
     if (!u->server_url || !u->cache_dir) {
         free(u->server_url);

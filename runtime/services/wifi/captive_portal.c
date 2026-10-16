@@ -15,7 +15,7 @@
 #include <sys/wait.h>
 #include <spawn.h>
 
-#define CAPTIVE_PORTAL_URL "http://connectivitycheck.zylos.dev/generate_204"
+#define CAPTIVE_PORTAL_URL "http://connectivitycheck.zyl-os.com/generate_204"
 #define CAPTIVE_PORTAL_FALLBACK "http://clients3.google.com/generate_204"
 
 typedef enum {
