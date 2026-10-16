@@ -23,6 +23,8 @@
 #define ZYL_BOOT_DIR  DIR_ "/boot"
 #define ZYL_OTA_KEY   DIR_ "/ota.pem"
 #define ZYL_CMDLINE   DIR_ "/cmdline"
+#define ZYL_SYSTEMCTL DIR_ "/bin/systemctl"
+#define ZYL_CURL      DIR_ "/bin/curl"
 /* One unit: the board's Boot HAL pointed at scratch partitions, and the updater */
 #include "../runtime/hal/hal_boot.c"
 #include "../runtime/lib/ota_verify.c"
@@ -243,6 +245,66 @@ static void test_variables_are_the_ones_u_boot_reads(void) {
     g_free(env);
 }
 
+/* systemctl show for the four core units: state and run of each */
+static void units(const char *wam_state, const char *wam_run) {
+    char *t = g_strdup_printf(
+        "ActiveState=active\nInvocationID=c1\n\nActiveState=%s\nInvocationID=%s\n\n"
+        "ActiveState=active\nInvocationID=l1\n\nActiveState=active\nInvocationID=s1\n",
+        wam_state, wam_run);
+    put(DIR_ "/units", t);
+    g_free(t);
+}
+
+/* One is-active at 60 s confirmed a WAM crashing every few seconds most of the
+   time — a black screen U-Boot would never leave */
+static void test_healthy_is_every_core_unit_up_in_the_same_run(void) {
+    tool("systemctl", "cat " DIR_ "/units\n");
+    units("active", "w1");
+    char *a = zyl_updater_health_sample(), *b = zyl_updater_health_sample();
+    assert(a && zyl_updater_health_stable(a, b));
+    units("active", "w2");                                  /* restarted in between */
+    char *c = zyl_updater_health_sample();
+    assert(!zyl_updater_health_stable(b, c));
+    units("activating", "w3");                              /* still coming up */
+    char *d = zyl_updater_health_sample(), *e = zyl_updater_health_sample();
+    assert(!zyl_updater_health_stable(d, e));
+    units("active", "");                                    /* never ran */
+    char *f = zyl_updater_health_sample();
+    assert(!zyl_updater_health_stable(f, f));
+    put(DIR_ "/units", "ActiveState=active\nInvocationID=c1\n");   /* one unit only */
+    char *g = zyl_updater_health_sample();
+    assert(!zyl_updater_health_stable(g, g));
+    assert(!zyl_updater_health_stable(NULL, a));            /* the first look */
+    tool("systemctl", "exit 1\n");
+    assert(zyl_updater_health_sample() == NULL);
+    g_free(a); g_free(b); g_free(c); g_free(d); g_free(e); g_free(f); g_free(g);
+}
+
+/* A server or mirror sending without end filled /data, and the part stayed */
+static void test_a_download_is_bounded_and_a_failed_one_leaves_nothing(void) {
+    /* curl writes what it was given as arguments, a part of a file, and fails
+       as it does past --max-filesize */
+    tool("curl", "echo \"$@\" > " DIR_ "/curl-args; out=''\n"
+                 "while [ $# -gt 0 ]; do [ \"$1\" = -o ] && out=$2; shift; done\n"
+                 "echo part > \"$out\"; exit 63\n");
+    offer("full", false);
+    u->pending->download_url = strdup("https://update.zyl-os.com/p.pkg");
+    u->pending->download_size = 4096;
+    assert(!zyl_updater_download(u, NULL, NULL));
+    assert(access(PKG, F_OK) != 0);                         /* the part is gone */
+    char *args = NULL;
+    assert(g_file_get_contents(DIR_ "/curl-args", &args, NULL, NULL));
+    assert(strstr(args, "--proto =https --proto-redir =https") && strstr(args, "--max-filesize 4096"));
+    g_free(args);
+    /* No room for it: not even started */
+    unlink(DIR_ "/curl-args");
+    offer("full", false);
+    u->pending->download_url = strdup("https://update.zyl-os.com/p.pkg");
+    u->pending->download_size = (size_t)1 << 62;
+    assert(!zyl_updater_download(u, NULL, NULL));
+    assert(access(DIR_ "/curl-args", F_OK) != 0);
+}
+
 int main(void) {
     key = EVP_RSA_gen(2048);
     assert(key);
@@ -260,6 +322,8 @@ int main(void) {
     RUN_TEST(test_on_trial_only_while_u_boot_is_trying_this_slot);
     RUN_TEST(test_the_booted_slot_is_read_from_a_long_signed_command_line);
     RUN_TEST(test_variables_are_the_ones_u_boot_reads);
+    RUN_TEST(test_healthy_is_every_core_unit_up_in_the_same_run);
+    RUN_TEST(test_a_download_is_bounded_and_a_failed_one_leaves_nothing);
     zyl_updater_destroy(u);
     EVP_PKEY_free(key);
     sh("rm -rf " DIR_);

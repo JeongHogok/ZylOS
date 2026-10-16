@@ -50,9 +50,13 @@ zyl_check_lock=\
       echo "ZylOS: hold the ${zyl_unlock_button} button now to confirm (10 s)"; \
       run zyl_confirm; \
       if test "${zyl_ok}" = "1"; then \
-        run zyl_wipe; \
-        setenv zyl_lock_seen ${zyl_unlocked}; \
-        setenv zyl_oem_unlock_allowed 0; \
+        if run zyl_wipe; then \
+          setenv zyl_lock_seen ${zyl_unlocked}; \
+          setenv zyl_oem_unlock_allowed 0; \
+        else \
+          echo "ZylOS: user data could not be erased - lock state unchanged"; \
+          setenv zyl_unlocked ${zyl_lock_seen}; \
+        fi; \
       else \
         echo "ZylOS: not confirmed - lock state unchanged"; \
         setenv zyl_unlocked ${zyl_lock_seen}; \

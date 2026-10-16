@@ -4,7 +4,8 @@
  * 역할: 시스템 업데이트 데몬 (org.zylos.Updater) — 설정 앱의 소프트웨어 업데이트
  * 수행범위: 상태 조회, 확인, 다운로드·검증·설치(작업 스레드), 재시작,
  *           진행 상황을 StateChanged 시그널로 알림. 업데이트 시험 부팅이면
- *           부팅 후 상태 점검 → 통과 시 슬롯 확정, 실패 시 재부팅(U-Boot 가
+ *           부팅 후 상태 점검(핵심 유닛이 30초 간격 두 표본에서 같은 실행으로
+ *           active) → 통과 시 슬롯 확정, 몇 번 봐도 안 되면 재부팅(U-Boot 가
  *           zyl_boot_limit 회 뒤 이전 슬롯으로 되돌림)
  * 의존방향: updater.h (설치·검증·U-Boot 환경), gio/gio.h (D-Bus)
  * SOLID: SRP — D-Bus 노출과 작업 순서만. 설치 로직은 updater.c
@@ -19,8 +20,10 @@
 #define ZYL_UPDATE_SERVER_FILE "/etc/zyl-os/update-server"
 #endif
 #ifndef CONFIRM_AFTER_S
-#define CONFIRM_AFTER_S 60       /* the session should be up by then */
+#define CONFIRM_AFTER_S 60       /* the session should be up by then: the first look */
 #endif
+#define HEALTH_GAP_S    30       /* the next looks, each compared with the one before */
+#define HEALTH_LOOKS    6        /* then it is not going to be healthy: up to ~3.5 min */
 
 static ZylUpdater *g_u;
 static GDBusConnection *g_conn;
@@ -121,14 +124,39 @@ static void start(Job job) {
 }
 
 /* ─── Boot confirmation ─── */
+static char *g_health;            /* the last look */
+static int g_looks;
+
+static void reboot_untried(const char *why) {
+    /* Restart so U-Boot counts this try; after zyl_boot_limit it boots the previous slot */
+    fprintf(stderr, "[UPDATER] Updated slot is not healthy (%s) — restarting\n", why);
+    const char *argv[] = {"systemctl", "reboot", NULL};
+    g_spawn_async(NULL, (char **)argv, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL, NULL, NULL);
+}
+
 static gboolean confirm_boot(gpointer data) {
     (void)data;
-    if (g_busy || !zyl_updater_on_trial(g_u)) return G_SOURCE_REMOVE;
-    if (!zyl_updater_mark_verified(g_u)) {
-        /* Restart so U-Boot counts this try; after zyl_boot_limit it boots the previous slot */
-        fprintf(stderr, "[UPDATER] Updated slot is not healthy — restarting\n");
-        const char *argv[] = {"systemctl", "reboot", NULL};
-        g_spawn_async(NULL, (char **)argv, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL, NULL, NULL);
+    if (g_busy) return G_SOURCE_CONTINUE;            /* look again once it is free */
+    if (!zyl_updater_on_trial(g_u)) return G_SOURCE_REMOVE;
+    char *now = zyl_updater_health_sample();
+    gboolean stable = zyl_updater_health_stable(g_health, now);
+    g_free(g_health);
+    g_health = now;
+    if (stable) {
+        if (zyl_updater_mark_verified(g_u)) fprintf(stderr, "[UPDATER] Updated slot is healthy\n");
+        else reboot_untried("could not confirm");
+        return G_SOURCE_REMOVE;
+    }
+    if (++g_looks < HEALTH_LOOKS) return G_SOURCE_CONTINUE;
+    reboot_untried("core units not steadily up");
+    return G_SOURCE_REMOVE;
+}
+
+static gboolean first_look(gpointer data) {
+    (void)data;
+    if (zyl_updater_on_trial(g_u)) {
+        g_health = zyl_updater_health_sample();
+        g_timeout_add_seconds(HEALTH_GAP_S, confirm_boot, NULL);
     }
     return G_SOURCE_REMOVE;
 }
@@ -198,7 +226,7 @@ int main(int argc, char *argv[]) {
 
     g_bus_own_name(G_BUS_TYPE_SYSTEM, "org.zylos.Updater", G_BUS_NAME_OWNER_FLAGS_NONE,
                    on_updater_bus, NULL, NULL, NULL, NULL);
-    g_timeout_add_seconds(CONFIRM_AFTER_S, confirm_boot, NULL);
+    g_timeout_add_seconds(CONFIRM_AFTER_S, first_look, NULL);
     GMainLoop *loop = g_main_loop_new(NULL, FALSE);
     g_main_loop_run(loop);
     g_main_loop_unref(loop);

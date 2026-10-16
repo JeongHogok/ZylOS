@@ -24,6 +24,6 @@ zyl_unlock_button=none
 zyl_confirm=setenv zyl_ok 0
 
 # Unreachable while nothing can confirm a change — refuse rather than half-erase
-zyl_wipe=echo "ZylOS: this board cannot erase user data"
+zyl_wipe=echo "ZylOS: this board cannot erase user data"; test 0 = 1
 
 zyl_before_os=echo "ZylOS: no boot area to protect on this board"

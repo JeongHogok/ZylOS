@@ -23,5 +23,6 @@ RemainAfterExit=yes
 # 콘솔로도 보내야 직렬 콘솔만 있는 기기와 QEMU 에서 결과를 읽을 수 있다
 StandardOutput=journal+console
 StandardError=journal+console
-# 56개 검사 + 시작 중인 유닛 대기 — 에뮬레이션에서는 1분으로 모자란다
-TimeoutStartSec=180
+# 56개 검사 + 시작 중인 유닛 대기 — 에뮬레이션에서는 1분으로 모자란다. 업데이트 시험
+# 부팅이면 업데이터의 확정(첫 표본 60초 + 30초 간격 비교)까지 기다린다
+TimeoutStartSec=300
