@@ -193,6 +193,8 @@
             }
             /* After its state: the app is as the user left it, then gets what it asked for */
             if (result) broadcastToCurrentApp('intent.result', result);
+            (_eventsAfterLoad[loadAppId] || []).forEach(function (ev) { deliverEvent(ev[0], ev[1], ev[2]); });
+            delete _eventsAfterLoad[loadAppId];
           }, 200);
           appFrame.onload = null;
         };
@@ -461,7 +463,19 @@
 
   window.addEventListener('zyl:notification-posted', function (e) {
     var n = e.detail;
-    if (n) deliverEvent('notification', 'NotificationPosted', [n.id, n.appId, n.title, n.body, n.priority]);
+    if (n) deliverEvent('notification', 'NotificationPosted', [n.id, n.appId, n.title, n.body, n.priority, n.actions || []]);
+  });
+
+  /* The OS: the user pressed a notification's action — its app comes forward
+     and gets ActionInvoked once its page is there (the WAM's app_to_show) */
+  var _eventsAfterLoad = {};   /* appId → [[service, event, data]] */
+  window.addEventListener('zyl:notification-action', function (e) {
+    var a = e.detail;
+    if (!a || !a.appId) return;
+    var ev = ['notification', 'ActionInvoked', [a.id, a.appId, a.actionId]];
+    if (_displayedApp === a.appId) { deliverEvent(ev[0], ev[1], ev[2]); return; }
+    (_eventsAfterLoad[a.appId] = _eventsAfterLoad[a.appId] || []).push(ev);
+    open(a.appId);
   });
   window.addEventListener('zyl:notification-dismissed', function (e) {
     deliverEvent('notification', 'NotificationDismissed', e.detail);
@@ -514,32 +528,6 @@
   /* ═══ System Services IPC ═══ */
   function handleServiceRequest(msg, source, callerAppId) {
     if (!msg.service || !msg.method) return;
-
-    /* Camera access: dynamically grant iframe permissions */
-    if (msg.service === 'camera' && msg.method === 'requestAccess') {
-      var hasAccess = (typeof ZylPermissions !== 'undefined')
-        ? ZylPermissions.hasPermission(callerAppId, 'camera') : false;
-      if (hasAccess && typeof ZylSandbox !== 'undefined') {
-        var perms = ZylPermissions.getEffectivePermissions(callerAppId);
-        appFrame.setAttribute('allow', ZylSandbox.getPolicy(callerAppId, perms));
-      }
-      var camResponse = JSON.stringify({
-        type: 'service.response',
-        service: msg.service,
-        method: msg.method,
-        params: msg.params || {},
-        requestId: msg.requestId || null,
-        data: { granted: hasAccess }
-      });
-      try {
-        if (source) {
-          source.postMessage(camResponse, originFor(source));
-        } else if (appFrame && appFrame.contentWindow) {
-          appFrame.contentWindow.postMessage(camResponse, frameOrigin());
-        }
-      } catch (err) { /* iframe not ready */ }
-      return;
-    }
 
     var result = ZylServices.handleRequest(msg.service, msg.method, msg.params || {}, callerAppId);
 

@@ -4,6 +4,9 @@
 // Role: Notification service — post, cancel, list, clear, DND,
 //       history, grouping, badge counts
 // Scope: OS notification management (actions, DND, history, groups).
+//        An action the user presses goes to the posting app (invokeAction →
+//        zyl:notification-action: the OS brings that app forward and hands it
+//        ActionInvoked), and the notification is done — runtime/services/notification
 //        A notification stays until dismissed or cancelled, as on the device;
 //        how long a banner shows is the UI's own.
 //        Posted and dismissed are announced as zyl:notification-posted /
@@ -145,6 +148,20 @@
         var notif = _activeMap[p.id];
         if (notif && (!p.appId || notif.appId === p.appId)) _dismiss(p.id);
         return { success: true };
+      },
+
+      /**
+       * The user pressed an action button (the system UI's call): only one the
+       * notification offered. Its app gets ActionInvoked; the notification is done.
+       * p: { id, actionId }
+       */
+      invokeAction: function (p) {
+        var notif = _activeMap[p && p.id];
+        var offered = notif && (notif.actions || []).some(function (a) { return a && a.actionId === p.actionId; });
+        if (!offered) return false;
+        _announce('zyl:notification-action', { id: notif.id, appId: notif.appId, actionId: p.actionId });
+        _dismiss(notif.id);
+        return true;
       },
 
       /**

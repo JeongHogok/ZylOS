@@ -49,7 +49,9 @@
         if (gradient) gradient.style.display = 'none';
       }
     }).catch(function (err) {
-      var msg = err.name === 'NotAllowedError' ? 'Camera permission denied' : 'Camera unavailable';
+      /* Denied is the OS's answer (the app's camera permission — WAM, emulator alike) */
+      var msg = (typeof zylI18n !== 'undefined')
+        ? zylI18n.t(err.name === 'NotAllowedError' ? 'camera.access_denied' : 'camera.unavailable') : err.name;
       if (viewfinder) {
         var overlay = document.createElement('div');
         overlay.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:14px;text-align:center;padding:20px;z-index:5';
@@ -66,15 +68,9 @@
     }
   }
 
-  /* ─── Request camera access via OS permission service ─── */
-  function requestCameraAccess() {
-    /* 권한 판정은 OS 몫이다 (bridge.c / permissions.js): 앱은 요청만 하고
-       거부되면 아래 getUserMedia 실패 경로가 같은 안내를 띄운다 */
-    ZylBridge.sendToSystem({
-      type: 'service.request', service: 'camera', method: 'requestAccess', params: {}
-    });
-  }
-  requestCameraAccess();
+  /* The OS decides on getUserMedia itself (the WAM's permission handler on the
+     device, the frame's allow policy in the emulator) — no separate ask */
+  startCamera();
 
   /* ─── Focus on tap ─── */
   viewfinder.addEventListener('click', function (e) {
@@ -288,21 +284,6 @@
     try {
       var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
       if (!msg) return;
-
-      /* Camera access response */
-      if (msg.type === 'service.response' && msg.service === 'camera' && msg.method === 'requestAccess') {
-        if (msg.data && msg.data.granted) {
-          startCamera();
-        } else {
-          if (viewfinder) {
-            var overlay = document.createElement('div');
-            overlay.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:14px;text-align:center;padding:20px;z-index:5';
-            overlay.textContent = (typeof zylI18n !== 'undefined') ? zylI18n.t('camera.access_denied') : 'Camera access denied';
-            viewfinder.appendChild(overlay);
-          }
-        }
-        return;
-      }
 
       /* Navigation back handling */
       if (msg.type === 'navigation.back') {

@@ -18,12 +18,14 @@ window.ZylSandbox = (function () {
   /* iframe sandbox flags — applied to every app iframe by the compositor */
   var SANDBOX_FLAGS = 'allow-scripts allow-same-origin allow-popups allow-forms';
 
-  /* Permission → Permissions Policy feature mapping */
+  /* Permission → Permissions Policy feature mapping. The same as the device
+     WAM's permission handler (wam.c): camera and microphone by permission;
+     geolocation never — an app's location is the OS's location service */
   var FEATURE_MAP = {
     'camera':     'camera',
-    'microphone': 'microphone',
-    'location':   'geolocation'
+    'microphone': 'microphone'
   };
+  var NEVER = ['geolocation'];
 
   /**
    * Generate Permissions Policy string for an app based on its effective permissions.
@@ -41,6 +43,7 @@ window.ZylSandbox = (function () {
         policies.push(feature + " 'none'");
       }
     }
+    for (var n = 0; n < NEVER.length; n++) policies.push(NEVER[n] + " 'none'");
     return policies.join('; ');
   }
 

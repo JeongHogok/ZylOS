@@ -153,6 +153,16 @@ ZylBridge.notify(zylI18n.t('myapp.done_title'), zylI18n.t('myapp.done_body'), { 
 `notify` 는 `notification` 서비스 요청이다. 올린 앱은 OS 가 정한다 — 제3자 앱이 `appId`
 를 무엇으로 주든 자기 이름으로 올라간다.
 
+**액션 버튼** — `actions: [{ label, actionId }]`(라벨은 앱이 번역해서). 사용자가 누르면 OS 가
+그 앱을 앞으로 띄우고(떠 있지 않았으면 실행해서, 페이지가 뜬 뒤) 알려 주며, 알림은 끝난다.
+
+```javascript
+ZylBridge.notify(title, body, { actions: [{ label: zylI18n.t('myapp.reply'), actionId: 'reply' }] });
+ZylBridge.onNotificationAction(function (a) {
+  /* a = { id, actionId } — 이 앱이 올린 알림의 것만 온다 */
+});
+```
+
 ---
 
 ## 5. 권한
@@ -187,6 +197,15 @@ ZylBridge.onServiceEvent('notification', 'NotificationPosted', function (d) {
   (`runtime/services/<서비스>/` 의 `<signal>` 선언). 인자가 하나면 배열이 아니라 그 값이다.
 - 이벤트는 그 서비스를 **부를 수 있는 앱에게만** 가고, 한 앱의 것에 관한 이벤트는 그 주인에게만
   간다 (`OWNED_EVENTS`, [SECURITY.md §3](SECURITY.md#3-권한)).
+
+### 웹 플랫폼이 묻는 것 — 카메라·마이크·위치·파일
+
+- `getUserMedia` 의 카메라·마이크는 앱의 `camera`·`microphone` 권한으로 OS 가 정한다(묻는 창
+  없음, 사용자가 끄면 거부). 화면 공유·웹 알림(`Notification`)·포인터 잠금은 거부된다 —
+  알림은 `ZylBridge.notify`.
+- `navigator.geolocation` 은 쓰지 않는다 — 위치는 `location` 서비스(`location` 권한).
+- `<input type=file>` 은 열리지 않는다(기기에서 데스크톱 대화창이 뜨는 대신). 파일은
+  `ZylIntent` 의 PICK 으로 받는다 (7장).
 
 ---
 

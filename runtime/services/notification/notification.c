@@ -45,7 +45,7 @@ static const char *introspection_xml =
     "      <arg direction='in'  type='s'      name='body'/>"
     "      <arg direction='in'  type='s'      name='icon'/>"
     "      <arg direction='in'  type='i'      name='priority'/>"
-    "      <arg direction='in'  type='a(ss)'  name='actions'/>"
+    "      <arg direction='in'  type='aa{ss}' name='actions'/>"
     "      <arg direction='out' type='t'      name='id'/>"
     "    </method>"
     "    <method name='Cancel'>"
@@ -54,6 +54,11 @@ static const char *introspection_xml =
     "    </method>"
     "    <method name='GetActive'>"
     "      <arg direction='out' type='aa{sv}' name='notifications'/>"
+    "    </method>"
+    "    <method name='InvokeAction'>"
+    "      <arg direction='in'  type='t' name='id'/>"
+    "      <arg direction='in'  type='s' name='action_id'/>"
+    "      <arg direction='out' type='b' name='invoked'/>"
     "    </method>"
     "    <method name='ClearAll'/>"
     "    <method name='RegisterChannel'>"
@@ -77,6 +82,12 @@ static const char *introspection_xml =
     "      <arg type='s' name='title'/>"
     "      <arg type='s' name='body'/>"
     "      <arg type='i' name='priority'/>"
+    "      <arg type='aa{ss}' name='actions'/>"
+    "    </signal>"
+    "    <signal name='ActionInvoked'>"
+    "      <arg type='t' name='id'/>"
+    "      <arg type='s' name='app_id'/>"
+    "      <arg type='s' name='action_id'/>"
     "    </signal>"
     "    <signal name='NotificationDismissed'>"
     "      <arg type='t' name='id'/>"
@@ -197,6 +208,21 @@ static uint64_t now_timestamp(void)
 
 /* ── Helper: Emit D-Bus signal ────────────────────────────── */
 
+/* aa{ss}: [{ label, actionId }] — what draws the notification and what the app gave */
+static GVariant *actions_variant(const ZylNotification *n)
+{
+    GVariantBuilder b;
+    g_variant_builder_init(&b, G_VARIANT_TYPE("aa{ss}"));
+    for (int i = 0; i < n->num_actions && n->actions; i++) {
+        GVariantBuilder a;
+        g_variant_builder_init(&a, G_VARIANT_TYPE("a{ss}"));
+        g_variant_builder_add(&a, "{ss}", "label", n->actions[i].label ? n->actions[i].label : "");
+        g_variant_builder_add(&a, "{ss}", "actionId", n->actions[i].action_id ? n->actions[i].action_id : "");
+        g_variant_builder_add_value(&b, g_variant_builder_end(&a));
+    }
+    return g_variant_builder_end(&b);
+}
+
 static void emit_signal(ZylNotificationService *service,
                         const char             *signal_name,
                         GVariant               *params)
@@ -250,6 +276,10 @@ static void handle_get_active(ZylNotificationService *service,
                               GVariant               *parameters,
                               GDBusMethodInvocation  *invocation);
 
+static void handle_invoke_action(ZylNotificationService *service,
+                                 GVariant               *parameters,
+                                 GDBusMethodInvocation  *invocation);
+
 static void handle_clear_all(ZylNotificationService *service,
                              GVariant               *parameters,
                              GDBusMethodInvocation  *invocation);
@@ -280,6 +310,7 @@ static const DispatchEntry dispatch_table[] = {
     { "PostWithActions",   handle_post_with_actions   },
     { "Cancel",            handle_cancel              },
     { "GetActive",         handle_get_active          },
+    { "InvokeAction",      handle_invoke_action       },
     { "ClearAll",          handle_clear_all           },
     { "RegisterChannel",   handle_register_channel    },
     { "SetChannelEnabled", handle_set_channel_enabled },
@@ -354,21 +385,24 @@ static void handle_post_with_actions(ZylNotificationService *service,
     gint32 priority;
     GVariant *actions_variant;
 
-    g_variant_get(parameters, "(&s&s&s&s&si@a(ss))",
+    g_variant_get(parameters, "(&s&s&s&s&si@aa{ss})",
                   &app_id, &channel_id, &title, &body, &icon,
                   &priority, &actions_variant);
 
-    /* Parse action array */
+    /* Each action is { label, actionId } — the app API's own shape (bridge.js notify) */
     gsize num_actions = g_variant_n_children(actions_variant);
     ZylNotifAction *actions = NULL;
 
     if (num_actions > 0) {
         actions = g_new0(ZylNotifAction, num_actions);
         for (gsize i = 0; i < num_actions; i++) {
-            const char *label, *action_id;
-            g_variant_get_child(actions_variant, i, "(&s&s)", &label, &action_id);
+            GVariant *a = g_variant_get_child_value(actions_variant, i);
+            const char *label = "", *action_id = "";
+            g_variant_lookup(a, "label", "&s", &label);
+            g_variant_lookup(a, "actionId", "&s", &action_id);
             actions[i].label     = g_strdup(label);
             actions[i].action_id = g_strdup(action_id);
+            g_variant_unref(a);
         }
     }
     g_variant_unref(actions_variant);
@@ -419,6 +453,17 @@ static void handle_cancel(ZylNotificationService *service,
     g_dbus_method_invocation_return_value(invocation, NULL);
 }
 
+static void handle_invoke_action(ZylNotificationService *service,
+                                 GVariant               *parameters,
+                                 GDBusMethodInvocation  *invocation)
+{
+    guint64 id;
+    const char *action_id;
+    g_variant_get(parameters, "(t&s)", &id, &action_id);
+    g_dbus_method_invocation_return_value(invocation,
+        g_variant_new("(b)", zyl_notification_invoke_action(service, id, action_id)));
+}
+
 static void handle_get_active(ZylNotificationService *service,
                               GVariant               *parameters,
                               GDBusMethodInvocation  *invocation)
@@ -448,6 +493,7 @@ static void handle_get_active(ZylNotificationService *service,
         g_variant_builder_add(&d, "{sv}", "read", g_variant_new_boolean(n->read));
         g_variant_builder_add(&d, "{sv}", "persistent", g_variant_new_boolean(n->persistent));
         g_variant_builder_add(&d, "{sv}", "priority", g_variant_new_int32(n->priority));
+        g_variant_builder_add(&d, "{sv}", "actions", actions_variant(n));
         g_variant_builder_add_value(&builder, g_variant_builder_end(&d));
         zyl_notification_free(n);
     }
@@ -811,12 +857,13 @@ uint64_t zyl_notification_post_with_actions(ZylNotificationService *service,
 
     /* ── Emit D-Bus signal ────────────────────────────────── */
     emit_signal(service, "NotificationPosted",
-                g_variant_new("(tsssi)",
+                g_variant_new("(tsssi@aa{ss})",
                               notif.id,
                               notif.app_id,
                               notif.title,
                               notif.body,
-                              notif.priority));
+                              notif.priority,
+                              actions_variant(&notif)));
 
     g_info("zyl-notification: posted id=%" G_GUINT64_FORMAT " app=%s title='%s' actions=%d",
            notif.id, notif.app_id, notif.title, notif.num_actions);
@@ -847,6 +894,25 @@ void zyl_notification_cancel(ZylNotificationService *service, uint64_t id, const
             return;
         }
     }
+}
+
+bool zyl_notification_invoke_action(ZylNotificationService *service, uint64_t id, const char *action_id)
+{
+    if (!service || !action_id) return false;
+    for (guint i = 0; i < service->notifications->len; i++) {
+        ZylNotification *n = &g_array_index(service->notifications, ZylNotification, i);
+        if (n->id != id) continue;
+        for (int a = 0; a < n->num_actions && n->actions; a++) {
+            if (g_strcmp0(n->actions[a].action_id, action_id) != 0) continue;
+            /* The owner second: the bridge hands it to that app only (OWNED_EVENTS) */
+            emit_signal(service, "ActionInvoked", g_variant_new("(tss)", id, n->app_id, action_id));
+            g_info("zyl-notification: action '%s' of id=%" G_GUINT64_FORMAT, action_id, id);
+            zyl_notification_cancel(service, id, NULL);   /* answered: it is done */
+            return true;
+        }
+        return false;                                     /* not one it offered */
+    }
+    return false;
 }
 
 void zyl_notification_get_active(ZylNotificationService  *service,

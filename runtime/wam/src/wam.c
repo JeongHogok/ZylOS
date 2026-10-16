@@ -736,6 +736,39 @@ static gboolean app_webkit_dirs(const ZylAppManifest *m, char **data, char **cac
  *  ZylWebEngine implementation (WebKitGTK back-end)
  * ════════════════════════════════════════════════════════════════ */
 
+/* What a page asks WebKit for, decided by the app's permissions — the same
+   as the emulator's frame policy (apps/system/sandbox.js getPolicy): camera and
+   microphone by permission; everything else (geolocation, web notifications,
+   pointer lock, screen capture …) is no — the OS has its own services for them */
+static gboolean on_permission_request(WebKitWebView *webview, WebKitPermissionRequest *req, gpointer data) {
+    (void)webview;
+    ZylAppInstance *inst = data;
+    const ZylAppManifest *m = inst ? inst->manifest : NULL;
+    gboolean ok = FALSE;
+    if (WEBKIT_IS_USER_MEDIA_PERMISSION_REQUEST(req)) {
+        WebKitUserMediaPermissionRequest *media = WEBKIT_USER_MEDIA_PERMISSION_REQUEST(req);
+        gboolean video = webkit_user_media_permission_is_for_video_device(media);
+        gboolean audio = webkit_user_media_permission_is_for_audio_device(media);
+        ok = (video || audio) && !webkit_user_media_permission_is_for_display_device(media) &&
+             (!video || zyl_bridge_app_holds(m, "camera")) &&
+             (!audio || zyl_bridge_app_holds(m, "microphone"));
+    } else if (WEBKIT_IS_DEVICE_INFO_PERMISSION_REQUEST(req)) {
+        ok = zyl_bridge_app_holds(m, "camera") || zyl_bridge_app_holds(m, "microphone");
+    }
+    if (ok) webkit_permission_request_allow(req);
+    else webkit_permission_request_deny(req);
+    return TRUE;
+}
+
+/* <input type=file> would open GTK's desktop file dialog over the phone's
+   screen and hand the page a path outside its container. Apps ask the OS for
+   a file instead (ZylIntent PICK — the Files app, a copy into the app's Inbox) */
+static gboolean on_file_chooser(WebKitWebView *webview, WebKitFileChooserRequest *req, gpointer data) {
+    (void)webview; (void)data;
+    webkit_file_chooser_request_cancel(req);
+    return TRUE;
+}
+
 static GtkWidget *webkit_create_webview(ZylWebEngine   *self,
                                         ZylAppManifest *manifest,
                                         gpointer        instance_ctx) {
@@ -751,6 +784,8 @@ static GtkWidget *webkit_create_webview(ZylWebEngine   *self,
     webkit_settings_set_allow_file_access_from_file_urls(settings, FALSE);
     webkit_settings_set_allow_universal_access_from_file_urls(settings, FALSE);
     webkit_settings_set_enable_write_console_messages_to_stdout(settings, FALSE);
+    /* getUserMedia exists; whether a page gets the camera is on_permission_request's */
+    webkit_settings_set_enable_media_stream(settings, TRUE);
 
     WebKitUserContentManager *ucm = webkit_user_content_manager_new();
     g_signal_connect(ucm, "script-message-received::bridge",
@@ -807,6 +842,9 @@ static GtkWidget *webkit_create_webview(ZylWebEngine   *self,
        reaches a server as a native app does: no CORS. Safe because its network
        session — cookies included — is its own, nobody else's credentials ride
        along. A change in Settings closes the app (on_permissions_changed). */
+    g_signal_connect(webview, "permission-request", G_CALLBACK(on_permission_request), instance_ctx);
+    g_signal_connect(webview, "run-file-chooser", G_CALLBACK(on_file_chooser), NULL);
+
     if (zyl_bridge_app_holds(manifest, "network")) {
         const char *const any_https[] = { "https://*/*", NULL };
         webkit_web_view_set_cors_allowlist(webview, any_https);
@@ -989,6 +1027,13 @@ static const ZylDbusMethodEntry dbus_methods[] = {
  * ════════════════════════════════════════════════════════════════ */
 
 static const char *app_to_show(const char *service, const char *signal, GVariant *params) {
+    /* The user pressed a notification's action: its app answers it, in front */
+    if (strcmp(service, "notification") == 0 && strcmp(signal, "ActionInvoked") == 0 &&
+        g_variant_is_of_type(params, G_VARIANT_TYPE("(tss)"))) {
+        const gchar *owner = NULL;
+        g_variant_get(params, "(t&s&s)", NULL, &owner, NULL);
+        return *owner ? owner : NULL;
+    }
     if (strcmp(service, "telephony") != 0) return NULL;
     if (strcmp(signal, "EmergencyAlert") == 0) return "com.zylos.alerts";
     if (strcmp(signal, "CallStateChanged") == 0 &&
@@ -1072,6 +1117,8 @@ static void on_service_event(const char *service, const char *signal,
     if (strcmp(service, "appstore") == 0) on_store_event(wam, signal, params);
     on_shell_event(wam, service, signal, params);
     const char *show = app_to_show(service, signal, params);
+    /* An app started for the event gets it once its page is there, not before */
+    char *started = show && !wam->iface.get_instance(&wam->iface, show) ? g_strdup(show) : NULL;
     if (show && !wam_open(wam, show))
         g_warning("WAM: %s.%s needs %s, which could not start", service, signal, show);
     GHashTableIter it;
@@ -1082,10 +1129,15 @@ static void on_service_event(const char *service, const char *signal,
         if (!inst->webview_widget) continue;
         char *script = zyl_bridge_service_event_script(inst->manifest, service, signal, params);
         if (!script) continue;
-        webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(inst->webview_widget),
-            script, -1, NULL, NULL, NULL, NULL, NULL);
+        WebKitWebView *webview = WEBKIT_WEB_VIEW(inst->webview_widget);
+        if (started && strcmp(inst->manifest->id, started) == 0) {
+            g_signal_connect(webview, "load-changed", G_CALLBACK(deliver_when_loaded), script);
+            continue;
+        }
+        webkit_web_view_evaluate_javascript(webview, script, -1, NULL, NULL, NULL, NULL, NULL);
         g_free(script);
     }
+    g_free(started);
 }
 
 /* The user changed a running app's permissions in Settings. What it may reach
