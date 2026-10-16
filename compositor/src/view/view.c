@@ -8,8 +8,12 @@
  * ────────────────────────────────────────────────────────── */
 
 #include "view.h"
+#include "shell.h"   /* ZYL_SHELL_SYSTEM_UI */
+
+#include <wlr/types/wlr_xdg_activation_v1.h>
 
 #include <stdlib.h>
+#include <string.h>
 #include <wlr/types/wlr_keyboard.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_scene.h>
@@ -42,8 +46,10 @@ void view_focus(struct zyl_view *view)
             wlr_xdg_toplevel_set_activated(prev_tl, false);
     }
 
-    /* Raise to top of scene graph and view list */
+    /* Raise to top of scene graph and view list — under the system UI */
     wlr_scene_node_raise_to_top(&view->scene_tree->node);
+    if (server->panel)
+        wlr_scene_node_raise_to_top(&server->panel->scene_tree->node);
     wl_list_remove(&view->link);
     wl_list_insert(&server->views, &view->link);
 
@@ -70,11 +76,28 @@ void view_focus(struct zyl_view *view)
  * XDG toplevel event listeners
  * ================================================================ */
 
+static bool is_system_ui(const struct zyl_view *view)
+{
+    const char *id = view->xdg_toplevel->app_id;
+    return id && strcmp(id, ZYL_SHELL_SYSTEM_UI) == 0;
+}
+
 static void xdg_toplevel_map(struct wl_listener *listener, void *data)
 {
     struct zyl_view *view = wl_container_of(listener, view, map);
     (void)data;
-    wl_list_insert(&view->server->views, &view->link);
+    struct zyl_server *server = view->server;
+    if (view->is_panel) {
+        /* Over everything from the top left; how much of it takes input is
+           the WAM's (its input region follows the shell's panel mode) */
+        server->panel = view;
+        wlr_scene_node_set_position(&view->scene_tree->node, 0, 0);
+        wlr_scene_node_raise_to_top(&view->scene_tree->node);
+        return;
+    }
+    /* Apps live below the status bar */
+    wlr_scene_node_set_position(&view->scene_tree->node, 0, server->config.statusbar_height_px);
+    wl_list_insert(&server->views, &view->link);
     view_focus(view);
 }
 
@@ -82,10 +105,22 @@ static void xdg_toplevel_unmap(struct wl_listener *listener, void *data)
 {
     struct zyl_view *view = wl_container_of(listener, view, unmap);
     (void)data;
-    if (view == view->server->active_view)
-        view->server->active_view = NULL;
+    struct zyl_server *server = view->server;
+    if (view->is_panel) {
+        if (server->panel == view) server->panel = NULL;
+        return;
+    }
+    bool was_active = view == server->active_view;
+    if (was_active)
+        server->active_view = NULL;
     wl_list_remove(&view->link);
     wl_list_init(&view->link);
+    /* The one now on top gets the keyboard (what the WAM shows next arrives
+       as its own activation) */
+    if (was_active && !wl_list_empty(&server->views)) {
+        struct zyl_view *next = wl_container_of(server->views.next, next, link);
+        view_focus(next);
+    }
 }
 
 static void xdg_toplevel_destroy(struct wl_listener *listener, void *data)
@@ -94,6 +129,8 @@ static void xdg_toplevel_destroy(struct wl_listener *listener, void *data)
     (void)data;
     if (view == view->server->active_view)
         view->server->active_view = NULL;
+    if (view == view->server->panel)
+        view->server->panel = NULL;
     wl_list_remove(&view->link);
     wl_list_remove(&view->commit.link);
     wl_list_remove(&view->map.link);
@@ -111,7 +148,7 @@ static void xdg_toplevel_request_fullscreen(struct wl_listener *listener,
     (void)data;
     /* GTK 는 첫 commit 전에도 전체화면을 요청한다 — 그때는 아무것도 하지 않고
        초기 commit 처리에서 함께 보낸다 (xdg_shell 규약) */
-    if (!view->xdg_toplevel->base->initialized)
+    if (!view->xdg_toplevel->base->initialized || view->is_panel)
         return;
     /* Mobile OS: every app is always fullscreen */
     wlr_xdg_toplevel_set_fullscreen(view->xdg_toplevel, true);
@@ -125,6 +162,10 @@ static void xdg_toplevel_commit(struct wl_listener *listener, void *data)
     struct zyl_view *view = wl_container_of(listener, view, commit);
     (void)data;
     if (!view->xdg_toplevel->base->initial_commit)
+        return;
+    /* The app id is set before the first commit: the system UI sizes itself */
+    view->is_panel = is_system_ui(view);
+    if (view->is_panel)
         return;
     wlr_xdg_toplevel_set_fullscreen(view->xdg_toplevel, true);
     if (view->server->screen_width > 0) {
@@ -207,8 +248,37 @@ static void handle_new_xdg_popup(struct wl_listener *listener, void *data)
  * Public
  * ================================================================ */
 
+/* The WAM brings a running app forward with gtk_window_present, which on
+   Wayland is an xdg-activation request. Only the WAM's apps are clients here
+   and what comes forward is its shell policy's call (runtime/wam/src/shell),
+   so every request is honoured — without this only a newly opened window
+   ever came to the front (home from an app did nothing). */
+static void handle_request_activate(struct wl_listener *listener, void *data)
+{
+    struct zyl_server *server = wl_container_of(listener, server, request_activate);
+    struct wlr_xdg_activation_v1_request_activate_event *event = data;
+    struct wlr_xdg_toplevel *toplevel = wlr_xdg_toplevel_try_from_wlr_surface(event->surface);
+    if (!toplevel || !toplevel->base->surface->mapped)
+        return;
+    if (server->panel && server->panel->xdg_toplevel == toplevel)
+        return;   /* always on top already */
+    struct zyl_view *view;
+    wl_list_for_each(view, &server->views, link) {
+        if (view->xdg_toplevel == toplevel) {
+            view_focus(view);
+            return;
+        }
+    }
+}
+
 void view_register_listeners(struct zyl_server *server)
 {
+    server->xdg_activation = wlr_xdg_activation_v1_create(server->wl_display);
+    if (server->xdg_activation) {
+        server->request_activate.notify = handle_request_activate;
+        wl_signal_add(&server->xdg_activation->events.request_activate,
+                      &server->request_activate);
+    }
     server->new_xdg_toplevel.notify = handle_new_xdg_toplevel;
     wl_signal_add(&server->xdg_shell->events.new_toplevel,
                   &server->new_xdg_toplevel);

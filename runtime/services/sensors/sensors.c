@@ -2,41 +2,41 @@
 /* ──────────────────────────────────────────────────────────
  * [Clean Architecture] Application Layer - Service
  *
- * 역할: 센서 서비스 — IIO 센서 폴링, 이벤트 전달, D-Bus 시그널 발신
- * 수행범위: /sys/bus/iio/devices/ 스캔, raw→실수 변환, 폴링 스레드
- * 의존방향: sensors.h, gio/gio.h, sysfs (IIO)
+ * 역할: 센서 서비스 — 센서 폴링, 이벤트 전달, D-Bus 시그널 발신
+ * 수행범위: Sensors HAL 로 있는 센서를 찾고 읽는 폴링 스레드, 근접 판정·방위각,
+ *           최신값 캐시, GetLatest·SensorEvent
+ * 의존방향: sensors.h, hal.h (Sensors HAL), gio/gio.h
  * SOLID: SRP — 센서 데이터 수집 및 전달만 담당
  * ────────────────────────────────────────────────────────── */
 
 #include "sensors.h"
+#include "hal.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
 #include <time.h>
-#include <dirent.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <gio/gio.h>
 
-/* ─── 내부 상수 ─── */
-#ifndef IIO_BASE_PATH               /* 테스트가 가짜 sysfs 로 바꿔 끼운다 */
-#define IIO_BASE_PATH       "/sys/bus/iio/devices"
-#endif
 /* 화면 회전·근접·조도에 충분하고 배터리에 가벼운 공통 주기 */
 #define DEFAULT_RATE_HZ     5.0f
 #define MAX_LISTENERS       16
-#define MAX_IIO_DEVICES     8
-#define SYSFS_BUF           256
-#define IIO_ATTR_MAX        32    /* "/in_illuminance_scale" and the like, with room */
+#define NEAR_CM             5.0
 
-/* ─── IIO 장치 정보 ─── */
-typedef struct {
-    char path[256];              /* /sys/bus/iio/devices/iio:deviceN */
-    ZylSensorType type;
-    bool available;
-} IioDevice;
+/* The D-Bus sensor_type is ZylSensorType; the HAL names the same sensors its way */
+static const ZylSensorKind HAL_KIND[] = {
+    [ZYL_SENSOR_ACCELEROMETER] = ZYL_HAL_SENSOR_ACCEL,
+    [ZYL_SENSOR_GYROSCOPE]     = ZYL_HAL_SENSOR_GYRO,
+    [ZYL_SENSOR_PROXIMITY]     = ZYL_HAL_SENSOR_PROXIMITY,
+    [ZYL_SENSOR_LIGHT]         = ZYL_HAL_SENSOR_LIGHT,
+    [ZYL_SENSOR_MAGNETOMETER]  = ZYL_HAL_SENSOR_MAGNETIC,
+};
+static const char *TYPE_NAMES[] = {
+    "Accelerometer", "Gyroscope", "Proximity", "Light", "Magnetometer"
+};
 
 /* ─── 리스너 슬롯 ─── */
 typedef struct {
@@ -51,9 +51,8 @@ typedef struct {
 
 /* ─── 내부 구조체 ─── */
 struct ZylSensorService {
-    /* IIO 장치 맵 */
-    IioDevice devices[MAX_IIO_DEVICES];
-    int device_count;
+    /* 이 기기에 있는 센서 (ZYL_SENSOR_* 인덱스) */
+    bool present[5];
 
     /* 리스너 */
     SensorListener listeners[MAX_LISTENERS];
@@ -67,16 +66,6 @@ struct ZylSensorService {
     guint dbus_owner_id;
 };
 
-/* ─── 유틸리티: sysfs 읽기 ─── */
-static double sysfs_read_double(const char *path) {
-    FILE *f = fopen(path, "r");
-    if (!f) return 0.0;
-    double val = 0.0;
-    if (fscanf(f, "%lf", &val) != 1) val = 0.0;
-    fclose(f);
-    return val;
-}
-
 /* ─── 현재 시각 나노초 ─── */
 static uint64_t now_ns(void) {
     struct timespec ts;
@@ -84,211 +73,54 @@ static uint64_t now_ns(void) {
     return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
 }
 
-/* ─── 파일 존재 확인 ─── */
-static bool file_exists(const char *path) {
-    FILE *f = fopen(path, "r");
-    if (!f) return false;
-    fclose(f);
-    return true;
-}
-
-/* ─── IIO 장치 타입 감지 ─── */
-static bool detect_iio_type(const char *dev_path, ZylSensorType *out_type) {
-    char path[SYSFS_BUF];
-
-    /* 가속도계: in_accel_x_raw 존재 */
-    snprintf(path, sizeof(path), "%s/in_accel_x_raw", dev_path);
-    if (file_exists(path)) { *out_type = ZYL_SENSOR_ACCELEROMETER; return true; }
-
-    /* 자이로: in_anglvel_x_raw 존재 */
-    snprintf(path, sizeof(path), "%s/in_anglvel_x_raw", dev_path);
-    if (file_exists(path)) { *out_type = ZYL_SENSOR_GYROSCOPE; return true; }
-
-    /* 근접: in_proximity_raw 존재 */
-    snprintf(path, sizeof(path), "%s/in_proximity_raw", dev_path);
-    if (file_exists(path)) { *out_type = ZYL_SENSOR_PROXIMITY; return true; }
-
-    /* 조도: in_illuminance_raw 존재 */
-    snprintf(path, sizeof(path), "%s/in_illuminance_raw", dev_path);
-    if (file_exists(path)) { *out_type = ZYL_SENSOR_LIGHT; return true; }
-
-    /* 자기장: in_magn_x_raw 존재 */
-    snprintf(path, sizeof(path), "%s/in_magn_x_raw", dev_path);
-    if (file_exists(path)) { *out_type = ZYL_SENSOR_MAGNETOMETER; return true; }
-
-    return false;
-}
-
-/* ─── IIO 장치 스캔 ─── */
-static void scan_iio_devices(ZylSensorService *svc) {
-    DIR *dir = opendir(IIO_BASE_PATH);
-    if (!dir) {
-        g_message("[Sensors] No IIO subsystem found at %s", IIO_BASE_PATH);
-        return;
-    }
-
-    struct dirent *entry;
-    while ((entry = readdir(dir)) != NULL && svc->device_count < MAX_IIO_DEVICES) {
-        if (strncmp(entry->d_name, "iio:device", 10) != 0)
-            continue;
-
-        IioDevice *dev = &svc->devices[svc->device_count];
-        /* Every attribute path is this plus "/<attr>": take the device only when
-           all of them fit, so no read below can name a cut-off (other) file */
-        int n = snprintf(dev->path, sizeof(dev->path), "%s/%s", IIO_BASE_PATH, entry->d_name);
-        if (n < 0 || (size_t)n + IIO_ATTR_MAX >= SYSFS_BUF) {
-            g_warning("[Sensors] %s: path too long, skipped", entry->d_name);
-            continue;
-        }
-
-        if (detect_iio_type(dev->path, &dev->type)) {
-            dev->available = true;
-            svc->device_count++;
-
-            static const char *type_names[] = {
-                "Accelerometer", "Gyroscope", "Proximity", "Light", "Magnetometer"
-            };
-            g_message("[Sensors] Found %s at %s",
-                      type_names[dev->type], dev->path);
+/* ─── 센서 찾기: 종류마다 HAL 에 묻는다 ─── */
+static void find_sensors(ZylSensorService *svc) {
+    int found = 0;
+    for (int t = 0; t < 5; t++) {
+        svc->present[t] = zyl_hal_sensors()->present(HAL_KIND[t]);
+        if (svc->present[t]) {
+            g_message("[Sensors] Found %s", TYPE_NAMES[t]);
+            found++;
         }
     }
-    closedir(dir);
-
-    if (svc->device_count == 0) {
+    if (found == 0)
         g_message("[Sensors] No sensor hardware detected — service idle");
+}
+
+/* ─── 한 샘플: HAL 의 SI 값 → 이벤트 (근접 판정·방위각은 여기서) ─── */
+static bool read_sensor(ZylSensorType type, ZylSensorEvent *evt) {
+    ZylSensorSample s;
+    if (!zyl_hal_sensors()->read(HAL_KIND[type], &s)) return false;
+
+    evt->type = type;
+    evt->timestamp_ns = now_ns();
+    switch (type) {
+    case ZYL_SENSOR_ACCELEROMETER:
+        evt->data.accel.x = (float)s.v[0];
+        evt->data.accel.y = (float)s.v[1];
+        evt->data.accel.z = (float)s.v[2];
+        break;
+    case ZYL_SENSOR_GYROSCOPE:
+        evt->data.gyro.x = (float)s.v[0];
+        evt->data.gyro.y = (float)s.v[1];
+        evt->data.gyro.z = (float)s.v[2];
+        break;
+    case ZYL_SENSOR_PROXIMITY:
+        evt->data.proximity.distance_cm = (float)s.v[0];
+        evt->data.proximity.near = s.v[0] < NEAR_CM;
+        break;
+    case ZYL_SENSOR_LIGHT:
+        evt->data.light.lux = (float)s.v[0];
+        break;
+    case ZYL_SENSOR_MAGNETOMETER: {
+        /* heading = atan2(y, x) → degrees */
+        double heading = atan2(s.v[1], s.v[0]) * 180.0 / M_PI;
+        if (heading < 0.0) heading += 360.0;
+        evt->data.compass.heading_deg = (float)heading;
+        break;
     }
-}
-
-/* ─── IIO 장치 경로 조회 ─── */
-static const IioDevice *find_device(const ZylSensorService *svc,
-                                     ZylSensorType type) {
-    for (int i = 0; i < svc->device_count; i++) {
-        if (svc->devices[i].available && svc->devices[i].type == type)
-            return &svc->devices[i];
     }
-    return NULL;
-}
-
-/* ─── 센서 값 읽기: 가속도계 ─── */
-static bool read_accel(const char *dev_path, ZylSensorEvent *evt) {
-    char path[SYSFS_BUF];
-    double scale;
-
-    snprintf(path, sizeof(path), "%s/in_accel_scale", dev_path);
-    scale = sysfs_read_double(path);
-    if (scale == 0.0) scale = 1.0;
-
-    snprintf(path, sizeof(path), "%s/in_accel_x_raw", dev_path);
-    double rx = sysfs_read_double(path);
-    snprintf(path, sizeof(path), "%s/in_accel_y_raw", dev_path);
-    double ry = sysfs_read_double(path);
-    snprintf(path, sizeof(path), "%s/in_accel_z_raw", dev_path);
-    double rz = sysfs_read_double(path);
-
-    evt->type = ZYL_SENSOR_ACCELEROMETER;
-    evt->data.accel.x = (float)(rx * scale);
-    evt->data.accel.y = (float)(ry * scale);
-    evt->data.accel.z = (float)(rz * scale);
-    evt->timestamp_ns = now_ns();
     return true;
-}
-
-/* ─── 센서 값 읽기: 자이로스코프 ─── */
-static bool read_gyro(const char *dev_path, ZylSensorEvent *evt) {
-    char path[SYSFS_BUF];
-    double scale;
-
-    snprintf(path, sizeof(path), "%s/in_anglvel_scale", dev_path);
-    scale = sysfs_read_double(path);
-    if (scale == 0.0) scale = 1.0;
-
-    snprintf(path, sizeof(path), "%s/in_anglvel_x_raw", dev_path);
-    double rx = sysfs_read_double(path);
-    snprintf(path, sizeof(path), "%s/in_anglvel_y_raw", dev_path);
-    double ry = sysfs_read_double(path);
-    snprintf(path, sizeof(path), "%s/in_anglvel_z_raw", dev_path);
-    double rz = sysfs_read_double(path);
-
-    evt->type = ZYL_SENSOR_GYROSCOPE;
-    evt->data.gyro.x = (float)(rx * scale);
-    evt->data.gyro.y = (float)(ry * scale);
-    evt->data.gyro.z = (float)(rz * scale);
-    evt->timestamp_ns = now_ns();
-    return true;
-}
-
-/* ─── 센서 값 읽기: 근접 ─── */
-static bool read_proximity(const char *dev_path, ZylSensorEvent *evt) {
-    char path[SYSFS_BUF];
-    double scale;
-
-    snprintf(path, sizeof(path), "%s/in_proximity_scale", dev_path);
-    scale = sysfs_read_double(path);
-    if (scale == 0.0) scale = 1.0;
-
-    snprintf(path, sizeof(path), "%s/in_proximity_raw", dev_path);
-    double raw = sysfs_read_double(path);
-    double distance = raw * scale;
-
-    evt->type = ZYL_SENSOR_PROXIMITY;
-    evt->data.proximity.distance_cm = (float)distance;
-    evt->data.proximity.near = (distance < 5.0);
-    evt->timestamp_ns = now_ns();
-    return true;
-}
-
-/* ─── 센서 값 읽기: 조도 ─── */
-static bool read_light(const char *dev_path, ZylSensorEvent *evt) {
-    char path[SYSFS_BUF];
-    double scale;
-
-    snprintf(path, sizeof(path), "%s/in_illuminance_scale", dev_path);
-    scale = sysfs_read_double(path);
-    if (scale == 0.0) scale = 1.0;
-
-    snprintf(path, sizeof(path), "%s/in_illuminance_raw", dev_path);
-    double raw = sysfs_read_double(path);
-
-    evt->type = ZYL_SENSOR_LIGHT;
-    evt->data.light.lux = (float)(raw * scale);
-    evt->timestamp_ns = now_ns();
-    return true;
-}
-
-/* ─── 센서 값 읽기: 자기장 (heading 계산) ─── */
-static bool read_magnetometer(const char *dev_path, ZylSensorEvent *evt) {
-    char path[SYSFS_BUF];
-    double scale;
-
-    snprintf(path, sizeof(path), "%s/in_magn_scale", dev_path);
-    scale = sysfs_read_double(path);
-    if (scale == 0.0) scale = 1.0;
-
-    snprintf(path, sizeof(path), "%s/in_magn_x_raw", dev_path);
-    double mx = sysfs_read_double(path);
-    snprintf(path, sizeof(path), "%s/in_magn_y_raw", dev_path);
-    double my = sysfs_read_double(path);
-
-    /* heading = atan2(y, x) → degrees */
-    double heading = atan2(my * scale, mx * scale) * 180.0 / M_PI;
-    if (heading < 0.0) heading += 360.0;
-
-    evt->type = ZYL_SENSOR_MAGNETOMETER;
-    evt->data.compass.heading_deg = (float)heading;
-    evt->timestamp_ns = now_ns();
-    return true;
-}
-
-/* ─── 센서 읽기 디스패치 ─── */
-static bool read_sensor(const IioDevice *dev, ZylSensorEvent *evt) {
-    switch (dev->type) {
-    case ZYL_SENSOR_ACCELEROMETER: return read_accel(dev->path, evt);
-    case ZYL_SENSOR_GYROSCOPE:     return read_gyro(dev->path, evt);
-    case ZYL_SENSOR_PROXIMITY:     return read_proximity(dev->path, evt);
-    case ZYL_SENSOR_LIGHT:         return read_light(dev->path, evt);
-    case ZYL_SENSOR_MAGNETOMETER:  return read_magnetometer(dev->path, evt);
-    }
-    return false;
 }
 
 /* ─── D-Bus 시그널 발신 ─── */
@@ -344,14 +176,6 @@ static void *sensor_poll_thread_v2(void *arg) {
     SensorListener *lis = ctx->lis;
     free(ctx);
 
-    const IioDevice *dev = find_device(svc, lis->type);
-    if (!dev) {
-        g_warning("[Sensors] No IIO device for type %d — poll thread exiting",
-                  lis->type);
-        lis->thread_running = false;
-        return NULL;
-    }
-
     long interval_us = (long)(1000000.0 / lis->rate_hz);
     if (interval_us < 1000) interval_us = 1000;
     if (interval_us > 10000000) interval_us = 10000000;
@@ -364,7 +188,7 @@ static void *sensor_poll_thread_v2(void *arg) {
         if (!lis->active || !lis->thread_running) break;
 
         ZylSensorEvent evt = {0};
-        if (!read_sensor(dev, &evt)) continue;
+        if (!read_sensor(lis->type, &evt)) continue;
 
         /* 캐시 업데이트 */
         pthread_mutex_lock(&svc->lock);
@@ -481,18 +305,17 @@ ZylSensorService *zyl_sensor_create(void) {
     ZylSensorService *svc = g_new0(ZylSensorService, 1);
     pthread_mutex_init(&svc->lock, NULL);
 
-    /* IIO 장치 스캔 */
-    scan_iio_devices(svc);
+    /* 센서 찾기 */
+    find_sensors(svc);
 
     /* 찾은 장치는 서비스가 바로 읽기 시작한다. D-Bus 에 구독 메서드가 없어
        폴링을 시작시키는 쪽이 아무도 없었고, 그래서 GetLatest 는 늘 0 을,
        SensorEvent 는 아무것도 내보내지 않았다.
        shortcut: 화면이 꺼져도 계속 읽는다 — 배터리가 문제가 되면 앱별 구독
        (Subscribe/Unsubscribe)을 D-Bus 에 넣고 그때만 켤 것 */
-    for (int i = 0; i < svc->device_count; i++) {
-        if (!svc->devices[i].available) continue;
-        zyl_sensor_register_listener(svc, svc->devices[i].type,
-                                     DEFAULT_RATE_HZ, NULL, NULL);
+    for (int t = 0; t < 5; t++) {
+        if (svc->present[t])
+            zyl_sensor_register_listener(svc, (ZylSensorType)t, DEFAULT_RATE_HZ, NULL, NULL);
     }
 
     /* D-Bus 등록 */
@@ -530,10 +353,9 @@ int zyl_sensor_register_listener(ZylSensorService *svc,
     if (rate_hz <= 0.0f) rate_hz = 1.0f;
     if (rate_hz > 1000.0f) rate_hz = 1000.0f;
 
-    /* 해당 센서의 IIO 장치 확인 */
-    const IioDevice *dev = find_device(svc, type);
-    if (!dev) {
-        g_warning("[Sensors] No IIO device for sensor type %d", type);
+    /* 이 기기에 있는 센서만 */
+    if ((unsigned)type > ZYL_SENSOR_MAGNETOMETER || !svc->present[type]) {
+        g_warning("[Sensors] No sensor of type %d", type);
         return -1;
     }
 

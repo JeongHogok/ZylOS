@@ -333,6 +333,17 @@ for svc in sorted(set(J) | set(C)):
     if J.get(svc) != C.get(svc):
         out.append('%s: js=%s c=%s' % (svc, sorted(J.get(svc, [])) if svc in J else '-',
                                         sorted(C.get(svc, [])) if svc in C else '-'))
+def js_owned():
+    blk = js.split('var OWNED_EVENTS = [', 1)[1].split('];', 1)[0]
+    return sorted(re.findall(r"service:\s*'([a-z]+)',\s*event:\s*(?:'([A-Za-z]+)'|null),\s*readAll:\s*(?:'([a-z.]+)'|null)", blk))
+
+def c_owned():
+    blk = c.split('OWNED_EVENTS[] = {', 1)[1].split('{NULL, NULL, NULL}', 1)[0]
+    return sorted((s, e or '', r or '') for s, e, r in re.findall(
+        r'\{"([a-z]+)",\s*(?:"([A-Za-z]+)"|NULL),\s*(?:"([a-z.]+)"|NULL)\}', blk))
+
+if js_owned() != c_owned():
+    out.append('owned events: js=%s c=%s' % (js_owned(), c_owned()))
 JM, CM = js_methods(), c_methods()
 for m in sorted(set(JM) | set(CM)):
     if JM.get(m) != CM.get(m):
@@ -496,6 +507,40 @@ if [ -n "$UNPROVISIONED" ]; then
   fail "tmpfiles.d 가 만들지 않는 유닛 쓰기 경로 (기동 실패): $UNPROVISIONED"
 else
   pass "유닛의 쓰기 경로 전부 tmpfiles.d 로 생성"
+fi
+
+# D3: 유닛이 쓰는 경로를 그 서비스의 AppArmor 프로필도 허용하는지
+#     systemd 는 ReadWritePaths 로 열어 주는데 프로필 경로가 다르면 쓰기가 전부
+#     거부된다. credential 프로필은 .../credential/(s 없이)이라 키체인이 기기에서
+#     한 번도 쓰지 못했고, telephony 프로필은 통화 기록·긴급 경보가 사는
+#     /data/telephony·/data/alerts 를 몰랐다 (QEMU 레인이 키체인으로 잡았다)
+APPARMOR_GAPS=$(python3 - "$ROOT" <<'PYCHK'
+import glob, os, re, sys
+root = sys.argv[1]
+bad = []
+for prof in sorted(glob.glob(root + '/system/apparmor/zyl-*')):
+    name = os.path.basename(prof)
+    unit = root + '/system/' + name + '.service'
+    if not os.path.exists(unit):
+        continue
+    paths = [p.lstrip('-') for l in re.findall(r'^ReadWritePaths=(.*)$', open(unit).read(), re.M)
+             for p in l.split()]
+    rules = re.findall(r'^\s*(?:owner\s+)?(/\S+)\s+([a-z]+),', open(prof).read(), re.M)
+    def covers(rule, path):
+        if not rule.endswith('/**'):
+            return False
+        base = rule[:-3].rstrip('/')
+        return path == base or path.startswith(base + '/')
+    for p in paths:
+        if not any('w' in mask and covers(r, p) for r, mask in rules):
+            bad.append('%s: %s' % (name, p))
+print(' '.join(bad))
+PYCHK
+)
+if [ -n "$APPARMOR_GAPS" ]; then
+  fail "AppArmor 프로필이 유닛의 쓰기 경로를 막는다: $APPARMOR_GAPS"
+else
+  pass "유닛의 쓰기 경로 전부 AppArmor 프로필이 허용"
 fi
 
 # ═════════════════════════════════════════════════════════════

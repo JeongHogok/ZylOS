@@ -3,8 +3,9 @@
  * [Clean Architecture] Application Layer - Service
  *
  * 역할: 위치 서비스 매니저 — 프로바이더 융합, 지오펜스, D-Bus, 공개 API
- * 수행범위: GPS/GeoIP/WiFi 프로바이더 조율, 지오펜스 진입/이탈 감지,
- *          D-Bus 시그널/메서드, 주기적 폴링 스레드, 서비스 생명주기
+ * 수행범위: GPS/GeoIP/WiFi 프로바이더 조율, 앱별 지오펜스 진입/이탈 감지
+ *          (앱 삭제 때 정리), D-Bus 시그널/메서드, 주기적 폴링 스레드
+ *          (멈춤 요청에 즉시 깨어남), 서비스 생명주기
  * 의존방향: location_internal.h, gio/gio.h
  * SOLID: SRP — 프로바이더 조율 및 서비스 관리만 담당
  *         (개별 프로바이더는 location_gps.c, location_geoip.c, location_wifi.c)
@@ -30,20 +31,24 @@ static double haversine_m(double lat1, double lon1,
 }
 
 /* ─── 지오펜스 D-Bus 시그널 발신 ─── */
+/* The owner is the second argument (as NotificationPosted's): an app's fence
+   names a place it cares about, not something another app gets to hear. */
 static void emit_geofence_signal(ZylLocationService *svc,
-                                  const char *tag, bool entered) {
+                                  const GeofenceEntry *e, bool entered) {
     if (!svc->dbus) return;
     g_dbus_connection_emit_signal(svc->dbus, NULL,
         ZYL_LOCATION_DBUS_PATH,
         ZYL_LOCATION_DBUS_NAME,
         entered ? "GeofenceEnter" : "GeofenceExit",
-        g_variant_new("(s)", tag),
+        g_variant_new("(ss)", e->fence.tag, e->app),
         NULL);
-    g_message("[Location] Geofence %s: tag='%s'",
-              entered ? "ENTER" : "EXIT", tag);
+    g_message("[Location] Geofence %s: app='%s' tag='%s'",
+              entered ? "ENTER" : "EXIT", e->app, e->fence.tag);
 }
 
 /* ─── 지오펜스 주기적 체크 (폴링 스레드에서 호출) ─── */
+/* Emitted under the lock: the D-Bus thread may remove the fence (and free its
+   tag) the moment the lock is let go. Emitting only queues a message. */
 static void check_geofences(ZylLocationService *svc,
                              const ZylLocation *loc) {
     pthread_mutex_lock(&svc->lock);
@@ -55,16 +60,9 @@ static void check_geofences(ZylLocationService *svc,
                                    e->fence.lat, e->fence.lon);
         bool inside = (dist <= e->fence.radius_m);
 
-        if (inside && !e->inside) {
-            e->inside = true;
-            pthread_mutex_unlock(&svc->lock);
-            emit_geofence_signal(svc, e->fence.tag, true);
-            pthread_mutex_lock(&svc->lock);
-        } else if (!inside && e->inside) {
-            e->inside = false;
-            pthread_mutex_unlock(&svc->lock);
-            emit_geofence_signal(svc, e->fence.tag, false);
-            pthread_mutex_lock(&svc->lock);
+        if (inside != e->inside) {
+            e->inside = inside;
+            emit_geofence_signal(svc, e, inside);
         }
     }
     pthread_mutex_unlock(&svc->lock);
@@ -114,11 +112,29 @@ static bool read_fix(ZylLocationService *svc, ZylLocation *loc) {
 }
 
 /* ─── 폴링 스레드 ─── */
+/* One interval, or less: a stop wakes it at once (StopUpdates joins this
+   thread on the D-Bus main loop). False once asked to stop. */
+static bool wait_interval(ZylLocationService *svc) {
+    struct timespec until;
+    clock_gettime(CLOCK_MONOTONIC, &until);
+    until.tv_sec  += svc->interval_ms / 1000;
+    until.tv_nsec += (long)(svc->interval_ms % 1000) * 1000000L;
+    if (until.tv_nsec >= 1000000000L) { until.tv_sec++; until.tv_nsec -= 1000000000L; }
+
+    pthread_mutex_lock(&svc->lock);
+    int rc = 0;
+    while (svc->thread_running && rc == 0)
+        rc = pthread_cond_timedwait(&svc->wake, &svc->lock, &until);
+    bool running = svc->thread_running;
+    pthread_mutex_unlock(&svc->lock);
+    return running;
+}
+
 static void *location_poll_thread(void *arg) {
     ZylLocationService *svc = arg;
     g_message("[Location] Poll thread started (interval=%d ms)", svc->interval_ms);
 
-    while (svc->thread_running) {
+    do {
         ZylLocation loc = {0};
         bool got_fix = read_fix(svc, &loc);
 
@@ -148,12 +164,7 @@ static void *location_poll_thread(void *arg) {
             /* D-Bus 시그널 */
             emit_location_signal(svc, &loc_copy);
         }
-
-        /* 대기 */
-        long sleep_us = (long)svc->interval_ms * 1000L;
-        if (sleep_us < 100000) sleep_us = 100000;  /* 최소 100ms */
-        usleep((useconds_t)sleep_us);
-    }
+    } while (wait_interval(svc));
 
     g_message("[Location] Poll thread stopped");
     return NULL;
@@ -188,6 +199,7 @@ static const char *location_introspection_xml =
     "      <arg type='s' name='provider'/>"
     "    </signal>"
     "    <method name='AddGeofence'>"
+    "      <arg type='s' name='caller'   direction='in'/>"
     "      <arg type='d' name='lat'      direction='in'/>"
     "      <arg type='d' name='lon'      direction='in'/>"
     "      <arg type='d' name='radius_m' direction='in'/>"
@@ -195,14 +207,17 @@ static const char *location_introspection_xml =
     "      <arg type='i' name='result'   direction='out'/>"
     "    </method>"
     "    <method name='RemoveGeofence'>"
+    "      <arg type='s' name='caller' direction='in'/>"
     "      <arg type='s' name='tag'    direction='in'/>"
     "      <arg type='i' name='result' direction='out'/>"
     "    </method>"
     "    <signal name='GeofenceEnter'>"
     "      <arg type='s' name='tag'/>"
+    "      <arg type='s' name='app_id'/>"
     "    </signal>"
     "    <signal name='GeofenceExit'>"
     "      <arg type='s' name='tag'/>"
+    "      <arg type='s' name='app_id'/>"
     "    </signal>"
     "  </interface>"
     "</node>";
@@ -237,18 +252,20 @@ static void handle_location_method(GDBusConnection *conn, const gchar *sender,
         g_dbus_method_invocation_return_value(inv, NULL);
 
     } else if (g_strcmp0(method, "AddGeofence") == 0) {
+        /* caller: the calling app, filled by the bridge — never the request's */
+        const gchar *caller = NULL;
         gdouble lat, lon, radius;
         gchar *tag = NULL;
-        g_variant_get(params, "(ddds)", &lat, &lon, &radius, &tag);
+        g_variant_get(params, "(&sddds)", &caller, &lat, &lon, &radius, &tag);
         ZylGeofence fence = { lat, lon, radius, (char *)tag };
-        gint32 r = (gint32)zyl_location_add_geofence(svc, &fence);
+        gint32 r = (gint32)zyl_location_add_geofence(svc, caller, &fence);
         g_free(tag);
         g_dbus_method_invocation_return_value(inv, g_variant_new("(i)", r));
 
     } else if (g_strcmp0(method, "RemoveGeofence") == 0) {
-        const gchar *tag = NULL;
-        g_variant_get(params, "(&s)", &tag);
-        gint32 r = (gint32)zyl_location_remove_geofence(svc, tag);
+        const gchar *caller = NULL, *tag = NULL;
+        g_variant_get(params, "(&s&s)", &caller, &tag);
+        gint32 r = (gint32)zyl_location_remove_geofence(svc, caller, tag);
         g_dbus_method_invocation_return_value(inv, g_variant_new("(i)", r));
     }
 }
@@ -256,6 +273,14 @@ static void handle_location_method(GDBusConnection *conn, const gchar *sender,
 static const GDBusInterfaceVTable location_vtable = {
     .method_call = handle_location_method,
 };
+
+static void on_app_removed(GDBusConnection *conn, const gchar *sender, const gchar *path,
+                           const gchar *iface, const gchar *signal, GVariant *params, gpointer data) {
+    (void)conn; (void)sender; (void)path; (void)iface; (void)signal;
+    const gchar *app_id = NULL;
+    g_variant_get(params, "(&s)", &app_id);
+    zyl_location_forget_app(data, app_id);
+}
 
 static void on_location_bus_acquired(GDBusConnection *conn, const gchar *name,
                                       gpointer data) {
@@ -269,14 +294,43 @@ static void on_location_bus_acquired(GDBusConnection *conn, const gchar *name,
             info->interfaces[0], &location_vtable, svc, NULL, NULL);
     }
     if (info) g_dbus_node_info_unref(info);
+    g_dbus_connection_signal_subscribe(conn, "org.zylos.AppStore", "org.zylos.AppStore",
+        "AppRemoved", "/org/zylos/AppStore", NULL, G_DBUS_SIGNAL_FLAGS_NONE,
+        on_app_removed, svc, NULL);
     g_message("[Location] D-Bus registered: %s", ZYL_LOCATION_DBUS_NAME);
 }
 
 /* ─── 공개 API ─── */
 
+static void init_sync(ZylLocationService *svc) {
+    pthread_mutex_init(&svc->lock, NULL);
+    pthread_condattr_t attr;
+    pthread_condattr_init(&attr);
+    pthread_condattr_setclock(&attr, CLOCK_MONOTONIC);   /* a clock change doesn't stretch a wait */
+    pthread_cond_init(&svc->wake, &attr);
+    pthread_condattr_destroy(&attr);
+}
+
+/* Stops the poll thread, waking it from its wait; returns once it is gone */
+static void stop_poll_thread(ZylLocationService *svc) {
+    pthread_mutex_lock(&svc->lock);
+    bool running = svc->thread_running;
+    svc->thread_running = false;
+    pthread_cond_signal(&svc->wake);
+    pthread_mutex_unlock(&svc->lock);
+    if (running) pthread_join(svc->poll_thread, NULL);
+}
+
+static void geofence_clear(ZylLocationService *svc, GeofenceEntry *e) {
+    free(e->fence.tag);
+    free(e->app);
+    memset(e, 0, sizeof(*e));
+    svc->geofence_count--;
+}
+
 ZylLocationService *zyl_location_create(void) {
     ZylLocationService *svc = g_new0(ZylLocationService, 1);
-    pthread_mutex_init(&svc->lock, NULL);
+    init_sync(svc);
     memset(svc->geofences, 0, sizeof(svc->geofences));
     svc->geofence_count = 0;
 
@@ -297,25 +351,18 @@ ZylLocationService *zyl_location_create(void) {
 void zyl_location_destroy(ZylLocationService *svc) {
     if (!svc) return;
 
-    /* 스레드 중지 */
-    if (svc->thread_running) {
-        svc->thread_running = false;
-        pthread_join(svc->poll_thread, NULL);
-    }
+    stop_poll_thread(svc);
 
 #ifdef HAVE_GPSD
     gpsd_disconnect(svc);
 #endif
 
     /* 지오펜스 메모리 해제 */
-    for (int i = 0; i < ZYL_GEOFENCE_MAX; i++) {
-        if (svc->geofences[i].active && svc->geofences[i].fence.tag) {
-            free(svc->geofences[i].fence.tag);
-            svc->geofences[i].fence.tag = NULL;
-        }
-    }
+    for (int i = 0; i < ZYL_GEOFENCE_MAX; i++)
+        if (svc->geofences[i].active) geofence_clear(svc, &svc->geofences[i]);
 
     g_bus_unown_name(svc->dbus_owner_id);
+    pthread_cond_destroy(&svc->wake);
     pthread_mutex_destroy(&svc->lock);
     g_free(svc);
 }
@@ -325,13 +372,13 @@ int zyl_location_request_updates(ZylLocationService *svc,
                                   zyl_location_callback_fn cb,
                                   void *user_data) {
     if (!svc) return -1;
-    if (interval_ms < 100) interval_ms = 100;
+    /* D-Bus input: any app's number. Too short spins the providers; past the
+       maximum there is nothing an app would wait that long for. */
+    if (interval_ms < ZYL_LOCATION_INTERVAL_MIN_MS) interval_ms = ZYL_LOCATION_INTERVAL_MIN_MS;
+    if (interval_ms > ZYL_LOCATION_INTERVAL_MAX_MS) interval_ms = ZYL_LOCATION_INTERVAL_MAX_MS;
 
     /* 기존 스레드 중지 */
-    if (svc->thread_running) {
-        svc->thread_running = false;
-        pthread_join(svc->poll_thread, NULL);
-    }
+    stop_poll_thread(svc);
 
     svc->interval_ms = interval_ms;
     if (cb) {
@@ -339,7 +386,7 @@ int zyl_location_request_updates(ZylLocationService *svc,
         svc->cb_data = user_data;
     }
     svc->updates_active = true;
-    svc->thread_running = true;
+    svc->thread_running = true;   /* no thread yet: nothing else reads it */
 
     int thr_rc = pthread_create(&svc->poll_thread, NULL, location_poll_thread, svc);
     if (thr_rc != 0) {
@@ -356,8 +403,7 @@ int zyl_location_request_updates(ZylLocationService *svc,
 void zyl_location_stop_updates(ZylLocationService *svc) {
     if (!svc || !svc->updates_active) return;
 
-    svc->thread_running = false;
-    pthread_join(svc->poll_thread, NULL);
+    stop_poll_thread(svc);
     svc->updates_active = false;
 
     g_message("[Location] Updates stopped");
@@ -365,9 +411,9 @@ void zyl_location_stop_updates(ZylLocationService *svc) {
 
 /* ─── 지오펜스 공개 API ─── */
 
-int zyl_location_add_geofence(ZylLocationService *svc,
+int zyl_location_add_geofence(ZylLocationService *svc, const char *app,
                                const ZylGeofence *fence) {
-    if (!svc || !fence || !fence->tag) return -1;
+    if (!svc || !app || !app[0] || !fence || !fence->tag) return -1;
     /* D-Bus input: a fence off the globe or with a NaN/inf/negative radius
        can never fire correctly and would only hold one of the shared slots */
     if (!(fabs(fence->lat) <= 90.0 && fabs(fence->lon) <= 180.0 &&
@@ -376,67 +422,87 @@ int zyl_location_add_geofence(ZylLocationService *svc,
 
     pthread_mutex_lock(&svc->lock);
 
-    /* 중복 tag 확인 */
+    /* 빈 슬롯, 그리고 이 앱의 지오펜스 — 같은 tag 가 있으면 거부 */
+    int slot = -1, owned = 0;
     for (int i = 0; i < ZYL_GEOFENCE_MAX; i++) {
-        if (svc->geofences[i].active &&
-            strcmp(svc->geofences[i].fence.tag, fence->tag) == 0) {
+        GeofenceEntry *e = &svc->geofences[i];
+        if (!e->active) {
+            if (slot < 0) slot = i;
+            continue;
+        }
+        if (strcmp(e->app, app) != 0) continue;
+        if (strcmp(e->fence.tag, fence->tag) == 0) {
             pthread_mutex_unlock(&svc->lock);
-            g_warning("[Location] Geofence tag '%s' already exists", fence->tag);
+            g_warning("[Location] Geofence '%s' of %s already exists", fence->tag, app);
             return -1;
         }
+        owned++;
     }
 
-    /* 빈 슬롯 탐색 */
-    int slot = -1;
-    for (int i = 0; i < ZYL_GEOFENCE_MAX; i++) {
-        if (!svc->geofences[i].active) { slot = i; break; }
-    }
-
-    if (slot < 0) {
+    /* one app may not take the device's slots from every other */
+    if (slot < 0 || owned >= ZYL_GEOFENCE_PER_APP_MAX) {
         pthread_mutex_unlock(&svc->lock);
-        g_warning("[Location] Geofence capacity (%d) reached", ZYL_GEOFENCE_MAX);
+        g_warning("[Location] Geofence capacity reached (%s: %d of %d, device %d)",
+                  app, owned, ZYL_GEOFENCE_PER_APP_MAX, ZYL_GEOFENCE_MAX);
         return -1;
     }
 
     GeofenceEntry *e = &svc->geofences[slot];
-    e->fence.lat      = fence->lat;
-    e->fence.lon      = fence->lon;
-    e->fence.radius_m = fence->radius_m;
-    e->fence.tag      = fence->tag ? strdup(fence->tag) : NULL;
-    if (fence->tag && !e->fence.tag) {
+    e->fence.tag = strdup(fence->tag);
+    e->app       = strdup(app);
+    if (!e->fence.tag || !e->app) {
+        free(e->fence.tag);
+        free(e->app);
+        memset(e, 0, sizeof(*e));
         pthread_mutex_unlock(&svc->lock);
         return -1; /* allocation failure */
     }
+    e->fence.lat      = fence->lat;
+    e->fence.lon      = fence->lon;
+    e->fence.radius_m = fence->radius_m;
     e->inside         = false;
     e->active         = true;
     svc->geofence_count++;
 
     pthread_mutex_unlock(&svc->lock);
-    g_message("[Location] Geofence added: tag='%s' lat=%.4f lon=%.4f r=%.0fm",
-              fence->tag, fence->lat, fence->lon, fence->radius_m);
+    g_message("[Location] Geofence added: app='%s' tag='%s' lat=%.4f lon=%.4f r=%.0fm",
+              app, fence->tag, fence->lat, fence->lon, fence->radius_m);
     return 0;
 }
 
-int zyl_location_remove_geofence(ZylLocationService *svc,
+int zyl_location_remove_geofence(ZylLocationService *svc, const char *app,
                                   const char *tag) {
-    if (!svc || !tag) return -1;
+    if (!svc || !app || !tag) return -1;
 
     pthread_mutex_lock(&svc->lock);
     for (int i = 0; i < ZYL_GEOFENCE_MAX; i++) {
         GeofenceEntry *e = &svc->geofences[i];
-        if (e->active && strcmp(e->fence.tag, tag) == 0) {
-            free(e->fence.tag);
-            e->fence.tag = NULL;
-            e->active = false;
-            svc->geofence_count--;
+        if (e->active && strcmp(e->app, app) == 0 && strcmp(e->fence.tag, tag) == 0) {
+            geofence_clear(svc, e);
             pthread_mutex_unlock(&svc->lock);
-            g_message("[Location] Geofence removed: tag='%s'", tag);
+            g_message("[Location] Geofence removed: app='%s' tag='%s'", app, tag);
             return 0;
         }
     }
     pthread_mutex_unlock(&svc->lock);
-    g_warning("[Location] Geofence tag '%s' not found", tag);
+    g_warning("[Location] Geofence '%s' of %s not found", tag, app);
     return -1;
+}
+
+int zyl_location_forget_app(ZylLocationService *svc, const char *app) {
+    if (!svc || !app) return 0;
+    int removed = 0;
+    pthread_mutex_lock(&svc->lock);
+    for (int i = 0; i < ZYL_GEOFENCE_MAX; i++) {
+        GeofenceEntry *e = &svc->geofences[i];
+        if (e->active && strcmp(e->app, app) == 0) {
+            geofence_clear(svc, e);
+            removed++;
+        }
+    }
+    pthread_mutex_unlock(&svc->lock);
+    if (removed) g_message("[Location] %d geofence(s) of removed app %s dropped", removed, app);
+    return removed;
 }
 
 #ifndef ZYL_TEST

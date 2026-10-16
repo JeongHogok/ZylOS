@@ -41,6 +41,7 @@ typedef struct {
     ZylShell         shell;       /* who may be in front (shell/shell.c) */
     gboolean         screen_on;   /* as the power service last said */
     guint            back_timer;  /* a back press the front app has not answered */
+    ZylPanelMode     panel;       /* the system UI's surface: bar, banner, full */
 
     /* Abstract interfaces wired up in main() */
     ZylWebEngine     engine;

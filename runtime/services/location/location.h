@@ -40,7 +40,9 @@ typedef struct ZylLocationService ZylLocationService;
 ZylLocationService *zyl_location_create(void);
 void                zyl_location_destroy(ZylLocationService *svc);
 
-/* 주기적 업데이트 요청 */
+/* 주기적 업데이트 요청 — interval_ms 는 [MIN, MAX] 로 맞춰진다 */
+#define ZYL_LOCATION_INTERVAL_MIN_MS 100
+#define ZYL_LOCATION_INTERVAL_MAX_MS (10 * 60 * 1000)
 int  zyl_location_request_updates(ZylLocationService *svc,
                                    int interval_ms,
                                    zyl_location_callback_fn cb,
@@ -64,24 +66,31 @@ typedef struct {
 
 /**
  * zyl_location_add_geofence: 지오펜스 등록.
- * @return 0=성공, -1=오류 (NULL 파라미터, 용량 초과 등)
+ * 지오펜스는 app(부른 앱 — D-Bus 의 caller, 브리지가 채운다)의 것이고
+ * tag 는 그 앱 안에서만 고유하다.
+ * @return 0=성공, -1=오류 (NULL/빈 app, 같은 앱의 같은 tag, 앱별·기기별 한도 등)
  */
-int zyl_location_add_geofence(ZylLocationService *svc,
+int zyl_location_add_geofence(ZylLocationService *svc, const char *app,
                                const ZylGeofence *fence);
 
 /**
- * zyl_location_remove_geofence: 지오펜스 제거.
+ * zyl_location_remove_geofence: app 자신의 지오펜스 제거.
  * @param tag 등록 시 지정한 식별자
- * @return 0=성공, -1=없음
+ * @return 0=성공, -1=없음 (다른 앱의 것 포함)
  */
-int zyl_location_remove_geofence(ZylLocationService *svc,
+int zyl_location_remove_geofence(ZylLocationService *svc, const char *app,
                                   const char *tag);
+
+/* An app was removed (org.zylos.AppStore AppRemoved): all its fences go.
+ * Returns how many were removed. */
+int zyl_location_forget_app(ZylLocationService *svc, const char *app);
 
 /* D-Bus 상수 */
 #define ZYL_LOCATION_DBUS_NAME "org.zylos.LocationService"
 #define ZYL_LOCATION_DBUS_PATH "/org/zylos/LocationService"
 
-/* 지오펜스 최대 개수 */
+/* 지오펜스 최대 개수 — 기기 전체, 그리고 한 앱이 가질 수 있는 수 */
 #define ZYL_GEOFENCE_MAX 32
+#define ZYL_GEOFENCE_PER_APP_MAX 8
 
 #endif /* ZYL_LOCATION_H */

@@ -37,7 +37,11 @@ profile zyl-telephony /usr/bin/zyl-telephony {
   /sys/class/tty/**                       r,
 
   # SIM / SMS / call log persistence
-  owner /var/lib/zyl-os/telephony/**      rwk,
+  # Call log and emergency alert history — the unit's ReadWritePaths
+  /data/telephony/                        r,
+  owner /data/telephony/**                rwk,
+  /data/alerts/                           r,
+  owner /data/alerts/**                   rwk,
 
   # Shared OS resources (read-only)
   /usr/share/zyl-os/**                    r,

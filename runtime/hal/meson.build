@@ -12,11 +12,18 @@ hal_sources = files(
   'hal_storage.c',
   'hal_torch.c',
   'hal_cpu.c',
+  'hal_sensors.c',
+  'hal_input.c',
 )
+# Camera: a board whose camera goes through its own pipeline (an ISP) names its
+# Camera HAL source in its contract (board/<id>/meson.build: board_hal_camera =
+# files(...)); the rest take V4L2
+hal_sources += get_variable('board_hal_camera', files('hal_camera.c'))
 
 json_glib = dependency('json-glib-1.0')
 cc = meson.get_compiler('c')
 zyl_hal = static_library('zyl-hal', hal_sources,
+  include_directories: include_directories('.'),    # hal.h for a board's own sources
   dependencies: [gio, json_glib, cc.find_library('m'), dependency('threads')],
   install: false,
 )

@@ -42,20 +42,20 @@ gboolean zyl_power_enter_doze(gpointer data) {
         }
     }
 
-    /* Doze → Deep Sleep 전환 타이머 (30분) */
-    if (svc->config.auto_suspend) {
-        svc->suspend_timer_id = g_timeout_add_seconds(
-            1800, /* 30 minutes in doze → suspend */
-            zyl_power_suspend_timeout, svc);
-    }
-
+    arm_doze_suspend(svc);
     return G_SOURCE_REMOVE;
 }
 
-/* ─── Doze 해제 — 화면 켜질 때 호출 ─── */
-void exit_doze(ZylPowerService *svc) {
-    if (!svc || svc->state != ZYL_POWER_STATE_DOZE) return;
+/* ─── Doze → Deep Sleep 전환 타이머 (30분) ─── */
+void arm_doze_suspend(ZylPowerService *svc) {
+    if (svc->config.auto_suspend)
+        svc->suspend_timer_id = g_timeout_add_seconds(
+            1800, /* 30 minutes in doze → suspend */
+            zyl_power_suspend_timeout, svc);
+}
 
+/* ─── Doze 해제 — 도즈를 떠나는 상태 전환이 부름 ─── */
+void exit_doze(void) {
     /* 코어 다시 온라인 */
     const ZylCpuHal *cpu = zyl_hal_cpu();
     int ncores = cpu->core_count();

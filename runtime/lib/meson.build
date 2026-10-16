@@ -3,13 +3,17 @@
 # Role: Code more than one OS component compiles — once, here, instead of one
 #       service directory serving as another's library
 # Scope: app containers (appdata, fs, appstore, WAM), OTA/package signature
-#        checks (updater, appstore, seals), app seals (appstore, WAM)
+#        checks (updater, appstore, seals), app seals (appstore, WAM), where
+#        users and their files live (user, fs, appstore)
 # Dependency direction: glib, json-glib, OpenSSL; nothing of the services
 # SOLID: SRP — one small static library per concern, each with only its own deps
 
 _lib_inc = include_directories('.')
 _glib = dependency('glib-2.0')
 _openssl = dependency('openssl', version: '>=1.1.1')
+
+# /data/users and the owner's files (users.h): header only
+zyl_users_dep = declare_dependency(include_directories: _lib_inc)
 
 # /data/appdata/<app id>/ — where an app's everything lives (CLAUDE.md rule 12)
 zyl_container_dep = declare_dependency(

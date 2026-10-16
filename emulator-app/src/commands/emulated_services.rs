@@ -15,7 +15,7 @@ use crate::state::AppState;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::sync::Mutex;
-use tauri::{Emitter, State};
+use tauri::State;
 
 // ════════════════════════════════════════════
 // 2. Power / Brightness Service (legacy)
@@ -649,102 +649,6 @@ pub fn bt_get_state() -> serde_json::Value {
         "deviceName": state.device_name,
         "discoverable": state.discoverable,
         "connectedDevices": connected_devices,
-    })
-}
-
-// ════════════════════════════════════════════
-// 10. Battery Service (Emulated HAL, time-based simulation)
-// ════════════════════════════════════════════
-//
-// Simulation model:
-//   - Charging:    +1% every 30 s
-//   - Discharging: -1% every 60 s
-// Level is computed lazily on each get_battery_state call based on
-// elapsed wall-clock time since the last call, so no background thread
-// is needed.
-
-#[derive(Debug, Clone)]
-struct BatteryState {
-    level: u8,           // 0-100
-    charging: bool,
-    health: String,      // "Good" | "Overheat" | "Dead"
-    temperature: f32,    // °C
-    voltage: f32,        // V
-    last_tick_secs: u64, // unix timestamp of last simulation tick
-    last_level: u8,      // level at last call (for change detection)
-}
-
-impl Default for BatteryState {
-    fn default() -> Self {
-        let now = unix_now_secs();
-        Self {
-            level: 78,
-            charging: true,
-            health: "Good".to_string(),
-            temperature: 32.5,
-            voltage: 3.95,
-            last_tick_secs: now,
-            last_level: 78,
-        }
-    }
-}
-
-fn unix_now_secs() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-}
-
-static BATTERY_STATE: std::sync::LazyLock<Mutex<BatteryState>> =
-    std::sync::LazyLock::new(|| Mutex::new(BatteryState::default()));
-
-#[tauri::command]
-pub fn get_battery_state(app_handle: tauri::AppHandle) -> serde_json::Value {
-    let mut s = BATTERY_STATE.lock().unwrap_or_else(|e| e.into_inner());
-    let now = unix_now_secs();
-    let elapsed = now.saturating_sub(s.last_tick_secs);
-
-    // Simulate level change based on elapsed time
-    if s.charging {
-        // +1% per 30 s, cap at 100%
-        let ticks = (elapsed / 30).min(100) as u8;
-        s.level = s.level.saturating_add(ticks).min(100);
-        if s.level == 100 {
-            s.charging = false; // full → switch to discharging
-        }
-    } else {
-        // -1% per 60 s, floor at 0%
-        let ticks = (elapsed / 60).min(100) as u8;
-        s.level = s.level.saturating_sub(ticks);
-        if s.level == 0 {
-            s.charging = true; // emulator auto-charges on empty
-        }
-    }
-
-    // Simulate temperature drift (slightly higher while charging)
-    s.temperature = 32.5 + if s.charging { 1.8 } else { 0.0 }
-        + (now % 10) as f32 * 0.05;
-    // Voltage correlates roughly with SOC
-    s.voltage = 3.6 + (s.level as f32 / 100.0) * 0.6;
-
-    s.last_tick_secs = now;
-
-    // Emit event if level changed (frontend can subscribe)
-    if s.level != s.last_level {
-        let _ = app_handle.emit("battery-level-change", serde_json::json!({
-            "level": s.level,
-            "charging": s.charging,
-        }));
-        s.last_level = s.level;
-    }
-
-    serde_json::json!({
-        "level": s.level,
-        "charging": s.charging,
-        "health": s.health,
-        "temperature": s.temperature,
-        "voltage": s.voltage,
     })
 }
 

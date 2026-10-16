@@ -1,24 +1,22 @@
 /* ----------------------------------------------------------
  * [Clean Architecture] Application Layer - Service
  *
- * 역할: 입력 서비스 구현 -- D-Bus로 가상 키보드/터치/하드웨어 키 관리
- * 수행범위: evdev 입력 읽기, 터치 포인트 추적, 키보드 상태 관리, D-Bus 메서드/시그널
- * 의존방향: input.h, gio/gio.h, linux/input.h
+ * 역할: 입력 서비스 구현 -- D-Bus로 가상 키보드/하드웨어 키 관리
+ * 수행범위: Input HAL 의 키 누름을 HardwareKeyPressed 로, 키보드 상태 관리,
+ *           D-Bus 메서드/시그널
+ * 의존방향: input.h, hal.h (Input HAL), gio/gio.h
  * SOLID: SRP -- 입력 관리 로직만 담당
  * ---------------------------------------------------------- */
 
 #include "input.h"
+#include "hal.h"
 
-#include <errno.h>
-#include <fcntl.h>
 #include <gio/gio.h>
 #include <glib.h>
-#include <linux/input.h>
+#include <glib-unix.h>
 #include <stdio.h>
-#include <sys/ioctl.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
 /* == D-Bus Introspection XML ================================ */
 
@@ -52,19 +50,9 @@ struct ZylInputService {
     /* Keyboard state */
     ZylKeyboardState keyboard;
 
-    /* Multi-touch tracking */
-    ZylTouchPoint    touch_points[ZYL_MAX_TOUCH_POINTS];
-
-    /* evdev file descriptor (-1 if not opened) */
-    int              evdev_fd;
-
-    /* Touch coordinate range (read from ABS_MT_POSITION_X/Y info) */
-    int              touch_max_x;   /* default 4095; overridden from evdev */
-    int              touch_max_y;   /* default 4095; overridden from evdev */
-
-    /* GLib I/O channel for evdev */
-    GIOChannel      *evdev_channel;
-    guint            evdev_watch_id;
+    /* The Input HAL's key devices: readable when one has input (-1 none) */
+    int              keys_fd;
+    guint            keys_watch_id;
 
     /* D-Bus */
     GDBusConnection *connection;
@@ -149,140 +137,34 @@ static void emit_signal(ZylInputService *svc,
     }
 }
 
-/* == Helper: Map evdev key code to ZylHardwareKey =========== */
+/* == Key devices ============================================ */
 
-static bool evdev_to_hardware_key(int evdev_code, ZylHardwareKey *out)
+/* The D-Bus key_code is ZylHardwareKey; the HAL names the same keys its way */
+static const ZylHardwareKey HW_KEY[] = {
+    [ZYL_HAL_KEY_POWER]       = ZYL_KEY_POWER,
+    [ZYL_HAL_KEY_VOLUME_UP]   = ZYL_KEY_VOLUME_UP,
+    [ZYL_HAL_KEY_VOLUME_DOWN] = ZYL_KEY_VOLUME_DOWN,
+    [ZYL_HAL_KEY_BACK]        = ZYL_KEY_BACK,
+    [ZYL_HAL_KEY_HOME]        = ZYL_KEY_HOME,
+    [ZYL_HAL_KEY_MENU]        = ZYL_KEY_MENU,
+};
+
+static gboolean on_keys_ready(gint fd, GIOCondition condition, gpointer user_data)
 {
-    switch (evdev_code) {
-    case KEY_POWER:      *out = ZYL_KEY_POWER;       return true;
-    case KEY_VOLUMEUP:   *out = ZYL_KEY_VOLUME_UP;   return true;
-    case KEY_VOLUMEDOWN: *out = ZYL_KEY_VOLUME_DOWN;  return true;
-    case KEY_BACK:       *out = ZYL_KEY_BACK;         return true;
-    case KEY_HOMEPAGE:   *out = ZYL_KEY_HOME;         return true;
-    case KEY_MENU:       *out = ZYL_KEY_MENU;         return true;
-    default:             return false;
-    }
-}
-
-/* == evdev I/O callback ===================================== */
-
-static gboolean on_evdev_event(GIOChannel  *source,
-                               GIOCondition condition,
-                               gpointer     user_data)
-{
-    (void)source;
+    (void)fd;
     ZylInputService *svc = user_data;
 
+    /* One device going away is the HAL's to handle; this is the whole set broken */
     if (condition & (G_IO_HUP | G_IO_ERR | G_IO_NVAL)) {
-        g_warning("zyl-input: evdev channel error/hangup");
-        svc->evdev_watch_id = 0;
+        g_warning("zyl-input: key devices error/hangup");
+        svc->keys_watch_id = 0;
         return G_SOURCE_REMOVE;
     }
 
-    struct input_event ev;
-    ssize_t n = read(svc->evdev_fd, &ev, sizeof(ev));
-    if (n < (ssize_t)sizeof(ev)) return G_SOURCE_CONTINUE;
-
-    /* Handle key press events (value == 1 means press) */
-    if (ev.type == EV_KEY && ev.value == 1) {
-        ZylHardwareKey hw_key;
-        if (evdev_to_hardware_key(ev.code, &hw_key)) {
-            zyl_input_on_hardware_key(svc, hw_key);
-        }
-    }
-
-    /* Handle multi-touch events (ABS_MT_SLOT, ABS_MT_POSITION_X/Y, ABS_MT_TRACKING_ID) */
-    if (ev.type == EV_ABS) {
-        static int current_slot = 0;
-
-        switch (ev.code) {
-        case ABS_MT_SLOT:
-            if (ev.value >= 0 && ev.value < ZYL_MAX_TOUCH_POINTS)
-                current_slot = ev.value;
-            break;
-        case ABS_MT_TRACKING_ID:
-            if (current_slot >= 0 && current_slot < ZYL_MAX_TOUCH_POINTS) {
-                if (ev.value >= 0) {
-                    svc->touch_points[current_slot].id     = ev.value;
-                    svc->touch_points[current_slot].active  = true;
-                } else {
-                    /* tracking ID == -1 means finger lifted */
-                    svc->touch_points[current_slot].active  = false;
-                    svc->touch_points[current_slot].x       = 0.0f;
-                    svc->touch_points[current_slot].y       = 0.0f;
-                }
-            }
-            break;
-        case ABS_MT_POSITION_X:
-            if (current_slot >= 0 && current_slot < ZYL_MAX_TOUCH_POINTS) {
-                int max_x = svc->touch_max_x > 0 ? svc->touch_max_x : 4095;
-                svc->touch_points[current_slot].x = (float)ev.value / (float)max_x;
-                if (svc->touch_points[current_slot].x > 1.0f)
-                    svc->touch_points[current_slot].x = 1.0f;
-                if (svc->touch_points[current_slot].x < 0.0f)
-                    svc->touch_points[current_slot].x = 0.0f;
-            }
-            break;
-        case ABS_MT_POSITION_Y:
-            if (current_slot >= 0 && current_slot < ZYL_MAX_TOUCH_POINTS) {
-                int max_y = svc->touch_max_y > 0 ? svc->touch_max_y : 4095;
-                svc->touch_points[current_slot].y = (float)ev.value / (float)max_y;
-                if (svc->touch_points[current_slot].y > 1.0f)
-                    svc->touch_points[current_slot].y = 1.0f;
-                if (svc->touch_points[current_slot].y < 0.0f)
-                    svc->touch_points[current_slot].y = 0.0f;
-            }
-            break;
-        }
-    }
-
+    ZylInputKey key;
+    while (zyl_hal_input()->read_key(&key))
+        zyl_input_on_hardware_key(svc, HW_KEY[key]);
     return G_SOURCE_CONTINUE;
-}
-
-/* == Helper: Try to open an evdev device ==================== */
-
-#ifndef ZYL_EVDEV_DIR
-#define ZYL_EVDEV_DIR "/dev/input"
-#endif
-
-static void try_open_evdev(ZylInputService *svc)
-{
-    /* Try /dev/input/event0 through event9 for a key-capable device */
-    for (int i = 0; i < 10; i++) {
-        char path[64];
-        snprintf(path, sizeof(path), ZYL_EVDEV_DIR "/event%d", i);
-
-        int fd = open(path, O_RDONLY | O_NONBLOCK);
-        if (fd < 0) continue;
-
-        /* Check if device has key events via EVIOCGBIT */
-        unsigned long evbits[2] = {0};
-        if (ioctl(fd, EVIOCGBIT(0, sizeof(evbits)), evbits) >= 0) {
-            /* Check EV_KEY bit */
-            if (evbits[0] & (1UL << EV_KEY)) {
-                svc->evdev_fd = fd;
-                g_info("zyl-input: opened evdev device %s", path);
-
-                /* Read ABS_MT_POSITION_X/Y range for accurate normalization */
-                struct input_absinfo abs_info;
-                if (ioctl(fd, EVIOCGABS(ABS_MT_POSITION_X), &abs_info) >= 0
-                    && abs_info.maximum > 0) {
-                    svc->touch_max_x = abs_info.maximum;
-                }
-                if (ioctl(fd, EVIOCGABS(ABS_MT_POSITION_Y), &abs_info) >= 0
-                    && abs_info.maximum > 0) {
-                    svc->touch_max_y = abs_info.maximum;
-                }
-                g_info("zyl-input: touch range x=%d y=%d",
-                       svc->touch_max_x, svc->touch_max_y);
-                return;
-            }
-        }
-        close(fd);
-    }
-
-    g_info("zyl-input: no suitable evdev device found (will operate without hardware keys)");
-    svc->evdev_fd = -1;
 }
 
 /* == D-Bus Method Handler =================================== */
@@ -436,29 +318,13 @@ ZylInputService *zyl_input_create(void)
     svc->keyboard.visible = false;
     snprintf(svc->keyboard.layout, sizeof(svc->keyboard.layout), "en");
 
-    /* Initialize touch points */
-    for (int i = 0; i < ZYL_MAX_TOUCH_POINTS; i++) {
-        svc->touch_points[i].id     = i;
-        svc->touch_points[i].x      = 0.0f;
-        svc->touch_points[i].y      = 0.0f;
-        svc->touch_points[i].active  = false;
-    }
-
-    /* Initialize touch range defaults (overridden by try_open_evdev) */
-    svc->touch_max_x = 4095;
-    svc->touch_max_y = 4095;
-
-    /* Try to open evdev device */
-    try_open_evdev(svc);
-    if (svc->evdev_fd >= 0) {
-        svc->evdev_channel = g_io_channel_unix_new(svc->evdev_fd);
-        g_io_channel_set_encoding(svc->evdev_channel, NULL, NULL);
-        svc->evdev_watch_id = g_io_add_watch(
-            svc->evdev_channel,
-            G_IO_IN | G_IO_HUP | G_IO_ERR,
-            on_evdev_event,
-            svc);
-    }
+    /* Every device with hardware keys: power, volume and the rest are often apart */
+    svc->keys_fd = zyl_hal_input()->open();
+    if (svc->keys_fd >= 0)
+        svc->keys_watch_id = g_unix_fd_add(svc->keys_fd, G_IO_IN | G_IO_HUP | G_IO_ERR,
+                                           on_keys_ready, svc);
+    else
+        g_info("zyl-input: no hardware key device (will operate without hardware keys)");
 
     /* Set up D-Bus */
     svc->introspection_data = g_dbus_node_info_new_for_xml(introspection_xml, NULL);
@@ -499,14 +365,11 @@ void zyl_input_destroy(ZylInputService *svc)
     if (svc->introspection_data)
         g_dbus_node_info_unref(svc->introspection_data);
 
-    if (svc->evdev_watch_id > 0)
-        g_source_remove(svc->evdev_watch_id);
+    if (svc->keys_watch_id > 0)
+        g_source_remove(svc->keys_watch_id);
 
-    if (svc->evdev_channel)
-        g_io_channel_unref(svc->evdev_channel);
-
-    if (svc->evdev_fd >= 0)
-        close(svc->evdev_fd);
+    if (svc->keys_fd >= 0)
+        zyl_hal_input()->close();
 
     free(svc);
 }
@@ -555,8 +418,6 @@ ZylKeyboardState zyl_input_get_keyboard_state(const ZylInputService *svc)
     if (!svc) return state;
     return svc->keyboard;
 }
-
-/* == Public API -- Multi-touch ============================== */
 
 /* == Public API -- Hardware Keys ============================ */
 

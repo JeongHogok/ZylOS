@@ -71,6 +71,8 @@ int zyl_power_acquire_wakelock(ZylPowerService *svc, const char *tag) {
         g_source_remove(svc->suspend_timer_id);
         svc->suspend_timer_id = 0;
     }
+    /* Held from now on: a dimmed screen comes back, its pending screen-off dropped */
+    if (svc->state == ZYL_POWER_STATE_DIM) zyl_power_user_activity(svc);
 
     return 0;
 }
@@ -98,6 +100,7 @@ void zyl_power_release_wakelock(ZylPowerService *svc, const char *tag) {
             if (svc->wakelock_count > 0) return;
             if (svc->state == ZYL_POWER_STATE_ACTIVE) reset_idle_timers(svc);
             else if (svc->state == ZYL_POWER_STATE_SCREEN_OFF) zyl_power_request_screen_off(svc);
+            else if (svc->state == ZYL_POWER_STATE_DOZE) arm_doze_suspend(svc);
             return;
         }
     }

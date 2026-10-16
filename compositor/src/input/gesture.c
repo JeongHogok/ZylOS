@@ -1,11 +1,12 @@
 /* ──────────────────────────────────────────────────────────
  * [Clean Architecture] Infrastructure Layer - Driver
  *
- * 역할: 터치 이벤트를 고수준 제스처(스와이프)로 변환 및 디스패치,
- *       키보드/포인터/터치 입력 장치 라이프사이클 관리
- * 수행범위: touchstart/move/end 이벤트 처리, 방향 감지, 콜백 테이블 디스패치,
- *           멀티터치 포인트 추적, 키보드 핫플러그 destroy 리스너
- * 의존방향: gesture.h → zyl_compositor.h
+ * 역할: 입력을 앱에 전달하고, 가장자리에서 시작한 터치는 시스템 제스처로
+ *       바꿔 디스패치, 키보드/포인터/터치 입력 장치 라이프사이클 관리
+ * 수행범위: 터치·포인터·키를 그 아래(포커스된) 앱 표면에 전달, 가장자리 터치가
+ *           제스처가 되는 순간 앱의 터치를 취소, 판정(gesture_detect.c) 결과
+ *           디스패치, 멀티터치 포인트 추적, seat 기능, 키보드 핫플러그
+ * 의존방향: gesture.h → zyl_compositor.h, zyl_gesture.h, os_bus.h
  * SOLID: OCP — 함수 포인터 테이블로 제스처 액션을 교체 가능;
  *        SRP — 입력 장치 라이프사이클 별도 함수로 분리
  * ────────────────────────────────────────────────────────── */
@@ -25,44 +26,6 @@
 #include <wlr/types/wlr_data_device.h>
 #include <wlr/util/log.h>
 #include <xkbcommon/xkbcommon.h>
-
-/* ================================================================
- * Gesture detection
- * ================================================================ */
-
-enum gesture_direction gesture_detect(const struct touch_state *t,
-                                      int screen_h,
-                                      const struct zyl_config *cfg)
-{
-    double dx     = t->current_x - t->start_x;
-    double dy     = t->current_y - t->start_y;
-    double abs_dx = dx > 0 ? dx : -dx;
-    double abs_dy = dy > 0 ? dy : -dy;
-
-    if (abs_dx < cfg->swipe_threshold_px &&
-        abs_dy < cfg->swipe_threshold_px)
-        return GESTURE_NONE;
-
-    /* Bottom-edge swipe up -> home */
-    if (t->start_y > screen_h - cfg->swipe_from_bottom_px &&
-        dy < -cfg->swipe_threshold_px)
-        return GESTURE_SWIPE_UP;
-
-    /* Top-edge swipe down -> notifications */
-    if (t->start_y < cfg->swipe_from_top_px &&
-        dy > cfg->swipe_threshold_px)
-        return GESTURE_SWIPE_DOWN;
-
-    /* Horizontal swipe */
-    if (abs_dx > abs_dy) {
-        if (dx < -cfg->swipe_threshold_px)
-            return GESTURE_SWIPE_LEFT;
-        if (dx > cfg->swipe_threshold_px)
-            return GESTURE_SWIPE_RIGHT;
-    }
-
-    return GESTURE_NONE;
-}
 
 /* ================================================================
  * Gesture → wlroots signal dispatch
@@ -97,42 +60,22 @@ static void action_go_home(struct zyl_server *server)
 }
 
 /*
- * SWIPE DOWN from top — toggle notification panel overlay.
- * Creates a semi-transparent dark rect covering the top half, then
- * signals the statusbar app to populate actual notification content.
+ * SWIPE DOWN from the top — the notification panel. The WAM opens the system
+ * UI's panel if the shell lets it (not while locked or in setup).
  */
 static void action_notification_panel(struct zyl_server *server)
 {
-    /* Lazy-create the overlay rect on first use */
-    if (!server->notif_overlay) {
-        int half_h = server->screen_height / 2;
-        float color[4] = { 0.0f, 0.0f, 0.0f, 0.70f };
+    wlr_log(WLR_INFO, "Gesture: Notification Panel");
+    emit_compositor_signal(server, "OpenPanel", NULL);
+}
 
-        server->notif_overlay = wlr_scene_rect_create(
-            &server->scene->tree, server->screen_width, half_h, color);
-
-        if (!server->notif_overlay) {
-            wlr_log(WLR_ERROR,
-                     "Gesture: failed to create notification overlay");
-            return;
-        }
-        /* Position at top-left of the screen */
-        wlr_scene_node_set_position(&server->notif_overlay->node, 0, 0);
-        /* Start hidden */
-        wlr_scene_node_set_enabled(&server->notif_overlay->node, false);
-        server->notif_panel_visible = false;
-    }
-
-    /* Toggle visibility */
-    server->notif_panel_visible = !server->notif_panel_visible;
-    wlr_scene_node_set_enabled(&server->notif_overlay->node,
-                                server->notif_panel_visible);
-
-    wlr_log(WLR_INFO, "Gesture: Notification Panel %s",
-            server->notif_panel_visible ? "shown" : "hidden");
-
-    emit_compositor_signal(server, "NotificationPanel",
-                           server->notif_panel_visible ? "show" : "hide");
+/*
+ * A short swipe up from the bottom — recents (the system UI draws them).
+ */
+static void action_recents(struct zyl_server *server)
+{
+    wlr_log(WLR_INFO, "Gesture: Recents");
+    emit_compositor_signal(server, "ShowRecents", NULL);
 }
 
 /*
@@ -166,6 +109,7 @@ void gesture_init_handlers(struct zyl_server *server)
     server->gesture_handlers[GESTURE_SWIPE_DOWN]  = action_notification_panel;
     server->gesture_handlers[GESTURE_SWIPE_LEFT]  = action_go_back;
     server->gesture_handlers[GESTURE_SWIPE_RIGHT] = action_app_switcher;
+    server->gesture_handlers[GESTURE_SWIPE_UP_SHORT] = action_recents;
 }
 
 /* ================================================================
@@ -198,7 +142,26 @@ static int touch_alloc_slot(struct touch_state *ts)
 }
 
 /* ================================================================
+ * Where input goes: the client surface under a layout point
+ * ================================================================ */
+
+static struct wlr_surface *surface_at(struct zyl_server *server, double lx, double ly,
+                                      double *sx, double *sy)
+{
+    struct wlr_scene_node *node =
+        wlr_scene_node_at(&server->scene->tree.node, lx, ly, sx, sy);
+    if (!node || node->type != WLR_SCENE_NODE_BUFFER)
+        return NULL;   /* nothing, or the notification overlay: not an app's */
+    struct wlr_scene_surface *ss =
+        wlr_scene_surface_try_from_buffer(wlr_scene_buffer_from_node(node));
+    return ss ? ss->surface : NULL;
+}
+
+/* ================================================================
  * Touch event listeners
+ * Every touch goes to the app under it. One that began in a system zone
+ * (an edge) and turns into a gesture is taken back: the app is told to
+ * cancel, and the gesture runs when the finger lifts.
  * ================================================================ */
 
 static void handle_touch_down(struct wl_listener *listener, void *data)
@@ -208,19 +171,20 @@ static void handle_touch_down(struct wl_listener *listener, void *data)
     struct wlr_touch_down_event *event = data;
     zyl_power_user_activity();
 
-    double abs_x = event->x * server->screen_width;
-    double abs_y = event->y * server->screen_height;
+    double lx, ly;
+    wlr_cursor_absolute_to_layout_coords(server->cursor, &event->touch->base,
+                                         event->x, event->y, &lx, &ly);
 
     /* ── Multi-touch: track this finger in the pool ── */
     int slot = touch_alloc_slot(&server->touch);
-    if (slot >= 0) {
-        struct touch_point *tp = &server->touch.points[slot];
+    struct touch_point *tp = slot >= 0 ? &server->touch.points[slot] : NULL;
+    if (tp) {
         tp->active        = true;
         tp->id            = event->touch_id;
-        tp->start_x       = abs_x;
-        tp->start_y       = abs_y;
-        tp->current_x     = abs_x;
-        tp->current_y     = abs_y;
+        tp->start_x       = lx;
+        tp->start_y       = ly;
+        tp->current_x     = lx;
+        tp->current_y     = ly;
         tp->start_time_ms = zyl_now_ms();
         server->touch.num_active++;
     } else {
@@ -228,19 +192,43 @@ static void handle_touch_down(struct wl_listener *listener, void *data)
                 ZYL_MAX_TOUCH_POINTS);
     }
 
-    /* ── Primary single-touch path (first finger only) ── */
+    /* ── Primary (first finger): the one a gesture is read from ── */
     if (!server->touch.active) {
         server->touch.active        = true;
-        server->touch.start_x       = abs_x;
-        server->touch.start_y       = abs_y;
-        server->touch.current_x     = abs_x;
-        server->touch.current_y     = abs_y;
+        server->touch.start_x       = lx;
+        server->touch.start_y       = ly;
+        server->touch.current_x     = lx;
+        server->touch.current_y     = ly;
         server->touch.start_time_ms = zyl_now_ms();
         server->touch.pending       = GESTURE_NONE;
+        server->touch.claimed       = false;
+        server->touch.at_edge       = gesture_at_edge(lx, ly, server->screen_width,
+                                                      server->screen_height, &server->config);
     }
 
-    wlr_cursor_warp_absolute(server->cursor, NULL, event->x, event->y);
-    wlr_seat_pointer_notify_frame(server->seat);
+    if (server->touch.claimed) return;   /* a gesture is in progress */
+    double sx, sy;
+    struct wlr_surface *surface = surface_at(server, lx, ly, &sx, &sy);
+    if (!surface) return;
+    if (tp) {
+        tp->surface_dx = lx - sx;
+        tp->surface_dy = ly - sy;
+    }
+    wlr_seat_touch_notify_down(server->seat, surface, event->time_msec,
+                               event->touch_id, sx, sy);
+}
+
+/* The edge touch became a gesture: the app it went to lets it go */
+static void claim_for_gesture(struct zyl_server *server)
+{
+    server->touch.claimed = true;
+    for (int i = 0; i < ZYL_MAX_TOUCH_POINTS; i++) {
+        if (!server->touch.points[i].active) continue;
+        struct wlr_touch_point *p =
+            wlr_seat_touch_get_point(server->seat, server->touch.points[i].id);
+        if (p && p->client) wlr_seat_touch_notify_cancel(server->seat, p->client);
+    }
+    wlr_log(WLR_DEBUG, "edge touch claimed as a gesture");
 }
 
 static void handle_touch_motion(struct wl_listener *listener, void *data)
@@ -249,25 +237,33 @@ static void handle_touch_motion(struct wl_listener *listener, void *data)
         wl_container_of(listener, server, touch_motion);
     struct wlr_touch_motion_event *event = data;
 
-    double abs_x = event->x * server->screen_width;
-    double abs_y = event->y * server->screen_height;
+    double lx, ly;
+    wlr_cursor_absolute_to_layout_coords(server->cursor, &event->touch->base,
+                                         event->x, event->y, &lx, &ly);
 
     /* ── Multi-touch: update the tracked finger ── */
     int slot = touch_find_slot(&server->touch, event->touch_id);
     if (slot >= 0) {
-        server->touch.points[slot].current_x = abs_x;
-        server->touch.points[slot].current_y = abs_y;
+        server->touch.points[slot].current_x = lx;
+        server->touch.points[slot].current_y = ly;
     }
 
-    /* ── Primary single-touch update (first finger) ── */
-    if (server->touch.active) {
-        /* Only update primary position if this is the first finger
-         * (num_active == 1 or the slot we just updated is slot 0) */
-        if (server->touch.num_active == 1 || slot == 0) {
-            server->touch.current_x = abs_x;
-            server->touch.current_y = abs_y;
-        }
+    /* ── Primary update (first finger) ── */
+    if (server->touch.active &&
+        (server->touch.num_active == 1 || slot == 0)) {
+        server->touch.current_x = lx;
+        server->touch.current_y = ly;
     }
+
+    if (server->touch.active && server->touch.at_edge && !server->touch.claimed &&
+        gesture_detect(&server->touch, server->screen_width, server->screen_height,
+                       &server->config) != GESTURE_NONE)
+        claim_for_gesture(server);
+
+    if (server->touch.claimed || slot < 0) return;
+    struct touch_point *tp = &server->touch.points[slot];
+    wlr_seat_touch_notify_motion(server->seat, event->time_msec, event->touch_id,
+                                 lx - tp->surface_dx, ly - tp->surface_dy);
 }
 
 static void handle_touch_up(struct wl_listener *listener, void *data)
@@ -275,6 +271,9 @@ static void handle_touch_up(struct wl_listener *listener, void *data)
     struct zyl_server *server =
         wl_container_of(listener, server, touch_up);
     struct wlr_touch_up_event *event = data;
+
+    if (!server->touch.claimed)
+        wlr_seat_touch_notify_up(server->seat, event->time_msec, event->touch_id);
 
     /* ── Multi-touch: release the finger slot ── */
     int slot = touch_find_slot(&server->touch, event->touch_id);
@@ -284,27 +283,44 @@ static void handle_touch_up(struct wl_listener *listener, void *data)
             server->touch.num_active--;
     }
 
-    /* ── Primary single-touch: dispatch gesture on last finger lift ── */
-    if (!server->touch.active)
+    /* ── Primary: the gesture runs when the last finger lifts ── */
+    if (!server->touch.active || server->touch.num_active > 0)
         return;
+    server->touch.active = false;
+    if (!server->touch.claimed)
+        return;
+    server->touch.claimed = false;
+    enum gesture_direction g =
+        gesture_detect(&server->touch, server->screen_width, server->screen_height,
+                       &server->config);
+    if (g > GESTURE_NONE && g < GESTURE_DIRECTION_COUNT && server->gesture_handlers[g])
+        server->gesture_handlers[g](server);
+}
 
-    /* Dispatch gesture only when the primary finger (or last finger) lifts */
-    if (server->touch.num_active == 0) {
-        server->touch.active = false;
-
-        enum gesture_direction g =
-            gesture_detect(&server->touch, server->screen_height,
-                           &server->config);
-
-        if (g > GESTURE_NONE && g < GESTURE_DIRECTION_COUNT &&
-            server->gesture_handlers[g])
-            server->gesture_handlers[g](server);
-    }
+static void handle_touch_frame(struct wl_listener *listener, void *data)
+{
+    struct zyl_server *server =
+        wl_container_of(listener, server, touch_frame);
+    (void)data;
+    wlr_seat_touch_notify_frame(server->seat);
 }
 
 /* ================================================================
- * Cursor event listeners
+ * Cursor event listeners: the pointer goes to the surface under it
  * ================================================================ */
+
+static void pointer_moved(struct zyl_server *server, uint32_t time_msec)
+{
+    double sx, sy;
+    struct wlr_surface *surface =
+        surface_at(server, server->cursor->x, server->cursor->y, &sx, &sy);
+    if (!surface) {
+        wlr_seat_pointer_clear_focus(server->seat);
+        return;
+    }
+    wlr_seat_pointer_notify_enter(server->seat, surface, sx, sy);
+    wlr_seat_pointer_notify_motion(server->seat, time_msec, sx, sy);
+}
 
 static void handle_cursor_motion(struct wl_listener *listener, void *data)
 {
@@ -313,6 +329,7 @@ static void handle_cursor_motion(struct wl_listener *listener, void *data)
     struct wlr_pointer_motion_event *event = data;
     wlr_cursor_move(server->cursor, &event->pointer->base,
                     event->delta_x, event->delta_y);
+    pointer_moved(server, event->time_msec);
 }
 
 static void handle_cursor_motion_absolute(struct wl_listener *listener,
@@ -323,6 +340,7 @@ static void handle_cursor_motion_absolute(struct wl_listener *listener,
     struct wlr_pointer_motion_absolute_event *event = data;
     wlr_cursor_warp_absolute(server->cursor, &event->pointer->base,
                              event->x, event->y);
+    pointer_moved(server, event->time_msec);
 }
 
 static void handle_cursor_button(struct wl_listener *listener, void *data)
@@ -333,9 +351,6 @@ static void handle_cursor_button(struct wl_listener *listener, void *data)
     zyl_power_user_activity();
     wlr_seat_pointer_notify_button(server->seat,
         event->time_msec, event->button, event->state);
-
-    if (event->state == WL_POINTER_BUTTON_STATE_RELEASED)
-        wlr_seat_pointer_notify_frame(server->seat);
 }
 
 static void handle_cursor_axis(struct wl_listener *listener, void *data)
@@ -392,6 +407,35 @@ static void handle_request_set_selection(struct wl_listener *listener,
  * keyboard reference if it pointed at this device, and frees the
  * allocation — preventing dangling pointers and memory leaks.
  */
+/* Keys go to the focused app (view_focus gives it the keyboard) */
+static void handle_keyboard_key(struct wl_listener *listener, void *data)
+{
+    struct zyl_keyboard *kb = wl_container_of(listener, kb, key);
+    struct wlr_keyboard_key_event *event = data;
+    zyl_power_user_activity();
+    wlr_seat_set_keyboard(kb->server->seat, kb->wlr_keyboard);
+    wlr_seat_keyboard_notify_key(kb->server->seat, event->time_msec,
+                                 event->keycode, event->state);
+}
+
+static void handle_keyboard_modifiers(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct zyl_keyboard *kb = wl_container_of(listener, kb, modifiers);
+    wlr_seat_set_keyboard(kb->server->seat, kb->wlr_keyboard);
+    wlr_seat_keyboard_notify_modifiers(kb->server->seat, &kb->wlr_keyboard->modifiers);
+}
+
+/* What the seat offers apps: what has been plugged in, all of it */
+static void update_seat_caps(struct zyl_server *server)
+{
+    uint32_t caps = 0;
+    if (server->has_pointer || server->has_touch) caps |= WL_SEAT_CAPABILITY_POINTER;
+    if (!wl_list_empty(&server->keyboards))       caps |= WL_SEAT_CAPABILITY_KEYBOARD;
+    if (server->has_touch)                        caps |= WL_SEAT_CAPABILITY_TOUCH;
+    wlr_seat_set_capabilities(server->seat, caps);
+}
+
 static void handle_keyboard_destroy(struct wl_listener *listener, void *data)
 {
     (void)data;
@@ -419,8 +463,11 @@ static void handle_keyboard_destroy(struct wl_listener *listener, void *data)
     }
 
     wl_list_remove(&kb->destroy.link);
+    wl_list_remove(&kb->key.link);
+    wl_list_remove(&kb->modifiers.link);
     wl_list_remove(&kb->link);
     free(kb);
+    update_seat_caps(server);
 }
 
 /* ================================================================
@@ -482,6 +529,10 @@ static void handle_new_input(struct wl_listener *listener, void *data)
         xkb_context_unref(context);
 
         wlr_keyboard_set_repeat_info(wlr_kb, 25, 600);
+        kb->key.notify = handle_keyboard_key;
+        wl_signal_add(&wlr_kb->events.key, &kb->key);
+        kb->modifiers.notify = handle_keyboard_modifiers;
+        wl_signal_add(&wlr_kb->events.modifiers, &kb->modifiers);
         wlr_seat_set_keyboard(server->seat, wlr_kb);
 
         wlr_log(WLR_INFO, "Keyboard added: %s",
@@ -489,21 +540,22 @@ static void handle_new_input(struct wl_listener *listener, void *data)
         break;
     }
     case WLR_INPUT_DEVICE_TOUCH:
+        /* The cursor turns the touchscreen's events into touch_down/motion/up
+           in layout coordinates — without this no touch reached anything */
+        wlr_cursor_attach_input_device(server->cursor, device);
+        wlr_cursor_map_input_to_output(server->cursor, device, NULL);
+        server->has_touch = true;
         wlr_log(WLR_INFO, "Touch device: %s",
                 device->name ? device->name : "(unnamed)");
         break;
     case WLR_INPUT_DEVICE_POINTER:
         wlr_cursor_attach_input_device(server->cursor, device);
+        server->has_pointer = true;
         break;
     default:
         break;
     }
-
-    uint32_t caps = WL_SEAT_CAPABILITY_POINTER |
-                    WL_SEAT_CAPABILITY_KEYBOARD;
-    if (device->type == WLR_INPUT_DEVICE_TOUCH)
-        caps |= WL_SEAT_CAPABILITY_TOUCH;
-    wlr_seat_set_capabilities(server->seat, caps);
+    update_seat_caps(server);
 }
 
 /* ================================================================
@@ -520,6 +572,8 @@ void gesture_register_listeners(struct zyl_server *server)
     server->touch_motion.notify = handle_touch_motion;
     wl_signal_add(&server->cursor->events.touch_motion,
                   &server->touch_motion);
+    server->touch_frame.notify = handle_touch_frame;
+    wl_signal_add(&server->cursor->events.touch_frame, &server->touch_frame);
 
     /* Cursor / pointer */
     server->cursor_motion.notify = handle_cursor_motion;

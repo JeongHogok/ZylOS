@@ -132,6 +132,15 @@
   /* ═══════════════════════════════════════════════════════
      Dock — dynamic rendering
      ═══════════════════════════════════════════════════════ */
+  /* An app's name in the user's language — or, for one the OS has no
+     translation of (any store app), the name its manifest gives */
+  function hasLabel(app) {
+    return !!app.nameKey && zylI18n.t(app.nameKey) !== app.nameKey;
+  }
+  function appLabel(app) {
+    return hasLabel(app) ? zylI18n.t(app.nameKey) : (app.name || app.id);
+  }
+
   function createDockItem(app) {
     var el = document.createElement('div');
     el.className = 'dock-app';
@@ -142,15 +151,15 @@
     iconWrap.innerHTML = getIconSvg(app);
 
     var nameEl = document.createElement('span');
-    nameEl.setAttribute('data-i18n', app.nameKey);
-    nameEl.textContent = zylI18n.t(app.nameKey);
+    if (hasLabel(app)) nameEl.setAttribute('data-i18n', app.nameKey);
+    nameEl.textContent = appLabel(app);
 
     el.appendChild(iconWrap);
     el.appendChild(nameEl);
 
     /* a11y */
     el.setAttribute('role', 'button');
-    el.setAttribute('aria-label', zylI18n.t(app.nameKey));
+    el.setAttribute('aria-label', appLabel(app));
     addButtonKeyHandler(el);
 
     el.addEventListener('click', function () {
@@ -303,7 +312,7 @@
         el.className = 'app-item';
         el.dataset.appId = app.id;
 
-        var name = zylI18n.t(app.nameKey);
+        var name = appLabel(app);
 
         var iconWrap = document.createElement('div');
         iconWrap.className = 'app-icon-wrap ' + app.color;
@@ -388,7 +397,7 @@
         ev.stopPropagation();
         if (isUndeletable(appId)) return;
         var app = findApp(appId);
-        var appName = app ? zylI18n.t(app.nameKey) : appId;
+        var appName = app ? appLabel(app) : appId;
         showDeleteConfirm(appId, appName);
       });
       el.appendChild(delBtn);
@@ -483,8 +492,8 @@
     var apps = getGridApps();
     if (sortMode === 'alpha') {
       apps.sort(function (a, b) {
-        var na = zylI18n.t(a.nameKey).toLowerCase();
-        var nb = zylI18n.t(b.nameKey).toLowerCase();
+        var na = appLabel(a).toLowerCase();
+        var nb = appLabel(b).toLowerCase();
         return na < nb ? -1 : (na > nb ? 1 : 0);
       });
     }
@@ -886,7 +895,7 @@
       var query = searchInput.value.toLowerCase().trim();
       if (!query) { renderAppGrid(getSortedGridApps()); return; }
       var filtered = getSortedGridApps().filter(function (app) {
-        var name = zylI18n.t(app.nameKey).toLowerCase();
+        var name = appLabel(app).toLowerCase();
         return name.indexOf(query) !== -1 || app.id.toLowerCase().indexOf(query) !== -1;
       });
       renderAppGrid(filtered);

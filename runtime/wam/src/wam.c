@@ -140,8 +140,44 @@ static ZylAppInstance *wam_open(ZylWam *wam, const char *app_id) {
     return wam_show(wam, app_id);
 }
 
+/* ─── The system UI (ZYL_SHELL_SYSTEM_UI): a surface over every app — the
+   bar, a banner for a new notification, or the whole screen (panel,
+   recents). The shell says which; the surface's input region follows, so
+   touches outside it reach the app below ─── */
+#define WAM_PANEL_BAR_PX    36    /* the compositor's statusbar_height_px */
+#define WAM_PANEL_BANNER_PX 136
+
+static ZylAppInstance *system_ui(ZylWam *wam) {
+    return wam->iface.get_instance(&wam->iface, ZYL_SHELL_SYSTEM_UI);
+}
+
+static void wam_set_panel(ZylWam *wam, ZylPanelMode mode) {
+    ZylAppInstance *ui = system_ui(wam);
+    if (!ui || !ui->webview_widget || mode == ZYL_PANEL_NONE) return;
+    wam->panel = mode;
+    zyl_lifecycle_panel_input(ui, mode == ZYL_PANEL_FULL ? 0 :
+                                  mode == ZYL_PANEL_BANNER ? WAM_PANEL_BANNER_PX : WAM_PANEL_BAR_PX);
+    JsonObject *d = json_object_new();
+    json_object_set_string_member(d, "mode", mode == ZYL_PANEL_FULL ? "full" :
+                                             mode == ZYL_PANEL_BANNER ? "banner" : "bar");
+    post_to(WEBKIT_WEB_VIEW(ui->webview_widget), "panel.mode", zyl_intent_object_node(d));
+}
+
+/* Back to just the bar (it was open) */
+static void wam_close_panel(ZylWam *wam) {
+    if (wam->panel != ZYL_PANEL_BAR) wam_set_panel(wam, ZYL_PANEL_BAR);
+}
+
+static void wam_start_system_ui(ZylWam *wam) {
+    ZylAppInstance *ui = zyl_lifecycle_launch_panel(&wam->iface, &wam->engine, ZYL_SHELL_SYSTEM_UI);
+    if (!ui) return;
+    wam->panel = ZYL_PANEL_BAR;
+    zyl_lifecycle_panel_input(ui, WAM_PANEL_BAR_PX);
+}
+
 /* Home, and where an app the user leaves goes: the lock screen while locked */
 static void wam_go_home(ZylWam *wam) {
+    wam_close_panel(wam);
     wam_show(wam, zyl_shell_home(&wam->shell));
 }
 
@@ -167,6 +203,10 @@ static gboolean back_unanswered(gpointer data) {
 }
 
 static void wam_go_back(ZylWam *wam) {
+    if (wam->panel != ZYL_PANEL_BAR && wam->panel != ZYL_PANEL_NONE) {
+        wam_close_panel(wam);   /* back closes the panel first */
+        return;
+    }
     if (wam->back_timer) return;
     ZylAppInstance *inst = wam->iface.get_instance(&wam->iface, wam->shell.top);
     if (!inst || !inst->webview_widget) { wam_go_home(wam); return; }
@@ -216,6 +256,70 @@ static void wam_switch_app(ZylWam *wam, int direction) {
         g_free(next);
     }
     g_ptr_array_unref(ids);
+}
+
+/* Recents: the system UI draws them with what is running (system UI —
+   "launcher": false — is not among them, as in the emulator) */
+static void post_recents(ZylWam *wam) {
+    ZylAppInstance *ui = system_ui(wam);
+    if (!ui || !ui->webview_widget) return;
+    GPtrArray *ids = g_ptr_array_new();
+    GHashTableIter it;
+    gpointer key, value;
+    g_hash_table_iter_init(&it, wam->instances);
+    while (g_hash_table_iter_next(&it, &key, &value)) {
+        ZylAppInstance *inst = value;
+        if (inst->manifest && inst->manifest->launcher) g_ptr_array_add(ids, key);
+    }
+    g_ptr_array_sort(ids, compare_ids);
+    JsonArray *apps = json_array_new();
+    for (guint i = 0; i < ids->len; i++) {
+        const char *id = g_ptr_array_index(ids, i);
+        ZylAppManifest *m = g_hash_table_lookup(wam->manifests, id);
+        JsonObject *a = json_object_new();
+        json_object_set_string_member(a, "appId", id);
+        json_object_set_string_member(a, "name", m && m->name ? m->name : id);
+        json_object_set_boolean_member(a, "closable", zyl_shell_may_close(&wam->shell, id));
+        json_array_add_object_element(apps, a);
+    }
+    g_ptr_array_unref(ids);
+    JsonObject *d = json_object_new();
+    json_object_set_array_member(d, "apps", apps);
+    post_to(WEBKIT_WEB_VIEW(ui->webview_widget), "recents.open", zyl_intent_object_node(d));
+}
+
+static void wam_show_recents(ZylWam *wam) {
+    if (!zyl_shell_navigable(&wam->shell) || !system_ui(wam)) return;
+    wam_set_panel(wam, ZYL_PANEL_FULL);
+    post_recents(wam);
+}
+
+/* The system UI asks for its surface; the shell says how much */
+static void wam_handle_panel_request(const char        *type,
+                                     gpointer           msg_obj,
+                                     ZylAppManifest    *manifest,
+                                     ZylBridgeReplyCtx *reply_ctx,
+                                     gpointer           user_data) {
+    (void)type; (void)reply_ctx;
+    ZylWam *wam = user_data;
+    const char *mode = json_object_get_string_member_with_default(msg_obj, "mode", "bar");
+    if (manifest) wam_set_panel(wam, zyl_shell_panel_mode(&wam->shell, manifest->id, mode));
+}
+
+/* Closing an app from recents: the system UI's, what the shell lets close */
+static void wam_handle_recents_close(const char        *type,
+                                     gpointer           msg_obj,
+                                     ZylAppManifest    *manifest,
+                                     ZylBridgeReplyCtx *reply_ctx,
+                                     gpointer           user_data) {
+    (void)type; (void)reply_ctx;
+    ZylWam *wam = user_data;
+    const char *app_id = json_object_get_string_member_with_default(msg_obj, "appId", NULL);
+    if (!manifest || strcmp(manifest->id, ZYL_SHELL_SYSTEM_UI) != 0 || !app_id ||
+        !zyl_shell_may_close(&wam->shell, app_id) || !wam->iface.get_instance(&wam->iface, app_id))
+        return;
+    wam_close(wam, app_id);
+    post_recents(wam);
 }
 
 /* Only the lock screen unlocks; it opens what the user was opening, or home */
@@ -702,6 +806,19 @@ static void dbus_go_back(GVariant *params, GDBusMethodInvocation *inv, gpointer 
     g_dbus_method_invocation_return_value(inv, NULL);
 }
 
+static void dbus_open_panel(GVariant *params, GDBusMethodInvocation *inv, gpointer user_data) {
+    (void)params;
+    ZylWam *wam = user_data;
+    if (zyl_shell_navigable(&wam->shell)) wam_set_panel(wam, ZYL_PANEL_FULL);
+    g_dbus_method_invocation_return_value(inv, NULL);
+}
+
+static void dbus_show_recents(GVariant *params, GDBusMethodInvocation *inv, gpointer user_data) {
+    (void)params;
+    wam_show_recents(user_data);
+    g_dbus_method_invocation_return_value(inv, NULL);
+}
+
 static void dbus_switch_app(GVariant *params, GDBusMethodInvocation *inv, gpointer user_data) {
     gint32 direction = 1;
     g_variant_get(params, "(i)", &direction);
@@ -720,6 +837,8 @@ static const ZylDbusMethodEntry dbus_methods[] = {
     { "GoHome",      dbus_go_home     },
     { "GoBack",      dbus_go_back     },
     { "SwitchApp",   dbus_switch_app  },
+    { "OpenPanel",   dbus_open_panel  },
+    { "ShowRecents", dbus_show_recents },
     { NULL, NULL }
 };
 
@@ -793,6 +912,7 @@ static void on_shell_event(ZylWam *wam, const char *service, const char *signal,
         gboolean on = now == ZYL_POWER_STATE_ACTIVE || now == ZYL_POWER_STATE_DIM;
         if (on == wam->screen_on) return;
         wam->screen_on = on;
+        if (!on) wam_close_panel(wam);
         wam_show(wam, on ? zyl_shell_screen_on(&wam->shell) : zyl_shell_lock(&wam->shell));
     } else if (strcmp(service, "input") == 0 && strcmp(signal, "HardwareKeyPressed") == 0 &&
                g_variant_is_of_type(params, G_VARIANT_TYPE("(i)"))) {
@@ -802,7 +922,7 @@ static void on_shell_event(ZylWam *wam, const char *service, const char *signal,
         case ZYL_KEY_POWER: power_call(wam->screen_on ? "ScreenOff" : "ScreenOn"); break;
         case ZYL_KEY_HOME:  wam_go_home(wam); break;
         case ZYL_KEY_BACK:  wam_go_back(wam); break;
-        case ZYL_KEY_MENU:  wam_switch_app(wam, 1); break;
+        case ZYL_KEY_MENU:  wam_show_recents(wam); break;
         default: break;
         }
     }
@@ -859,11 +979,13 @@ static void on_setup_state(GObject *src, GAsyncResult *res, gpointer data) {
         g_clear_error(&err);
     }
     wam_show(wam, zyl_shell_boot(&wam->shell, done));
+    wam_start_system_ui(wam);
 }
 
 static void read_setup_state(ZylWam *wam) {
     if (!g_event_bus) {
         wam_show(wam, zyl_shell_boot(&wam->shell, TRUE));
+        wam_start_system_ui(wam);
         return;
     }
     g_dbus_connection_call(g_event_bus, "org.zylos.Settings", "/org/zylos/Settings",
@@ -946,6 +1068,8 @@ int main(int argc, char *argv[]) {
     zyl_bridge_register_handler("setup.done",        wam_handle_setup_done, &wam);
     zyl_bridge_register_handler("navigation.handled", wam_handle_navigation, &wam);
     zyl_bridge_register_handler("navigation.exit",   wam_handle_navigation, &wam);
+    zyl_bridge_register_handler("panel.request",     wam_handle_panel_request, &wam);
+    zyl_bridge_register_handler("recents.close",     wam_handle_recents_close, &wam);
 
     /* Start D-Bus service */
     wam.dbus_owner_id = zyl_dbus_service_start(dbus_methods, &wam);

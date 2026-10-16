@@ -2,12 +2,11 @@
  * [Clean Architecture] Domain Layer - Interface
  *
  * 역할: 센서 서비스 인터페이스 — 가속도계, 자이로, 근접, 조도, 자기장
- * 수행범위: IIO 센서 장치 탐색, 폴링, 이벤트 전달, D-Bus 시그널
+ * 수행범위: 센서 탐색, 폴링, 이벤트 전달, D-Bus 시그널
  * 의존방향: stdbool.h, stdint.h
  * SOLID: ISP — 센서 데이터 수집/전달 인터페이스만 노출
  *
- * 실기기: Linux IIO subsystem (/sys/bus/iio/devices/)
- * 에뮬레이터: JS로 시뮬레이션
+ * 하드웨어는 Sensors HAL(runtime/hal/hal.h) 로만 — 실기기 IIO, 에뮬레이터 보드는 없음
  * ────────────────────────────────────────────────────────── */
 
 #ifndef ZYL_SENSORS_H

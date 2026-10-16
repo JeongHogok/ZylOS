@@ -139,12 +139,20 @@ static int bt_list_devices(ZylBtDevice *out, int max) {
     return n;
 }
 
-/* "AA:BB:CC:DD:EE:FF" → "<adapter>/dev_AA_BB_CC_DD_EE_FF" */
+/* Six hex pairs split by ':' — anything else would name another object, or no valid one */
+static bool valid_address(const char *address) {
+    if (!address || strlen(address) != 17) return false;
+    for (int i = 0; i < 17; i++)
+        if (i % 3 == 2 ? address[i] != ':' : !g_ascii_isxdigit(address[i])) return false;
+    return true;
+}
+
+/* "AA:BB:CC:DD:EE:FF" → "<adapter>/dev_AA_BB_CC_DD_EE_FF" (BlueZ writes capitals) */
 static bool device_path(const char *address, char *out, size_t len) {
     char a[128];
-    if (!address || strlen(address) != 17 || !adapter_path(a, sizeof(a))) return false;
+    if (!valid_address(address) || !adapter_path(a, sizeof(a))) return false;
     snprintf(out, len, "%s/dev_%s", a, address);
-    for (char *p = out + strlen(a) + 5; *p; p++) if (*p == ':') *p = '_';
+    for (char *p = out + strlen(a) + 5; *p; p++) *p = *p == ':' ? '_' : g_ascii_toupper(*p);
     return true;
 }
 

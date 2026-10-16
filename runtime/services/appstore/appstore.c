@@ -48,8 +48,9 @@
 #ifndef ZYL_CONTAINERS_ROOT
 #define ZYL_CONTAINERS_ROOT ZYL_CONTAINERS
 #endif
+#include "users.h"
 #ifndef ZYL_FILES_ROOT
-#define ZYL_FILES_ROOT "/data/users/0/files"   /* where InstallFile's packages come from */
+#define ZYL_FILES_ROOT ZYL_OWNER_FILES   /* where InstallFile's packages come from */
 #endif
 #define REVOKED_FILE ZYL_APPS_DIR "/.revoked"
 #define CATALOG_MAX (1024 * 1024)

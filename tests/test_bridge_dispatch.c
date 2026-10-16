@@ -534,7 +534,8 @@ static void test_event_reaches_only_apps_allowed_to_call_the_service(void) {
 }
 
 /* Another app's notification (a message, a code) is not a third-party app's
-   to read, dismiss or silence; posting its own is */
+   to read, dismiss or silence; posting and cancelling its own is (Cancel's
+   app_id is the caller's, test_args_third_party_app_id_is_the_caller) */
 static void test_notifications_are_the_apps_own(void) {
     const char *notif[] = { "notification", NULL };
     const char *read[] = { "notification", "notification.read", NULL };   /* reserved: not granted */
@@ -542,7 +543,8 @@ static void test_notifications_are_the_apps_own(void) {
     ZylAppManifest greedy = perm_manifest("com.example.spy", FALSE, read);
     ZylAppManifest bar = perm_manifest("com.zylos.statusbar", TRUE, NULL);
     assert(app_may_call(&app, "notification") && app_may_call_method(&app, "notification", "post"));
-    const char *others[] = { "getActive", "cancel", "clearAll", "setDndMode", "setChannelEnabled", NULL };
+    assert(app_may_call_method(&app, "notification", "cancel"));
+    const char *others[] = { "getActive", "clearAll", "setDndMode", "setChannelEnabled", NULL };
     for (int i = 0; others[i]; i++) {
         assert(!app_may_call_method(&app, "notification", others[i]));
         assert(!app_may_call_method(&greedy, "notification", others[i]));
@@ -565,6 +567,26 @@ static void test_notifications_are_the_apps_own(void) {
     g_variant_unref(mine);
     g_variant_unref(theirs);
     g_variant_unref(gone);
+}
+
+/* A geofence is the app's that set it: its enter/exit reaches only that app;
+   the position itself reaches every app allowed location */
+static void test_geofence_events_are_the_apps_own(void) {
+    const char *loc[] = { "location", NULL };
+    ZylAppManifest app = perm_manifest("com.example.run", FALSE, loc);
+    GVariant *mine = g_variant_ref_sink(g_variant_new("(ss)", "park", "com.example.run"));
+    GVariant *theirs = g_variant_ref_sink(g_variant_new("(ss)", "home", "com.example.other"));
+    GVariant *fix = g_variant_ref_sink(g_variant_new("(ddd)", 37.5, 127.0, 10.0));
+    char *s = zyl_bridge_service_event_script(&app, "location", "GeofenceEnter", mine);
+    assert(s);
+    g_free(s);
+    assert(!zyl_bridge_service_event_script(&app, "location", "GeofenceExit", theirs));
+    s = zyl_bridge_service_event_script(&app, "location", "LocationChanged", fix);
+    assert(s);
+    g_free(s);
+    g_variant_unref(mine);
+    g_variant_unref(theirs);
+    g_variant_unref(fix);
 }
 
 /* Users: adding, switching and removing (with the user's data) is the OS's */
@@ -646,6 +668,7 @@ int main(void)
     RUN_TEST(test_args_container_is_the_app_unless_system);
     RUN_TEST(test_event_reaches_only_apps_allowed_to_call_the_service);
     RUN_TEST(test_notifications_are_the_apps_own);
+    RUN_TEST(test_geofence_events_are_the_apps_own);
     RUN_TEST(test_users_are_system_only);
     RUN_TEST(test_events_only_from_the_services_own_name);
     RUN_TEST(test_args_params_object_is_the_whole_request);

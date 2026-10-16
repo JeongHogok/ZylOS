@@ -3,8 +3,9 @@
  *
  * 역할: 오디오 서비스 (org.zylos.AudioService) — 소리 정책과 D-Bus
  * 수행범위: 스트림별 볼륨(이름: media·notif·alarm·ringtone·system, media 가
- *           기기 출력), 출력 음소거, 무음 모드(키 클릭 조용, 경보음은 울림 — 시작 때
- *           설정 sound.silentMode 를 따름), 마이크 음소거(통화 중 음소거), 톤,
+ *           기기 출력 — 시작 때 설정 sound.<스트림>Volume 을 따름), 출력 음소거,
+ *           무음 모드(키 클릭 조용, 경보음은 울림 — 시작 때 설정 sound.silentMode 를
+ *           따름), 마이크 음소거(통화 중 음소거), 톤,
  *           스피커폰, 진동(설정 sound.vibration 을 따름), 이
  *           기기에 있는 기능(스피커폰·진동 모터) 보고 — 없는 기능은 앱이 비활성
  * 의존방향: audio.h, hal.h (Audio·Vibrator HAL), gio/gio.h (D-Bus)
@@ -54,6 +55,31 @@ static bool vibration_wanted(ZylAudioService *svc) {
     return on;
 }
 
+/* A volume the caller set is the user's: Settings keeps it, the same as the
+   emulator's audio service — otherwise the next start brings back the old one */
+static void save_volume(ZylAudioService *svc, const char *stream, int value) {
+    if (!svc->dbus) return;
+    char key[32];
+    snprintf(key, sizeof(key), "%sVolume", stream);
+    g_dbus_connection_call(svc->dbus, "org.zylos.Settings", "/org/zylos/Settings", "org.zylos.Settings",
+        "Update", g_variant_new("(ssv)", "sound", key, g_variant_new_int64(value)),
+        NULL, G_DBUS_CALL_FLAGS_NONE, -1, NULL, NULL, NULL);
+}
+
+/* A new notification: two short tones at the notification volume, as in the
+   emulator — not in silent mode or with the output muted */
+static gboolean second_chime(gpointer data) {
+    ZylAudioService *svc = data;
+    zyl_hal_audio()->play_tone(1100, 120, svc->volumes[ZYL_AUDIO_STREAM_NOTIF]);
+    return G_SOURCE_REMOVE;
+}
+
+static void play_notification_sound(ZylAudioService *svc) {
+    if (svc->silent || svc->muted) return;
+    zyl_hal_audio()->play_tone(880, 150, svc->volumes[ZYL_AUDIO_STREAM_NOTIF]);
+    g_timeout_add(180, second_chime, svc);
+}
+
 /* ─── D-Bus ─── */
 
 static const char *audio_introspection_xml =
@@ -98,6 +124,7 @@ static const char *audio_introspection_xml =
     "      <arg type='i' name='duration_ms' direction='in'/>"
     "    </method>"
     "    <method name='PlayKeyClick'/>"
+    "    <method name='PlayNotificationSound'/>"
     "  </interface>"
     "</node>";
 
@@ -140,8 +167,9 @@ static void handle_audio_method(GDBusConnection *conn, const gchar *sender,
         GVariantBuilder d;
         g_variant_builder_init(&d, G_VARIANT_TYPE("a{sv}"));
         g_variant_builder_add(&d, "{sv}", "stream", g_variant_new_string(name));
-        g_variant_builder_add(&d, "{sv}", "value", g_variant_new_int32(
-            zyl_audio_set_volume(svc, (ZylAudioStream)stream, value)));
+        int set = zyl_audio_set_volume(svc, (ZylAudioStream)stream, value);
+        g_variant_builder_add(&d, "{sv}", "value", g_variant_new_int32(set));
+        save_volume(svc, name, set);
         g_dbus_method_invocation_return_value(inv, g_variant_new("(a{sv})", &d));
     } else if (g_strcmp0(method, "SetMicMute") == 0) {
         gboolean muted = FALSE;
@@ -184,10 +212,14 @@ static void handle_audio_method(GDBusConnection *conn, const gchar *sender,
            (emergency alerts must sound regardless) */
         if (!svc->silent && !svc->muted) zyl_audio_play_tone(svc, 800, 30);
         g_dbus_method_invocation_return_value(inv, NULL);
+    } else if (g_strcmp0(method, "PlayNotificationSound") == 0) {
+        play_notification_sound(svc);
+        g_dbus_method_invocation_return_value(inv, NULL);
     }
 }
 
-/* Silent mode the user left on (Settings keeps sound.silentMode) */
+/* Silent mode and the volumes the user left (Settings keeps sound.silentMode and
+   sound.<stream>Volume — JSON numbers, so int64 or double, int32 from older writers) */
 static void on_saved_sound(GObject *src, GAsyncResult *res, gpointer data) {
     ZylAudioService *svc = data;
     GVariant *r = g_dbus_connection_call_finish(G_DBUS_CONNECTION(src), res, NULL);
@@ -195,6 +227,19 @@ static void on_saved_sound(GObject *src, GAsyncResult *res, gpointer data) {
     GVariant *d = g_variant_get_child_value(r, 0);
     gboolean on = FALSE;
     if (g_variant_lookup(d, "silentMode", "b", &on)) svc->silent = on;
+    for (int i = 0; i < (int)G_N_ELEMENTS(STREAM_NAMES); i++) {
+        char key[32];
+        snprintf(key, sizeof(key), "%sVolume", STREAM_NAMES[i]);
+        GVariant *v = g_variant_lookup_value(d, key, NULL);
+        if (!v) continue;
+        if (g_variant_is_of_type(v, G_VARIANT_TYPE_INT64))
+            zyl_audio_set_volume(svc, (ZylAudioStream)i, (int)CLAMP(g_variant_get_int64(v), 0, 100));
+        else if (g_variant_is_of_type(v, G_VARIANT_TYPE_INT32))
+            zyl_audio_set_volume(svc, (ZylAudioStream)i, g_variant_get_int32(v));
+        else if (g_variant_is_of_type(v, G_VARIANT_TYPE_DOUBLE))
+            zyl_audio_set_volume(svc, (ZylAudioStream)i, (int)CLAMP(g_variant_get_double(v), 0, 100));
+        g_variant_unref(v);
+    }
     g_variant_unref(d);
     g_variant_unref(r);
 }

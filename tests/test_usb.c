@@ -4,7 +4,8 @@
  * 역할: USB 가젯 모드 서비스(runtime/services/usb) 단위 테스트
  * 수행범위: 모드 전환이 configs/c.1 의 함수 링크만 바꿈(다른 항목은 그대로),
  *           충전 모드는 UDC 를 실제로 떼어냄(빈 쓰기는 configfs 에 닿지 않음),
- *           UDC 바인딩 실패·UDC 없음은 실패로 알리고 모드를 바꾸지 않음,
+ *           UDC 바인딩 실패·UDC 없음은 실패로 알리고 모드를 바꾸지 않음(이미 떼어낸
+ *           옛 모드를 다시 붙이고, 그것도 안 되면 실제대로 충전),
  *           모르는 모드 이름·범위 밖 값 거부, 연결 상태는 UDC state 로 판정
  * 의존방향: runtime/services/usb/usb.c (ZYL_TEST, USB_GADGET_BASE·USB_STATE_PATH
  *           교체), gio
@@ -15,7 +16,22 @@
 #define USB_GADGET_BASE ROOT_ "/gadget/g1"
 #define USB_STATE_PATH ROOT_ "/udc"
 #include <assert.h>
+#include <stdio.h>
+#include <string.h>
+
+/* The kernel refusing a bind (an FFS function nobody serves, ENODEV): the next
+   N writes to UDC fail, as configfs reports it — at fclose */
+static int udc_writes_refused;
+static FILE *refusing_fopen(const char *path, const char *mode) {
+    if (udc_writes_refused > 0 && mode[0] == 'w' && strcmp(path, USB_GADGET_BASE "/UDC") == 0) {
+        udc_writes_refused--;
+        return fopen("/dev/full", "w");
+    }
+    return fopen(path, mode);
+}
+#define fopen refusing_fopen
 #include "../runtime/services/usb/usb.c"
+#undef fopen
 
 static int tests_run, tests_pass;
 #define RUN_TEST(fn) do { tests_run++; printf("  %-56s ", #fn); reset(); fn(); tests_pass++; printf("PASS\n"); } while (0)
@@ -92,6 +108,27 @@ static void test_failed_bind_is_reported_and_mode_kept(void) {
     assert(svc->current_mode == ZYL_USB_MODE_CHARGING);
 }
 
+/* The switch already unbound the old function: it is bound again */
+static void test_a_failed_switch_puts_the_old_mode_back(void) {
+    assert(zyl_usb_set_mode(svc, ZYL_USB_MODE_MTP) == 0);
+    udc_writes_refused = 2;                                  /* the unbind and the new bind */
+    assert(zyl_usb_set_mode(svc, ZYL_USB_MODE_ADB) == -1);
+    assert(svc->current_mode == ZYL_USB_MODE_MTP);
+    assert(is_link(CFG_ "/ffs.mtp") && !is_link(CFG_ "/ffs.adb"));
+    char *udc = slurp(G_ "/UDC");
+    assert(strcmp(udc, "fake-udc.0") == 0);                 /* served again */
+    g_free(udc);
+}
+
+/* Nothing can be bound: what is reported is what is there — charging only */
+static void test_a_failed_switch_that_cannot_go_back_says_charging(void) {
+    assert(zyl_usb_set_mode(svc, ZYL_USB_MODE_TETHERING) == 0);
+    g_assert_true(unlink(G_ "/UDC") == 0 && symlink("/dev/full", G_ "/UDC") == 0);
+    assert(zyl_usb_set_mode(svc, ZYL_USB_MODE_MTP) == -1);
+    assert(svc->current_mode == ZYL_USB_MODE_CHARGING);
+    assert(!is_link(CFG_ "/ffs.mtp") && !is_link(CFG_ "/rndis.usb0"));
+}
+
 static void test_no_controller_means_no_mode(void) {
     g_assert_true(system("rm -rf " USB_STATE_PATH "/fake-udc.0") == 0);
     assert(zyl_usb_set_mode(svc, ZYL_USB_MODE_PTP) == -1);
@@ -140,6 +177,8 @@ int main(void) {
     RUN_TEST(test_mode_switch_links_only_the_new_function);
     RUN_TEST(test_charging_really_unbinds_the_gadget);
     RUN_TEST(test_failed_bind_is_reported_and_mode_kept);
+    RUN_TEST(test_a_failed_switch_puts_the_old_mode_back);
+    RUN_TEST(test_a_failed_switch_that_cannot_go_back_says_charging);
     RUN_TEST(test_no_controller_means_no_mode);
     RUN_TEST(test_unknown_mode_names_are_refused);
     RUN_TEST(test_connection_follows_udc_state);

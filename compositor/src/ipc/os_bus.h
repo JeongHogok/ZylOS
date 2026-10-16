@@ -13,8 +13,8 @@
 
 #include "zyl_compositor.h"
 
-/* GoHome / GoBack / SwitchApp → org.zylos.WebAppManager; other signals stay
-   in the log. What actually comes to the front is the WAM's shell policy —
+/* GoHome / GoBack / SwitchApp / OpenPanel / ShowRecents →
+   org.zylos.WebAppManager; other signals stay in the log. What actually comes to the front is the WAM's shell policy —
    the compositor never raises an app itself (it would raise one over the
    lock screen). */
 void zyl_wam_nav_send(struct zyl_server *server, const char *signal_name,

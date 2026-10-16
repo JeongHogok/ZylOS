@@ -6,6 +6,14 @@
 # 의존방향: board/<id>/meson.build (board_* 변수 제공)
 # SOLID: DIP — 루트 빌드는 개별 보드가 아닌 board_* 계약에 의존
 # ──────────────────────────────────────────────────────────
+#
+# 보드 계약 (board/<id>/meson.build 가 선언):
+#   board_id, board_name, board_soc, board_arch, board_dts, board_cross_file,
+#   board_form_factors
+#   board_hal_backend  — 'linux' | 'emulator' (runtime/hal/meson.build 가 고름)
+#   board_hal_camera   — 선택. 카메라가 SoC 자체 경로(ISP)를 거치는 보드의 Camera HAL
+#                        소스: files('hal_camera_<soc>.c'). 없으면 V4L2
+#                        (runtime/hal/hal_camera.c). linux 백엔드에만 쓰인다
 
 subdir(get_option('board'))
 

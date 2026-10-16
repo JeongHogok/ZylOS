@@ -19,6 +19,9 @@
 #include <webkit/webkit.h>
 #endif
 #include <gdk/gdk.h>
+#ifdef GDK_WINDOWING_WAYLAND
+#include <gdk/wayland/gdkwayland.h>
+#endif
 
 /* --- H20: Statusbar height in pixels (reserved at top of screen) --- */
 #define ZYL_STATUSBAR_HEIGHT 36
@@ -28,6 +31,82 @@ static void inject_js(ZylAppInstance *instance, const char *script) {
     webkit_web_view_evaluate_javascript(
         WEBKIT_WEB_VIEW(instance->webview_widget),
         script, -1, NULL, NULL, NULL, NULL, NULL);
+}
+
+/* The compositor tells apps apart (and finds the system UI) by the Wayland
+   app id: each window says which app it is, not the WAM's one id */
+static void set_wayland_app_id(GtkWidget *window, const char *app_id) {
+#ifdef GDK_WINDOWING_WAYLAND
+    GdkSurface *surface = gtk_native_get_surface(GTK_NATIVE(window));
+    if (surface && GDK_IS_WAYLAND_TOPLEVEL(surface))
+        gdk_wayland_toplevel_set_application_id(GDK_TOPLEVEL(surface), app_id);
+#else
+    (void)window; (void)app_id;
+#endif
+}
+
+static gboolean screen_size(int *w, int *h) {
+    GdkDisplay *display = gdk_display_get_default();
+    GListModel *monitors = display ? gdk_display_get_monitors(display) : NULL;
+    GdkMonitor *monitor = monitors && g_list_model_get_n_items(monitors) > 0
+                          ? g_list_model_get_item(monitors, 0) : NULL;
+    if (!monitor) return FALSE;
+    GdkRectangle geom;
+    gdk_monitor_get_geometry(monitor, &geom);
+    g_object_unref(monitor);
+    *w = geom.width;
+    *h = geom.height;
+    return TRUE;
+}
+
+/* ─── The system UI's surface: the whole screen, see-through where it draws
+   nothing; how much of it takes input is set by zyl_lifecycle_panel_input ─── */
+ZylAppInstance *zyl_lifecycle_launch_panel(ZylAppInterface *iface,
+                                           ZylWebEngine    *engine,
+                                           const char      *app_id) {
+    ZylAppInstance *existing = iface->get_instance(iface, app_id);
+    if (existing) return existing;
+    ZylAppManifest *manifest = iface->get_manifest(iface, app_id);
+    if (!manifest) {
+        g_warning("System UI not found: %s", app_id);
+        return NULL;
+    }
+    ZylAppInstance *instance = g_new0(ZylAppInstance, 1);
+    instance->manifest = manifest;
+    instance->state    = ZYL_APP_STATE_RUNNING;
+    instance->window   = gtk_window_new();
+    gtk_window_set_title(GTK_WINDOW(instance->window), manifest->name);
+    gtk_window_set_decorated(GTK_WINDOW(instance->window), FALSE);
+    gtk_widget_remove_css_class(instance->window, "background");   /* see-through */
+    int w = 0, h = 0;
+    if (screen_size(&w, &h)) gtk_window_set_default_size(GTK_WINDOW(instance->window), w, h);
+
+    instance->webview_widget = engine->create_webview(engine, manifest, instance);
+    GdkRGBA clear = { 0, 0, 0, 0 };
+    webkit_web_view_set_background_color(WEBKIT_WEB_VIEW(instance->webview_widget), &clear);
+    gtk_window_set_child(GTK_WINDOW(instance->window), instance->webview_widget);
+    char *entry_uri = zyl_app_scheme_uri(manifest->id, manifest->entry);
+    engine->load_uri(engine, instance->webview_widget, entry_uri);
+    g_free(entry_uri);
+
+    gtk_widget_realize(instance->window);
+    set_wayland_app_id(instance->window, manifest->id);
+    gtk_window_present(GTK_WINDOW(instance->window));
+    iface->store_instance(iface, app_id, instance);
+    g_message("System UI up: %s", app_id);
+    return instance;
+}
+
+void zyl_lifecycle_panel_input(ZylAppInstance *instance, int height) {
+    if (!instance || !instance->window) return;
+    GdkSurface *surface = gtk_native_get_surface(GTK_NATIVE(instance->window));
+    if (!surface) return;
+    int w = 0, h = 0;
+    if (!screen_size(&w, &h)) return;
+    cairo_rectangle_int_t r = { 0, 0, w, height > 0 && height < h ? height : h };
+    cairo_region_t *region = cairo_region_create_rectangle(&r);
+    gdk_surface_set_input_region(surface, region);
+    cairo_region_destroy(region);
 }
 
 /* ─── Launch (or re-activate) an app ─── */
@@ -108,6 +187,8 @@ ZylAppInstance *zyl_lifecycle_launch(ZylAppInterface *iface,
     engine->load_uri(engine, instance->webview_widget, entry_uri);
     g_free(entry_uri);
 
+    gtk_widget_realize(instance->window);
+    set_wayland_app_id(instance->window, manifest->id);
     gtk_window_present(GTK_WINDOW(instance->window));
 
     iface->store_instance(iface, app_id, instance);

@@ -1302,6 +1302,27 @@ console.log('\n■ ZylShell');
     assert.strictEqual(S.screenOn(), null);
   });
 
+  test('the panel follows the device state', function () {
+    var S = shell();
+    var UI = S.systemUi();
+    show(S, S.boot(false));
+    assert.strictEqual(S.panelMode('com.example.app', 'full'), null);
+    assert.strictEqual(S.panelMode(SETUP, 'bar'), null);
+    assert.strictEqual(S.panelMode(UI, 'full'), 'bar');                 /* setup */
+    assert.strictEqual(S.panelMode(UI, 'banner'), 'bar');
+    show(S, S.setupDone(SETUP));
+    assert.strictEqual(S.panelMode(UI, 'full'), 'full');
+    assert.strictEqual(S.panelMode(UI, 'banner'), 'banner');
+    assert.strictEqual(S.panelMode(UI, 'bar'), 'bar');
+    assert.strictEqual(S.panelMode(UI, 'anything'), 'bar');
+    show(S, S.lock());
+    assert.strictEqual(S.panelMode(UI, 'full'), 'bar');                 /* locked */
+    assert.strictEqual(S.panelMode(UI, 'banner'), 'bar');
+    assert.ok(!S.mayLaunch(UI) && !S.mayClose(UI));                     /* a surface */
+    show(S, S.unlock(LOCK));
+    assert.ok(!S.mayLaunch(UI) && !S.mayClose(UI));
+  });
+
   test('the same apps as the device policy (shell.c)', function () {
     var js = fs.readFileSync(path.join(__dirname, '..', 'apps', 'system', 'shell.js'), 'utf8');
     var c = fs.readFileSync(path.join(__dirname, '..', 'runtime', 'wam', 'src', 'shell', 'shell.c'), 'utf8') +
@@ -1414,22 +1435,35 @@ var gateTests = (function () {
   }).then(function () {
     return asyncTest("other apps' notifications are not a third-party app's to read, dismiss or silence", function () {
       var refused = [];
-      ['getActive', 'getHistory', 'cancel', 'clearAll', 'clearHistory', 'setDndMode'].forEach(function (m) {
+      ['getActive', 'getHistory', 'clearAll', 'clearHistory', 'setDndMode'].forEach(function (m) {
         ['com.example.chat', 'com.example.spy'].forEach(function (app) {
           refused.push(ask('notification', m, { id: 1 }, app).then(function (r) {
             assert.ok(r && r.error === 'Permission denied', app + ' ' + m);
           }));
+          /* Cancel is open, but only for its own: naming the owner changes nothing */
+          refused.push(ask('notification', 'cancel', { id: 2, appId: 'com.zylos.settings' }, app));
         });
       });
       return Promise.all(refused).then(active).then(function (a) {
         assert.strictEqual(a.length, 2);                                  /* nothing dismissed */
-        return ask('notification', 'cancel', { id: a[0].id }, 'com.zylos.statusbar');
-      }).then(active).then(function (a) { assert.strictEqual(a.length, 1); });
+      });
+    });
+  }).then(function () {
+    return asyncTest("a third-party app cancels its own; a system app's '' is any app's", function () {
+      return ask('notification', 'post', { title: 'mine' }, 'com.example.chat').then(function (r) {
+        return ask('notification', 'cancel', { id: r.id }, 'com.example.chat');
+      }).then(function (r) {
+        assert.strictEqual(r.success, true);
+        return ask('notification', 'cancel', { id: 1, appId: '' }, 'com.zylos.statusbar');   /* bridge.js clearNotification */
+      }).then(active).then(function (a) {
+        assert.deepStrictEqual(a.map(function (n) { return n.appId; }), ['com.zylos.settings']);
+      });
     });
   }).then(function () {
     return asyncTest('posted and dismissed are announced (what draws notifications follows them)', function () {
       assert.deepStrictEqual(events.map(function (e) { return e.type; }),
-        ['zyl:notification-posted', 'zyl:notification-posted', 'zyl:notification-dismissed']);
+        ['zyl:notification-posted', 'zyl:notification-posted', 'zyl:notification-posted',
+         'zyl:notification-dismissed', 'zyl:notification-dismissed']);
       assert.strictEqual(events[0].detail.appId, 'com.example.chat');
       return Promise.resolve();
     });
@@ -2328,24 +2362,20 @@ var alarmTests = (function () {
 console.log('\n■ notification service');
 
 (function () {
-  /* Auto-dismiss timers are recorded, not armed: a 30-second timer would hold
-     the runner open, and firing one by hand is the timeout without the wait.
-     The module arms and disarms them synchronously, so the swap cannot leak. */
-  function withTimers(fn) {
-    var realSet = global.setTimeout, realClear = global.clearTimeout;
-    var t = { armed: [], cleared: [] };
-    global.setTimeout = function (cb, ms) { var h = { fire: cb, ms: ms }; t.armed.push(h); return h; };
-    global.clearTimeout = function (h) { t.cleared.push(h); };
-    try { fn(ns.notification({}), t); } finally {
-      global.setTimeout = realSet;
-      global.clearTimeout = realClear;
-    }
+  /* A notification lasts until it is dismissed or cancelled, as on the device:
+     every test also checks the module armed no timer (it would arm one
+     synchronously, so the swap cannot leak) */
+  function untilDismissed(fn) {
+    var realSet = global.setTimeout, armed = 0;
+    global.setTimeout = function () { armed++; return 0; };
+    try { fn(ns.notification({})); } finally { global.setTimeout = realSet; }
+    assert.strictEqual(armed, 0, 'a notification armed a timer');
   }
   function ids(list) { return list.map(function (n) { return n.id; }); }
   var A = 'com.example.a', B = 'com.example.b';
 
   test('post: the next id each time, fields defaulted, no actions on a simple post', function () {
-    withTimers(function (n) {
+    untilDismissed(function (n) {
       var r = [n.post({ appId: A, title: 'Timer', body: 'done', actions: [{ label: 'x', actionId: 'x' }] }),
                n.post({ appId: A, title: 'Again' })];
       assert.deepStrictEqual(r, [{ id: 1 }, { id: 2 }]);
@@ -2358,7 +2388,7 @@ console.log('\n■ notification service');
   });
 
   test('postWithActions keeps its buttons; none given is none', function () {
-    withTimers(function (n) {
+    untilDismissed(function (n) {
       n.postWithActions({ appId: A, title: 'Alarm', actions: [{ label: 'Snooze', actionId: 'snooze' }] });
       n.postWithActions({ appId: A, title: 'Plain' });
       assert.deepStrictEqual(n.getActive().map(function (x) { return x.actions; }),
@@ -2366,8 +2396,8 @@ console.log('\n■ notification service');
     });
   });
 
-  test('cancel: gone from active, badge down once, timer disarmed, still in history', function () {
-    withTimers(function (n, t) {
+  test('cancel: gone from active, badge down once, still in history', function () {
+    untilDismissed(function (n) {
       n.post({ appId: A, title: '1' });
       n.post({ appId: A, title: '2' });
       n.post({ appId: B, title: '3' });
@@ -2376,13 +2406,23 @@ console.log('\n■ notification service');
       assert.deepStrictEqual(n.cancel({ id: 99 }), { success: true });
       assert.deepStrictEqual(ids(n.getActive()), [2, 3]);
       assert.deepStrictEqual(n.getAllBadgeCounts(), { 'com.example.a': 1, 'com.example.b': 1 });
-      assert.deepStrictEqual(t.cleared, [t.armed[0]]);
       assert.strictEqual(n.getHistory().length, 3);
     });
   });
 
+  test("cancel with an appId takes only that app's; without one (the OS) any app's", function () {
+    untilDismissed(function (n) {
+      var a = n.post({ appId: A, title: 'a' }), b = n.post({ appId: B, title: 'b' });
+      assert.deepStrictEqual(n.cancel({ id: b.id, appId: A }), { success: true });
+      assert.deepStrictEqual(ids(n.getActive()), [a.id, b.id]);
+      n.cancel({ id: a.id, appId: A });
+      n.cancel({ id: b.id, appId: '' });
+      assert.deepStrictEqual(n.getActive(), []);
+    });
+  });
+
   test('badges count active notifications per app; apps at zero and no app are not listed', function () {
-    withTimers(function (n) {
+    untilDismissed(function (n) {
       n.post({ appId: A });
       n.post({ appId: A });
       var b = n.post({ appId: B });
@@ -2395,7 +2435,7 @@ console.log('\n■ notification service');
   });
 
   test('Do Not Disturb drops all but urgent, and a dropped one leaves no trace', function () {
-    withTimers(function (n) {
+    untilDismissed(function (n) {
       assert.deepStrictEqual(n.setDndMode({ enabled: true }), { success: true, enabled: true });
       assert.deepStrictEqual(n.getDndMode(), { enabled: true });
       assert.deepStrictEqual(n.post({ appId: A, priority: 2 }), { suppressed: true, reason: 'dnd' });
@@ -2409,35 +2449,30 @@ console.log('\n■ notification service');
     });
   });
 
-  test('a normal post dismisses itself after 30 s; urgent and persistent ones stay', function () {
-    withTimers(function (n, t) {
-      n.post({ appId: A, group: 'chat' });
+  test('every post stays until dismissed or cancelled: normal, urgent and persistent alike', function () {
+    untilDismissed(function (n) {
+      var normal = n.post({ appId: A, group: 'chat' });
       var urgent = n.post({ appId: A, priority: 3 });
       var sticky = n.post({ appId: A, persistent: true });
-      assert.strictEqual(t.armed.length, 1);
-      assert.strictEqual(t.armed[0].ms, 30000);
-      t.armed[0].fire();
-      assert.deepStrictEqual(ids(n.getActive()), [urgent.id, sticky.id]);
-      assert.deepStrictEqual(n.getAllBadgeCounts(), { 'com.example.a': 2 });
-      assert.deepStrictEqual(n.getGroupSummary(), {});
-      assert.strictEqual(n.getHistory().length, 3);
+      assert.deepStrictEqual(ids(n.getActive()), [normal.id, urgent.id, sticky.id]);
+      assert.deepStrictEqual(n.getAllBadgeCounts(), { 'com.example.a': 3 });
+      assert.deepStrictEqual(n.getGroupSummary(), { 'com.example.a:chat': 1 });
     });
   });
 
-  test('clearAll keeps persistent notifications and disarms the rest', function () {
-    withTimers(function (n, t) {
+  test('clearAll keeps persistent notifications', function () {
+    untilDismissed(function (n) {
       n.post({ appId: A });
       var sticky = n.post({ appId: A, persistent: true });
       n.post({ appId: B, priority: 3 });
       assert.deepStrictEqual(n.clearAll(), { success: true });
       assert.deepStrictEqual(ids(n.getActive()), [sticky.id]);
       assert.deepStrictEqual(n.getAllBadgeCounts(), { 'com.example.a': 1 });
-      assert.deepStrictEqual(t.cleared, t.armed);
     });
   });
 
   test('history keeps the newest 100, by app and newest-first limit; clearing it keeps the active', function () {
-    withTimers(function (n) {
+    untilDismissed(function (n) {
       for (var i = 1; i <= 105; i++) n.post({ appId: i % 2 ? A : B, title: 't' + i });
       function titles(list) { return list.map(function (x) { return x.title; }); }
       var all = n.getHistory();
@@ -2455,7 +2490,7 @@ console.log('\n■ notification service');
   });
 
   test('groups are per app and name; the summary counts the active; an emptied group is gone', function () {
-    withTimers(function (n) {
+    untilDismissed(function (n) {
       n.post({ appId: A, group: 'chat' });
       n.post({ appId: A, group: 'chat' });
       n.post({ appId: B, group: 'chat' });
@@ -2471,8 +2506,8 @@ console.log('\n■ notification service');
     });
   });
 
-  test('a removed app leaves nothing: active (persistent too), history, badge, group, timer', function () {
-    withTimers(function (n, t) {
+  test('a removed app leaves nothing: active (persistent too), history, badge, group', function () {
+    untilDismissed(function (n) {
       var gone = 'com.example.gone';
       n.post({ appId: gone, group: 'chat' });
       n.post({ appId: gone, persistent: true });
@@ -2482,7 +2517,6 @@ console.log('\n■ notification service');
       assert.deepStrictEqual(ids(n.getHistory()), [kept.id]);
       assert.deepStrictEqual(n.getAllBadgeCounts(), { 'com.example.b': 1 });
       assert.deepStrictEqual(n.getGroupSummary(), { 'com.example.b:chat': 1 });
-      assert.deepStrictEqual(t.cleared, [t.armed[0]]);
       assert.strictEqual(JSON.stringify([n.getActive(), n.getHistory(), n.getAllBadgeCounts(),
                                          n.getGroupSummary()]).indexOf(gone), -1);
     });
@@ -2920,9 +2954,13 @@ var userTests = (function () {
     asyncTest("the device's owner, as runtime/services/user starts — nothing from the host or the request", function () {
       var svc = ns.user({ invoke: function () { throw new Error('the host is not asked'); } });
       return Promise.all([svc.getCurrent({ uid: 0 }), svc.listUsers({ all: true })]).then(function (r) {
-        assert.strictEqual(r[0].uid, 1000);
+        /* The facts are runtime/lib/users.h's (the device's user, fs, appstore read it) */
+        var h = fs.readFileSync(path.join(__dirname, '..', 'runtime', 'lib', 'users.h'), 'utf8');
+        var uid = parseInt(/#define ZYL_OWNER_UID\s+(\d+)/.exec(h)[1], 10);
+        var root = /#define ZYL_USERS_ROOT\s+"([^"]+)"/.exec(h)[1];
+        assert.strictEqual(r[0].uid, uid);
         assert.strictEqual(r[0].type, 'OWNER');
-        assert.strictEqual(r[0].dataDir, '/data/users/1000');
+        assert.strictEqual(r[0].dataDir, root + '/' + uid);
         assert.deepStrictEqual(r[1], [r[0]]);
       });
     })

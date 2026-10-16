@@ -1,8 +1,9 @@
 /* ──────────────────────────────────────────────────────────
  * [Clean Architecture] Presentation Layer - Style
  *
- * 역할: 상태바 스타일 — 시간, 배터리, 네트워크 아이콘, 퀵 설정
- * 수행범위: 상태바 레이아웃, 아이콘 배치, 퀵 설정 패널 스타일링
+ * 역할: 시스템 UI 스타일 — 상태바, 알림판·퀵 설정, 새 알림 배너, 최근 앱
+ * 수행범위: 레이아웃·아이콘·패널. 표면은 모든 앱 위에 겹치므로 쓰지 않는 곳은
+ *           투명하다 (OS 가 띠·배너·전체 중 하나로 표면을 정한다)
  * 의존방향: statusbar.js
  * SOLID: SRP — 상태바 시각적 표현만 담당
 
@@ -25,6 +26,9 @@
   --qs-bg: rgba(255,255,255,0.1);
   --qs-active: rgba(74,158,255,0.3);
 }
+
+/* The surface lies over the app: only what is drawn covers it */
+html, body { background: transparent; }
 
 body {
   font-family: var(--zyl-font-sans);
@@ -301,3 +305,71 @@ body {
 
 /* A radio this device does not have: the tile stays, disabled */
 .qs-btn:disabled { opacity: 0.35; cursor: default; }
+
+/* ─── 새 알림 배너 ─── */
+#notif-banner {
+  position: fixed;
+  top: calc(var(--sb-height) + 8px);
+  left: 8px;
+  right: 8px;
+  display: flex;
+  gap: 12px;
+  padding: 12px 14px;
+  background: rgba(20, 20, 40, 0.95);
+  border-radius: 14px;
+  z-index: 10001;
+  cursor: pointer;
+}
+
+/* ─── 최근 앱 ─── */
+#recents {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: calc(var(--sb-height) + 16px) 16px 40px;
+  background: rgba(10, 10, 30, 0.95);
+  z-index: 10002;
+  overflow-y: auto;
+}
+
+.recents-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+
+#recents-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.recent-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.recent-close {
+  background: none;
+  border: 0;
+  color: inherit;
+  font-size: 20px;
+  opacity: 0.6;
+  padding: 0 8px;
+  cursor: pointer;
+}
+
+.recents-empty {
+  opacity: 0.4;
+  font-size: 14px;
+  text-align: center;
+  padding: 40px 0;
+}

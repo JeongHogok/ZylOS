@@ -319,11 +319,12 @@ var ZylBridge = (function () {
   }
 
   /**
-   * Dismiss a notification by ID (another app's needs notification.read).
+   * Dismiss a notification by ID: the app's own. appId '' is a system app's
+   * "any app's"; the OS replaces it with the caller for every other app.
    * @param {number} id
    */
   function clearNotification(id) {
-    return requestService('notification', 'cancel', { id: id }).then(function () { return true; });
+    return requestService('notification', 'cancel', { id: id, appId: '' }).then(function () { return true; });
   }
 
   /**

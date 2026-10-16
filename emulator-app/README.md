@@ -98,10 +98,11 @@ cargo tauri build
 - postMessage를 통해 키 입력을 앱에 전달
 - 시스템 앱으로 OS 이미지 내에 포함
 
-### 에뮬레이터 i18n (`emu-i18n.js`)
-- 에뮬레이터 컴포지터 UI 전용 번역 (QS 패널, 알림 패널, 최근 앱)
-- `data-emu-i18n` DOM 바인딩
-- OS 앱과 별도 — 컴포지터가 렌더링하는 시스템 UI에 적용
+### 시스템 UI는 OS 의 것
+- 상태바·알림판·빠른 설정·새 알림 배너·최근 앱은 OS 앱 `apps/statusbar` 가 두 번째
+  iframe(`#system-frame`)에서 그린다. 에뮬레이터는 그 프레임의 크기만 OS 가 정한 대로
+  바꾼다(`panel.mode`: bar·banner·full). 기기에서는 WAM 이 같은 앱을 투명한 표면으로 띄운다
+- `emu-i18n.js` 는 OS 가 마지막으로 알려 준 언어를 기억해 각 페이지에 넘길 뿐이다
 
 ### 설정 영속성
 - Settings 앱에서 변경한 설정은 마운트 포인트의 `settings.json`에 저장
@@ -136,9 +137,7 @@ emulator-app/
 │   │   ├── boot-sequence.js 부팅 애니메이션
 │   │   ├── emulator.js     에뮬레이터 코어 (앱 라우팅, 네비게이션)
 │   │   ├── services.js     IPC 라우터 — 앱↔OS 서비스 메시지 전달 (비즈니스 로직은 apps/system/)
-│   │   ├── emu-i18n.js     에뮬레이터 컴포지터 i18n (QS, 알림, 최근앱)
-│   │   ├── hal-tauri.js    Tauri HAL (invoke 기반)
-│   │   └── hal-browser.js  브라우저 HAL (Web API 폴백)
+│   │   └── emu-i18n.js     기기의 현재 언어 (각 페이지에 넘긴다)
 │   └── apps/               번들된 시스템 앱 (apps/ 복사)
 ├── tauri.conf.json         Tauri 앱 설정
 ├── Cargo.toml              Rust 의존성

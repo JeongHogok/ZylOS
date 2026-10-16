@@ -4,7 +4,7 @@
  * 역할: ZylOS HAL 에뮬레이터 — VM·개발 호스트용 가상 하드웨어
  * 수행범위: 가상 Wi-Fi/BT/출력, 오디오는 볼륨 상태만, 저장공간은 호스트 실제 용량.
  *          VM 에 없는 하드웨어(부트로더, 통화 경로, 진동 모터, 백라이트, 배터리,
- *          손전등, cpufreq)는 없다고 답한다 — 지어내지 않는다.
+ *          손전등, cpufreq, 센서, 하드웨어 키, 카메라)는 없다고 답한다 — 지어내지 않는다.
  *          실제 하드웨어, D-Bus, sysfs, gio 완전 불필요.
  *          Linux과 macOS 모두 빌드 가능.
  * 의존방향: hal.h (Domain Interface)만 의존. 외부 라이브러리 없음.
@@ -323,6 +323,29 @@ static const ZylCpuHal g_cpu_hal = {
     .core_count = emu_cpu_core_count, .set_core_online = emu_cpu_set_core_online, .set_governor = emu_cpu_set_governor,
 };
 
+/* 센서 없음 — 읽을 값도 없다 */
+static bool emu_sensors_present(ZylSensorKind kind) { (void)kind; return false; }
+static bool emu_sensors_read(ZylSensorKind kind, ZylSensorSample *out) { (void)kind; (void)out; return false; }
+static const ZylSensorsHal g_sensors_hal = { .present = emu_sensors_present, .read = emu_sensors_read };
+
+/* 하드웨어 키 장치 없음 */
+static int  emu_input_open(void) { return -1; }
+static bool emu_input_read_key(ZylInputKey *key) { (void)key; return false; }
+static void emu_input_close(void) {}
+static const ZylInputHal g_input_hal = { .open = emu_input_open, .read_key = emu_input_read_key, .close = emu_input_close };
+
+/* 카메라 없음 — 찍을 것도 없다 */
+static bool emu_camera_present(ZylLensFacing lens) { (void)lens; return false; }
+static bool emu_camera_capture(ZylLensFacing lens, ZylCameraImage *out) {
+    (void)lens;
+    if (out) memset(out, 0, sizeof(*out));
+    return false;
+}
+static void emu_camera_free_image(ZylCameraImage *image) { (void)image; }
+static const ZylCameraHal g_camera_hal = {
+    .present = emu_camera_present, .capture = emu_camera_capture, .free_image = emu_camera_free_image,
+};
+
 
 /* ══════════════════════════════════════════════════════════
    모듈 접근자
@@ -338,6 +361,9 @@ const ZylStorageHal  *zyl_hal_storage(void)  { return &g_storage_hal; }
 const ZylTorchHal    *zyl_hal_torch(void)    { return &g_torch_hal; }
 const ZylCpuHal      *zyl_hal_cpu(void)      { return &g_cpu_hal; }
 const ZylBoardHal    *zyl_hal_board(void)    { return &g_board_hal; }
+const ZylSensorsHal  *zyl_hal_sensors(void)  { return &g_sensors_hal; }
+const ZylInputHal    *zyl_hal_input(void)    { return &g_input_hal; }
+const ZylCameraHal   *zyl_hal_camera(void)   { return &g_camera_hal; }
 
 /* ──────────────────────────────────────────────────────────
    Boot — 가상 기기에는 A/B 부트로더가 없다: 업데이트·잠금 해제 비활성

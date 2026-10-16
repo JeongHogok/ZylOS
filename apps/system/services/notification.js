@@ -2,8 +2,10 @@
 // [Clean Architecture] Domain Layer - Service Module
 //
 // Role: Notification service — post, cancel, list, clear, DND,
-//       history, grouping, timeout, badge counts
+//       history, grouping, badge counts
 // Scope: OS notification management (actions, DND, history, groups).
+//        A notification stays until dismissed or cancelled, as on the device;
+//        how long a banner shows is the UI's own.
 //        Posted and dismissed are announced as zyl:notification-posted /
 //        zyl:notification-dismissed window events — the device service's
 //        NotificationPosted / NotificationDismissed signals — and whatever
@@ -25,11 +27,6 @@
 
     /* ─── DND state ─── */
     var _dndEnabled = false;
-
-    /* ─── Auto-dismiss timers ─── */
-    var _dismissTimers = {};  /* id → timer handle */
-    var DEFAULT_TIMEOUT_MS = 30000;   /* 30s for normal priority */
-    var URGENT_TIMEOUT_MS = 0;        /* urgent: no auto-dismiss */
 
     /* ─── Badge counts per app ─── */
     var _badgeCounts = {};   /* appId → number */
@@ -66,16 +63,6 @@
       if (_groups[key].length === 0) delete _groups[key];
     }
 
-    function _scheduleAutoDismiss(notif) {
-      var timeout = DEFAULT_TIMEOUT_MS;
-      if (notif.priority >= 3) timeout = URGENT_TIMEOUT_MS;
-      if (notif.persistent) timeout = 0;
-      if (timeout <= 0) return;
-      _dismissTimers[notif.id] = setTimeout(function () {
-        _dismiss(notif.id);
-      }, timeout);
-    }
-
     function _announce(type, detail) {
       if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function' ||
           typeof CustomEvent !== 'function') return;
@@ -86,10 +73,6 @@
       var notif = _activeMap[id];
       if (!notif) return;
       delete _activeMap[id];
-      if (_dismissTimers[id]) {
-        clearTimeout(_dismissTimers[id]);
-        delete _dismissTimers[id];
-      }
       _removeFromGroup(notif);
       _updateBadge(notif.appId, -1);
       _announce('zyl:notification-dismissed', notif.id);
@@ -119,7 +102,6 @@
       _pushHistory(notif);
       _updateBadge(notif.appId, 1);
       _addToGroup(notif);
-      _scheduleAutoDismiss(notif);
       _announce('zyl:notification-posted', notif);
 
       return { id: notif.id };
@@ -155,10 +137,13 @@
       },
 
       /**
-       * Cancel (dismiss) a notification by ID.
+       * Cancel (dismiss) a notification by ID — only if p.appId posted it.
+       * No appId (the OS, a system app's '') cancels any app's; a third-party
+       * app's appId is always its own (services.js), as the device's Cancel(id, app_id).
        */
       cancel: function (p) {
-        _dismiss(p.id);
+        var notif = _activeMap[p.id];
+        if (notif && (!p.appId || notif.appId === p.appId)) _dismiss(p.id);
         return { success: true };
       },
 

@@ -288,18 +288,35 @@ static int g_crash_log_fd = -1;
 static void crash_signal_handler(int sig)
 {
     /*
-     * STRICTLY async-signal-safe: only use write(), _exit(), signal(), raise().
+     * STRICTLY async-signal-safe: only use write(), clock_gettime(), memcpy(),
+     * _exit(), signal(), raise() — the time is formatted by hand, not printf.
      * backtrace() is NOT async-signal-safe (may call malloc internally),
      * so we only write a crash marker and rely on core dumps for stack traces.
      */
-    static const char crash_prefix[] =
-        "{\"level\":\"CRASH\",\"source\":\"signal\","
+    static const char head[] = "{\"ts\":";
+    static const char tail[] =
+        ",\"level\":\"CRASH\",\"source\":\"signal\","
         "\"msg\":\"Fatal signal received\"}\n";
+    char line[sizeof(head) + 20 + sizeof(tail)];
+    char digits[20];
+    int nd = 0;
+    uint64_t ms = (uint64_t)now_unix_ms();      /* the "ts" GetLogs reads from */
+    do {
+        digits[nd++] = (char)('0' + ms % 10);
+        ms /= 10;
+    } while (ms);                                 /* 20 digits hold any uint64 */
+    size_t len = sizeof(head) - 1;
+    memcpy(line, head, len);
+    while (nd > 0) {
+        line[len++] = digits[--nd];
+    }
+    memcpy(line + len, tail, sizeof(tail) - 1);
+    len += sizeof(tail) - 1;
 
     if (g_crash_log_fd >= 0) {
-        (void)write(g_crash_log_fd, crash_prefix, sizeof(crash_prefix) - 1);
+        (void)write(g_crash_log_fd, line, len);
     }
-    (void)write(STDERR_FILENO, crash_prefix, sizeof(crash_prefix) - 1);
+    (void)write(STDERR_FILENO, line, len);
 
     /* Re-raise to get core dump */
     signal(sig, SIG_DFL);

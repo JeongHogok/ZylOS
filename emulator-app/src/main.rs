@@ -93,7 +93,6 @@ fn main() {
             commands::emulated_services::bt_disconnect,
             commands::emulated_services::bt_get_state,
             // Battery HAL
-            commands::emulated_services::get_battery_state,
         ])
         .setup(|_app| {
             log::info!("Zyl OS Emulator started");

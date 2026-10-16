@@ -26,55 +26,10 @@
 #include <wlr/types/wlr_xdg_shell.h>
 
 
-/* ─── Gesture direction identifiers ─── */
-enum gesture_direction {
-    GESTURE_NONE,
-    GESTURE_SWIPE_UP,      /* Go home          */
-    GESTURE_SWIPE_DOWN,    /* Notification panel */
-    GESTURE_SWIPE_LEFT,    /* Go back           */
-    GESTURE_SWIPE_RIGHT,   /* App switcher      */
-    GESTURE_DIRECTION_COUNT
-};
-
-/* ─── Runtime configuration (no #defines) ─── */
-struct zyl_config {
-    int swipe_threshold_px;    /* Min px to register a swipe          */
-    int swipe_from_bottom_px;  /* Bottom-edge hot zone height         */
-    int swipe_from_top_px;     /* Top-edge hot zone height            */
-    int statusbar_height_px;   /* Pixels reserved for the status bar  */
-};
+#include "zyl_gesture.h"   /* gesture types, config, touch state (no wlroots) */
 
 /* Return a zyl_config populated with sensible defaults. */
 struct zyl_config zyl_config_defaults(void);
-
-/* ─── Multi-touch tracking ─── */
-#define ZYL_MAX_TOUCH_POINTS 10
-
-/**
- * Per-finger touch point, keyed by hardware touch_id.
- * Allocated from a fixed pool to avoid per-event heap churn.
- */
-struct touch_point {
-    bool     active;
-    int32_t  id;            /* wlr touch_id (hardware assigned) */
-    double   start_x, start_y;
-    double   current_x, current_y;
-    uint32_t start_time_ms;
-};
-
-/* ─── Touch tracking state ─── */
-struct touch_state {
-    /* Primary touch — backwards-compatible single-touch path */
-    bool     active;
-    double   start_x, start_y;
-    double   current_x, current_y;
-    uint32_t start_time_ms;
-    enum gesture_direction pending;
-
-    /* Multi-touch pool (indexed by slot, not touch_id) */
-    struct touch_point points[ZYL_MAX_TOUCH_POINTS];
-    int                num_active;   /* count of active fingers */
-};
 
 /* ─── Per-keyboard lifecycle state ─── */
 /**
@@ -86,6 +41,8 @@ struct zyl_keyboard {
     struct zyl_server   *server;
     struct wlr_keyboard *wlr_keyboard;
     struct wl_listener   destroy;
+    struct wl_listener   key;           /* → the focused app */
+    struct wl_listener   modifiers;
 };
 
 /* ─── Per-view (window) state ─── */
@@ -100,6 +57,7 @@ struct zyl_view {
     struct wl_listener commit;
     struct wl_listener destroy;
     struct wl_listener request_fullscreen;
+    bool               is_panel;   /* the system UI's surface (not an app) */
 };
 
 /* ─── Per-output (display) state ─── */
@@ -131,6 +89,9 @@ struct zyl_server {
     struct wlr_xdg_shell *xdg_shell;
     struct wl_listener     new_xdg_toplevel;
     struct wl_listener     new_xdg_popup;
+    /* A running app brought forward (gtk_window_present) — view/view.c */
+    struct wlr_xdg_activation_v1 *xdg_activation;
+    struct wl_listener     request_activate;
     struct wl_list         views;          /* zyl_view::link */
 
     /* Cursor / pointer */
@@ -146,6 +107,9 @@ struct zyl_server {
     struct wl_listener touch_down;
     struct wl_listener touch_up;
     struct wl_listener touch_motion;
+    struct wl_listener touch_frame;
+    bool               has_touch;      /* a touchscreen was seen: seat capability */
+    bool               has_pointer;
     struct touch_state touch;
 
     /* Seat */
@@ -174,9 +138,9 @@ struct zyl_server {
                               const char *signal_name,
                               const char *detail);
 
-    /* Notification panel overlay */
-    struct wlr_scene_rect *notif_overlay;
-    bool  notif_panel_visible;
+    /* The system UI's surface (status bar, notification panel, recents):
+       over every app, never in the app list — view/view.c */
+    struct zyl_view *panel;
 
     /* Gesture dispatch table (indexed by enum gesture_direction) */
     gesture_handler_fn gesture_handlers[GESTURE_DIRECTION_COUNT];

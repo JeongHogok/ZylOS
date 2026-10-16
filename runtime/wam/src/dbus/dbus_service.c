@@ -43,6 +43,8 @@ static const char *introspection_xml =
     "    <method name='SwitchApp'>"
     "      <arg type='i' name='direction' direction='in'/>"
     "    </method>"
+    "    <method name='OpenPanel'/>"
+    "    <method name='ShowRecents'/>"
     "    <signal name='AppLaunched'>"
     "      <arg type='s' name='app_id'/>"
     "    </signal>"

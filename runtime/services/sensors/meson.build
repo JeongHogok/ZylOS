@@ -4,6 +4,6 @@ math = meson.get_compiler('c').find_library('m', required: true)
 
 executable('zyl-sensors',
   'sensors.c',
-  dependencies: [gio, threads, math],
+  dependencies: [gio, threads, math, zyl_hal_dep],
   install: true,
 )

@@ -3,7 +3,8 @@
  *
  * 역할: Display HAL Linux 구현 — DRM 출력·모드(읽기)와 백라이트
  * 수행범위: /sys/class/drm 의 cardN-<커넥터> 마다 연결 여부와 modes 목록(커널이
- *           선호 모드를 먼저 적음, 주사율이 없으면 mode 파일 또는 60Hz),
+ *           선호 모드를 먼저 적음, 주사율이 없으면 mode 파일 또는 60Hz) — 내장
+ *           패널(eDP·DSI·LVDS·DPI)이 목록 앞에 와서 첫 연결 출력이 기기 화면,
  *           /sys/class/backlight 의 첫 장치로 밝기 0–100% 읽기·쓰기
  * 의존방향: hal.h (Domain), glib
  * SOLID: SRP — 화면 장치 접근만. 해상도·배율·회전 정책은 display 서비스,
@@ -47,16 +48,31 @@ static int read_int(const char *dir, const char *name, const char *file) {
     return v;
 }
 
+/* The kernel's connector types for a built-in panel */
+static bool built_in(const char *connector) {
+    static const char *const panels[] = { "eDP-", "DSI-", "LVDS-", "DPI-" };
+    for (size_t i = 0; i < G_N_ELEMENTS(panels); i++)
+        if (g_str_has_prefix(connector, panels[i])) return true;
+    return false;
+}
+
 static int display_list_outputs(ZylDisplayOutput *out, int max) {
     GDir *dir = g_dir_open(DRM_DIR, 0, NULL);
     if (!dir) return 0;
-    int n = 0;
+    int n = 0, panels = 0;
     const char *name;
-    while (n < max && (name = g_dir_read_name(dir))) {
+    while ((name = g_dir_read_name(dir))) {
         /* card0-HDMI-A-1, card0-DSI-1 — not card0 itself, not renderD128 */
         const char *dash = g_str_has_prefix(name, "card") ? strchr(name + 4, '-') : NULL;
         if (!dash) continue;
-        ZylDisplayOutput *o = &out[n++];
+        /* Built-in panels first, in whatever order the directory lists them:
+           whoever takes the first connected output takes the device's screen */
+        int at = built_in(dash + 1) ? panels++ : n;
+        if (at >= max) continue;
+        if (n == max) n--;                        /* full: the last plugged-in one makes room */
+        memmove(&out[at + 1], &out[at], (size_t)(n - at) * sizeof(*out));
+        n++;
+        ZylDisplayOutput *o = &out[at];
         memset(o, 0, sizeof(*o));
         g_strlcpy(o->name, dash + 1, sizeof(o->name));
         char *status = read_text(DRM_DIR, name, "status");

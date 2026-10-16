@@ -4,7 +4,8 @@
  * 역할: 접근성 서비스(runtime/services/accessibility) D-Bus 단위 테스트
  * 수행범위: 기본 상태, 글꼴 배율 범위(벗어나거나 NaN·무한대면 거부하고 알리지
  *           않음, 양 끝은 허용), 바뀔 때마다 StateChanged 로 전체 상태, 스크린리더
- *           켜기(AT-SPI 레지스트리 + orca), 읽어줄 글은 옵션이 아니라 낱말로만
+ *           켜기(AT-SPI 레지스트리 + orca, 몇 번 켜도 orca 하나, 끄거나 서비스가
+ *           끝나면 멈춤), 읽어줄 글은 옵션이 아니라 낱말로만
  *           espeak-ng 에(앱이 준 글이 "-w 경로" 여도), 빈 글은 읽지 않음
  * 의존방향: runtime/services/accessibility/accessibility.c (ZYL_TEST), gio
  *           (소켓 쌍 위의 피어 D-Bus — 버스 데몬 불필요), PATH 의 가짜
@@ -15,10 +16,13 @@
 #define DIR_ "/tmp/zyl-accessibility-test"
 #define ZYL_ATSPI_REGISTRYD DIR_ "/bin/at-spi2-registryd"
 #include <assert.h>
+#include <errno.h>
 #include <math.h>
+#include <signal.h>
 #include <stdio.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
+#include <sys/wait.h>
 #include "../runtime/services/accessibility/accessibility.c"
 
 static int tests_run, tests_pass;
@@ -156,6 +160,53 @@ static void test_screen_reader_on_starts_the_registry_and_orca(void) {
     assert(wait_for(DIR_ "/orca", "[--no-setup]\n"));
 }
 
+/* Until the process is gone and reaped by the service (the main loop runs) */
+static bool gone(GPid pid) {
+    for (int i = 0; i < 500 && kill(pid, 0) == 0; i++) {
+        while (g_main_context_iteration(NULL, FALSE)) {}
+        g_usleep(10000);
+    }
+    return kill(pid, 0) == -1 && errno == ESRCH;
+}
+
+static void test_screen_reader_runs_one_orca_until_turned_off(void) {
+    GPid before = svc->orca_pid;                                              /* whatever ran before */
+    g_variant_unref(call("SetScreenReader", g_variant_new("(b)", FALSE)));
+    assert(svc->orca_pid == 0 && (!before || gone(before)));
+    g_assert_true(system("rm -f " DIR_ "/orca") == 0);
+    g_variant_unref(call("SetScreenReader", g_variant_new("(b)", TRUE)));
+    GPid first = svc->orca_pid;
+    assert(first > 0 && wait_for(DIR_ "/orca", "[--no-setup]\n"));
+    g_variant_unref(call("SetScreenReader", g_variant_new("(b)", TRUE)));    /* on again: the same one */
+    assert(svc->orca_pid == first);
+    g_variant_unref(call("SetScreenReader", g_variant_new("(b)", FALSE)));
+    assert(svc->orca_pid == 0 && !sig_reader && gone(first));
+    assert(wait_for(DIR_ "/orca", "[--no-setup]\n"));                       /* only ever one started */
+}
+
+/* Off and straight back on — before the old one has gone — still leaves one running */
+static void test_screen_reader_off_and_on_again_quickly_keeps_a_reader(void) {
+    g_variant_unref(call("SetScreenReader", g_variant_new("(b)", TRUE)));
+    GPid first = svc->orca_pid;
+    screen_reader_set(svc, FALSE);
+    screen_reader_set(svc, TRUE);
+    GPid second = svc->orca_pid;
+    assert(first > 0 && second > 0 && second != first && gone(first));
+    assert(svc->orca_pid == second && kill(second, 0) == 0);                /* the new one stays */
+    screen_reader_set(svc, FALSE);
+    assert(gone(second));
+}
+
+static void test_the_screen_reader_stops_with_the_service(void) {
+    ZylAccessibilityService *other = zyl_accessibility_service_create();
+    screen_reader_set(other, TRUE);
+    GPid pid = other->orca_pid;
+    assert(pid > 0);
+    zyl_accessibility_service_destroy(other);
+    int status = 0;
+    assert(waitpid(pid, &status, 0) == pid && WIFSIGNALED(status) && WTERMSIG(status) == SIGTERM);
+}
+
 static void test_spoken_text_is_never_taken_as_an_option(void) {
     g_variant_unref(call("Speak", g_variant_new("(s)", "")));  /* nothing to say: nothing started */
     /* An app's text that looks like espeak-ng's "write to this file" */
@@ -169,7 +220,7 @@ int main(void) {
     printf("=== Zyl OS Accessibility Service Tests ===\n");
     g_assert_true(system("rm -rf " DIR_ " && mkdir -p " DIR_ "/bin") == 0);
     script("espeak-ng", "printf '[%s]' \"$@\" >> " DIR_ "/espeak; echo >> " DIR_ "/espeak");
-    script("orca", "printf '[%s]' \"$@\" >> " DIR_ "/orca; echo >> " DIR_ "/orca");
+    script("orca", "printf '[%s]' \"$@\" >> " DIR_ "/orca; echo >> " DIR_ "/orca; exec sleep 30");  /* stays up, as orca does */
     script("at-spi2-registryd", "echo started >> " DIR_ "/registryd");
     char *path = g_strdup_printf(DIR_ "/bin:%s", g_getenv("PATH"));
     g_setenv("PATH", path, TRUE);
@@ -190,6 +241,9 @@ int main(void) {
     RUN_TEST(test_font_scale_range_ends_are_allowed_and_announced);
     RUN_TEST(test_every_change_announces_the_whole_state);
     RUN_TEST(test_screen_reader_on_starts_the_registry_and_orca);
+    RUN_TEST(test_screen_reader_runs_one_orca_until_turned_off);
+    RUN_TEST(test_screen_reader_off_and_on_again_quickly_keeps_a_reader);
+    RUN_TEST(test_the_screen_reader_stops_with_the_service);
     RUN_TEST(test_spoken_text_is_never_taken_as_an_option);
     printf("\nResults: %d/%d passed\n", tests_pass, tests_run);
     return tests_pass == tests_run ? 0 : 1;

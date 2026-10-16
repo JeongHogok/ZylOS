@@ -2,7 +2,7 @@
  * [Clean Architecture] Infrastructure Layer - Test
  *
  * 역할: 알림 서비스(ZylNotificationService) 단위 테스트
- * 수행범위: post/cancel/clear_all/채널 필터링 기능 검증
+ * 수행범위: post/cancel(자기 앱 것만)/clear_all/채널 필터링 기능 검증
  * 의존방향: notification.h (테스트 대상)
  * SOLID: SRP — 알림 서비스 로직만 테스트
  * ────────────────────────────────────────────────────────── */
@@ -131,8 +131,8 @@ static void test_cancel_removes_notification(void)
         NULL, ZYL_NOTIFICATION_PRIORITY_DEFAULT);
     assert(id > 0);
 
-    /* Cancel the notification */
-    zyl_notification_cancel(svc, id);
+    /* The app that posted it cancels it */
+    zyl_notification_cancel(svc, id, "com.zylos.test");
 
     /* Verify it's gone */
     ZylNotification *list = NULL;
@@ -157,7 +157,7 @@ static void test_cancel_nonexistent_id(void)
         NULL, ZYL_NOTIFICATION_PRIORITY_DEFAULT);
 
     /* Cancel with wrong ID */
-    zyl_notification_cancel(svc, id + 999);
+    zyl_notification_cancel(svc, id + 999, "");
 
     /* Original should still be there */
     ZylNotification *list = NULL;
@@ -360,12 +360,43 @@ static void test_unknown_channel_allows_posting(void)
     zyl_notification_service_destroy(svc);
 }
 
+/* ── Test: an app cancels its own only; "" (a system app) any app's ── */
+
+static void test_cancel_only_the_apps_own(void)
+{
+    ZylNotificationService *svc = zyl_notification_service_create();
+    uint64_t mine = zyl_notification_post(svc, "com.example.chat", "general", "Mine", "b",
+                                          NULL, ZYL_NOTIFICATION_PRIORITY_DEFAULT);
+    uint64_t theirs = zyl_notification_post(svc, "com.zylos.messages", "general", "Mom", "code 1234",
+                                            NULL, ZYL_NOTIFICATION_PRIORITY_DEFAULT);
+    ZylNotification *list = NULL;
+    int count = 0;
+
+    zyl_notification_cancel(svc, theirs, "com.example.chat");     /* not its to take away */
+    zyl_notification_get_active(svc, &list, &count);
+    assert(count == 2);
+    for (int i = 0; i < count; i++) zyl_notification_free(&list[i]);
+    g_free(list);
+
+    zyl_notification_cancel(svc, mine, "com.example.chat");
+    zyl_notification_get_active(svc, &list, &count);
+    assert(count == 1 && list[0].id == theirs);
+    zyl_notification_free(&list[0]);
+    g_free(list);
+
+    zyl_notification_cancel(svc, theirs, "");                     /* the status bar's */
+    zyl_notification_get_active(svc, &list, &count);
+    assert(count == 0 && list == NULL);
+
+    zyl_notification_service_destroy(svc);
+}
+
 /* ── Test: NULL service pointer handling ──────────────────── */
 
 static void test_null_service_safety(void)
 {
     /* These should not crash */
-    zyl_notification_cancel(NULL, 1);
+    zyl_notification_cancel(NULL, 1, NULL);
     zyl_notification_clear_all(NULL);
 
     ZylNotification *list = NULL;
@@ -393,6 +424,7 @@ int main(void)
     RUN_TEST(test_get_active_after_post);
     RUN_TEST(test_cancel_removes_notification);
     RUN_TEST(test_cancel_nonexistent_id);
+    RUN_TEST(test_cancel_only_the_apps_own);
     RUN_TEST(test_clear_all_removes_non_persistent);
     RUN_TEST(test_forget_app_removes_only_that_app);
     RUN_TEST(test_clear_all_empty);

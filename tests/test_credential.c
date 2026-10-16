@@ -123,6 +123,29 @@ static void test_nothing_is_stored_or_read_before_the_master_key(void) {
     assert(zyl_credential_store(s, "mail", "ana", ZYL_CRED_PASSWORD, "", 0, NULL) == -1);
 }
 
+/* The daemon opens with this device's own key: made once (0600), the same
+   after a restart, and never replaced when it is there but broken */
+static void test_the_device_key_opens_the_store_and_survives_restart(void) {
+    assert(zyl_credential_open_with_device_key(s) == 0);
+    struct stat st;
+    assert(stat(DIR_ "/.device_key", &st) == 0);
+    assert(st.st_size == 32 && (st.st_mode & 0777) == 0600);
+    assert(put("wifi", "home", SECRET) == 0);
+    reopen();
+    assert(get("wifi", "home") == NULL);                   /* not open until the key is read */
+    assert(zyl_credential_open_with_device_key(s) == 0);
+    assert(same(get("wifi", "home"), SECRET));
+    char *before = NULL;
+    gsize n = 0;
+    assert(g_file_get_contents(DIR_ "/.device_key", &before, &n, NULL));
+    assert(truncate(DIR_ "/.device_key", 7) == 0);
+    reopen();
+    assert(zyl_credential_open_with_device_key(s) == -1);   /* broken: left locked */
+    assert(put("wifi", "home", "x") == -1);
+    assert(stat(DIR_ "/.device_key", &st) == 0 && st.st_size == 7);   /* not replaced */
+    g_free(before);
+}
+
 static void test_names_that_could_leave_their_file_are_rejected(void) {
     char max[MAX_NAME_LEN + 2];
     memset(max, 'a', MAX_NAME_LEN);
@@ -184,6 +207,7 @@ int main(void) {
     RUN_TEST(test_any_tampered_byte_or_truncation_is_rejected);
     RUN_TEST(test_wrong_passphrase_cannot_read_right_one_can_after_restart);
     RUN_TEST(test_nothing_is_stored_or_read_before_the_master_key);
+    RUN_TEST(test_the_device_key_opens_the_store_and_survives_restart);
     RUN_TEST(test_names_that_could_leave_their_file_are_rejected);
     RUN_TEST(test_long_names_never_share_a_file);
     RUN_TEST(test_store_overwrites_and_delete_removes);

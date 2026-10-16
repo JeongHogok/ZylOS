@@ -3,7 +3,8 @@
  *
  * 역할: 접근성 서비스 구현 — D-Bus로 고대비/폰트스케일/스크린리더 관리
  * 수행범위: D-Bus 메서드 핸들링, 상태 관리, 시그널 발송,
- *           스크린리더 켜기(at-spi2-registryd + orca)와 읽어주기(espeak-ng)
+ *           스크린리더 켜기·끄기(at-spi2-registryd + orca 하나, 끄거나 서비스가
+ *           끝나면 멈춤)와 읽어주기(espeak-ng)
  * 의존방향: accessibility.h, gio/gio.h
  * SOLID: SRP — 접근성 제어 로직만 담당
  * ---------------------------------------------------------- */
@@ -12,6 +13,8 @@
 
 #include <gio/gio.h>
 #include <glib.h>
+#include <glib-unix.h>
+#include <signal.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -58,6 +61,8 @@ struct _ZylAccessibilityService {
     GDBusNodeInfo         *introspection_data;
     guint                  bus_owner_id;
     guint                  registration_id;
+    GPid                   orca_pid;     /* the reader while it runs, else 0 */
+    guint                  orca_watch;
 };
 
 /* -- Screen reader (AT-SPI2 + Orca + espeak-ng) -------------- */
@@ -91,13 +96,64 @@ static void speak_text(const char *text)
     spawn_detached(argv);
 }
 
-static void screen_reader_start(void)
+static void reap(GPid pid, gint status, gpointer data)
 {
+    (void)status;
+    (void)data;
+    g_spawn_close_pid(pid);
+}
+
+/* Orca ended by itself: the next "on" starts it again */
+static void on_orca_exit(GPid pid, gint status, gpointer data)
+{
+    ZylAccessibilityService *svc = data;
+    reap(pid, status, NULL);
+    svc->orca_pid = 0;
+    svc->orca_watch = 0;
+}
+
+static void orca_stop(ZylAccessibilityService *svc, bool wait_for_exit)
+{
+    if (!svc->orca_pid) {
+        return;
+    }
+    g_source_remove(svc->orca_watch);
+    kill(svc->orca_pid, SIGTERM);
+    /* Off and straight back on starts a new one; the old one is reaped on its
+       own. A service on its way out leaves that to init */
+    if (wait_for_exit) {
+        g_child_watch_add(svc->orca_pid, reap, NULL);
+    } else {
+        g_spawn_close_pid(svc->orca_pid);
+    }
+    svc->orca_pid = 0;
+    svc->orca_watch = 0;
+}
+
+/* One orca while the reader is on; stopped when it is turned off */
+static void screen_reader_set(ZylAccessibilityService *svc, gboolean on)
+{
+    svc->state.screen_reader_active = on;
+    if (!on) {
+        orca_stop(svc, true);
+        return;
+    }
+    if (svc->orca_pid) return;
     /* at-spi2-registryd is what carries the widget tree to the reader */
     gchar *registry[] = { (gchar *)ZYL_ATSPI_REGISTRYD, NULL };
     gchar *orca[]     = { (gchar *)"orca", (gchar *)"--no-setup", NULL };
     spawn_detached(registry);
-    spawn_detached(orca);
+    GError *error = NULL;
+    if (!g_spawn_async(NULL, orca, NULL,
+                       G_SPAWN_SEARCH_PATH | G_SPAWN_DO_NOT_REAP_CHILD |
+                       G_SPAWN_STDOUT_TO_DEV_NULL | G_SPAWN_STDERR_TO_DEV_NULL,
+                       NULL, NULL, &svc->orca_pid, &error)) {
+        g_message("Accessibility: orca unavailable: %s", error->message);
+        g_clear_error(&error);
+        svc->orca_pid = 0;
+        return;
+    }
+    svc->orca_watch = g_child_watch_add(svc->orca_pid, on_orca_exit, svc);
 }
 
 /* -- Emit StateChanged signal ------------------------------- */
@@ -176,10 +232,7 @@ static void handle_method_call(GDBusConnection       *connection,
     } else if (g_strcmp0(method_name, "SetScreenReader") == 0) {
         gboolean enabled = FALSE;
         g_variant_get(parameters, "(b)", &enabled);
-        svc->state.screen_reader_active = enabled;
-        if (enabled) {
-            screen_reader_start();
-        }
+        screen_reader_set(svc, enabled);
         g_message("Accessibility: screen_reader=%s",
                   enabled ? "true" : "false");
         emit_state_changed(svc);
@@ -299,6 +352,9 @@ void zyl_accessibility_service_destroy(ZylAccessibilityService *svc)
         return;
     }
 
+    /* The reader does not outlive the service that started it */
+    orca_stop(svc, false);
+
     if (svc->registration_id > 0 && svc->connection) {
         g_dbus_connection_unregister_object(svc->connection,
                                             svc->registration_id);
@@ -318,6 +374,12 @@ void zyl_accessibility_service_destroy(ZylAccessibilityService *svc)
 /* -- main() ------------------------------------------------- */
 
 #ifndef ZYL_TEST
+static gboolean on_term(gpointer loop)
+{
+    g_main_loop_quit(loop);
+    return G_SOURCE_REMOVE;
+}
+
 int main(int argc, char *argv[])
 {
     (void)argc;
@@ -332,6 +394,7 @@ int main(int argc, char *argv[])
     }
 
     GMainLoop *loop = g_main_loop_new(NULL, FALSE);
+    g_unix_signal_add(SIGTERM, on_term, loop);   /* so destroy stops the reader */
     g_main_loop_run(loop);
 
     g_main_loop_unref(loop);

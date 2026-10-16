@@ -55,7 +55,8 @@ void zyl_wam_nav_send(struct zyl_server *server, const char *signal_name,
     GVariant *args = NULL;
     if (strcmp(signal_name, "SwitchApp") == 0)
         args = g_variant_new("(i)", detail && detail[0] == '-' ? -1 : 1);
-    else if (strcmp(signal_name, "GoHome") != 0 && strcmp(signal_name, "GoBack") != 0)
+    else if (strcmp(signal_name, "GoHome") != 0 && strcmp(signal_name, "GoBack") != 0 &&
+             strcmp(signal_name, "OpenPanel") != 0 && strcmp(signal_name, "ShowRecents") != 0)
         return;
     send_call("org.zylos.WebAppManager", signal_name, args);
 }

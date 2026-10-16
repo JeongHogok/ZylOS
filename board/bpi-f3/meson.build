@@ -14,6 +14,8 @@ board_arch        = 'riscv64'
 board_hal_backend = 'linux'
 board_dts         = 'bpi-f3-zyl.dts'
 board_cross_file  = 'tools/cross/riscv64.ini'
+# board_hal_camera: K1 의 카메라는 ISP 를 거친다 — 그 경로의 Camera HAL 이 생기면
+# 여기서 files(...) 로 고른다. 그때까지는 V4L2 기본 구현
 
 # 워치 제외: K1은 8코어 2GHz SBC로 워치 전력 예산(수십 mW 아이들)을 만족하지 못한다.
 board_form_factors = ['phone', 'tablet', 'tv', 'auto', 'desktop', 'appliance', 'pda']
