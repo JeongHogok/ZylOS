@@ -54,6 +54,7 @@ desktop 외부 입력·다중 해상도 · appliance 키오스크·무인 복구
 | 3 | QEMU 부팅 레인 (`tools/run-qemu.sh`, `zyl-selftest`) + CI | 완료 |
 | 4 | 폼팩터 8종 조립 검증 (`tests/test_image_profiles.sh`) | 완료 |
 | 4-1 | 화면 스택 — DRM → 컴포지터 → WAM → 홈 앱, 레인에서 확인 | 완료 |
+| 4-2 | riscv64 레인 — 교차 빌드 + 2단계 부트스트랩, 같은 자기점검 | 완료 |
 | 5 | GPU 드라이버 재배포권 질의 (SoC 공급 협의 안건) | 사업 측 |
 | 6 | 보드 조달 (최소 3대 + 직렬 케이블) | 사업 측 |
 
@@ -74,10 +75,14 @@ AppArmor 자식 프로필 전이를 막아 WebKit 샌드박스 불가, `ProtectK
 지금 이미지는 부팅해 자기점검 **57/57** 통과하고, 그 안에 1280x800 화면 위에
 홈 앱이 떠 있다. AppArmor 거부 0건.
 
+**riscv64 레인이 잡은 것**: 교차 파일의 `-mcpu=spacemit-k1`(gcc 가 모르는 CPU —
+교차 빌드가 아예 안 됐다), multiarch pkg-config 경로 누락, riscv64 데비안이
+`vmlinuz` 가 아니라 `vmlinux` 를 깐다는 사실, `setup-toolchain.sh` 의 없는
+패키지 세 개. 지금 `board/generic-riscv64` 는 실기기와 같은 arch·HAL 백엔드로
+부팅해 같은 자기점검 **57/57** 을 통과한다(화면 체인 포함, 거부 0건).
+
 남은 소프트웨어 과제 (다음 조각):
-1. **riscv64 레인** — 교차 빌드 + 2단계 부트스트랩(binfmt). 실기기와 같은
-   아키텍처·HAL 백엔드를 보드 없이 돌려 보는 유일한 방법
-2. **verity·A/B** — `sign-image.sh` 의 출력을 이미지 조립에 연결(슬롯 B·해시
+1. **verity·A/B** — `sign-image.sh` 의 출력을 이미지 조립에 연결(슬롯 B·해시
    트리 채우기), 레인에서 A→B 전환·롤백 흉내내기
 
 ## Phase 1 — 첫 불 (보드 도착 +2주)
