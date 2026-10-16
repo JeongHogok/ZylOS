@@ -2917,21 +2917,13 @@ console.log('\n■ user service');
 
 var userTests = (function () {
   return Promise.all([
-    asyncTest('getCurrent and listUsers each ask the host once, with nothing from the request', function () {
-      var me = { uid: 1000, name: 'owner' };
-      var invoke = recordingInvoker({ user_get_current: me, user_list: [me] });
-      var svc = ns.user({ invoke: invoke });
+    asyncTest("the device's owner, as runtime/services/user starts — nothing from the host or the request", function () {
+      var svc = ns.user({ invoke: function () { throw new Error('the host is not asked'); } });
       return Promise.all([svc.getCurrent({ uid: 0 }), svc.listUsers({ all: true })]).then(function (r) {
-        assert.strictEqual(r[0], me);
-        assert.deepStrictEqual(r[1], [me]);
-        assert.deepStrictEqual(invoke.calls, [{ cmd: 'user_get_current', args: undefined },
-                                              { cmd: 'user_list', args: undefined }]);
-      });
-    }),
-    asyncTest('no answer from the host stays null — no user invented', function () {
-      var svc = ns.user({ invoke: recordingInvoker({}) });
-      return Promise.all([svc.getCurrent(), svc.listUsers()]).then(function (r) {
-        assert.deepStrictEqual(r, [null, null]);
+        assert.strictEqual(r[0].uid, 1000);
+        assert.strictEqual(r[0].type, 'OWNER');
+        assert.strictEqual(r[0].dataDir, '/data/users/1000');
+        assert.deepStrictEqual(r[1], [r[0]]);
       });
     })
   ]);

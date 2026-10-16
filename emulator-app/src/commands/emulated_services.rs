@@ -2,7 +2,7 @@
 // [Clean Architecture] Infrastructure Layer - Emulated Services
 //
 // 역할: 실기기 D-Bus 시스템 서비스를 HAL 수준으로 에뮬레이션
-// 수행범위: power/battery, location, user, credential,
+// 수행범위: power/battery, location, credential(호스트 키에 묶인 보안 저장소),
 //           wifi, bluetooth
 // 의존방향: state (AppState, mount_point), tauri AppHandle
 // SOLID: SRP — 에뮬레이션 서비스만 담당
@@ -110,46 +110,6 @@ pub async fn location_get_last_known() -> serde_json::Value {
             "country": ""
         }),
     }
-}
-
-// ════════════════════════════════════════════
-// 4. User Service
-// ════════════════════════════════════════════
-
-#[tauri::command]
-pub fn user_get_current(state: State<'_, Mutex<AppState>>) -> serde_json::Value {
-    let mut user_name = "user".to_string();
-    if let Ok(app_state) = state.lock() {
-        let base = app_state.mount_point.as_ref().unwrap_or(&app_state.data_dir);
-        let settings_path = base.join("settings.json");
-        if let Ok(content) = fs::read_to_string(&settings_path) {
-            if let Ok(data) = serde_json::from_str::<serde_json::Value>(&content) {
-                if let Some(name) = data["user"]["name"].as_str() {
-                    if !name.is_empty() {
-                        user_name = name.to_string();
-                    }
-                }
-            }
-        }
-    }
-    serde_json::json!({
-        "uid": 1000,
-        "name": user_name,
-        "type": "OWNER",
-        "avatar": "",
-        "dataDir": "/data/users/1000"
-    })
-}
-
-#[tauri::command]
-pub fn user_list(state: State<'_, Mutex<AppState>>) -> Vec<serde_json::Value> {
-    let current = user_get_current(state);
-    vec![serde_json::json!({
-        "uid": current["uid"],
-        "name": current["name"],
-        "type": current["type"],
-        "isActive": true
-    })]
 }
 
 // ════════════════════════════════════════════

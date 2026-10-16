@@ -67,7 +67,7 @@ cargo tauri build
 14. **Location** — Rust 백엔드 IP 기반 geolocation
 15. **Telephony** — settings 기반 SIM/신호 정보
 16. **USB** — 가젯 모드 상태 (상태 유지)
-17. **User** — Rust 백엔드 사용자 정보
+17. **User** — OS 모듈(`apps/system/services/user.js`)이 기기의 소유자 사용자를 낸다 — 에뮬레이터는 관여하지 않는다
 18. **Credential** — Rust 백엔드 영속 저장소
 19. **App Store** — 실제 설치/제거 + 영속성
 20. **Updater** — 버전 비교
