@@ -6,7 +6,7 @@
 # 수행범위: /data/users, /data/apps, /var/lib/zyl-os, /data/telemetry (UUID),
 #           /data/netstats, /data/alerts, /data/lock, /data/settings,
 #           /data/telephony (call log), /data/contacts, /data/messages,
-#           /data/appdata (each app's private data),
+#           /data/appdata (each app's private data), /data/alarms, /data/push,
 #           /data 삭제 후 sync → 재부팅
 # 의존방향: 없음
 # SOLID: SRP — 팩토리 리셋 실행만 담당
@@ -32,6 +32,8 @@ echo "  - /data/messages/*    (text messages)"
 echo "  - /data/appdata/*     (apps' private data)"
 echo "  - /data/lock/*        (screen lock PIN)"
 echo "  - /data/settings/*    (settings)"
+echo "  - /data/alarms/*      (alarms)"
+echo "  - /data/push/*        (push registrations)"
 echo ""
 
 read -r -p "Type YES to confirm: " confirm
@@ -63,7 +65,8 @@ if [ "$confirm" = "YES" ]; then
 
     # Data usage counts and alert history describe where the previous owner
     # was; settings, the screen lock PIN and who they called are theirs too
-    for d in /data/netstats /data/alerts /data/lock /data/settings /data/telephony /data/contacts /data/messages /data/appdata; do
+    # Push topics would keep delivering the previous owner's apps' messages here
+    for d in /data/netstats /data/alerts /data/lock /data/settings /data/telephony /data/contacts /data/messages /data/appdata /data/alarms /data/push; do
         if [ -d "$d" ]; then
             rm -rf "$d"/*
             echo "  [OK] $d cleared"

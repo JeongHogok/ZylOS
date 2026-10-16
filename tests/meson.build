@@ -520,6 +520,28 @@ test('alarm',
   )
 )
 
+# Test: push — topics, endpoints, the one stream, messages only, state that survives
+test('push',
+  executable('test-push', 'test_push.c',
+    dependencies: [gio_dep, json_glib_dep],
+    c_args: ['-DZYL_TEST'],
+  )
+)
+
+# Test (end to end): push — a local ntfy-like server over HTTPS, the push and
+# notification daemons on a private bus, built with paths under /tmp
+_push_e2e = '/tmp/zyl-push-e2e'
+_push_e2e_push = executable('e2e-push', '../runtime/services/push/push.c',
+  dependencies: [gio_dep, json_glib_dep],
+  c_args: ['-DPUSH_CONFIG="@0@/push.json"'.format(_push_e2e), '-DPUSH_DATA_DIR="@0@/data"'.format(_push_e2e)])
+_push_e2e_notification = executable('e2e-push-notification',
+  '../runtime/services/notification/notification.c',
+  include_directories: include_directories('../runtime/services/notification'),
+  dependencies: [gio_dep, json_glib_dep], c_args: ['-DNOTIF_PERSIST_DIR="@0@/notifications"'.format(_push_e2e)])
+test('push-e2e', find_program('push_e2e.sh'),
+  args: [_push_e2e_push, _push_e2e_notification],
+  timeout: 90, is_parallel: false)
+
 # Test (end to end): a signed store over local HTTPS, the real daemons on a
 # private bus — install, the app makes data, files, a notification, web
 # storage; uninstall leaves nothing of it; tampered package and catalog refused.
