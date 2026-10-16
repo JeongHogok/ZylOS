@@ -61,7 +61,8 @@ elif [ "$OS" = "Linux" ]; then
         sudo apt update
 
         info "RISC-V 크로스 컴파일러 설치..."
-        sudo apt install -y gcc-riscv64-linux-gnu g++-riscv64-linux-gnu
+        # crossbuild-essential 이 gcc·g++·binutils 를 한 묶음으로 가져온다
+        sudo apt install -y crossbuild-essential-riscv64
 
         info "빌드 도구 설치..."
         sudo apt install -y meson ninja-build pkg-config cmake git
@@ -70,12 +71,14 @@ elif [ "$OS" = "Linux" ]; then
         sudo apt install -y debootstrap fdisk e2fsprogs systemd dbus
 
         info "QEMU RISC-V 설치..."
-        sudo apt install -y qemu-system-riscv64 qemu-user-static
+        # qemu-system-riscv64 는 qemu-system-misc 안에 있다.
+        # binfmt 는 다른 아키텍처 rootfs 조립(2단계 부트스트랩)에 필요하다
+        sudo apt install -y qemu-system-misc qemu-user-static binfmt-support
 
         info "wlroots 빌드 의존성 설치..."
         sudo apt install -y \
             libwayland-dev wayland-protocols libwayland-server0 \
-            libwlroots-dev \
+            libwlroots-0.18-dev \
             libxkbcommon-dev \
             libpixman-1-dev \
             libinput-dev \
@@ -89,13 +92,11 @@ elif [ "$OS" = "Linux" ]; then
             libgtk-4-dev \
             libjson-glib-dev
 
-        info "RISC-V 크로스 라이브러리 설치..."
-        sudo dpkg --add-architecture riscv64
-        sudo apt install -y \
-            libwayland-dev:riscv64 \
-            libxkbcommon-dev:riscv64 \
-            libpixman-1-dev:riscv64 \
-            || warn "일부 riscv64 크로스 라이브러리 설치 실패 (패키지 저장소 구성에 따라 정상일 수 있음)"
+        # riscv64 개발 라이브러리(:riscv64)는 여기서 깔지 않는다 — 호스트
+        # 아키텍처 개발 패키지와 같은 시스템에 섞으면 libpsl-dev 처럼 man
+        # 페이지가 충돌해 dpkg 가 멈춘다. 교차 빌드는 전용 컨테이너에서:
+        # CI 의 qemu-boot-riscv64 잡이 패키지 목록의 단일 출처다
+        info "riscv64 개발 라이브러리는 전용 컨테이너에서 — docs/DEPLOYMENT_GUIDE.md §2"
 
         need_cmd riscv64-linux-gnu-gcc
         need_cmd riscv64-linux-gnu-g++
@@ -109,6 +110,7 @@ elif [ "$OS" = "Linux" ]; then
             riscv64-linux-gnu-gcc \
             meson ninja cmake pkgconf \
             qemu-system-riscv \
+            qemu-user-static \
             wayland wayland-protocols \
             wlroots libxkbcommon pixman libinput \
             webkit2gtk-4.1 gtk4 json-glib
@@ -131,9 +133,10 @@ info "다음 단계:"
 info "  1. 네이티브 빌드 (테스트):"
 info "     meson setup builddir && ninja -C builddir"
 info ""
-info "  2. 크로스 컴파일 (RISC-V):"
-info "     meson setup builddir-riscv --cross-file tools/cross/riscv64.ini && ninja -C builddir-riscv"
+info "  2. 크로스 컴파일 (RISC-V, :riscv64 개발 라이브러리가 있는 컨테이너에서):"
+info "     meson setup builddir-riscv --prefix=/usr --cross-file tools/cross/riscv64.ini -Dboard=bpi-f3 -Dprofile=phone"
 info ""
-info "  3. QEMU로 테스트:"
-info "     qemu-system-riscv64 -machine virt -m 4G -kernel <kernel> -append 'root=/dev/vda' -drive file=<rootfs.img>"
+info "  3. QEMU로 테스트 (이미지 조립 + 부팅 + 자기점검):"
+info "     tools/build-image.sh --builddir <builddir> --out out/image --with-kernel"
+info "     tools/run-qemu.sh --image out/image/zyl-os-<board>-<profile>.img --builddir <builddir> --check"
 info "────────────────────────────────────"
