@@ -38,11 +38,6 @@
 #define OS_VERSION          ZYL_OS_VERSION
 
 
-static void ensure_dir(const char *path) {
-    struct stat st;
-    if (stat(path, &st) != 0) mkdir(path, 0700);
-}
-
 /* ─── Consent ───────────────────────────────────────────────
  * Opt-in. Nothing is collected and no identifier exists until the user grants
  * consent (OOBE or Settings > Privacy). No file means never asked, which is a
@@ -191,7 +186,13 @@ static int queue_event(const char *event_type, const char *payload) {
     return 0;
 }
 
-/* ─── D-Bus interface ─── */
+/* ─── D-Bus interface: the daemon's (tests call the functions above) ─── */
+#ifndef ZYL_TEST
+static void ensure_dir(const char *path) {
+    struct stat st;
+    if (stat(path, &st) != 0) mkdir(path, 0700);
+}
+
 static const char *telemetry_introspection_xml =
     "<node>"
     "  <interface name='org.zylos.Telemetry'>"
@@ -267,7 +268,6 @@ static void on_telemetry_bus(GDBusConnection *conn, const gchar *name, gpointer 
     if (info) g_dbus_node_info_unref(info);
 }
 
-#ifndef ZYL_TEST
 int main(int argc, char *argv[]) {
     (void)argc; (void)argv;
 

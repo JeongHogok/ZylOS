@@ -40,7 +40,7 @@ if [ -n "$HITS" ]; then fail "Tauri 참조 발견: $HITS"; else pass "Tauri 참�
 
 # A2: postMessage 직접 호출 금지
 HITS=$(grep -rn 'window\.parent\.postMessage' "$ROOT/apps" --include='*.js' 2>/dev/null \
-  | grep -v 'shared/bridge.js' | grep -v 'shared/i18n.js' || true)
+  | grep -v 'shared/bridge.js' || true)
 if [ -n "$HITS" ]; then fail "postMessage 직접 호출:\n$HITS"; else pass "IPC가 ZylBridge 경유"; fi
 
 # A3: 에뮬레이터 경로 금지

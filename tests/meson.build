@@ -368,7 +368,7 @@ _bus_alarm = executable('bus-alarm',
   '../runtime/services/alarm/alarm.c',
   include_directories: include_directories('../runtime/services/alarm'),
   dependencies: [gio_dep, json_glib_dep],
-  c_args: ['-D_GNU_SOURCE', '-DALARM_PERSIST_DIR="@0@/alarms"'.format(_bus)])
+  c_args: ['-DALARM_PERSIST_DIR="@0@/alarms"'.format(_bus)])
 _bus_notification = executable('bus-notification',
   '../runtime/services/notification/notification.c',
   include_directories: include_directories('../runtime/services/notification'),

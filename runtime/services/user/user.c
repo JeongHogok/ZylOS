@@ -129,6 +129,7 @@ static void handle_user_method(GDBusConnection *conn, const gchar *sender,
 static const GDBusInterfaceVTable user_vtable = { .method_call = handle_user_method };
 
 static void on_user_bus(GDBusConnection *conn, const gchar *name, gpointer data) {
+    (void)name;
     ZylUserService *svc = data;
     svc->dbus = conn;
 

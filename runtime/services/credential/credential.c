@@ -95,7 +95,6 @@ static int aes_gcm_encrypt(const uint8_t *key, size_t key_len,
                             const uint8_t *salt, size_t salt_len,
                             uint8_t **out, size_t *out_len) {
     uint8_t iv[IV_LEN];
-    uint8_t tag[TAG_LEN];
 
     if (RAND_bytes(iv, IV_LEN) != 1) {
         fprintf(stderr, "[Credential] RAND_bytes failed for IV\n");

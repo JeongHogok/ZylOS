@@ -181,6 +181,7 @@ static const GDBusInterfaceVTable power_vtable = {
 
 static void on_power_bus_acquired(GDBusConnection *conn, const gchar *name,
                                    gpointer data) {
+    (void)name;
     ZylPowerService *svc = data;
     svc->dbus = conn;
 

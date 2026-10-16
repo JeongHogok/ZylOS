@@ -128,6 +128,24 @@ static bool remove_app(const char *id) {
     return ok;
 }
 
+/* The unpacked app replaces what is installed (an update keeps the container) */
+static bool swap_in(const char *work, const char *id) {
+    char *target = zyl_container_dir(ZYL_APPS_DIR, id, NULL, false);
+    char *fresh = g_build_filename(work, "app", NULL);
+    char *old = g_build_filename(work, "old", NULL);
+    bool had = g_file_test(target, G_FILE_TEST_EXISTS);
+    bool ok = (!had || g_rename(target, old) == 0) && g_mkdir_with_parents(ZYL_APPS_DIR, 0750) == 0 &&
+              g_rename(fresh, target) == 0;
+    if (!ok && had && !g_file_test(target, G_FILE_TEST_EXISTS)) g_rename(old, target);
+    g_free(target);
+    g_free(fresh);
+    g_free(old);
+    return ok;
+}
+
+/* ─── The daemon's: installing and the D-Bus jobs (tests/store_e2e.sh runs
+   them against the real daemon; the unit test includes what is above) ─── */
+#ifndef ZYL_TEST
 /* ─── Seals: only code signed as it is runs ─── */
 
 /* NULL when the unpacked app in dir is sealed as required; else the reason.
@@ -162,9 +180,6 @@ static void save_revoked(const char *json, gssize len) {
     g_free(text);
     g_strfreev(revoked);
 }
-
-/* Forward: the swap is below */
-static bool swap_in(const char *work, const char *id);
 
 /* A package from the user's files — a development build provisioned for this
    device, or the store's own. NULL (and *out_id) when installed, else the reason */
@@ -212,22 +227,7 @@ static const char *install_file(const char *rel, const char *store_pem, char **o
     return why;
 }
 
-/* The unpacked app replaces what is installed (an update keeps the container) */
-static bool swap_in(const char *work, const char *id) {
-    char *target = zyl_container_dir(ZYL_APPS_DIR, id, NULL, false);
-    char *fresh = g_build_filename(work, "app", NULL);
-    char *old = g_build_filename(work, "old", NULL);
-    bool had = g_file_test(target, G_FILE_TEST_EXISTS);
-    bool ok = (!had || g_rename(target, old) == 0) && g_mkdir_with_parents(ZYL_APPS_DIR, 0750) == 0 &&
-              g_rename(fresh, target) == 0;
-    if (!ok && had && !g_file_test(target, G_FILE_TEST_EXISTS)) g_rename(old, target);
-    g_free(target);
-    g_free(fresh);
-    g_free(old);
-    return ok;
-}
 
-#ifndef ZYL_TEST
 /* ─── Jobs: one at a time, each a chain of downloads ─── */
 
 typedef enum { OP_CATALOG, OP_INSTALL } Op;

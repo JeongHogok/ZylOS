@@ -52,8 +52,8 @@ static ZylOtaVerdict verify_with(const char *pkg_path, const char *sha256_hex,
     unsigned char *sig = malloc(b64_len * 3 / 4 + 4);
     int len = 0, tail = 0;
     EVP_ENCODE_CTX *dec = EVP_ENCODE_CTX_new();
-    EVP_DecodeInit(dec);
-    bool decoded = sig && EVP_DecodeUpdate(dec, sig, &len, (const unsigned char *)signature_b64,
+    if (dec) EVP_DecodeInit(dec);
+    bool decoded = sig && dec && EVP_DecodeUpdate(dec, sig, &len, (const unsigned char *)signature_b64,
                                            (int)b64_len) >= 0 &&
                    EVP_DecodeFinal(dec, sig + len, &tail) == 1;
     EVP_ENCODE_CTX_free(dec);

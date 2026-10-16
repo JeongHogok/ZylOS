@@ -251,6 +251,7 @@ static const GDBusInterfaceVTable location_vtable = {
 
 static void on_location_bus_acquired(GDBusConnection *conn, const gchar *name,
                                       gpointer data) {
+    (void)name;
     ZylLocationService *svc = data;
     svc->dbus = conn;
 

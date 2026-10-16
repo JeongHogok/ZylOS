@@ -51,6 +51,6 @@ executable('zyl-compositor',
   compositor_sources, xdg_shell_protocol_h,
   include_directories: compositor_inc,
   dependencies: compositor_deps,
-  c_args: ['-DWLR_USE_UNSTABLE', '-D_POSIX_C_SOURCE=200809L', '-Wno-error'],
+  c_args: ['-DWLR_USE_UNSTABLE', '-D_POSIX_C_SOURCE=200809L'],
   install: true,
 )
