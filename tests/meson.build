@@ -89,7 +89,7 @@ test('telephony-dbus',
     '../runtime/services/telephony/cbs.c',
     '../runtime/services/telephony/calllog.c',
     include_directories: include_directories('../runtime/services/telephony'),
-    dependencies: [gio_dep],
+    dependencies: [gio_dep, zyl_settings_follow_dep],
   )
 )
 
@@ -389,7 +389,7 @@ if _libcurl_dep.found()
   test('location',
     executable('test-location', 'test_location.c',
       dependencies: [gio_dep, _libcurl_dep, _libgps_dep, dependency('threads'),
-                     meson.get_compiler('c').find_library('m')],
+                     meson.get_compiler('c').find_library('m'), zyl_settings_follow_dep],
       c_args: ['-DZYL_TEST', '-DHAVE_CURL'] + (_libgps_dep.found() ? ['-DHAVE_GPSD'] : []),
     )
   )

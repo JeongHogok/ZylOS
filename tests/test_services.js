@@ -3183,6 +3183,22 @@ var locationTests = (function () {
       return ns.location({ invoke: recordingInvoker({}) }).getLastKnown().then(function (r) {
         assert.strictEqual(r, null);
       });
+    }),
+    asyncTest('the user\'s switch off: the host is not asked, no place is given (provider "off")', function () {
+      var invoke = recordingInvoker({ location_get_last_known: { latitude: 37.5, longitude: 127.0 } });
+      var enabled = false;
+      var settingsSvc = { _getSetting: function () { return Promise.resolve({ enabled: enabled }); } };
+      var loc = ns.location({ invoke: invoke, settingsSvc: settingsSvc });
+      return loc.getLastKnown().then(function (r) {
+        assert.strictEqual(r.provider, 'off');
+        assert.strictEqual(r.latitude, 0);
+        assert.deepStrictEqual(invoke.calls, []);
+        enabled = true;
+        return loc.getLastKnown();
+      }).then(function (r) {
+        assert.strictEqual(r.latitude, 37.5);
+        assert.strictEqual(invoke.calls.length, 1);
+      });
     })
   ]);
 })();

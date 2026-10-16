@@ -160,8 +160,7 @@ bool wifi_triangulate(ZylLocationService *svc, ZylLocation *out) {
                                 out->timestamp_ms = now_ms();
                                 snprintf(out->provider, sizeof(out->provider),
                                          "wifi");
-                                g_message("[Location] MLS WiFi: lat=%.4f lon=%.4f"
-                                          " (n_ap=%d)", mlat, mlng, bss_count);
+                                g_message("[Location] MLS WiFi fix (n_ap=%d)", bss_count);
                                 triangulated = true;
                             }
                         }
@@ -210,8 +209,7 @@ bool wifi_triangulate(ZylLocationService *svc, ZylLocation *out) {
     out->timestamp_ms = now_ms();
     snprintf(out->provider, sizeof(out->provider), "wifi");
 
-    g_message("[Location] WiFi local DB: lat=%.4f lon=%.4f (n_ap=%d)",
-              out->latitude, out->longitude, bss_count);
+    g_message("[Location] WiFi local DB fix (n_ap=%d)", bss_count);
     (void)svc;
     return true;
 }

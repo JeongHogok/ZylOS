@@ -5,7 +5,7 @@
 # Scope: app containers (appdata, fs, appstore, WAM), OTA/package signature
 #        checks (updater, appstore, seals), app seals (appstore, WAM), where
 #        users and their files live (user, fs, appstore), reading JSON strings
-#        (HAL, WAM, services)
+#        (HAL, WAM, services), following a settings category (telephony, location)
 # Dependency direction: glib, json-glib, OpenSSL; nothing of the services
 # SOLID: SRP — one small static library per concern, each with only its own deps
 
@@ -15,6 +15,15 @@ _openssl = dependency('openssl', version: '>=1.1.1')
 
 # /data/users and the owner's files (users.h): header only
 zyl_users_dep = declare_dependency(include_directories: _lib_inc)
+
+# A service following one settings category (the switches the user flips —
+# location, airplane mode — kept by the service that does the work)
+zyl_settings_follow_dep = declare_dependency(
+  link_with: static_library('zyl-settings-follow', 'settings_follow.c',
+                            dependencies: [dependency('gio-2.0')]),
+  include_directories: _lib_inc,
+  dependencies: [dependency('gio-2.0')],
+)
 
 # The one way runtime/ reads a JSON string member (zyl_json.h): header only
 zyl_json_dep = declare_dependency(include_directories: _lib_inc,

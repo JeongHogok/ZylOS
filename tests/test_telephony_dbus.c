@@ -8,7 +8,11 @@
  *           처리, 모뎀 사본 삭제, GetEmergencyAlerts / AcknowledgeEmergencyAlert.
  *           모바일 데이터 — IPv4v6 + CLAT 연결 생성(구버전 NM 폴백),
  *           GetMobileData / SetMobileData (자동 연결·로밍).
- *           통화 — 수신 번호, 통화 기록(부재중·수신·발신, 재시작 후 유지, 삭제), DTMF
+ *           통화 — 착신은 Voice.CallAdded 로(실제 ModemManager 는 그 RINGING 의
+ *           StateChanged 를 버스에 내지 않는다), 수신 번호, 통화 기록(부재중·수신·발신,
+ *           재시작 후 유지, 삭제), DTMF.
+ *           모뎀 — 서비스보다 늦게 나타나도 찾아서 켠다, 비행기 모드(가짜 설정 서비스)면
+ *           끄고 사용자가 거는 통화 동안만 켠다
  * 의존방향: runtime/services/telephony/telephony.c (main 이름 변경), cbs.c, calllog.c,
  *           gio, dbus-daemon (없으면 SKIP)
  * SOLID: SRP — 모뎀 ↔ 텔레포니 D-Bus 계약 검증만 담당
@@ -38,7 +42,9 @@ static const char *FAKE_MM_XML =
     "<interface name='org.freedesktop.DBus.ObjectManager'>"
     "  <method name='GetManagedObjects'><arg type='a{oa{sa{sv}}}' direction='out'/></method>"
     "</interface>"
-    "<interface name='org.freedesktop.ModemManager1.Modem'/>"
+    "<interface name='org.freedesktop.ModemManager1.Modem'>"
+    "  <method name='Enable'><arg name='enable' type='b' direction='in'/></method>"
+    "</interface>"
     "<interface name='org.freedesktop.ModemManager1.Modem.CellBroadcast'>"
     "  <method name='SetChannels'><arg name='channels' type='a(uu)' direction='in'/></method>"
     "  <method name='Delete'><arg name='path' type='o' direction='in'/></method>"
@@ -55,11 +61,13 @@ static const char *FAKE_MM_XML =
     "  <method name='ListCalls'><arg type='ao' direction='out'/></method>"
     "  <method name='CreateCall'><arg type='a{sv}' direction='in'/><arg type='o' direction='out'/></method>"
     "  <method name='HangupAll'/>"
+    "  <signal name='CallAdded'><arg name='path' type='o'/></signal>"
     "</interface>"
     "<interface name='org.freedesktop.ModemManager1.Call'>"
     "  <method name='Start'/><method name='Accept'/><method name='Hangup'/>"
     "  <method name='SendDtmf'><arg name='dtmf' type='s' direction='in'/></method>"
     "  <property name='Number' type='s' access='read'/>"
+    "  <property name='State' type='i' access='read'/>"
     "  <signal name='StateChanged'><arg type='i'/><arg type='i'/><arg type='u'/></signal>"
     "</interface>"
     "</node>";
@@ -74,6 +82,11 @@ static char    *g_last_category;
 static gpointer g_dtmf;            /* what SendDtmf received */
 static int      g_call_signals;
 static char    *g_call_state, *g_call_number;
+static gint     g_modems;          /* 0 until the modem "appears" */
+static gint     g_enables;         /* Modem.Enable calls, and the last value */
+static gint     g_enabled = -1;
+static gint     g_call_mm_state = 3;   /* RINGING_IN */
+static gint     g_dialled_enabled = -1;   /* the radio when CreateCall came */
 
 static void mm_call(GDBusConnection *c, const gchar *sender, const gchar *path,
                     const gchar *iface, const gchar *method, GVariant *params,
@@ -85,9 +98,17 @@ static void mm_call(GDBusConnection *c, const gchar *sender, const gchar *path,
         g_variant_builder_init(&ifaces, G_VARIANT_TYPE("a{sa{sv}}"));
         g_variant_builder_add(&ifaces, "{s@a{sv}}", "org.freedesktop.ModemManager1.Modem",
                               g_variant_new_array(G_VARIANT_TYPE("{sv}"), NULL, 0));
-        g_variant_builder_add(&objs, "{o@a{sa{sv}}}", MODEM, g_variant_builder_end(&ifaces));
+        GVariant *modem = g_variant_builder_end(&ifaces);
+        if (g_atomic_int_get(&g_modems)) g_variant_builder_add(&objs, "{o@a{sa{sv}}}", MODEM, modem);
+        else g_variant_unref(g_variant_ref_sink(modem));
         g_dbus_method_invocation_return_value(inv, g_variant_new("(@a{oa{sa{sv}}})",
                                               g_variant_builder_end(&objs)));
+    } else if (strcmp(method, "Enable") == 0) {
+        gboolean on = FALSE;
+        g_variant_get(params, "(b)", &on);
+        g_atomic_int_set(&g_enabled, on ? 1 : 0);
+        g_atomic_int_inc(&g_enables);
+        g_dbus_method_invocation_return_value(inv, NULL);
     } else if (strcmp(method, "SetChannels") == 0) {
         g_free(g_channels);
         g_channels = g_variant_print(params, FALSE);
@@ -100,6 +121,7 @@ static void mm_call(GDBusConnection *c, const gchar *sender, const gchar *path,
         g_dbus_method_invocation_return_value(inv, g_variant_new("(@ao)",
             g_variant_new_objv(paths, 1)));
     } else if (strcmp(method, "CreateCall") == 0) {
+        g_atomic_int_set(&g_dialled_enabled, g_atomic_int_get(&g_enabled));
         g_dbus_method_invocation_return_value(inv, g_variant_new("(o)", CALL));
     } else if (strcmp(method, "SendDtmf") == 0) {
         const gchar *d = NULL;
@@ -126,7 +148,8 @@ static GVariant *cbm_prop(GDBusConnection *c, const gchar *sender, const gchar *
 
 static GVariant *call_prop(GDBusConnection *c, const gchar *sender, const gchar *path,
                            const gchar *iface, const gchar *prop, GError **err, gpointer data) {
-    (void)c; (void)sender; (void)path; (void)iface; (void)prop; (void)err; (void)data;
+    (void)c; (void)sender; (void)path; (void)iface; (void)err; (void)data;
+    if (strcmp(prop, "State") == 0) return g_variant_new_int32(g_atomic_int_get(&g_call_mm_state));
     return g_variant_new_string("01012345678");   /* Number */
 }
 
@@ -137,6 +160,13 @@ static void on_call_state(GDBusConnection *c, const gchar *sender, const gchar *
     g_free(g_call_number);
     g_variant_get(params, "(&sss)", NULL, &g_call_state, &g_call_number);
     g_call_signals++;
+}
+
+/* A new call as ModemManager announces it: on the bus already in its state */
+static void emit_call_added(GDBusConnection *mm, int mm_state) {
+    g_atomic_int_set(&g_call_mm_state, mm_state);
+    g_dbus_connection_emit_signal(mm, NULL, MODEM, "org.freedesktop.ModemManager1.Modem.Voice",
+        "CallAdded", g_variant_new("(o)", CALL), NULL);
 }
 
 /* MM_CALL_STATE: 1 dialing, 3 ringing in, 4 active, 7 terminated */
@@ -164,6 +194,43 @@ static gboolean wait_for(int *counter, int want) {
     gint64 end = g_get_monotonic_time() + 3 * G_USEC_PER_SEC;
     while (*counter < want && g_get_monotonic_time() < end) g_main_context_iteration(NULL, FALSE);
     return *counter >= want;
+}
+
+static gboolean wait_value(gint *v, int want) {
+    gint64 end = g_get_monotonic_time() + 3 * G_USEC_PER_SEC;
+    while (g_atomic_int_get(v) != want && g_get_monotonic_time() < end) g_main_context_iteration(NULL, FALSE);
+    return g_atomic_int_get(v) == want;
+}
+
+/* A settings service with connectivity.airplaneMode, on its own connection */
+static gboolean g_airplane;
+
+static void settings_call(GDBusConnection *c, const gchar *sender, const gchar *path,
+                          const gchar *iface, const gchar *method, GVariant *params,
+                          GDBusMethodInvocation *inv, gpointer data) {
+    (void)c; (void)sender; (void)path; (void)iface; (void)method; (void)params; (void)data;
+    GVariantBuilder d;
+    g_variant_builder_init(&d, G_VARIANT_TYPE("a{sv}"));
+    g_variant_builder_add(&d, "{sv}", "airplaneMode", g_variant_new_boolean(g_airplane));
+    g_dbus_method_invocation_return_value(inv, g_variant_new("(a{sv})", &d));
+}
+
+static GDBusConnection *fake_settings(const char *addr) {
+    GDBusConnection *c = g_dbus_connection_new_for_address_sync(addr,
+        G_DBUS_CONNECTION_FLAGS_AUTHENTICATION_CLIENT | G_DBUS_CONNECTION_FLAGS_MESSAGE_BUS_CONNECTION,
+        NULL, NULL, NULL);
+    GDBusNodeInfo *info = g_dbus_node_info_new_for_xml(
+        "<node><interface name='org.zylos.Settings'><method name='Get'>"
+        "<arg type='s' direction='in'/><arg type='a{sv}' direction='out'/></method>"
+        "<signal name='CategoryChanged'><arg type='s'/></signal></interface></node>", NULL);
+    static const GDBusInterfaceVTable vt = { settings_call, NULL, NULL, {0} };
+    g_dbus_connection_register_object(c, "/org/zylos/Settings", info->interfaces[0], &vt, NULL, NULL, NULL);
+    g_dbus_node_info_unref(info);
+    GVariant *r = g_dbus_connection_call_sync(c, "org.freedesktop.DBus", "/org/freedesktop/DBus",
+        "org.freedesktop.DBus", "RequestName", g_variant_new("(su)", "org.zylos.Settings", 0),
+        NULL, G_DBUS_CALL_FLAGS_NONE, -1, NULL, NULL);
+    g_variant_unref(r);
+    return c;
 }
 
 /* The daemon answers on this thread's main context, so call it without blocking it */
@@ -286,10 +353,19 @@ int main(void) {
         NULL, NULL, G_DBUS_SIGNAL_FLAGS_NONE, on_call_state, NULL, NULL);
 
     ZylTelephonyService *svc = zyl_telephony_create();
-    assert(svc && svc->modem_found);
-    spin(300);   /* name acquisition, SetChannels */
+    assert(svc && !svc->modem_found);   /* ModemManager is up, its modem not probed yet */
+    spin(300);   /* name acquisition; no settings service: not in airplane mode */
 
-    printf("  %-56s ", "modem is told which channels to listen to");
+    printf("  %-56s ", "a modem appearing later is found, switched on, given channels");
+    g_atomic_int_set(&g_modems, 1);
+    g_dbus_connection_emit_signal(mm, NULL, MM_ROOT, "org.freedesktop.DBus.ObjectManager",
+        "InterfacesAdded", g_variant_new("(o@a{sa{sv}})", MODEM,
+        g_variant_new_array(G_VARIANT_TYPE("{sa{sv}}"), NULL, 0)), NULL);
+    gint64 end = g_get_monotonic_time() + 3 * G_USEC_PER_SEC;
+    while (!svc->modem_found && g_get_monotonic_time() < end) g_main_context_iteration(NULL, FALSE);
+    assert(svc->modem_found);
+    assert(wait_value(&g_enabled, 1));
+    spin(300);
     assert(g_channels && strcmp(g_channels, "([(4352, 4359), (4370, 4399)],)") == 0);
     printf("PASS\n");
 
@@ -394,8 +470,8 @@ int main(void) {
     assert(read_mobile_data(&e2, &r2) && !e2 && r2);
     printf("PASS\n");
 
-    printf("  %-56s ", "an incoming call shows its number; unanswered is missed");
-    emit_call(mm, 0, 3);
+    printf("  %-56s ", "an incoming call (CallAdded) shows its number; unanswered is missed");
+    emit_call_added(mm, 3);
     assert(wait_for(&g_call_signals, 1));
     assert(strcmp(g_call_state, "RINGING") == 0 && strcmp(g_call_number, "01012345678") == 0);
     emit_call(mm, 3, 7);
@@ -407,7 +483,7 @@ int main(void) {
     printf("PASS\n");
 
     printf("  %-56s ", "answered and dialled calls are logged; DTMF reaches the call");
-    emit_call(mm, 0, 3);
+    emit_call_added(mm, 3);
     emit_call(mm, 3, 4);
     assert(wait_for(&g_call_signals, 4) && strcmp(g_call_state, "ACTIVE") == 0);
     GVariant *dt = call_os(os, "SendDTMF", g_variant_new("(s)", "5"), "(b)");
@@ -460,13 +536,31 @@ int main(void) {
     zyl_calllog_free(probe);
     printf("PASS\n");
 
+    printf("  %-56s ", "airplane mode: modem off, on for a dialled call, off after");
+    g_airplane = TRUE;
+    GDBusConnection *settings = fake_settings(g_addr);   /* appears: the service reads it */
+    assert(wait_value(&g_enabled, 0));
+    assert(zyl_telephony_dial(svc, "112") == 0);          /* an emergency call must go out */
+    assert(g_atomic_int_get(&g_dialled_enabled) == 1);    /* the radio came on first */
+    int before = g_call_signals;
+    emit_call(mm, 1, 4);
+    emit_call(mm, 4, 7);
+    assert(wait_for(&g_call_signals, before + 2));
+    assert(wait_value(&g_enabled, 0));                    /* the call over, off again */
+    g_airplane = FALSE;                                   /* switched back: on */
+    g_dbus_connection_emit_signal(settings, NULL, "/org/zylos/Settings", "org.zylos.Settings",
+        "CategoryChanged", g_variant_new("(s)", "connectivity"), NULL);
+    assert(wait_value(&g_enabled, 1));
+    printf("PASS\n");
+
     zyl_telephony_destroy(svc);
+    g_object_unref(settings);
     g_object_unref(os);
     g_main_loop_quit(g_mm_loop);
     g_thread_join(mm_thread);
     g_object_unref(mm);
     g_test_dbus_down(bus);
     g_object_unref(bus);
-    printf("\nResults: 10/10 passed\n");
+    printf("\nResults: 11/11 passed\n");
     return 0;
 }

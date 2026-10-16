@@ -8,7 +8,8 @@
  *           GPS > Wi-Fi > GeoIP 순서와 못 쓰는 위치일 때의 다음 순위,
  *           지오펜스는 부른 앱의 것(다른 앱이 지우지 못함, 앱별·기기별 한도,
  *           앱 삭제 때 정리), 불가능한 지오펜스 거부, 진입/이탈 판정,
- *           갱신 간격의 범위와 즉시 멈춤(긴 간격에도 메인 루프를 막지 않음)
+ *           갱신 간격의 범위와 즉시 멈춤(긴 간격에도 메인 루프를 막지 않음),
+ *           사용자의 위치 스위치(끄면 프로바이더에 묻지 않고 마지막 위치도 잊음)
  * 의존방향: runtime/services/location 의 네 .c (ZYL_TEST, GEOIP_URL·MLS_URL 을
  *           file:// 로 교체, PATH 의 가짜 wpa_cli, gps_* 를 가짜 gpsd 로),
  *           gio, libcurl, libgps(있으면)
@@ -344,6 +345,36 @@ static void test_interval_is_bounded_and_stopping_is_prompt(void) {
     alarm(0);
 }
 
+static GVariant *location_setting(gboolean enabled) {
+    GVariantBuilder d;
+    g_variant_builder_init(&d, G_VARIANT_TYPE("a{sv}"));
+    g_variant_builder_add(&d, "{sv}", "enabled", g_variant_new_boolean(enabled));
+    return g_variant_ref_sink(g_variant_builder_end(&d));
+}
+
+/* The quick-settings switch only wrote a setting no one read: apps kept
+   getting places and the device kept asking GeoIP and the Wi-Fi lookup */
+static void test_switched_off_asks_no_provider_and_forgets(void) {
+    alarm(10);
+    put(ROOT_ "/geoip.json", SEOUL);
+    GVariant *off = location_setting(FALSE), *on = location_setting(TRUE);
+    on_location_setting(off, &svc);
+    assert(zyl_location_request_updates(&svc, 100, NULL, NULL) == 0);
+    usleep(400000);
+    assert(!svc.has_fix);                       /* nothing asked while off */
+    on_location_setting(on, &svc);
+    usleep(400000);
+    assert(svc.has_fix && svc.last_known.latitude == 37.5665);
+    on_location_setting(off, &svc);             /* off again: the last place is gone */
+    assert(!svc.has_fix && svc.last_known.latitude == 0.0);
+    on_location_setting(NULL, &svc);            /* no settings service: on, the default */
+    assert(!svc.off);
+    zyl_location_stop_updates(&svc);
+    g_variant_unref(off);
+    g_variant_unref(on);
+    alarm(0);
+}
+
 int main(void) {
     printf("=== Zyl OS Location Service Tests ===\n");
     init_sync(&svc);
@@ -366,6 +397,7 @@ int main(void) {
     RUN_TEST(test_impossible_geofences_are_refused);
     RUN_TEST(test_geofence_enter_and_exit_follow_distance);
     RUN_TEST(test_interval_is_bounded_and_stopping_is_prompt);
+    RUN_TEST(test_switched_off_asks_no_provider_and_forgets);
     reset();
     printf("\nResults: %d/%d passed\n", tests_pass, tests_run);
     return tests_pass == tests_run ? 0 : 1;

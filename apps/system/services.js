@@ -121,7 +121,6 @@ window.ZylSystemServices = (function () {
     }
     if (ns.input)         serviceMap.input        = ns.input(deps);
     if (ns.sensors)       serviceMap.sensors      = ns.sensors(deps);
-    if (ns.location)      serviceMap.location     = ns.location(deps);
     if (ns.usb)           serviceMap.usb          = ns.usb(deps);
     if (ns.user)          serviceMap.user         = ns.user(deps);
     if (ns.credential)    serviceMap.credential   = ns.credential(deps);
@@ -182,6 +181,7 @@ window.ZylSystemServices = (function () {
       notificationSvc: _modules.notification
     };
 
+    if (ns.location)      serviceMap.location     = ns.location(crossDeps);
     if (ns.telephony)     serviceMap.telephony    = ns.telephony(crossDeps);
     if (ns.contacts)      serviceMap.contacts     = ns.contacts(crossDeps);
     if (ns.messaging)     serviceMap.messaging    = ns.messaging(crossDeps);

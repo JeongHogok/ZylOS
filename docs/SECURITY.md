@@ -65,6 +65,14 @@
   `ZylPermissions.setAppOverride` 로, 기기는 WAM 이 `CategoryChanged` 시그널을 따라 다시 읽어
   다음 호출부터 거부합니다.
 - 첫 사용 때 묻는 동의 창은 없습니다. 넣을 자리는 [CLAUDE.md](../CLAUDE.md) 규칙 8.
+- **사용자의 스위치는 그 일을 하는 서비스가 지킵니다.** 빠른 설정은 settings 에 쓰기만 하고,
+  서비스가 그 범주를 따라갑니다(`runtime/lib/settings_follow.c`). 위치(`location.enabled`)를
+  끄면 location 서비스는 공급자(GPS·Wi-Fi 조회·GeoIP)에 묻지 않고, 마지막 위치를 잊고, 앱에는
+  provider `off` 만 줍니다(에뮬레이터 `services/location.js` 도 같게). 비행기 모드
+  (`connectivity.airplaneMode`)면 telephony 가 모뎀을 끕니다 — 사용자가 거는 통화 동안만
+  켭니다(긴급전화는 늘 나가야 합니다).
+- 칩 ID(`deviceId`)는 공장 초기화로도 바뀌지 않아 `device.getInfo` 에 싣지 않고, 시스템 앱만
+  부르는 `device.getDeviceId` 로만 줍니다.
 
 ### 웹 플랫폼의 권한 요청
 

@@ -5,7 +5,7 @@ math = meson.get_compiler('c').find_library('m', required: true)
 # 선택적 의존성: GPSD
 libgps = dependency('libgps', required: false)
 location_c_args = []
-location_deps = [gio, threads, math]
+location_deps = [gio, threads, math, zyl_settings_follow_dep]
 
 if libgps.found()
   location_deps += libgps

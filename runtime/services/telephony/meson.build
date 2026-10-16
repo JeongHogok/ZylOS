@@ -4,6 +4,6 @@ executable('zyl-telephony',
   'telephony.c',
   'cbs.c',
   'calllog.c',
-  dependencies: [gio],
+  dependencies: [gio, zyl_settings_follow_dep],
   install: true,
 )

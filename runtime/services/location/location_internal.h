@@ -21,6 +21,7 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <gio/gio.h>
+#include "settings_follow.h"
 
 #ifdef HAVE_GPSD
 #include <gps.h>
@@ -79,6 +80,12 @@ struct ZylLocationService {
     /* D-Bus */
     GDBusConnection *dbus;
     guint dbus_owner_id;
+
+    /* The user's switch (settings location.enabled): off, no provider is asked —
+       nothing goes out to GeoIP or the Wi-Fi lookup — and no app gets a place.
+       Read and written under lock. */
+    bool off;
+    ZylSettingsFollow *follow;
 
     /* 지오펜스 */
     GeofenceEntry geofences[ZYL_GEOFENCE_MAX];
