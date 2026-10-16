@@ -1,0 +1,69 @@
+# ──────────────────────────────────────────────────────────
+# [Clean Architecture] Infrastructure Layer - CI
+#
+# 역할: 앱(ES5 웹) 검사 — 문법·매니페스트·DOCTYPE·서비스 모듈·성능 예산
+# 수행범위: apps/ 를 읽는 검사 전부
+# 의존방향: node, python3, Chrome(perf)
+# SOLID: SRP — 이 관심사만. 어떤 경로가 이 검사를 부르는지는 아래 paths 가
+#        유일한 출처다 (원격 PR 과 tools/ci-local.sh 가 같은 목록을 읽는다)
+# ──────────────────────────────────────────────────────────
+name: Web apps
+# PR 은 paths 에 걸린 변경이 있을 때만, main 은 머지마다 전부 돈다
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - 'apps/**'
+      - 'tests/test_js_syntax.sh'
+      - 'tests/test_manifests.sh'
+      - 'tests/test_doctype.sh'
+      - 'tests/test_services.js'
+      - 'tests/perf/**'
+      - '.github/workflows/web.yml'
+# 같은 PR 에 새 커밋이 오면 이전 커밋의 런은 취소한다. main 은 끝까지 검증한다
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  # ─── HTML lint ───
+  lint-html:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check HTML DOCTYPE first line
+        run: bash tests/test_doctype.sh
+
+  # ─── JavaScript syntax check ───
+  lint-js:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check JavaScript syntax
+        run: bash tests/test_js_syntax.sh
+      - name: Check app manifests
+        run: bash tests/test_manifests.sh
+
+  # ─── JavaScript unit tests ───
+  test-js:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run service module tests
+        run: node tests/test_services.js
+
+  # ─── App performance budgets ───
+  # Startup time, main-thread blocking, heap, DOM and layout counts per app,
+  # on a throttled CPU without GPU. Fails when an app goes over budget.
+  perf:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: App performance budgets
+        run: node tests/perf/run.js --runs=3

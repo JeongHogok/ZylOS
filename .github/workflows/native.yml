@@ -1,0 +1,141 @@
+# ──────────────────────────────────────────────────────────
+# [Clean Architecture] Infrastructure Layer - CI
+#
+# 역할: C 런타임 빌드·단위 테스트·퍼즈·통합 테스트(서명·OTA·부트 정책)
+# 수행범위: meson 빌드 전체, ninja test, 퍼저, tests/test_{boot_env,sign_image,build_ota}.sh
+# 의존방향: Arch(wlroots 소스 빌드), clang, u-boot-tools
+# SOLID: SRP — 이 관심사만. 어떤 경로가 이 검사를 부르는지는 아래 paths 가
+#        유일한 출처다 (원격 PR 과 tools/ci-local.sh 가 같은 목록을 읽는다)
+# ──────────────────────────────────────────────────────────
+name: Native
+# PR 은 paths 에 걸린 변경이 있을 때만, main 은 머지마다 전부 돈다
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - 'runtime/**'
+      - 'compositor/**'
+      - 'board/**'
+      - 'system/**'
+      - 'tests/**'
+      - 'tools/**'
+      - 'meson.build'
+      - 'meson_options.txt'
+      - '.github/workflows/native.yml'
+# 같은 PR 에 새 커밋이 오면 이전 커밋의 런은 취소한다. main 은 끝까지 검증한다
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  # ─── Native C build (Arch Linux) ───
+  build-native:
+    runs-on: ubuntu-24.04
+    container:
+      image: archlinux:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          pacman-key --init
+          pacman-key --populate archlinux
+          # 로컬 CI(tools/ci-local.sh)는 ARM 맥에서 이 컨테이너를 amd64 로
+          # 에뮬레이션한다 — 에뮬레이터 안에서는 seccomp 필터를 못 걸어 pacman
+          # 다운로드 샌드박스가 실패한다. 패키지 서명 검증은 그대로다
+          sed -i 's/^#DisableSandboxSyscalls/DisableSandboxSyscalls/' /etc/pacman.conf
+          # 기본 미러 둘은 같은 CDN 이라 동기화 중이면 함께 실패한다 —
+          # 독립된 1티어 미러를 뒤에 두고, 일시 장애는 재시도로 넘긴다
+          printf 'Server = https://%s/$repo/os/$arch\n' \
+            mirror.rackspace.com/archlinux mirrors.kernel.org/archlinux \
+            >> /etc/pacman.d/mirrorlist
+          for i in 1 2 3; do
+            pacman -Syu --noconfirm --needed base-devel meson ninja pkgconf git \
+              wayland wayland-protocols \
+              libxkbcommon pixman libinput \
+              libdrm mesa libglvnd \
+              gtk4 webkitgtk-6.0 json-glib \
+              hwdata libdisplay-info \
+              seatd \
+              openssl libzip curl gpsd \
+              python nodejs dbus && break
+            [ "$i" = 3 ] && exit 1
+            echo "pacman 실패 ($i/3) — 30초 뒤 다시"; sleep 30
+          done
+      - name: Build wlroots from source
+        run: |
+          for i in 1 2 3; do
+            git clone --depth 1 --branch 0.18.2 https://gitlab.freedesktop.org/wlroots/wlroots.git /tmp/wlroots && break
+            [ "$i" = 3 ] && exit 1
+            rm -rf /tmp/wlroots; echo "clone 실패 ($i/3) — 15초 뒤 다시"; sleep 15
+          done
+          cd /tmp/wlroots
+          meson setup build --prefix=/usr -Dexamples=false -Dxwayland=disabled -Dwerror=false
+          ninja -C build
+          ninja -C build install
+          ldconfig
+      - name: Build Zyl OS
+        run: |
+          meson setup builddir
+          ninja -C builddir
+      # The profile matrix must stay configurable: a service set referring to a
+      # directory that no longer exists, or a board/profile pair that stopped
+      # agreeing, fails here instead of on someone's device build.
+      - name: Check every form-factor profile configures
+        run: |
+          for p in phone tablet tv auto watch desktop appliance pda; do
+            meson setup "builddir-$p" -Dboard=emulator -Dprofile="$p" >/dev/null \
+              || { echo "profile $p failed to configure"; exit 1; }
+            echo "ok: $p"
+            rm -rf "builddir-$p"
+          done
+      - name: Run C unit tests
+        run: ninja -C builddir test
+
+  # ─── Fuzz testing (short CI run) ───
+  fuzz:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libglib2.0-dev libjson-glib-dev pkg-config
+      # fuzz_json_dispatch.c compiles the real bridge.c, so it needs GLib,
+      # GIO and JSON-GLib plus the mock WebKit shim. The build line that
+      # harness documents in its own header comment is what we use here.
+      - name: Build and run fuzzers
+        run: |
+          cd tests/fuzz
+          PKG_FLAGS=$(pkg-config --cflags --libs glib-2.0 gio-2.0 json-glib-1.0)
+          for f in fuzz_*.c; do
+            name="${f%.c}"
+            clang -g -O1 -fsanitize=fuzzer,address \
+              -DZYL_USE_WEBKIT2GTK \
+              -I../include -I. \
+              "$f" $PKG_FLAGS -o "$name"
+            mkdir -p "corpus/$name"
+            "./$name" "corpus/$name" -max_len=4096 -runs=10000 || exit 1
+          done
+          echo "All fuzz runs passed"
+
+  # ─── Integration tests ───
+  test-integration:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install boot image tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cryptsetup-bin u-boot-tools device-tree-compiler
+      - name: Run integration tests
+        run: |
+          # Boot policy (A/B tries, bootloader lock) executed from u-boot-env.txt
+          bash tests/test_boot_env.sh
+          # Slot-signed boot images; Ubuntu's u-boot-tools lack fit_check_sign,
+          # so signature verification itself runs where that tool exists
+          bash tests/test_sign_image.sh
+          # OTA package: both slots' verity trees and FITs, signed for the updater
+          bash tests/test_build_ota.sh
+          # Which CI jobs a change selects (the workflows' paths are the rule)
+          bash tests/test_ci_select.sh
+          echo "Integration tests passed"

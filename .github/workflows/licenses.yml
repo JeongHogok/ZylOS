@@ -1,0 +1,35 @@
+# ──────────────────────────────────────────────────────────
+# [Clean Architecture] Infrastructure Layer - CI
+#
+# 역할: 제3자 라이선스 감사 — 의존성 선언과 THIRD_PARTY_LICENSES.md 대조
+# 수행범위: tests/audit_licenses.sh
+# 의존방향: bash
+# SOLID: SRP — 이 관심사만. 어떤 경로가 이 검사를 부르는지는 아래 paths 가
+#        유일한 출처다 (원격 PR 과 tools/ci-local.sh 가 같은 목록을 읽는다)
+# ──────────────────────────────────────────────────────────
+name: Licenses
+# PR 은 paths 에 걸린 변경이 있을 때만, main 은 머지마다 전부 돈다
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - 'THIRD_PARTY_LICENSES.md'
+      - 'emulator-app/Cargo.toml'
+      - 'emulator-app/Cargo.lock'
+      - '**/meson.build'
+      - 'meson.build'
+      - 'tests/audit_licenses.sh'
+      - '.github/workflows/licenses.yml'
+# 같은 PR 에 새 커밋이 오면 이전 커밋의 런은 취소한다. main 은 끝까지 검증한다
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  # ─── License audit ───
+  audit-licenses:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit third-party licenses
+        run: bash tests/audit_licenses.sh
