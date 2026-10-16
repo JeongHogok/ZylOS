@@ -25,9 +25,12 @@ Zyl OS 앱을 만드는 사람(제3자 앱·이 저장소의 시스템 앱)을 �
   페이지의 출처를 함께 쓴다(`apps/system/app-registry.js` 의 `getOrigin`). 어느 쪽이든 앱이
   보는 API 는 `ZylBridge` 하나다 — 앱은 자기가 기기에 있는지 에뮬레이터에 있는지 알 필요가 없다.
 - **앱 자기 파일과 OS 코드만 읽는다**: OS 코드는 `/shared/`(앱에서는 `../shared/…`)와
-  `bridge.js` 가 불러오는 화면 키보드 `/keyboard/` 이고, 이미지의 것이 나간다. 바깥 스크립트·
-  바깥 주소로의 직접 요청은 막혀 있다(CSP). 바깥 네트워크는 `network` 서비스로만 가고, 그
-  서비스가 허용하는 도메인만 열린다(`apps/system/sandbox.js` 의 `ALLOWED_DOMAINS`).
+  `bridge.js` 가 불러오는 화면 키보드 `/keyboard/` 이고, 이미지의 것이 나간다. 코드는 이
+  파일에서만 돈다(CSP): 바깥 스크립트·`eval` 은 없고, 제3자 앱은 인라인 스크립트(`<script>`
+  본문, `onclick="…"`)도 안 된다 — `<script src>` 와 `addEventListener` 를 쓴다.
+- **`network` 권한이 있으면 바깥에 직접 나간다**: `fetch`·`XMLHttpRequest`·`WebSocket` 으로
+  https/wss 만(평문 http 는 막힘), 이미지·미디어·글꼴도 https 에서. 권한이 없으면 자기 출처
+  밖으로는 아무것도 못 나간다. 자세한 규칙은 [SECURITY.md §3](SECURITY.md#3-권한).
 - **앱 파일은 읽기 전용이다**: 봉인(14장)과 다른 파일은 앱에 전달되지 않는다. 데이터는
   9장의 저장소에 둔다.
 - **흔적은 컨테이너에만 남는다**: 앱이 만드는 모든 것은 `/data/appdata/<앱 id>/` 에 있고,
