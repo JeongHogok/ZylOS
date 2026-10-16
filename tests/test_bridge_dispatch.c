@@ -717,6 +717,51 @@ static void test_messages_need_the_views_token(void) {
     g_free(msg);
 }
 
+/* The device's settings and the shell are the OS's: an app reads them; only
+   system apps change them. The app list is app.list, launching app.launch */
+static gboolean front_is_chat(const char *app_id) { return strcmp(app_id, "com.example.chat") == 0; }
+
+static void test_device_settings_and_the_shell_are_the_oss(void) {
+    const char *none[] = { NULL };
+    const char *launcher[] = { "app.list", "app.launch", NULL };
+    ZylAppManifest app = perm_manifest("com.example.app", FALSE, none);
+    ZylAppManifest lnch = perm_manifest("com.example.launcher", FALSE, launcher);
+    ZylAppManifest settings = perm_manifest("com.zylos.settings", TRUE, none);
+    const char *changes[][2] = {
+        { "usb", "setMode" }, { "display", "setMode" }, { "display", "setScale" },
+        { "display", "setRotation" }, { "display", "setAutoRotate" },
+        { "accessibility", "setHighContrast" }, { "accessibility", "setFontScale" },
+        { "accessibility", "setScreenReader" }, { "input", "showKeyboard" },
+        { "input", "hideKeyboard" }, { "input", "switchLayout" }, { "logger", "getLogs" },
+        { "logger", "getCrashReports" }, { "logger", "setFilterLevel" }, { "apps", "suspend" },
+        { "apps", "resume" }, { "apps", "goHome" }, { "apps", "goBack" }, { "apps", "openPanel" },
+        { "apps", "showRecents" }, { "apps", "switchApp" }, { NULL, NULL } };
+    for (int i = 0; changes[i][0]; i++) {
+        assert(!zyl_bridge_app_may_call(&app, changes[i][0], changes[i][1]));
+        assert(!zyl_bridge_app_may_call(&lnch, changes[i][0], changes[i][1]));
+        assert(zyl_bridge_app_may_call(&settings, changes[i][0], changes[i][1]));
+    }
+    const char *reads[][2] = { { "usb", "getMode" }, { "display", "getCurrentMode" },
+        { "accessibility", "getState" }, { "input", "getState" }, { "logger", "getFilterLevel" },
+        { "apps", "close" }, { NULL, NULL } };
+    for (int i = 0; reads[i][0]; i++) assert(zyl_bridge_app_may_call(&app, reads[i][0], reads[i][1]));
+    const char *lists[] = { "getInstalled", "listApps", "listRunning", "launch", NULL };
+    for (int i = 0; lists[i]; i++) {
+        assert(!zyl_bridge_app_may_call(&app, "apps", lists[i]));
+        assert(zyl_bridge_app_may_call(&lnch, "apps", lists[i]));
+    }
+
+    /* The clipboard is the front app's; a system app's always */
+    ZylAppManifest chat = perm_manifest("com.example.chat", FALSE, none);
+    zyl_bridge_set_front_query(NULL);
+    assert(!app_may_use_now(&chat, "clipboard"));                /* nobody said who is in front */
+    zyl_bridge_set_front_query(front_is_chat);
+    assert(app_may_use_now(&chat, "clipboard"));
+    assert(!app_may_use_now(&app, "clipboard"));                 /* in the background */
+    assert(app_may_use_now(&app, "device") && app_may_use_now(&settings, "clipboard"));
+    zyl_bridge_set_front_query(NULL);
+}
+
 /* The device's power: any app reads it, only system apps act on it */
 static void test_power_actions_are_system_only(void) {
     const char *none[] = { NULL };
@@ -823,6 +868,7 @@ int main(void)
     RUN_TEST(test_users_are_system_only);
     RUN_TEST(test_bridge_script_takes_manifest_strings_as_text);
     RUN_TEST(test_messages_need_the_views_token);
+    RUN_TEST(test_device_settings_and_the_shell_are_the_oss);
     RUN_TEST(test_events_only_from_the_services_own_name);
     RUN_TEST(test_args_params_object_is_the_whole_request);
     RUN_TEST(test_service_request_reaches_typed_dbus_method);

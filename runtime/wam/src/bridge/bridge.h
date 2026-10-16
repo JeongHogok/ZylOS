@@ -138,6 +138,15 @@ void zyl_bridge_watch_revocations(GDBusConnection *conn, ZylBridgeAppFn changed,
  * app what it declared, minus the reserved and what the user switched off */
 gboolean zyl_bridge_app_holds(const ZylAppManifest *m, const char *perm);
 
+/* May the app call service.method — the service rule and the method rule, as
+   for a service.request (for a WAM message that does what a method does) */
+gboolean zyl_bridge_app_may_call(const ZylAppManifest *m, const char *service, const char *method);
+
+/* Whether an app is the one in front (the WAM's shell knows). The clipboard is
+   the front app's: one in the background neither reads nor replaces it. Unset,
+   no third-party app is in front */
+void zyl_bridge_set_front_query(gboolean (*is_front)(const char *app_id));
+
 /* window.postMessage of {type:"service.event", service, event, data}, or NULL */
 char *zyl_bridge_service_event_script(const ZylAppManifest *manifest,
                                       const char *service, const char *signal,

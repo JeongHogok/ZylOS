@@ -641,7 +641,8 @@
           if (e.source !== systemFrame.contentWindow) _appStates.onState(msg.state);
           break;
         case 'app.launch':
-          open(msg.appId);
+          /* As apps.launch: the launcher's (app.launch); other apps send an intent */
+          if (ZylPermissions.checkPermission(from, 'apps', 'launch')) open(msg.appId);
           break;
         case 'app.close':
           if (from && from !== ZylShell.systemUi() && ZylShell.mayClose(from)) closeApp(from);

@@ -1485,6 +1485,22 @@ console.log('\n■ ZylPermissions');
     });
   });
 
+  test('the device\'s settings and the shell are the OS\'s; the app list is app.list (as bridge.c)', function () {
+    ['usb.setMode', 'display.setMode', 'display.setScale', 'display.setRotation', 'display.setAutoRotate',
+     'accessibility.setHighContrast', 'accessibility.setFontScale', 'accessibility.setScreenReader',
+     'input.showKeyboard', 'input.hideKeyboard', 'input.switchLayout', 'logger.getLogs',
+     'logger.getCrashReports', 'logger.setFilterLevel', 'apps.suspend', 'apps.resume', 'apps.goHome',
+     'apps.goBack', 'apps.openPanel', 'apps.showRecents', 'apps.switchApp',
+     'apps.getInstalled', 'apps.launch'].forEach(function (k) {
+      var sm = k.split('.');
+      assert.strictEqual(P.checkPermission('com.evil.app', sm[0], sm[1]), false, k);
+      assert.ok(P.checkPermission('com.zylos.settings', sm[0], sm[1]), k);
+    });
+    assert.ok(P.checkPermission('com.evil.app', 'display', 'getCurrentMode'));
+    assert.ok(P.checkPermission('com.evil.app', 'clipboard', 'copy'));
+    assert.ok(P.checkPermission('com.zylos.home', 'apps', 'getInstalled'));   /* the launcher's app.list */
+  });
+
   test('ordinary declared permissions are still granted', function () {
     var got = P.getEffectivePermissions('com.evil.app');
     assert.ok(got.indexOf('camera') !== -1);

@@ -201,6 +201,11 @@ static void wam_go_home(ZylWam *wam) {
     wam_show(wam, zyl_shell_home(&wam->shell));
 }
 
+/* The bridge asks: the clipboard is the front app's */
+static gboolean wam_is_front(const char *app_id) {
+    return g_wam && app_id && strcmp(g_wam->shell.top, app_id) == 0;
+}
+
 /* Never what the policy keeps; the front app going hands the screen to home */
 static void wam_close(ZylWam *wam, const char *app_id) {
     if (!app_id || !zyl_shell_may_close(&wam->shell, app_id)) return;
@@ -386,8 +391,14 @@ static void wam_handle_app_launch(const char        *type,
                                   ZylAppManifest    *manifest,
                                   ZylBridgeReplyCtx *reply_ctx,
                                   gpointer           user_data) {
-    (void)type; (void)manifest;
+    (void)type;
     ZylWam *wam = user_data;
+    /* Another app comes forward as apps.launch does: app.launch (the launcher's);
+       any other app hands it an intent */
+    if (!zyl_bridge_app_may_call(manifest, "apps", "launch")) {
+        if (reply_ctx && reply_ctx->callback_id >= 0) zyl_bridge_reply_error(reply_ctx, "Permission denied");
+        return;
+    }
     const char *target = json_object_get_string_member_with_default(msg_obj, "appId", NULL);
     if (!target) {
         /* Missing appId — resolve the promise with an error so it doesn't leak */
@@ -1315,6 +1326,7 @@ int main(int argc, char *argv[]) {
 
     /* Initialize bridge handler registry (H5) and override defaults with WAM handlers */
     zyl_bridge_init();
+    zyl_bridge_set_front_query(wam_is_front);
     zyl_bridge_register_handler("app.close",  wam_handle_app_close,  &wam);
     zyl_bridge_register_handler("app.launch", wam_handle_app_launch, &wam);
     zyl_bridge_register_handler("intent.start",  wam_handle_intent_start,  &wam);

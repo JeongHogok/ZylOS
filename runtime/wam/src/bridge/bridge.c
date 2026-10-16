@@ -750,6 +750,37 @@ static const ServicePermission METHOD_PERMISSIONS[] = {
     {"power.setBrightness",            {"system", NULL}},
     {"power.acquireWakelock",          {"system", NULL}},
     {"power.releaseWakelock",          {"system", NULL}},
+    /* The device's settings: any app may read them, only system apps change
+       them (USB mode, display, accessibility, input). The log is the OS's — it
+       names every app */
+    {"usb.setMode",                    {"system", NULL}},
+    {"display.setMode",                {"system", NULL}},
+    {"display.setScale",               {"system", NULL}},
+    {"display.setRotation",            {"system", NULL}},
+    {"display.setAutoRotate",          {"system", NULL}},
+    {"accessibility.setHighContrast",  {"system", NULL}},
+    {"accessibility.setFontScale",     {"system", NULL}},
+    {"accessibility.setScreenReader",  {"system", NULL}},
+    {"input.showKeyboard",             {"system", NULL}},
+    {"input.hideKeyboard",             {"system", NULL}},
+    {"input.switchLayout",             {"system", NULL}},
+    {"logger.getLogs",                 {"system", NULL}},
+    {"logger.getCrashReports",         {"system", NULL}},
+    {"logger.setFilterLevel",          {"system", NULL}},
+    /* Which apps are on the device is the user's to give (app.list); bringing
+       one forward is app.launch — another app's data goes in an intent. What is
+       in front, panels, recents and app switching are the OS's own */
+    {"apps.getInstalled",              {"app.list", NULL}},
+    {"apps.listApps",                  {"app.list", NULL}},
+    {"apps.listRunning",               {"app.list", NULL}},
+    {"apps.launch",                    {"app.launch", NULL}},
+    {"apps.suspend",                   {"system", NULL}},
+    {"apps.resume",                    {"system", NULL}},
+    {"apps.goHome",                    {"system", NULL}},
+    {"apps.goBack",                    {"system", NULL}},
+    {"apps.openPanel",                 {"system", NULL}},
+    {"apps.showRecents",               {"system", NULL}},
+    {"apps.switchApp",                 {"system", NULL}},
     {NULL, {NULL}}
 };
 
@@ -954,6 +985,31 @@ static gboolean app_may_call_method(const ZylAppManifest *m, const char *service
     }
     g_free(key);
     return ok;
+}
+
+gboolean zyl_bridge_app_may_call(const ZylAppManifest *m, const char *service, const char *method)
+{
+    return service && method && app_may_call(m, service) && app_may_call_method(m, service, method);
+}
+
+/* Services only the app in front may use (the emulator has one app alive at a
+   time, so its frame is always the front one): the clipboard holds what the
+   user copied — a background app neither reads nor swaps it */
+static const char *const FRONT_ONLY_SERVICES[] = { "clipboard", NULL };
+static gboolean (*front_query)(const char *app_id);
+
+void zyl_bridge_set_front_query(gboolean (*is_front)(const char *app_id))
+{
+    front_query = is_front;
+}
+
+static gboolean app_may_use_now(const ZylAppManifest *m, const char *service)
+{
+    if (m->is_system) return TRUE;
+    for (int i = 0; FRONT_ONLY_SERVICES[i]; i++)
+        if (strcmp(FRONT_ONLY_SERVICES[i], service) == 0)
+            return front_query && m->id && front_query(m->id);
+    return TRUE;
 }
 
 /* Events about one app's own things reach a third-party app only when they
@@ -1270,6 +1326,11 @@ static void handle_service_request(const char *type, gpointer msg_obj,
         g_warning("Bridge: %s denied %s.%s (missing permission)",
                   app_id, service, method);
         zyl_bridge_reply_error(reply_ctx, "Permission denied");
+        return;
+    }
+    if (!app_may_use_now(manifest, service)) {
+        g_warning("Bridge: %s denied %s.%s (not in front)", app_id, service, method);
+        zyl_bridge_reply_error(reply_ctx, "Not in front");
         return;
     }
 
