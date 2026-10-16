@@ -144,7 +144,6 @@ static ZylAppInstance *wam_open(ZylWam *wam, const char *app_id) {
    bar, a banner for a new notification, or the whole screen (panel,
    recents). The shell says which; the surface's input region follows, so
    touches outside it reach the app below ─── */
-#define WAM_PANEL_BANNER_PX 136
 
 static ZylAppInstance *system_ui(ZylWam *wam) {
     return wam->iface.get_instance(&wam->iface, ZYL_SHELL_SYSTEM_UI);
@@ -155,7 +154,7 @@ static void wam_set_panel(ZylWam *wam, ZylPanelMode mode) {
     if (!ui || !ui->webview_widget || mode == ZYL_PANEL_NONE) return;
     wam->panel = mode;
     zyl_lifecycle_panel_input(ui, mode == ZYL_PANEL_FULL ? 0 :
-                                  mode == ZYL_PANEL_BANNER ? WAM_PANEL_BANNER_PX : ZYL_SHELL_BAR_PX);
+                                  mode == ZYL_PANEL_BANNER ? ZYL_SHELL_BANNER_PX : ZYL_SHELL_BAR_PX);
     JsonObject *d = json_object_new();
     json_object_set_string_member(d, "mode", mode == ZYL_PANEL_FULL ? "full" :
                                              mode == ZYL_PANEL_BANNER ? "banner" : "bar");

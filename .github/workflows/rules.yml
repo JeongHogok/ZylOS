@@ -24,6 +24,7 @@ on:
       - 'tools/**'
       - 'tests/*.sh'
       - 'meson.build'
+      - 'meson_options.txt'
       - '.github/workflows/rules.yml'
 # 같은 PR 에 새 커밋이 오면 이전 커밋의 런은 취소한다. main 은 끝까지 검증한다
 concurrency:

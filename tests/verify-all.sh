@@ -226,6 +226,45 @@ PYCHK
 )
 if [ -n "$SYSAPP_DRIFT" ]; then fail "시스템 앱 집합이 어긋남:\n$SYSAPP_DRIFT"; else pass "시스템 앱 = apps/ = 이미지 설치 목록 = SYSTEM_APPS"; fi
 
+# 폼팩터 목록: 앱이 아는 PROFILES(form-factor.js)와 빌드가 받는 -Dprofile choices 가 같아야 한다
+PROFILE_DRIFT=$(python3 - "$ROOT" <<'PYCHK'
+import os, re, sys
+root = sys.argv[1]
+js = open(os.path.join(root, 'apps/shared/form-factor.js')).read()
+block = js[js.index('var PROFILES = {'):]
+block = block[:block.index('\n  };')]
+js_ids = set(re.findall(r'^    ([a-z]+): *\{', block, re.M))
+opts = open(os.path.join(root, 'meson_options.txt')).read()
+m = re.search(r"option\('profile'.*?choices: *\[(.*?)\]", opts, re.S)
+meson_ids = set(re.findall(r"'([^']+)'", m.group(1))) if m else set()
+if js_ids != meson_ids:
+    print('form-factor.js 에만: %s / meson_options.txt 에만: %s' % (sorted(js_ids - meson_ids), sorted(meson_ids - js_ids)))
+PYCHK
+)
+if [ -n "$PROFILE_DRIFT" ]; then fail "폼팩터 목록이 어긋남: $PROFILE_DRIFT"; else pass "폼팩터 = PROFILES = meson_options.txt"; fi
+
+# 시스템 UI 의 높이: shell.h 가 정하고, 그리는 CSS(상태바 앱·에뮬레이터 프레임)가 따른다
+BAR_DRIFT=$(python3 - "$ROOT" <<'PYCHK'
+import os, re, sys
+root = sys.argv[1]
+h = open(os.path.join(root, 'runtime/wam/src/shell/shell.h')).read()
+bar = re.search(r'#define ZYL_SHELL_BAR_PX +(\d+)', h).group(1)
+banner = re.search(r'#define ZYL_SHELL_BANNER_PX +(\d+)', h).group(1)
+sb = open(os.path.join(root, 'apps/statusbar/css/statusbar.css')).read()
+emu = open(os.path.join(root, 'emulator-app/ui/css/emulator.css')).read()
+checks = [
+    ('statusbar.css --sb-height', re.search(r'--sb-height: *(\d+)px', sb), bar),
+    ('emulator.css #system-frame', re.search(r'#system-frame \{[^}]*?height: *(\d+)px', emu), bar),
+    ('emulator.css #app-viewport margin-top', re.search(r'#app-viewport \{[^}]*?margin-top: *(\d+)px', emu), bar),
+    ('emulator.css .panel-banner', re.search(r'#system-frame\.panel-banner \{ *height: *(\d+)px', emu), banner),
+]
+for name, m, want in checks:
+    if not m or m.group(1) != want:
+        print('%s = %s, shell.h = %s' % (name, m.group(1) if m else '?', want))
+PYCHK
+)
+if [ -n "$BAR_DRIFT" ]; then fail "시스템 UI 높이가 어긋남:\n$BAR_DRIFT"; else pass "시스템 UI 높이 = shell.h"; fi
+
 # ═════════════════════════════════════════════════════════════
 # [B] emulator-app/ — 에뮬레이터 영역
 # ═════════════════════════════════════════════════════════════
@@ -309,7 +348,7 @@ fi
 # C5: 실기기 WAM 권한 정책(서비스·메서드 단위)이 permissions.js 와 같은지
 #     permissions.js 가 권위(규칙 8). bridge.c 는 사본이며, 어긋나면 에뮬레이터와
 #     실기기가 서로 다른 권한으로 동작한다. 라우트가 있는데 정책이 없는 서비스는
-#     모든 앱에 열리므로 따로 확인한다.
+#     제3자 앱에 늘 닫혀(app_may_call) 에뮬레이터와 달라지므로 따로 확인한다.
 POLICY_DRIFT=$(python3 - "$ROOT" <<'PYCHK'
 import re, sys
 root = sys.argv[1]
