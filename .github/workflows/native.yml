@@ -89,9 +89,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y clang libglib2.0-dev libjson-glib-dev pkg-config
-      # fuzz_json_dispatch.c compiles the real bridge.c, so it needs GLib,
-      # GIO and JSON-GLib plus the mock WebKit shim. The build line that
-      # harness documents in its own header comment is what we use here.
+      # Every harness compiles the real code it fuzzes (bridge.c with the mock
+      # WebKit shim, the fs service's path judgement with runtime/lib), so it
+      # needs GLib, GIO and JSON-GLib.
       - name: Build and run fuzzers
         run: |
           cd tests/fuzz
@@ -100,7 +100,7 @@ jobs:
             name="${f%.c}"
             clang -g -O1 -fsanitize=fuzzer,address \
               -DZYL_USE_WEBKIT2GTK \
-              -I../include -I. \
+              -I../include -I. -I../../runtime/lib \
               "$f" $PKG_FLAGS -o "$name"
             mkdir -p "corpus/$name"
             "./$name" "corpus/$name" -max_len=4096 -runs=10000 || exit 1

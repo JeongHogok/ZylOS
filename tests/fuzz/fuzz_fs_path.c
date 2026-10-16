@@ -1,100 +1,60 @@
 /* ──────────────────────────────────────────────────────────
  * [Clean Architecture] Infrastructure Layer - Fuzz Test
  *
- * 역할: FS 경로 검증 퍼징 하네스
- * 수행범위: path traversal, null byte injection, symlink 공격 패턴 검증
- * 의존방향: 없음 (자체 경로 검증 로직)
- * SOLID: SRP — 경로 검증 퍼징만 담당
+ * 역할: 파일 서비스의 경로 판정(runtime/services/fs/fs.c 의 resolve) 퍼징
+ * 수행범위: 앱이 준 상대 경로가 무엇이든 — 결과는 루트 안, 보호 경로·".." 는
+ *           거절, 루트 밖을 가리키는 심볼릭 링크로 나가지 못함
+ * 의존방향: 실제 fs.c (ZYL_TEST 로 main 제외), runtime/lib/container.c, glib/gio
+ * SOLID: SRP — 경로 판정 퍼징만 담당
  *
- * 빌드: clang -g -O1 -fsanitize=fuzzer,address fuzz_fs_path.c -o fuzz_fs_path
- * 실행: ./fuzz_fs_path corpus/ -max_len=1024
+ * 빌드·실행: .github/workflows/native.yml 의 fuzz 잡
  * ────────────────────────────────────────────────────────── */
 
+#define ZYL_TEST
+#define ROOT_ "/tmp/zyl-fuzz-fs"
+#define ZYL_FILES_ROOT      ROOT_ "/files"
+#define ZYL_CONTAINERS_ROOT ROOT_ "/appdata"
+#include "../../runtime/services/fs/fs.c"
+#include "../../runtime/lib/container.c"
+#include <assert.h>
 #include <stdint.h>
-#include <stddef.h>
-#include <string.h>
-#include <stdlib.h>
+#include <unistd.h>
 
-/* ─── Path validation logic (matches ZylSecurity.isProtectedPath) ─── */
+static char root_real[PATH_MAX];
 
-static const char *PROTECTED_PREFIXES[] = {
-    "/etc/", "/sys/", "/proc/", "/dev/",
-    "/boot/", "/root/", "/usr/sbin/",
-    NULL
-};
-
-static int is_protected_path(const char *path) {
-    if (!path || !path[0]) return 1; /* Empty = protected */
-
-    /* Null byte injection check */
-    size_t len = strlen(path);
-    for (size_t i = 0; i < len; i++) {
-        if (path[i] == '\0') return 1; /* Embedded null */
-    }
-
-    /* Path traversal: reject any ../ sequence */
-    if (strstr(path, "../") != NULL) return 1;
-    if (strstr(path, "/..") != NULL) return 1;
-    if (strcmp(path, "..") == 0) return 1;
-
-    /* Absolute protected paths */
-    for (int i = 0; PROTECTED_PREFIXES[i]; i++) {
-        if (strncmp(path, PROTECTED_PREFIXES[i], strlen(PROTECTED_PREFIXES[i])) == 0) {
-            return 1;
-        }
-    }
-
-    /* Reject paths starting with / that aren't in /data/ or /home/ */
-    if (path[0] == '/') {
-        if (strncmp(path, "/data/", 6) != 0 &&
-            strncmp(path, "/home/", 6) != 0 &&
-            strncmp(path, "/tmp/", 5) != 0) {
-            return 1;
-        }
-    }
-
-    return 0;
-}
-
-/* ─── Normalization (collapse //, remove trailing /) ─── */
-static int normalize_path(const char *input, char *output, size_t output_len) {
-    if (!input || !output || output_len == 0) return -1;
-
-    size_t j = 0;
-    size_t ilen = strlen(input);
-
-    for (size_t i = 0; i < ilen && j < output_len - 1; i++) {
-        if (input[i] == '/' && j > 0 && output[j - 1] == '/') continue; /* Skip double slash */
-        output[j++] = input[i];
-    }
-
-    /* Remove trailing slash (except for root "/") */
-    if (j > 1 && output[j - 1] == '/') j--;
-
-    output[j] = '\0';
-    return 0;
+static void setup(void) {
+    if (root_real[0]) return;
+    ensure_layout();
+    /* A link out of the root: following it must never be allowed */
+    symlink("/etc", ZYL_FILES_ROOT "/escape");
+    assert(realpath(ZYL_FILES_ROOT, root_real));
+    char *out = resolve(ZYL_FILES_ROOT, "escape/passwd");
+    assert(out == NULL);
 }
 
 int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
-    if (size > 2048) return 0;
-
-    char *path = (char *)malloc(size + 1);
-    if (!path) return 0;
-    memcpy(path, data, size);
-    path[size] = '\0';
-
-    /* Test path validation — must not crash */
-    volatile int protected = is_protected_path(path);
-    (void)protected;
-
-    /* Test normalization — must not crash or overflow */
-    char normalized[2048] = {0};
-    normalize_path(path, normalized, sizeof(normalized));
-
-    /* Re-validate normalized path */
-    volatile int protected2 = is_protected_path(normalized);
-    (void)protected2;
-
-    free(path);
+    setup();
+    char *rel = g_strndup((const char *)data, size);   /* stops at an embedded NUL */
+    char *full = resolve(ZYL_FILES_ROOT, rel);
+    if (full) {
+        const char *r = rel;
+        while (*r == '/') r++;
+        assert(!strstr(rel, ".."));
+        assert(!protected_path(r));
+        assert(g_str_has_prefix(full, ZYL_FILES_ROOT));
+        /* Whatever part exists resolves inside the root */
+        char real[PATH_MAX];
+        char *probe = g_strdup(full);
+        while (!realpath(probe, real)) {
+            char *up = g_path_get_dirname(probe);
+            g_free(probe);
+            probe = up;
+        }
+        size_t n = strlen(root_real);
+        assert(strncmp(real, root_real, n) == 0 && (real[n] == '\0' || real[n] == '/'));
+        g_free(probe);
+        g_free(full);
+    }
+    g_free(rel);
     return 0;
 }
