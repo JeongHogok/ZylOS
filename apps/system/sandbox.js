@@ -3,7 +3,8 @@
 //
 // Role: OS app sandbox policy — defines iframe restrictions, permissions policy,
 //       domain whitelist, and CSP for all apps
-// Scope: Sandbox flags, Permissions Policy generation, network domain control
+// Scope: Sandbox flags, Permissions Policy generation, network domain control,
+//        each app's Content-Security-Policy
 // Dependency Direction: Domain -> none (pure policy, no side effects)
 // SOLID: SRP — sandbox policy definition only, OCP — extend via policy maps
 //
@@ -62,9 +63,28 @@ window.ZylSandbox = (function () {
     return false;
   }
 
+  /**
+   * The Content-Security-Policy every file of an app is served with. Code only
+   * from its own files (what was sealed): never remote, never eval, and no
+   * inline script for a user-installed app — with the network it could run
+   * what it fetched. 'network' opens https/wss (never plain http), 'webview'
+   * lets it frame https pages. The same rule as the device's
+   * runtime/wam/src/scheme/app_scheme.c zyl_app_scheme_csp.
+   */
+  function getContentPolicy(system, grantedPerms) {
+    var network = grantedPerms.indexOf('network') !== -1;
+    var web = network ? ' https:' : '';
+    return "default-src 'self'; script-src 'self'" + (system ? " 'unsafe-inline'" : '') +
+      "; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:" + web +
+      "; media-src 'self' blob:" + web + "; connect-src 'self'" + (network ? ' https: wss:' : '') +
+      "; font-src 'self'" + web + "; frame-src 'self'" +
+      (grantedPerms.indexOf('webview') !== -1 ? ' https:' : '') + "; object-src 'none'";
+  }
+
   return {
     SANDBOX_FLAGS: SANDBOX_FLAGS,
     getPolicy: getPolicy,
+    getContentPolicy: getContentPolicy,
     isAllowedDomain: isAllowedDomain
   };
 })();

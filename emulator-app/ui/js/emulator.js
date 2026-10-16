@@ -105,6 +105,12 @@
     maxBytes: 64 * 1024                 /* UI state — drafts, scroll, tab — not data */
   });
 
+  /* The policy zyl-app://<id>/ serves a store app's files with (store.rs) */
+  function setServedPolicy(appId, csp) {
+    var t = window.__TAURI__;
+    return t && t.core ? t.core.invoke('store_app_policy', { appId: appId, csp: csp }) : Promise.resolve();
+  }
+
   /* intent: what the OS resolved for this app to handle (apps/system/intent.js) */
   function launchApp(appId, intent) {
     var app = ZylAppRegistry.getApp(appId);
@@ -138,46 +144,56 @@
       if (gen !== _navGen) return;
 
       /* Apply OS sandbox policy before loading app */
+      var effectivePerms = (typeof ZylPermissions !== 'undefined')
+        ? ZylPermissions.getEffectivePermissions(appId) : [];
       if (typeof ZylSandbox !== 'undefined') {
         appFrame.setAttribute('sandbox', ZylSandbox.SANDBOX_FLAGS);
-        var effectivePerms = (typeof ZylPermissions !== 'undefined')
-          ? ZylPermissions.getEffectivePermissions(appId) : [];
         appFrame.setAttribute('allow', ZylSandbox.getPolicy(appId, effectivePerms));
       }
 
-      appFrame.src = appUrl;
-      _displayedApp = appId;
+      /* A store app's files carry the CSP the OS made from its permissions,
+         as the WAM serves them on the device; the image's apps are this page's */
+      var served = ZylAppRegistry.getOrigin(appId) && typeof ZylSandbox !== 'undefined'
+        ? setServedPolicy(appId, ZylSandbox.getContentPolicy(!!app.system, effectivePerms))
+        : Promise.resolve();
+      served.then(null, function (e) {
+        syslog('[ERROR] No policy for ' + appId + ': ' + e, 'warn');   /* served nothing: fails closed */
+      }).then(function () {
+        if (gen !== _navGen) return;
+        appFrame.src = appUrl;
+        _displayedApp = appId;
 
-      /* iframe 로드 에러 감지 */
-      appFrame.onerror = function () {
-        syslog('[ERROR] Failed to load: ' + appUrl, 'warn');
-      };
+        /* iframe 로드 에러 감지 */
+        appFrame.onerror = function () {
+          syslog('[ERROR] Failed to load: ' + appUrl, 'warn');
+        };
 
-      /* 앱 로드 후 상태 전달 — JS 실행 완료 대기 위해 200ms 지연 */
-      var loadAppId = appId;
-      appFrame.onload = function () {
-        syslog('[LOADED] ' + loadAppId, 'sys');
-        /* Runtime CSS is loaded by each app via <link> in its own HTML.
-           The emulator does NOT inject anything into iframes. */
-        setTimeout(function () {
-          /* Inject saved locale into every app — always send, even if 'en' */
-          var savedLocale = ZylEmuI18n.getLocale();
-          if (savedLocale) {
-            broadcastToCurrentApp('system.setLocale', { locale: savedLocale });
-          }
-          broadcastToCurrentApp('system.setTimeZone', { timeZone: _currentTimeZone });
+        /* 앱 로드 후 상태 전달 — JS 실행 완료 대기 위해 200ms 지연 */
+        var loadAppId = appId;
+        appFrame.onload = function () {
+          syslog('[LOADED] ' + loadAppId, 'sys');
+          /* Runtime CSS is loaded by each app via <link> in its own HTML.
+             The emulator does NOT inject anything into iframes. */
+          setTimeout(function () {
+            /* Inject saved locale into every app — always send, even if 'en' */
+            var savedLocale = ZylEmuI18n.getLocale();
+            if (savedLocale) {
+              broadcastToCurrentApp('system.setLocale', { locale: savedLocale });
+            }
+            broadcastToCurrentApp('system.setTimeZone', { timeZone: _currentTimeZone });
 
-          if (intent) broadcastToCurrentApp('intent', intent);
+            if (intent) broadcastToCurrentApp('intent', intent);
 
-          /* Hand back the state saved when the user left this app (one-shot:
-             leaving again saves it again) */
-          var restored = _appStates.take(loadAppId);
-          if (restored.found) {
-            broadcastToCurrentApp('lifecycle.restore', { state: restored.state });
-          }
-        }, 200);
-        appFrame.onload = null;
-      };
+            /* Hand back the state saved when the user left this app (one-shot:
+               leaving again saves it again) */
+            var restored = _appStates.take(loadAppId);
+            if (restored.found) {
+              broadcastToCurrentApp('lifecycle.restore', { state: restored.state });
+            }
+          }, 200);
+          appFrame.onload = null;
+        };
+      });
     });
 
     /* System-only apps never appear in recents — policy from OS */

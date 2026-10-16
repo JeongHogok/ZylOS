@@ -7,6 +7,7 @@
 //           컨테이너까지), 설치된 스토어 앱 목록, 스토어 앱을 기기와 같은 출처
 //           zyl-app://<id>/ 로 제공(/shared/·/keyboard/ 는 OS 코드). 봉인 대조용 자료
 //           (파일마다 SHA-256, .zyl-seal/ 의 내용)와 스토어가 폐기한 인증서 목록 보관.
+//           앱 파일에 붙는 CSP 는 OS(sandbox.js)가 정해 실행 전에 건넨 것을 그대로.
 //           무엇을 받을지·서명·봉인·카탈로그 해석·app.json 확인은 OS
 //           (apps/system/services/appstore.js, app-seal.js)의 몫
 // 의존방향: state, appdata::container, config::bundled_app_dirs, curl, unzip/zipinfo, sha2
@@ -285,6 +286,16 @@ fn mime(path: &Path) -> &'static str {
     }
 }
 
+/// The CSP the OS made for a store app from its permissions (sandbox.js), set
+/// before each launch; serve() sends it with every file, as the WAM does
+#[tauri::command]
+pub fn store_app_policy(app_id: String, csp: String, state: State<'_, Mutex<AppState>>) -> Result<(), String> {
+    let mut app_state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
+    container(&app_state, &app_id)?;
+    app_state.app_policies.insert(app_id, csp);
+    Ok(())
+}
+
 /// zyl-app://<id>/<path>: a store app as its own origin, as on the device
 pub fn serve(app: &tauri::AppHandle, request: &tauri::http::Request<Vec<u8>>) -> tauri::http::Response<Cow<'static, [u8]>> {
     let not_found = || {
@@ -297,11 +308,12 @@ pub fn serve(app: &tauri::AppHandle, request: &tauri::http::Request<Vec<u8>>) ->
     let Ok(dir) = app_dir(&app_state, id) else { return not_found() };
     let os_dir = bundled_app_dirs().into_iter().find(|d| d.join("shared").is_dir());
     let Some(file) = os_dir.and_then(|o| resolve(&dir, &o, path)) else { return not_found() };
+    // No policy from the OS, nothing served: closed, never a default
+    let Some(csp) = app_state.app_policies.get(id) else { return not_found() };
     match fs::read(&file) {
         Ok(bytes) => tauri::http::Response::builder()
             .header("Content-Type", mime(&file))
-            .header("Content-Security-Policy",
-                    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;")
+            .header("Content-Security-Policy", csp.as_str())
             .body(Cow::Owned(bytes))
             .unwrap(),
         Err(_) => not_found(),

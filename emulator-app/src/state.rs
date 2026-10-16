@@ -121,6 +121,8 @@ pub struct AppState {
     pub os_image_mount: Option<PathBuf>,
     pub resource_reserved: bool,
     pub data_dir: PathBuf,
+    /// The CSP each store app's files are served with — the OS's (sandbox.js)
+    pub app_policies: std::collections::HashMap<String, String>,
 }
 
 impl AppState {
@@ -137,6 +139,7 @@ impl AppState {
             os_image_mount: None,
             resource_reserved: false,
             data_dir,
+            app_policies: std::collections::HashMap::new(),
         }
     }
 }
