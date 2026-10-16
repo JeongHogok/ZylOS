@@ -78,12 +78,12 @@
     if (appId) launchApp(appId);
   }
 
-  function open(appId, intent) {
+  function open(appId, intent, result) {
     if (!ZylShell.mayLaunch(appId)) {
       syslog('[BLOCKED] ' + appId + ' — not now (setup or locked)', 'warn');
       return;
     }
-    launchApp(appId, intent);
+    launchApp(appId, intent, result);
   }
 
   /* ═══ App Lifecycle ═══ */
@@ -111,8 +111,9 @@
     return t && t.core ? t.core.invoke('store_app_policy', { appId: appId, csp: csp }) : Promise.resolve();
   }
 
-  /* intent: what the OS resolved for this app to handle (apps/system/intent.js) */
-  function launchApp(appId, intent) {
+  /* intent: what the OS resolved for this app to handle (apps/system/intent.js);
+     result: the answer to a PICK this app asked for */
+  function launchApp(appId, intent, result) {
     var app = ZylAppRegistry.getApp(appId);
     if (!app) {
       syslog('App not found: ' + appId, 'warn');
@@ -190,6 +191,8 @@
             if (restored.found) {
               broadcastToCurrentApp('lifecycle.restore', { state: restored.state });
             }
+            /* After its state: the app is as the user left it, then gets what it asked for */
+            if (result) broadcastToCurrentApp('intent.result', result);
           }, 200);
           appFrame.onload = null;
         };
@@ -490,10 +493,11 @@
     return source === systemFrame.contentWindow ? ZylShell.systemUi() : (state.currentApp || '');
   }
 
-  /* The OS decided who handles an intent; the container launches and delivers */
+  /* The OS decided who handles an intent (or gets a pick's answer); once the
+     OS has handed the files over, the container launches and delivers */
   function runIntent(d) {
     if (!d) return;
-    if (d.launch) open(d.launch, d.intent);
+    if (d.launch) ZylIntent.deliver(d).then(function (p) { open(p.launch, p.intent, p.result); });
     else if (d.choose) broadcastToCurrentApp('intent.choose', d.choose);
     else broadcastToCurrentApp('intent.none', {});
   }
@@ -643,6 +647,9 @@
           break;
         case 'intent.chosen':
           runIntent(ZylIntent.choose(from, msg.token, msg.appId));
+          break;
+        case 'intent.result':
+          runIntent(ZylIntent.result(from, msg.token, msg.files));
           break;
         /* Only the lock screen unlocks, only setup finishes setup */
         case 'unlock':

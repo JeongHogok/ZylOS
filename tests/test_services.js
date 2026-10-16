@@ -391,6 +391,18 @@ var fsTests = (function () {
                                        ['fs_rename', 'com.example.app']]);   /* the request cannot pick the root */
       });
     });
+  }).then(function () {
+    return asyncTest('handoff: the OS names both roots — the user\'s files for a system app', function () {
+      var asked = null;
+      var svc = ns.fs({ SYSTEM_APPS: ['com.zylos.files'], invoke: function (cmd, a) {
+        asked = [cmd, a];
+        return Promise.resolve(['Inbox/a.jpg', '']);
+      } });
+      return svc._handoff('com.zylos.files', ['Pictures/a.jpg', 'x'], 'com.example.chat').then(function (got) {
+        assert.deepStrictEqual(asked, ['fs_handoff', { from: null, paths: ['Pictures/a.jpg', 'x'], to: 'com.example.chat' }]);
+        assert.deepStrictEqual(got, ['Inbox/a.jpg', '']);
+      });
+    });
   });
 })();
 
@@ -1165,7 +1177,7 @@ console.log('\n■ ZylHangul');
    ═══════════════════════════════════════════════════════ */
 console.log('\n■ ZylIntent');
 
-(function () {
+var intentTests = (function () {
   var vm = require('vm');
   var ctx = { window: {}, console: console };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'apps', 'system', 'app-registry.js'), 'utf8'), ctx);
@@ -1205,6 +1217,59 @@ console.log('\n■ ZylIntent');
   test('explicit intents name an installed app', function () {
     assert.strictEqual(I.start('com.zylos.files', { targetApp: 'com.zylos.gallery' }).launch, 'com.zylos.gallery');
     assert.deepStrictEqual(plain(I.start('com.zylos.files', { targetApp: 'com.nope' })), { none: true });
+  });
+
+  /* Same scenarios as test_intent.c: who picks, what files may be */
+  var PICK = 'zyl.intent.action.PICK';
+  ctx.ZylAppRegistry.register([
+    { id: 'com.zylos.picker', name: 'Picker', system: true, intents: [{ action: PICK }] },
+    { id: 'com.example.fakepicker', name: 'Fake', intents: [{ action: PICK }] },
+    { id: 'com.example.chat', name: 'Chat' }
+  ]);
+
+  test('only a system app picks', function () {
+    assert.strictEqual(I.start('com.example.chat', { action: PICK, mimeType: 'image/png' }).launch, 'com.zylos.picker');
+    assert.deepStrictEqual(plain(I.start('com.example.chat', { action: PICK, targetApp: 'com.example.fakepicker' })),
+                           { none: true });
+  });
+
+  test('files are strings, ten at most', function () {
+    var d = I.start('com.example.chat', { targetApp: 'com.zylos.picker',
+      files: ['a', 1, '', { x: 1 }, 'b', '3', '4', '5', '6', '7', '8', '9', '10', '11'] });
+    assert.strictEqual(d.intent.files.length, 10);
+    assert.deepStrictEqual(plain(d.intent.files.slice(0, 2)), ['a', 'b']);
+    assert.deepStrictEqual(plain(I.start('com.example.chat', { targetApp: 'com.zylos.picker', files: 'x' }).intent.files), []);
+  });
+
+  test('a pick is answered once, by its handler, and goes to the app that asked', function () {
+    var d = I.start('com.example.chat', { action: PICK, requestCode: 'attach' });
+    var token = d.intent.resultToken;
+    assert.ok(token);
+    assert.strictEqual(I.result('com.example.chat', token, ['x']), null);           /* not the handler */
+    assert.strictEqual(I.result('com.zylos.picker', 'r-other', ['x']), null);       /* not its token */
+    var r = I.result('com.zylos.picker', token, ['Pictures/cat.jpg', 7]);
+    assert.strictEqual(r.launch, 'com.example.chat');
+    assert.strictEqual(r.from, 'com.zylos.picker');
+    assert.deepStrictEqual(plain(r.result), { requestCode: 'attach', files: ['Pictures/cat.jpg'] });
+    assert.strictEqual(I.result('com.zylos.picker', token, ['x']), null);           /* used up */
+  });
+
+  return asyncTest('delivery hands the files over first: the receiver gets its own paths', function () {
+    var asked = [];
+    I.useHandoff(function (from, paths, to) {
+      asked.push([from, plain(paths), to]);
+      return Promise.resolve(paths.map(function (p) { return p === 'gone' ? '' : 'Inbox/' + p.split('/').pop(); }));
+    });
+    var d = I.start('com.zylos.picker', { targetApp: 'com.example.chat', files: ['Pictures/cat.jpg', 'gone'] });
+    return I.deliver(d).then(function (p) {
+      assert.deepStrictEqual(asked, [['com.zylos.picker', ['Pictures/cat.jpg', 'gone'], 'com.example.chat']]);
+      assert.deepStrictEqual(plain(p.intent.files), ['Inbox/cat.jpg']);
+      I.useHandoff(function () { return Promise.reject(new Error('down')); });
+      return I.deliver(I.start('com.zylos.picker', { targetApp: 'com.example.chat', files: ['a'] }));
+    }).then(function (p) {
+      assert.deepStrictEqual(plain(p.intent.files), []);                            /* never the sender's path */
+      I.useHandoff(null);
+    });
   });
 })();
 
@@ -3027,7 +3092,7 @@ Promise.all([settingsTests, displayTests, inputTests, sensorsTests,
              usbTests, powerTests, audioTests, fsTests, updaterTests, telemetryTests, callTests, storeTests,
              netstatsTests, alertTests, lockTests, deviceBridgeTests, appStateTests,
              alarmTests, appsTests, sandboxTests, accessibilityTests, storageTests, networkTests,
-             credentialTests, locationTests, userTests, gateTests])
+             credentialTests, locationTests, userTests, gateTests, intentTests])
   .then(function () {
     console.log('\n════════════════════════');
     console.log('Total: ' + total + '  Passed: ' + passed + '  Failed: ' + failed);
