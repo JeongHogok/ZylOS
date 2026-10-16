@@ -1,0 +1,107 @@
+# ──────────────────────────────────────────────────────────
+# [Clean Architecture] Infrastructure Layer - Bootloader Config
+#
+# 역할: U-Boot 부트 정책 — 모든 보드가 같은 것: Verified Boot, A/B 시도 부팅·롤백,
+#       부트로더 잠금 전환
+# 수행범위: 슬롯 선택(업데이터가 지정한 슬롯을 zyl_boot_limit 회까지 시도 후 롤백),
+#           잠금 상태 전환(설정에서 허용 + 기기 앞의 확인 + 사용자 데이터 삭제),
+#           잠금 해제 시 서명 검증 해제와 경고, 잠긴 기기는 부팅 실패 시 셸 대신 재시작
+# 의존방향: U-Boot FIT 서명 검증, runtime/services/updater (zyl_next_slot,
+#           zyl_active_slot, zyl_boot_count), runtime/services/bootctl
+#           (zyl_unlocked, zyl_oem_unlock_allowed), 보드 파일 board/<id>/u-boot-env.txt
+#           의 상수와 훅(zyl_boot_ifc·zyl_boot_dev·zyl_boot_part, zyl_confirm,
+#           zyl_wipe, zyl_before_os). 이 파일과 보드 파일이 단일 출처이며
+#           tests/test_boot_env.sh 가 보드마다 결정 로직을 실행해 검증한다
+#
+# tools/build-bootloader.sh builds this plus the board's file into U-Boot as the
+# default environment and lets storage set only the "Runtime state" variables
+# below (CONFIG_ENV_WRITEABLE_LIST, generated from that section): otherwise
+# anyone able to write the env could replace bootcmd and the verification it
+# enforces. See docs/INSTALLATION_INFORMATION.md
+# ──────────────────────────────────────────────────────────
+
+# ── Runtime state (writable from storage; written by the OS) ──
+# Slot that last booted and was confirmed healthy by the OS
+zyl_active_slot=a
+# Slot an update installed and wants tried; empty when none
+zyl_next_slot=
+# Boots attempted on zyl_next_slot without the OS confirming it
+zyl_boot_count=0
+# 1 = the owner has unlocked the bootloader (requested from Settings)
+zyl_unlocked=0
+# Lock state the device actually ran with last time; a difference from
+# zyl_unlocked is a pending change that must be confirmed and wipe data
+zyl_lock_seen=0
+# Settings > Developer options > "Allow bootloader unlocking"
+zyl_oem_unlock_allowed=0
+
+# ── Policy constants ──
+# Boots an updated slot gets before U-Boot rolls back to the previous one
+zyl_boot_limit=3
+
+# ── Lock change: allowed in Settings, confirmed at the device, data erased ──
+zyl_check_lock=\
+  if test "${zyl_unlocked}" != "${zyl_lock_seen}"; then \
+    if test "${zyl_unlocked}" = "1" && test "${zyl_oem_unlock_allowed}" != "1"; then \
+      echo "ZylOS: bootloader unlocking is not allowed in Settings - staying locked"; \
+      setenv zyl_unlocked ${zyl_lock_seen}; \
+    else \
+      echo "ZylOS: bootloader lock change requested. ALL USER DATA WILL BE ERASED."; \
+      echo "ZylOS: hold the ${zyl_unlock_button} button now to confirm (10 s)"; \
+      run zyl_confirm; \
+      if test "${zyl_ok}" = "1"; then \
+        run zyl_wipe; \
+        setenv zyl_lock_seen ${zyl_unlocked}; \
+        setenv zyl_oem_unlock_allowed 0; \
+      else \
+        echo "ZylOS: not confirmed - lock state unchanged"; \
+        setenv zyl_unlocked ${zyl_lock_seen}; \
+      fi; \
+    fi; \
+    saveenv; \
+  fi
+
+# ── Slot choice: try an updated slot zyl_boot_limit times, then roll back ──
+zyl_pick_slot=\
+  setenv zyl_slot ${zyl_active_slot}; \
+  if test -n "${zyl_next_slot}"; then \
+    if test "${zyl_boot_count}" = "${zyl_boot_limit}"; then \
+      echo "ZylOS: slot ${zyl_next_slot} failed ${zyl_boot_limit} times - rolling back to ${zyl_active_slot}"; \
+      setenv zyl_next_slot; \
+      setenv zyl_boot_count 0; \
+    else \
+      setenv zyl_slot ${zyl_next_slot}; \
+      if test "${zyl_boot_count}" = "0"; then setenv zyl_boot_count 1; \
+      elif test "${zyl_boot_count}" = "1"; then setenv zyl_boot_count 2; \
+      else setenv zyl_boot_count 3; fi; \
+    fi; \
+    saveenv; \
+  fi
+
+# The slot's own signed FIT carries its kernel command line (its rootfs, its
+# verity values, zyl.slot); bootargs is never set here, so nothing in the
+# environment can change what a locked device verifies. zyl_before_os is the
+# board's: what must happen before anything after the bootloader runs
+bootcmd=\
+  run zyl_check_lock; \
+  run zyl_pick_slot; \
+  run zyl_before_os; \
+  if test "${zyl_unlocked}" = "1"; then \
+    echo "ZylOS: WARNING - the bootloader is unlocked. The software on this device is not verified."; \
+    setenv verify no; \
+  else \
+    setenv verify yes; \
+  fi; \
+  load ${zyl_boot_ifc} ${zyl_boot_dev}:${zyl_boot_part} ${fit_addr} fit-image-${zyl_slot}.itb; \
+  bootm ${fit_addr}; \
+  echo "ZylOS: slot ${zyl_slot} did not boot"; \
+  if test -n "${zyl_next_slot}"; then \
+    setenv zyl_boot_count ${zyl_boot_limit}; \
+    saveenv; \
+    reset; \
+  fi; \
+  if test "${zyl_unlocked}" != "1"; then \
+    echo "ZylOS: no verified system booted - restarting"; \
+    sleep 5; \
+    reset; \
+  fi

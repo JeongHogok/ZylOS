@@ -14,12 +14,14 @@ on:
     branches: [main]
     paths:
       - 'board/bpi-f3/**'
+      - 'board/boot-policy.txt'
       - 'tools/build-bootloader.sh'
       - 'tools/gen-boot-keys.sh'
       - '.github/workflows/bootloader.yml'
   pull_request:
     paths:
       - 'board/bpi-f3/**'
+      - 'board/boot-policy.txt'
       - 'tools/build-bootloader.sh'
       - 'tools/gen-boot-keys.sh'
       - '.github/workflows/bootloader.yml'

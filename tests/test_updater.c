@@ -6,7 +6,7 @@
  *           기록(실행 중인 슬롯은 그대로), 일부가 빠진 패키지는 부트로더를
  *           새 슬롯으로 돌리지 않음, 시험 부팅 중엔 되돌아갈 슬롯을 덮지 않음,
  *           전체 이미지만 허용, 지원 여부(키·U-Boot 환경), 시험 부팅 판정,
- *           U-Boot 변수 이름이 u-boot-env.txt 와 일치
+ *           U-Boot 변수 이름이 부트 정책(board/boot-policy.txt)과 일치
  * 의존방향: runtime/services/updater/{updater,ota_verify,ota_install}.c,
  *           runtime/hal/hal_boot.c, 가짜 fw_printenv/fw_setenv,
  *           파일로 만든 가짜 파티션, tar, OpenSSL (테스트 키로 서명)
@@ -22,6 +22,7 @@
 #define ZYL_SLOT_B_VERITY DIR_ "/dev/p5"
 #define ZYL_BOOT_DIR  DIR_ "/boot"
 #define ZYL_OTA_KEY   DIR_ "/ota.pem"
+#define ZYL_CMDLINE   DIR_ "/cmdline"
 /* One unit: the board's Boot HAL pointed at scratch partitions, and the updater */
 #include "../runtime/hal/hal_boot.c"
 #include "../runtime/lib/ota_verify.c"
@@ -216,9 +217,27 @@ static void test_on_trial_only_while_u_boot_is_trying_this_slot(void) {
     assert(zyl_updater_on_trial(u));
 }
 
+/* The slot that booted comes from the signed kernel arguments, read whole: the
+   verity values ahead of zyl.slot= make the line longer than a fixed buffer */
+static void test_the_booted_slot_is_read_from_a_long_signed_command_line(void) {
+    GString *line = g_string_new("root=/dev/mapper/zyl-root ro zyl.verity=/dev/vda4,/dev/vda5,786432,4096,4096,1,");
+    for (int i = 0; i < 128; i++) g_string_append_c(line, "0123456789abcdef"[i % 16]);
+    g_string_append(line, ",");
+    for (int i = 0; i < 64; i++) g_string_append_c(line, 'f');
+    g_string_append(line, " panic=10 console=ttyS0,115200 zyl.slot=b quiet\n");
+    assert(line->len > 300);
+    put(ZYL_CMDLINE, line->str);
+    g_string_free(line, TRUE);
+    ZylUpdater *v = zyl_updater_create(NULL, DIR_ "/cache");
+    assert(v);
+    put(DIR_ "/next", "b");                                 /* U-Boot is trying b */
+    assert(zyl_updater_on_trial(v));
+    zyl_updater_destroy(v);
+}
+
 static void test_variables_are_the_ones_u_boot_reads(void) {
     char *env = NULL;
-    assert(g_file_get_contents("board/bpi-f3/u-boot-env.txt", &env, NULL, NULL));
+    assert(g_file_get_contents("board/boot-policy.txt", &env, NULL, NULL));
     assert(strstr(env, "\nzyl_next_slot=") && strstr(env, "\nzyl_boot_count=") &&
            strstr(env, "\nzyl_active_slot=") && strstr(env, "fit-image-${zyl_slot}.itb"));
     g_free(env);
@@ -239,6 +258,7 @@ int main(void) {
     RUN_TEST(test_rollback_is_tried_like_an_update);
     RUN_TEST(test_supported_needs_the_key_and_a_bootloader_environment);
     RUN_TEST(test_on_trial_only_while_u_boot_is_trying_this_slot);
+    RUN_TEST(test_the_booted_slot_is_read_from_a_long_signed_command_line);
     RUN_TEST(test_variables_are_the_ones_u_boot_reads);
     zyl_updater_destroy(u);
     EVP_PKEY_free(key);

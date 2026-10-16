@@ -26,7 +26,8 @@ HTML/CSS/JS 웹 앱이다.
 기기에서 한 번도 켜 본 적 없는 코드는 "있다"가 아니라 "모른다"다.
 
 보드 없이 이 루프를 도는 것이 QEMU 레인이다 — 소스에서 이미지를 만들어 QEMU 로
-부팅하고 기기 안의 자기점검 결과를 받는다. 레인이 보는 것과 보드에서만 확인되는 것은
+부팅하고 기기 안의 자기점검 결과를 받는다. riscv64 레인은 기기와 같은 부팅 체인(U-Boot →
+서명 FIT → dm-verity → A/B)으로 띄운다. 레인이 보는 것과 보드에서만 확인되는 것은
 [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md#4-보드-없이-부팅--toolsrun-qemush).
 
 ## 폼팩터 성숙도
@@ -55,7 +56,7 @@ desktop 외부 입력·다중 해상도 · appliance 키오스크·무인 복구
 | `runtime/` | 기기 쪽 OS — `wam/`(앱을 띄우는 Web Application Manager), `services/`(D-Bus 시스템 서비스), `hal/`(하드웨어 추상화), `lib/`(서비스가 함께 쓰는 코드) |
 | `compositor/` | wlroots 기반 Wayland 컴포지터 — 화면·입력·시스템 제스처 |
 | `system/` | 이미지에 들어가는 시스템 구성 — systemd 유닛, D-Bus 정책, AppArmor, 실행 시점 패키지 목록, 기본 설정, 복구 |
-| `board/` | 보드별 계약(`board/<id>/meson.build`), 파티션 레이아웃, 부트 정책 — 보드마다 README |
+| `board/` | 보드별 계약(`board/<id>/meson.build`), 파티션 레이아웃, 부트 정책(모든 보드의 `boot-policy.txt` + 보드의 상수·훅) — 보드마다 README |
 | `emulator-app/` | Tauri 데스크톱 에뮬레이터 — OS 이미지를 띄우는 컨테이너 |
 | `tools/` | 이미지·부트로더·서명·OTA·스토어 도구, 앱 SDK(`tools/zyl`), 로컬 CI(`tools/ci-local.sh`) |
 | `tests/` | 단위·정책·통합·퍼즈·성능 검사와 `verify-all.sh` |

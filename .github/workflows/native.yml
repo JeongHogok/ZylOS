@@ -115,10 +115,10 @@ jobs:
       - name: Install boot image tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y cryptsetup-bin u-boot-tools device-tree-compiler
+          sudo apt-get install -y cryptsetup-bin u-boot-tools device-tree-compiler mtools dosfstools fdisk
       - name: Run integration tests
         run: |
-          # Boot policy (A/B tries, bootloader lock) executed from u-boot-env.txt
+          # Boot policy (A/B tries, bootloader lock) executed from board/boot-policy.txt + each board's u-boot-env.txt
           bash tests/test_boot_env.sh
           # Slot-signed boot images; Ubuntu's u-boot-tools lack fit_check_sign,
           # so signature verification itself runs where that tool exists

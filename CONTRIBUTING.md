@@ -55,7 +55,8 @@ git config core.hooksPath tools/hooks    # 클론마다 한 번
 | 에뮬레이터(Rust) | `cargo test --manifest-path emulator-app/Cargo.toml --locked` | `test-emulator` |
 | 부트 정책·서명·OTA·잡 선택 | `bash tests/test_boot_env.sh`, `tests/test_sign_image.sh`, `tests/test_build_ota.sh`, `tests/test_ci_select.sh` | `test-integration` |
 | 프로파일마다 설정되고 유닛이 바이너리와 맞는지 | `bash tests/test_image_profiles.sh` (meson 필요) | `qemu-boot` |
-| 이미지 → QEMU 부팅 → 자기점검 | [DEPLOYMENT_GUIDE](docs/DEPLOYMENT_GUIDE.md#4-보드-없이-부팅--toolsrun-qemush) | `qemu-boot`, `qemu-boot-riscv64` |
+| 이미지 → QEMU 부팅(커널 직접) → 자기점검 | [DEPLOYMENT_GUIDE](docs/DEPLOYMENT_GUIDE.md#4-보드-없이-부팅--toolsrun-qemush) | `qemu-boot` |
+| riscv64 이미지 → U-Boot → 서명 FIT → dm-verity → 자기점검, A/B 업데이트·롤백 | `tests/verified_boot.sh` ([DEPLOYMENT_GUIDE](docs/DEPLOYMENT_GUIDE.md#검증-부팅-레인-testsverified_bootsh)) | `qemu-boot-riscv64` |
 | 부트로더 빌드·서명 | `tools/build-bootloader.sh` ([DEPLOYMENT_GUIDE](docs/DEPLOYMENT_GUIDE.md)) | `build-bootloader` |
 | 재현 가능한 빌드 환경 | `docker build --target builder -t zylos-build .` | `build-docker` |
 | 라이선스 호환 | `bash tests/audit_licenses.sh` | `audit-licenses` |

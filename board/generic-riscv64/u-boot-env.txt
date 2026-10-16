@@ -1,0 +1,29 @@
+# ──────────────────────────────────────────────────────────
+# [Clean Architecture] Infrastructure Layer - Bootloader Config
+#
+# 역할: generic-riscv64(QEMU virt) 의 부트 정책 상수와 훅 — 정책 자체는
+#       board/boot-policy.txt. 검증 부팅 레인이 실기기와 같은 정책을 실제 U-Boot 로 돈다
+# 수행범위: 부트 장치·파티션(virtio), 잠금 전환 확인(버튼이 없다 — 늘 확인되지 않음),
+#           OS 전에 할 일(없음: 굽거나 쓰기 금지할 부팅 영역이 없다)
+# 의존방향: board/boot-policy.txt, board/generic-riscv64/partitions.conf
+#           (tests/test_boot_env.sh 가 번호를 대조)
+# SOLID: SRP — 보드 사실만
+# ──────────────────────────────────────────────────────────
+
+# ── Board constants ──
+zyl_boot_ifc=virtio
+zyl_boot_dev=0
+zyl_boot_part=1
+zyl_data=6
+# Above where the kernel is unpacked (the FIT's load address)
+fit_addr=0x84000000
+
+# ── Lock change confirmation: QEMU has no button, so a change is never
+#    confirmed and the lock state stays as it is (nothing is erased) ──
+zyl_unlock_button=none
+zyl_confirm=setenv zyl_ok 0
+
+# Unreachable while nothing can confirm a change — refuse rather than half-erase
+zyl_wipe=echo "ZylOS: this board cannot erase user data"
+
+zyl_before_os=echo "ZylOS: no boot area to protect on this board"

@@ -2,8 +2,8 @@
 # ──────────────────────────────────────────────────────────
 # [Clean Architecture] Infrastructure Layer - Test
 #
-# 역할: 부트로더 환경(board/bpi-f3/u-boot-env.txt) 결정 로직 테스트
-# 수행범위: 실제 환경 파일을 읽어 bootcmd 를 실행 — U-Boot 명령(setenv,
+# 역할: 부트로더 환경(board/boot-policy.txt + 보드의 u-boot-env.txt) 결정 로직 테스트
+# 수행범위: 빌드와 같이 두 파일을 합쳐 bootcmd 를 실행 — U-Boot 명령(setenv,
 #           saveenv, run, button, mmc, part, load, bootm, reset, zyl_serial,
 #           zyl_rotpk)은 기록만 하는 셸 함수로 대신한다. A/B 시도·롤백, 부팅
 #           실패 시 롤백 예약, 잠금 전환(허용·버튼 확인·데이터 삭제), 잠금
@@ -14,7 +14,10 @@
 # ──────────────────────────────────────────────────────────
 set -uo pipefail
 
-ENV_FILE="$(cd "$(dirname "$0")/.." && pwd)/board/bpi-f3/u-boot-env.txt"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+BOARD=bpi-f3
+# The default environment the bootloader is built with: the policy, then the board's
+env_files() { builtin echo "$ROOT/board/boot-policy.txt $ROOT/board/$BOARD/u-boot-env.txt"; }
 PASS=0
 FAIL=0
 
@@ -28,7 +31,7 @@ load_env() {
     local name="${acc%%=*}" value="${acc#*=}"
     printf -v "$name" '%s' "$value"
     acc=""
-  done < "$ENV_FILE"
+  done < <(cat $(env_files))
 }
 
 # U-Boot command stand-ins
@@ -41,8 +44,9 @@ run()     { eval "${!1}"; }
 button()  { [ "${FAKE_BUTTON:-}" = "$1" ]; }
 sleep()   { :; }
 mmc()     { log "mmc $*"; }
+virtio()  { log "virtio $*"; }
 part()    { printf -v "$5" '%s' "0x1000"; }
-load()    { log "load $4"; }
+load()    { log "load $4 from $1 $2"; }
 bootm()   { log "bootm verify=${verify}"; [ -z "${FAKE_BOOT_FAIL:-}" ] && finish; return 1; }
 reset()   { log "reset"; finish; }
 zyl_serial() { log "zyl_serial"; }
@@ -70,7 +74,8 @@ check() {   # name, output, expected substrings...
   builtin echo "  ✓ $name"; PASS=$((PASS+1))
 }
 
-builtin echo "=== Zyl OS boot environment (u-boot-env.txt) ==="
+builtin echo "=== Zyl OS boot environment (board/boot-policy.txt + board/<id>/u-boot-env.txt) ==="
+builtin echo "── bpi-f3"
 
 out=$(boot)
 check "locked boot runs the active slot, verified, writes nothing" "$out" \
@@ -132,26 +137,40 @@ check "a locked device that boots nothing restarts, never a shell" "$out" \
 out=$(boot zyl_unlocked=1 zyl_lock_seen=1 FAKE_BOOT_FAIL=1)
 check "an unlocked device that boots nothing is left to its owner" "$out" "!reset" "did not boot"
 
+# ── generic-riscv64: the same policy on the board the verified-boot lane runs ──
+builtin echo "── generic-riscv64"
+BOARD=generic-riscv64
+
+out=$(boot)
+check "locked boot loads the active slot from the virtio disk, verified" "$out" \
+  "slot=a" "load fit-image-a.itb from virtio 0:1" "bootm verify=yes" "!saveenv"
+
+out=$(boot zyl_next_slot=b zyl_boot_count=3)
+check "the same rollback after the try limit" "$out" "slot=a" "next= " "count=0" "rolling back"
+
+out=$(boot zyl_unlocked=1 zyl_oem_unlock_allowed=1 FAKE_BUTTON=user)
+check "no button: a lock change is never confirmed, nothing erased" "$out" \
+  "unlocked=0" "not confirmed" "bootm verify=yes" "!erase"
+
 # ── 부트 정책과 파티션 레이아웃이 같은 사실을 말하는가 ──
-# zyl_boot_part·zyl_data 는 board/bpi-f3/partitions.conf 가 선언한 번호여야 한다.
+# zyl_boot_part·zyl_data 는 보드의 partitions.conf 가 선언한 번호여야 한다.
 # 어긋나면 U-Boot 는 다른 파티션에서 FIT 을 찾고 /data 를 다른 곳에서 지운다.
-LAYOUT="$(cd "$(dirname "$0")/.." && pwd)/board/bpi-f3/partitions.conf"
-if [ -f "$LAYOUT" ]; then
-  # shellcheck disable=SC1090
-  . "$LAYOUT"
-  load_env
-  check_num() {   # 이름, env 값, 선언 값
-    if [ "$2" = "$3" ]; then
-      PASS=$((PASS + 1)); builtin echo "  ✓ $1 ($2)"
-    else
-      FAIL=$((FAIL + 1)); builtin echo "  ✗ $1: 부트 정책 $2, partitions.conf $3"
-    fi
-  }
-  check_num "boot 파티션 번호가 레이아웃과 같다" "${zyl_boot_part:-?}" "$ZYL_PART_BOOT"
-  check_num "data 파티션 번호가 레이아웃과 같다" "${zyl_data:-?}" "$ZYL_PART_DATA"
-else
-  FAIL=$((FAIL + 1)); builtin echo "  ✗ board/bpi-f3/partitions.conf 가 없다"
-fi
+check_num() {   # 이름, env 값, 선언 값
+  if [ "$2" = "$3" ]; then
+    PASS=$((PASS + 1)); builtin echo "  ✓ $1 ($2)"
+  else
+    FAIL=$((FAIL + 1)); builtin echo "  ✗ $1: 부트 정책 $2, partitions.conf $3"
+  fi
+}
+for BOARD in bpi-f3 generic-riscv64; do
+  LAYOUT="$ROOT/board/$BOARD/partitions.conf"
+  ( # shellcheck disable=SC1090
+    . "$LAYOUT"
+    load_env
+    check_num "$BOARD: boot 파티션 번호가 레이아웃과 같다" "${zyl_boot_part:-?}" "$ZYL_PART_BOOT"
+    check_num "$BOARD: data 파티션 번호가 레이아웃과 같다" "${zyl_data:-?}" "$ZYL_PART_DATA"
+    exit $FAIL ) && PASS=$((PASS + 2)) || FAIL=$((FAIL + 1))
+done
 
 builtin echo ""
 builtin echo "Results: $PASS passed, $FAIL failed"

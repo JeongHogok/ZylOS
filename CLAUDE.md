@@ -108,8 +108,10 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 - 화면에 없는 앱에 닿는 길은 푸시(`org.zylos.Push`, 서버 연결 하나)와 알람(절전 중에도
   깨움)뿐 — 앱마다 지속 연결이나 백그라운드 실행 장치를 새로 만들지 말 것. 푸시 토픽은
   ntfy 의 UnifiedPush 꼴(`up`+12자)이어야 서버가 앱 서버가 아닌 기기 쪽 한도로 센다
-- 부트 정책은 `board/bpi-f3/u-boot-env.txt` 단일 출처(`tests/test_boot_env.sh`),
-  부트로더는 `tools/build-bootloader.sh` 로만 빌드·서명. 저장소·USB·파일이 부팅을
+- 부트 정책은 `board/boot-policy.txt`(모든 보드) + `board/<id>/u-boot-env.txt`(보드의
+  상수·훅)가 단일 출처(`tests/test_boot_env.sh` 가 보드마다 실행), 부트로더는
+  `tools/build-bootloader.sh` 로만 빌드·서명. 저장소가 쓸 수 있는 변수는 정책의
+  "Runtime state" 뿐이다. 저장소·USB·파일이 부팅을
   바꾸는 경로를 되살리지 말 것. eFuse 굽기는 기본 off(`--burn-rotpk` 일 때만)
 
 ### 8-1. 사실의 단일 출처 — 같은 사실을 두 곳에 적지 않는다
@@ -118,7 +120,8 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 
 | 사실 | 단일 출처 | 읽는 쪽 |
 |------|-----------|---------|
-| 파티션 레이아웃 | `board/<id>/partitions.conf` | `build-image.sh`, `sign-image.sh`, Boot HAL(`runtime/hal/meson.build`), `u-boot-env.txt`(테스트가 대조) |
+| 파티션 레이아웃·부트 환경의 자리·커널 콘솔 | `board/<id>/partitions.conf` | `build-image.sh`(fstab·`fw_env.config`), `sign-image.sh`, `build-bootloader.sh`(U-Boot 환경 설정 대조), Boot HAL(`runtime/hal/meson.build`), `u-boot-env.txt`(테스트가 대조) |
+| 부트 정책 | `board/boot-policy.txt` + `board/<id>/u-boot-env.txt` | U-Boot 기본 환경(`build-bootloader.sh`), `tests/test_boot_env.sh`, `tests/verified_boot.sh` |
 | 실행 시점 패키지 | `system/packages.list` | `build-image.sh` |
 | 보드·아키텍처·프로파일·prefix | meson → `builddir/zyl-board.conf` | `build-image.sh`, `run-qemu.sh` |
 | 서비스 집합 | `meson.build` 의 `zyl_core_services` + `zyl_profile_extras` | 생성되는 `zyl-os.target` |
@@ -135,6 +138,16 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 서비스는 **시스템 버스**를 쓴다 — 유닛이 `Type=dbus` + `BusName=` 이므로 systemd 가
 기다리는 버스가 시스템 버스고, 로그인 세션이 없는 기기 부팅에는 세션 버스가 없다.
 새 서비스도 `G_BUS_TYPE_SYSTEM` 으로 이름을 올릴 것.
+
+### 8-2. 저장소 — 루트는 읽기 전용, 남는 것은 /data
+
+- 루트는 읽기 전용이다(기기에서는 dm-verity). `/var`·`/tmp` 는 휘발(tmpfs)이고,
+  부팅을 넘어 남을 상태는 전부 `/data/<서비스>` 에 둔다 — 디렉터리는 tmpfiles
+  `zyl-data.conf`, 유닛의 `ReadWritePaths=`, AppArmor 프로필이 같은 경로를 말해야 한다
+  (verify-all D2·D3 대조)
+- 다른 데몬이 `/var`·`/etc` 에 두는 상태도 설정이나 drop-in 으로 `/data` 로
+  (bluez·NetworkManager 처럼 — `system/`). 이미지 빌드 때 굽는 캐시는 `/usr` 쪽에
+- 잠금 전환과 공장 초기화는 `/data` 를 통째로 지운다 — 남겨야 할 것을 다른 곳에 두지 말 것
 
 ### 9. Intent 시스템 경계 규칙
 
@@ -222,5 +235,8 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 - 테스트는 판정 코드의 복사본이 아니라 실제 소스를 시험한다
 - 성능 예산(`tests/perf/budgets.json`)을 올려 회귀를 덮지 말 것. 의도한 변경으로 갱신하면
   그 이유를 커밋에 적는다
-- QEMU 레인이 보지 못하는 것(U-Boot·서명 FIT·dm-verity·A/B 전환, SoC 고유 경로)은
-  부트로더·서명 테스트와 보드가 맡는다 — 레인이 녹색이라고 그 경로가 검증된 것이 아니다
+- riscv64 레인은 기기와 같은 부팅 체인(부트 정책을 가진 U-Boot → 서명 FIT → dm-verity
+  → A/B 업데이트·롤백)을 메인라인 U-Boot 로 돈다(`tests/verified_boot.sh`). 레인이 보지
+  못하는 것 — 제조사 부트로더(FSBL·서명 체인), eMMC 부팅 영역 쓰기 보호, eFuse, SoC 고유
+  경로(GPU·모뎀·ISP) — 은 부트로더 빌드의 자체 검증과 보드가 맡는다. 레인이 녹색이라고
+  그 경로가 검증된 것이 아니다

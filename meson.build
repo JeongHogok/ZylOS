@@ -159,8 +159,12 @@ install_data('system/push.json', install_dir: get_option('sysconfdir') / 'zyl-os
 install_data('system/sysusers.d/zyl-wam.conf',
              install_dir: get_option('prefix') / 'lib' / 'sysusers.d')
 install_data('system/tmpfiles.d/zyl-wam.conf', 'system/tmpfiles.d/zyl-data.conf',
-             'system/tmpfiles.d/zyl-state.conf',
              install_dir: get_option('prefix') / 'lib' / 'tmpfiles.d')
+# Read-only root: what other daemons keep goes to /data (bluez pairings, saved networks)
+install_data('system/systemd/bluetooth-zyl.conf', rename: 'zyl-state.conf',
+             install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system' / 'bluetooth.service.d')
+install_data('system/NetworkManager/zyl.conf',
+             install_dir: get_option('sysconfdir') / 'NetworkManager' / 'conf.d')
 
 # Build facts for tooling outside meson (tools/build-image.sh): which board,
 # architecture and profile this build directory is for. Not installed — it
@@ -198,6 +202,11 @@ install_data('system/fonts/50-zyl-fonts.conf',
 # Install recovery scripts
 install_data('system/recovery/recovery.sh',       install_dir: get_option('datadir') / 'zyl-os' / 'recovery', install_mode: 'rwxr-xr-x')
 install_data('system/recovery/factory-reset.sh',  install_dir: get_option('datadir') / 'zyl-os' / 'recovery', install_mode: 'rwxr-xr-x')
+# dm-verity: the initramfs opens the slot's rootfs from the signed kernel arguments
+install_data('system/initramfs/zyl-verity.hook', rename: 'zyl-verity', install_mode: 'rwxr-xr-x',
+             install_dir: get_option('datadir') / 'initramfs-tools' / 'hooks')
+install_data('system/initramfs/zyl-verity.local-top', rename: 'zyl-verity', install_mode: 'rwxr-xr-x',
+             install_dir: get_option('datadir') / 'initramfs-tools' / 'scripts' / 'local-top')
 install_data('system/recovery/recovery.service',  install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
 
 # Boot self test: not enabled by default (the unit has no [Install]).

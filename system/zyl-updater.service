@@ -13,9 +13,7 @@ TimeoutStopSec=5
 # and the U-Boot environment (fw_setenv: lock in /run/lock)
 NoNewPrivileges=true
 ProtectSystem=strict
-CacheDirectory=zyl-os
-StateDirectory=zyl-os
-ReadWritePaths=-/boot /run/lock
+ReadWritePaths=-/boot /run/lock /data/updater
 ProtectHome=true
 PrivateTmp=true
 ProtectKernelModules=true

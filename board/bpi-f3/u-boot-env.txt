@@ -1,50 +1,26 @@
 # ──────────────────────────────────────────────────────────
 # [Clean Architecture] Infrastructure Layer - Bootloader Config
 #
-# 역할: U-Boot 기본 환경 — Verified Boot, A/B 시도 부팅·롤백, 부트로더 잠금
-# 수행범위: 슬롯 선택(업데이터가 지정한 슬롯을 3회까지 시도 후 롤백),
-#           잠금 상태 전환(설정에서 허용 + 기기 앞의 버튼 확인 + 사용자
-#           데이터 삭제), 잠금 해제 시 서명 검증 해제와 경고, 부팅 영역
-#           (eMMC boot0: FSBL) 전원 주기 쓰기 보호, 기기 ID(칩 ID → serial#),
-#           잠긴 기기는 부팅 실패 시 셸 대신 재시작, 빌드가 고른 경우에만
-#           eFuse 에 루트 공개키 해시 굽기(zyl_rotpk)
-# 의존방향: U-Boot FIT 서명 검증, runtime/services/updater (zyl_next_slot,
-#           zyl_active_slot, zyl_boot_count), runtime/services/bootctl
-#           (zyl_unlocked, zyl_oem_unlock_allowed), board/bpi-f3/bootloader
-#           (zyl_serial, zyl_rotpk). 이 파일이 단일 출처이며
-#           tests/test_boot_env.sh 가 결정 로직을 실행해 검증한다
-#
-# tools/build-bootloader.sh builds it into U-Boot as the default environment
-# and lets storage set only the "Runtime state" variables below
-# (CONFIG_ENV_WRITEABLE_LIST, generated from that section): otherwise anyone
-# able to write the env could replace bootcmd and the verification it
-# enforces. See docs/INSTALLATION_INFORMATION.md
+# 역할: BPI-F3 의 부트 정책 상수와 훅 — 정책 자체는 board/boot-policy.txt
+# 수행범위: 부트 장치·파티션, 잠금 전환 확인(기기 버튼)과 데이터 삭제(eMMC),
+#           OS 전에 할 일: 빌드가 고른 경우에만 eFuse 에 루트 공개키 해시 굽기
+#           (zyl_rotpk), 기기 ID(칩 ID → serial#), 부팅 영역(eMMC boot0: FSBL)
+#           전원 주기 쓰기 보호
+# 의존방향: board/boot-policy.txt, board/bpi-f3/bootloader (zyl_serial, zyl_rotpk),
+#           board/bpi-f3/partitions.conf (tests/test_boot_env.sh 가 번호를 대조)
+# SOLID: SRP — 보드 사실만
 # ──────────────────────────────────────────────────────────
 
-# ── Runtime state (writable from storage; written by the OS) ──
-# Slot that last booted and was confirmed healthy by the OS
-zyl_active_slot=a
-# Slot an update installed and wants tried; empty when none
-zyl_next_slot=
-# Boots attempted on zyl_next_slot without the OS confirming it
-zyl_boot_count=0
-# 1 = the owner has unlocked the bootloader (requested from Settings)
-zyl_unlocked=0
-# Lock state the device actually ran with last time; a difference from
-# zyl_unlocked is a pending change that must be confirmed and wipe data
-zyl_lock_seen=0
-# Settings > Developer options > "Allow bootloader unlocking"
-zyl_oem_unlock_allowed=0
-
 # ── Board constants ──
-zyl_mmc=0
+# The device U-Boot loads the FIT from and erases /data on (U-Boot's numbering)
+zyl_boot_ifc=mmc
+zyl_boot_dev=0
 # The eMMC (U-Boot's numbering): its boot0 holds the FSBL the Boot ROM loads
 zyl_emmc=2
 # 1 only in a bootloader built with tools/build-bootloader.sh --burn-rotpk
 zyl_rotpk_burn=0
 zyl_boot_part=1
 zyl_data=6
-zyl_boot_limit=3
 # Button the owner holds to confirm a lock change (DT label for `button`)
 zyl_unlock_button=user
 fit_addr=0x10000000
@@ -64,48 +40,10 @@ zyl_confirm=\
 #    the device, and a relock must not leave data an unverified OS wrote ──
 zyl_wipe=\
   echo "ZylOS: erasing user data"; \
-  mmc dev ${zyl_mmc}; \
-  part start mmc ${zyl_mmc} ${zyl_data} zyl_data_start; \
-  part size mmc ${zyl_mmc} ${zyl_data} zyl_data_size; \
+  mmc dev ${zyl_boot_dev}; \
+  part start mmc ${zyl_boot_dev} ${zyl_data} zyl_data_start; \
+  part size mmc ${zyl_boot_dev} ${zyl_data} zyl_data_size; \
   mmc erase ${zyl_data_start} ${zyl_data_size}
-
-zyl_check_lock=\
-  if test "${zyl_unlocked}" != "${zyl_lock_seen}"; then \
-    if test "${zyl_unlocked}" = "1" && test "${zyl_oem_unlock_allowed}" != "1"; then \
-      echo "ZylOS: bootloader unlocking is not allowed in Settings - staying locked"; \
-      setenv zyl_unlocked ${zyl_lock_seen}; \
-    else \
-      echo "ZylOS: bootloader lock change requested. ALL USER DATA WILL BE ERASED."; \
-      echo "ZylOS: hold the ${zyl_unlock_button} button now to confirm (10 s)"; \
-      run zyl_confirm; \
-      if test "${zyl_ok}" = "1"; then \
-        run zyl_wipe; \
-        setenv zyl_lock_seen ${zyl_unlocked}; \
-        setenv zyl_oem_unlock_allowed 0; \
-      else \
-        echo "ZylOS: not confirmed - lock state unchanged"; \
-        setenv zyl_unlocked ${zyl_lock_seen}; \
-      fi; \
-    fi; \
-    saveenv; \
-  fi
-
-# ── Slot choice: try an updated slot zyl_boot_limit times, then roll back ──
-zyl_pick_slot=\
-  setenv zyl_slot ${zyl_active_slot}; \
-  if test -n "${zyl_next_slot}"; then \
-    if test "${zyl_boot_count}" = "${zyl_boot_limit}"; then \
-      echo "ZylOS: slot ${zyl_next_slot} failed ${zyl_boot_limit} times - rolling back to ${zyl_active_slot}"; \
-      setenv zyl_next_slot; \
-      setenv zyl_boot_count 0; \
-    else \
-      setenv zyl_slot ${zyl_next_slot}; \
-      if test "${zyl_boot_count}" = "0"; then setenv zyl_boot_count 1; \
-      elif test "${zyl_boot_count}" = "1"; then setenv zyl_boot_count 2; \
-      else setenv zyl_boot_count 3; fi; \
-    fi; \
-    saveenv; \
-  fi
 
 # ── eFuse: fuse the Root of Trust public key hash, once, on a locked device,
 #    only in a build that chose to (zyl_rotpk checks that boot0 holds the FSBL
@@ -120,32 +58,10 @@ zyl_fuse=\
 zyl_protect_boot=\
   if mmc dev ${zyl_emmc}; then mmc wp; fi
 
-# The slot's own signed FIT carries its kernel command line (its rootfs, its
-# verity root hash, zyl.slot); bootargs is never set here, so nothing in the
-# environment can change what a locked device verifies. The device ID the OS
-# reads (serial-number) is the chip's, set here from eFuse (zyl_serial).
-bootcmd=\
-  run zyl_check_lock; \
-  run zyl_pick_slot; \
+# Before the OS, in this order: fuse the root key hash (a build that chose to),
+# the device ID the OS reads (serial-number, from the chip's eFuse), then lock
+# the boot area
+zyl_before_os=\
   run zyl_fuse; \
   zyl_serial; \
-  run zyl_protect_boot; \
-  if test "${zyl_unlocked}" = "1"; then \
-    echo "ZylOS: WARNING - the bootloader is unlocked. The software on this device is not verified."; \
-    setenv verify no; \
-  else \
-    setenv verify yes; \
-  fi; \
-  load mmc ${zyl_mmc}:${zyl_boot_part} ${fit_addr} fit-image-${zyl_slot}.itb; \
-  bootm ${fit_addr}; \
-  echo "ZylOS: slot ${zyl_slot} did not boot"; \
-  if test -n "${zyl_next_slot}"; then \
-    setenv zyl_boot_count ${zyl_boot_limit}; \
-    saveenv; \
-    reset; \
-  fi; \
-  if test "${zyl_unlocked}" != "1"; then \
-    echo "ZylOS: no verified system booted - restarting"; \
-    sleep 5; \
-    reset; \
-  fi
+  run zyl_protect_boot

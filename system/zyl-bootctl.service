@@ -12,7 +12,7 @@ TimeoutStopSec=5
 # Writes only the U-Boot environment (fw_setenv: env storage under /dev, lock in /run/lock)
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/run/lock
+ReadWritePaths=-/boot /run/lock
 ProtectHome=true
 PrivateTmp=true
 ProtectKernelModules=true

@@ -76,7 +76,7 @@ static void test_relock_never_needs_permission(void) {
 }
 
 static void test_booted_slot_comes_from_the_signed_cmdline(void) {
-    g_file_set_contents(ZYL_CMDLINE, "root=/dev/dm-0 ro zyl.slot=b quiet\n", -1, NULL);
+    g_file_set_contents(ZYL_CMDLINE, "root=/dev/mapper/zyl-root ro zyl.slot=b quiet\n", -1, NULL);
     char *slot = booted_slot();
     assert(strcmp(slot, "b") == 0);
     g_free(slot);
@@ -84,9 +84,10 @@ static void test_booted_slot_comes_from_the_signed_cmdline(void) {
 
 static void test_names_match_the_boot_environment(void) {
     char *env = NULL;
-    g_assert_true(g_file_get_contents("board/bpi-f3/u-boot-env.txt", &env, NULL, NULL) ||
-                  g_file_get_contents("../board/bpi-f3/u-boot-env.txt", &env, NULL, NULL) ||
-                  g_file_get_contents("../../board/bpi-f3/u-boot-env.txt", &env, NULL, NULL));
+    /* The policy every board's U-Boot runs (its Runtime state is what bootctl writes) */
+    g_assert_true(g_file_get_contents("board/boot-policy.txt", &env, NULL, NULL) ||
+                  g_file_get_contents("../board/boot-policy.txt", &env, NULL, NULL) ||
+                  g_file_get_contents("../../board/boot-policy.txt", &env, NULL, NULL));
     assert(strstr(env, "\nzyl_unlocked=0\n") && strstr(env, "\nzyl_lock_seen=0\n") &&
            strstr(env, "\nzyl_oem_unlock_allowed=0\n"));
     assert(strstr(env, "${zyl_oem_unlock_allowed}") && strstr(env, "${zyl_lock_seen}"));
