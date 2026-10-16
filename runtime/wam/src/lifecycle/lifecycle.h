@@ -93,6 +93,9 @@ typedef struct {
        content view has no bridge and its own web process — see wam.c. */
     GtkWidget      *content_box;    /* GtkBox holding chrome (and content) */
     GtkWidget      *content_view;   /* content WebKitWebView, or NULL */
+    /* Camera / microphone the WAM muted when the app left the front — given
+       back when it returns (wam.c hold_capture) */
+    gboolean        held_camera, held_microphone;
 } ZylAppInstance;
 
 /*

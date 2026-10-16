@@ -142,6 +142,64 @@ static void deliver_when_loaded(WebKitWebView *webview, WebKitLoadEvent ev, gpoi
  *  app forward goes through wam_open (asks) or wam_show (the policy chose).
  * ════════════════════════════════════════════════════════════════ */
 
+/* ─── Capture is the front app's ───
+   An app sent to the background or behind the lock screen keeps its web page
+   alive (music plays on) but its camera and microphone are muted until it is
+   in front again; WebKit reports the change, and the system UI shows what is
+   capturing (capture.state). The location and sensor services are front-only
+   in the bridge (FRONT_ONLY_SERVICES) */
+#if WEBKIT_CHECK_VERSION(2, 34, 0)
+static void hold_capture(ZylAppInstance *inst, gboolean hold) {
+    if (!inst || !inst->webview_widget) return;
+    WebKitWebView *v = WEBKIT_WEB_VIEW(inst->webview_widget);
+    if (hold) {
+        if (webkit_web_view_get_camera_capture_state(v) == WEBKIT_MEDIA_CAPTURE_STATE_ACTIVE) {
+            webkit_web_view_set_camera_capture_state(v, WEBKIT_MEDIA_CAPTURE_STATE_MUTED);
+            inst->held_camera = TRUE;
+        }
+        if (webkit_web_view_get_microphone_capture_state(v) == WEBKIT_MEDIA_CAPTURE_STATE_ACTIVE) {
+            webkit_web_view_set_microphone_capture_state(v, WEBKIT_MEDIA_CAPTURE_STATE_MUTED);
+            inst->held_microphone = TRUE;
+        }
+        return;
+    }
+    if (inst->held_camera && webkit_web_view_get_camera_capture_state(v) == WEBKIT_MEDIA_CAPTURE_STATE_MUTED)
+        webkit_web_view_set_camera_capture_state(v, WEBKIT_MEDIA_CAPTURE_STATE_ACTIVE);
+    if (inst->held_microphone && webkit_web_view_get_microphone_capture_state(v) == WEBKIT_MEDIA_CAPTURE_STATE_MUTED)
+        webkit_web_view_set_microphone_capture_state(v, WEBKIT_MEDIA_CAPTURE_STATE_ACTIVE);
+    inst->held_camera = inst->held_microphone = FALSE;
+}
+
+/* What the system UI shows: is any app's camera or microphone on now */
+static void post_capture_state(void) {
+    if (!g_wam) return;
+    gboolean camera = FALSE, microphone = FALSE;
+    GHashTableIter it;
+    gpointer key, value;
+    g_hash_table_iter_init(&it, g_wam->instances);
+    while (g_hash_table_iter_next(&it, &key, &value)) {
+        ZylAppInstance *inst = value;
+        if (!inst->webview_widget) continue;
+        WebKitWebView *v = WEBKIT_WEB_VIEW(inst->webview_widget);
+        camera |= webkit_web_view_get_camera_capture_state(v) == WEBKIT_MEDIA_CAPTURE_STATE_ACTIVE;
+        microphone |= webkit_web_view_get_microphone_capture_state(v) == WEBKIT_MEDIA_CAPTURE_STATE_ACTIVE;
+    }
+    ZylAppInstance *ui = g_wam->iface.get_instance(&g_wam->iface, ZYL_SHELL_SYSTEM_UI);
+    if (!ui || !ui->webview_widget) return;
+    JsonObject *d = json_object_new();
+    json_object_set_boolean_member(d, "camera", camera);
+    json_object_set_boolean_member(d, "microphone", microphone);
+    post_to(WEBKIT_WEB_VIEW(ui->webview_widget), "capture.state", zyl_intent_object_node(d));
+}
+
+static void on_capture_changed(GObject *webview, GParamSpec *pspec, gpointer data) {
+    (void)webview; (void)pspec; (void)data;
+    post_capture_state();
+}
+#else
+static void hold_capture(ZylAppInstance *inst, gboolean hold) { (void)inst; (void)hold; }
+#endif
+
 /* Bring the app the policy chose to the front; NULL app: stay */
 static ZylAppInstance *wam_show(ZylWam *wam, const char *app_id) {
     if (!app_id) return NULL;
@@ -150,6 +208,10 @@ static ZylAppInstance *wam_show(ZylWam *wam, const char *app_id) {
     if (!inst) return NULL;
     if (!running) zyl_oom_on_app_launched(g_oom, app_id);
     zyl_oom_on_app_foreground(g_oom, app_id);
+    if (strcmp(wam->shell.top, app_id) != 0) {
+        hold_capture(wam->iface.get_instance(&wam->iface, wam->shell.top), TRUE);
+        hold_capture(inst, FALSE);
+    }
     zyl_shell_shown(&wam->shell, app_id);
     return inst;
 }
@@ -213,6 +275,9 @@ static void wam_close(ZylWam *wam, const char *app_id) {
     gboolean front = strcmp(wam->shell.top, app_id) == 0;
     zyl_lifecycle_close(&wam->iface, app_id);
     zyl_oom_on_app_closed(g_oom, app_id);
+#if WEBKIT_CHECK_VERSION(2, 34, 0)
+    post_capture_state();   /* a closed app captures nothing (its view is gone, no notify) */
+#endif
     if (front) wam_go_home(wam);
 }
 
@@ -811,9 +876,11 @@ static gboolean on_permission_request(WebKitWebView *webview, WebKitPermissionRe
         WebKitUserMediaPermissionRequest *media = WEBKIT_USER_MEDIA_PERMISSION_REQUEST(req);
         gboolean video = webkit_user_media_permission_is_for_video_device(media);
         gboolean audio = webkit_user_media_permission_is_for_audio_device(media);
+        /* and only by the app in front: capture is what the user sees (hold_capture) */
         ok = (video || audio) && !webkit_user_media_permission_is_for_display_device(media) &&
              (!video || zyl_bridge_app_holds(m, "camera")) &&
-             (!audio || zyl_bridge_app_holds(m, "microphone"));
+             (!audio || zyl_bridge_app_holds(m, "microphone")) &&
+             m && (m->is_system || wam_is_front(m->id));
     } else if (WEBKIT_IS_DEVICE_INFO_PERMISSION_REQUEST(req)) {
         ok = zyl_bridge_app_holds(m, "camera") || zyl_bridge_app_holds(m, "microphone");
     }
@@ -908,6 +975,10 @@ static GtkWidget *webkit_create_webview(ZylWebEngine   *self,
        session — cookies included — is its own, nobody else's credentials ride
        along. A change in Settings closes the app (on_permissions_changed). */
     g_signal_connect(webview, "permission-request", G_CALLBACK(on_permission_request), instance_ctx);
+#if WEBKIT_CHECK_VERSION(2, 34, 0)
+    g_signal_connect(webview, "notify::camera-capture-state", G_CALLBACK(on_capture_changed), NULL);
+    g_signal_connect(webview, "notify::microphone-capture-state", G_CALLBACK(on_capture_changed), NULL);
+#endif
     g_signal_connect(webview, "run-file-chooser", G_CALLBACK(on_file_chooser), NULL);
     g_signal_connect(webview, "decide-policy", G_CALLBACK(on_decide_policy), instance_ctx);
     g_signal_connect(webview, "load-changed", G_CALLBACK(on_top_document), instance_ctx);

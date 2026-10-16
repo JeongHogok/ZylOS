@@ -728,8 +728,11 @@ static void test_notifications_are_the_apps_own(void) {
 }
 
 /* A geofence is the app's that set it: its enter/exit reaches only that app;
-   the position itself reaches every app allowed location */
+   the position itself reaches the app allowed location that is in front */
+static gboolean front_is_run(const char *app_id) { return strcmp(app_id, "com.example.run") == 0; }
+
 static void test_geofence_events_are_the_apps_own(void) {
+    zyl_bridge_set_front_query(front_is_run);
     const char *loc[] = { "location", NULL };
     ZylAppManifest app = perm_manifest("com.example.run", FALSE, loc);
     GVariant *mine = g_variant_ref_sink(g_variant_new("(ss)", "park", "com.example.run"));
@@ -742,6 +745,7 @@ static void test_geofence_events_are_the_apps_own(void) {
     s = zyl_bridge_service_event_script(&app, "location", "LocationChanged", fix);
     assert(s);
     g_free(s);
+    zyl_bridge_set_front_query(NULL);
     g_variant_unref(mine);
     g_variant_unref(theirs);
     g_variant_unref(fix);
@@ -858,6 +862,33 @@ static void test_device_settings_and_the_shell_are_the_oss(void) {
     assert(app_may_use_now(&chat, "clipboard"));
     assert(!app_may_use_now(&app, "clipboard"));                 /* in the background */
     assert(app_may_use_now(&app, "device") && app_may_use_now(&settings, "clipboard"));
+    /* What the user is doing is taken only by what the user sees */
+    const char *capture[] = { "camera", "location", "sensors", NULL };
+    for (int i = 0; capture[i]; i++)
+        assert(app_may_use_now(&chat, capture[i]) && !app_may_use_now(&app, capture[i]));
+    zyl_bridge_set_front_query(NULL);
+}
+
+/* A background app hears no location fix or sensor reading, but still its own
+   geofence (OWNED_EVENTS); the front app hears them; a system app always */
+static void test_capture_events_reach_only_the_front_app(void) {
+    const char *loc[] = { "location", "sensors", NULL };
+    ZylAppManifest front = perm_manifest("com.example.chat", FALSE, loc);
+    ZylAppManifest back = perm_manifest("com.example.back", FALSE, loc);
+    ZylAppManifest sys = perm_manifest("com.zylos.weather", TRUE, loc);
+    zyl_bridge_set_front_query(front_is_chat);
+    GVariant *fix = g_variant_ref_sink(g_variant_new("(ddddddts)", 1.0, 2.0, 0.0, 0.0, 0.0, 0.0, (guint64)1, "gps"));
+    GVariant *fence = g_variant_ref_sink(g_variant_new("(ss)", "home", "com.example.back"));
+    GVariant *reading = g_variant_ref_sink(g_variant_new("(sddd)", "accel", 0.0, 0.0, 9.8));
+    char *s;
+    assert((s = zyl_bridge_service_event_script(&front, "location", "LocationUpdated", fix))); g_free(s);
+    assert(!zyl_bridge_service_event_script(&back, "location", "LocationUpdated", fix));
+    assert(!zyl_bridge_service_event_script(&back, "sensors", "SensorEvent", reading));
+    assert((s = zyl_bridge_service_event_script(&back, "location", "GeofenceEnter", fence))); g_free(s);
+    assert((s = zyl_bridge_service_event_script(&sys, "location", "LocationUpdated", fix))); g_free(s);
+    g_variant_unref(fix);
+    g_variant_unref(fence);
+    g_variant_unref(reading);
     zyl_bridge_set_front_query(NULL);
 }
 
@@ -951,6 +982,7 @@ int main(void)
     RUN_TEST(test_policy_revocation_list_is_comma_separated);
     RUN_TEST(test_alarm_events_are_the_apps_own);
     RUN_TEST(test_webcontent_is_the_browsers);
+    RUN_TEST(test_capture_events_reach_only_the_front_app);
     RUN_TEST(test_one_bus_name_two_objects_both_answer);
     RUN_TEST(test_power_actions_are_system_only);
     RUN_TEST(test_app_holds_follows_declaration_and_revocation);

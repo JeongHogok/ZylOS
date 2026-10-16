@@ -85,6 +85,10 @@ body {
   opacity: 0.9;
 }
 
+/* Something is capturing: plain to see, never subtle (Android's green dot) */
+.sb-capture { fill: #3ddc84; opacity: 1; }
+.sb-capture.hidden { display: none; }
+
 #sb-battery {
   display: flex;
   align-items: center;

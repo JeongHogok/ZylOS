@@ -229,6 +229,9 @@ ZylBridge.onServiceEvent('notification', 'NotificationPosted', function (d) {
   없음, 사용자가 끄면 거부). 화면 공유·웹 알림(`Notification`)·포인터 잠금은 거부된다 —
   알림은 `ZylBridge.notify`.
 - `navigator.geolocation` 은 쓰지 않는다 — 위치는 `location` 서비스(`location` 권한).
+- 카메라·마이크·위치·센서는 **앞에 있는 동안만** 쓴다. 홈으로 가거나 화면이 잠기면 OS 가 캡처를
+  멈추고(앞으로 돌아오면 이어짐), `location`·`sensors`·`camera` 요청은 `Not in front` 로 거부된다.
+  지오펜스 진입·이탈은 뒤에 있어도 받는다.
 - `<input type=file>` 은 열리지 않는다(기기에서 데스크톱 대화창이 뜨는 대신). 파일은
   `ZylIntent` 의 PICK 으로 받는다 (7장).
 

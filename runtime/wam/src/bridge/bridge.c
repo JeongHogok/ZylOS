@@ -1005,8 +1005,11 @@ gboolean zyl_bridge_app_may_call(const ZylAppManifest *m, const char *service, c
 
 /* Services only the app in front may use (the emulator has one app alive at a
    time, so its frame is always the front one): the clipboard holds what the
-   user copied — a background app neither reads nor swaps it */
-static const char *const FRONT_ONLY_SERVICES[] = { "clipboard", NULL };
+   user copied — a background app neither reads nor swaps it; the camera, where
+   the user is and the motion sensors are taken only by what the user sees —
+   an app sent to the background or behind the lock screen stops capturing
+   (its WebKit camera and microphone are muted by the WAM, wam.c hold_capture) */
+static const char *const FRONT_ONLY_SERVICES[] = { "clipboard", "camera", "location", "sensors", NULL };
 static gboolean (*front_query)(const char *app_id);
 
 void zyl_bridge_set_front_query(gboolean (*is_front)(const char *app_id))
@@ -1036,6 +1039,15 @@ static const struct { const char *service, *signal, *read_all; } OWNED_EVENTS[] 
     {"webcontent",   NULL,             NULL},
     {NULL, NULL, NULL}
 };
+
+/* One of the events about one app's own things (OWNED_EVENTS) */
+static gboolean event_is_owned(const char *service, const char *signal) {
+    for (int i = 0; OWNED_EVENTS[i].service; i++)
+        if (strcmp(OWNED_EVENTS[i].service, service) == 0 &&
+            (!OWNED_EVENTS[i].signal || strcmp(OWNED_EVENTS[i].signal, signal) == 0))
+            return TRUE;
+    return FALSE;
+}
 
 static gboolean event_is_apps_own(const ZylAppManifest *m, const char *service,
                                   const char *signal, GVariant *params) {
@@ -1100,6 +1112,9 @@ char *zyl_bridge_service_event_script(const ZylAppManifest *manifest,
                                       GVariant *params) {
     if (!find_route(service) || !app_may_call(manifest, service) ||
         !event_is_apps_own(manifest, service, signal, params)) return NULL;
+    /* A front-only service's stream (where the user is, the sensors) is the front
+       app's too; the app's own events (a geofence it set) still reach it */
+    if (!event_is_owned(service, signal) && !app_may_use_now(manifest, service)) return NULL;
     JsonObject *msg = json_object_new();
     json_object_set_string_member(msg, "type", "service.event");
     json_object_set_string_member(msg, "service", service);

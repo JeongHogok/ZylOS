@@ -498,6 +498,11 @@
           showRecents(msg.data && msg.data.apps);
           break;
 
+        /* An app's camera or microphone is on (the OS mutes what is not in front) */
+        case 'capture.state':
+          showCapture(msg.data || {});
+          break;
+
         /* Service responses */
         case 'service.response':
           handleServiceResponse(msg);
@@ -505,6 +510,12 @@
       }
     } catch (err) { /* ignore parse errors */ }
   });
+
+  function showCapture(d) {
+    var cam = document.getElementById('sb-camera'), mic = document.getElementById('sb-mic');
+    if (cam) cam.classList.toggle('hidden', !d.camera);
+    if (mic) mic.classList.toggle('hidden', !d.microphone);
+  }
 
   function handleServiceResponse(msg) {
     /* Battery level from power service */

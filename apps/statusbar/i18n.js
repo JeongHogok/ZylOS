@@ -13,6 +13,8 @@
   if (typeof zylI18n === 'undefined') return;
 
   zylI18n.addTranslations('ko', {
+    'sb.camera_in_use': '\uCE74\uBA54\uB77C \uC0AC\uC6A9 \uC911',
+    'sb.mic_in_use': '\uB9C8\uC774\uD06C \uC0AC\uC6A9 \uC911',
     'recents.title': '\uCD5C\uADFC \uC571',
     'recents.empty': '\uC2E4\uD589 \uC911\uC778 \uC571\uC774 \uC5C6\uC2B5\uB2C8\uB2E4',
     'recents.close': '\uB2EB\uAE30',
@@ -38,6 +40,8 @@
   });
 
   zylI18n.addTranslations('en', {
+    'sb.camera_in_use': 'Camera in use',
+    'sb.mic_in_use': 'Microphone in use',
     'recents.title': 'Recent apps',
     'recents.empty': 'No running apps',
     'recents.close': 'Close',
@@ -63,6 +67,8 @@
   });
 
   zylI18n.addTranslations('ja', {
+    'sb.camera_in_use': '\u30AB\u30E1\u30E9\u3092\u4F7F\u7528\u4E2D',
+    'sb.mic_in_use': '\u30DE\u30A4\u30AF\u3092\u4F7F\u7528\u4E2D',
     'recents.title': '\u6700\u8FD1\u306E\u30A2\u30D7\u30EA',
     'recents.empty': '\u5B9F\u884C\u4E2D\u306E\u30A2\u30D7\u30EA\u306F\u3042\u308A\u307E\u305B\u3093',
     'recents.close': '\u9589\u3058\u308B',
@@ -88,6 +94,8 @@
   });
 
   zylI18n.addTranslations('zh', {
+    'sb.camera_in_use': '\u6B63\u5728\u4F7F\u7528\u76F8\u673A',
+    'sb.mic_in_use': '\u6B63\u5728\u4F7F\u7528\u9EA6\u514B\u98CE',
     'recents.title': '\u6700\u8FD1\u5E94\u7528',
     'recents.empty': '\u6CA1\u6709\u6B63\u5728\u8FD0\u884C\u7684\u5E94\u7528',
     'recents.close': '\u5173\u95ED',
@@ -113,6 +121,8 @@
   });
 
   zylI18n.addTranslations('es', {
+    'sb.camera_in_use': 'C\u00E1mara en uso',
+    'sb.mic_in_use': 'Micr\u00F3fono en uso',
     'recents.title': 'Apps recientes',
     'recents.empty': 'No hay apps en ejecuci\u00F3n',
     'recents.close': 'Cerrar',
