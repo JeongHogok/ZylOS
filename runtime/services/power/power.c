@@ -47,6 +47,7 @@ static const char *power_introspection_xml =
     "  <interface name='" ZYL_POWER_DBUS_NAME "'>"
     "    <method name='ScreenOff'/>"
     "    <method name='ScreenOn'/>"
+    "    <method name='UserActivity'/>"
     "    <method name='Suspend'/>"
     "    <method name='Shutdown'/>"
     "    <method name='Reboot'/>"
@@ -136,7 +137,9 @@ static void handle_power_method(GDBusConnection *conn, const gchar *sender,
     } else if (g_strcmp0(method, "ScreenOn") == 0) {
         zyl_power_request_screen_on(svc);
         g_dbus_method_invocation_return_value(inv, NULL);
-
+    } else if (g_strcmp0(method, "UserActivity") == 0) {
+        zyl_power_user_activity(svc);
+        g_dbus_method_invocation_return_value(inv, NULL);
     } else if (g_strcmp0(method, "Suspend") == 0) {
         zyl_power_request_suspend(svc);
         g_dbus_method_invocation_return_value(inv, NULL);

@@ -164,6 +164,24 @@ static void test_idle_dims_to_thirty_percent_then_turns_the_screen_off(void) {
     assert(shown() == 60 && saw("OFF>ACTIVE") && svc->dim_timer_id);
 }
 
+/* A touch (the compositor's UserActivity) keeps the screen awake: the
+   countdown starts over, a dimmed screen comes back, a dark one stays dark */
+static void test_user_activity_keeps_the_screen_awake(void) {
+    guint first = svc->dim_timer_id;
+    assert(zyl_power_user_activity(svc) == 0);
+    assert(svc->dim_timer_id && svc->dim_timer_id != first && due_in(svc->dim_timer_id, 25));
+    assert(saw(""));
+    fire(svc->dim_timer_id);
+    assert(svc->state == ZYL_POWER_STATE_DIM && saw("ACTIVE>DIM"));
+    zyl_power_user_activity(svc);
+    assert(svc->state == ZYL_POWER_STATE_ACTIVE && shown() == 60 && saw("DIM>ACTIVE"));
+    assert(!svc->screen_off_timer_id && due_in(svc->dim_timer_id, 25));
+    zyl_power_request_screen_off(svc);
+    assert(saw("ACTIVE>OFF"));
+    zyl_power_user_activity(svc);
+    assert(svc->state == ZYL_POWER_STATE_SCREEN_OFF && shown() == 0 && saw(""));
+}
+
 static void test_dimming_has_a_floor_and_never_brightens(void) {
     zyl_power_set_brightness(svc, 10);
     fire(svc->dim_timer_id);
@@ -369,6 +387,7 @@ int main(void) {
     printf("=== Power service ===\n");
     RUN_TEST(test_screen_off_goes_dark_and_on_brings_back_the_users_level);
     RUN_TEST(test_idle_dims_to_thirty_percent_then_turns_the_screen_off);
+    RUN_TEST(test_user_activity_keeps_the_screen_awake);
     RUN_TEST(test_dimming_has_a_floor_and_never_brightens);
     RUN_TEST(test_brightness_is_clamped_and_waits_while_the_screen_is_dark);
     RUN_TEST(test_a_wakelock_keeps_the_screen_on_and_the_device_awake);

@@ -1,14 +1,15 @@
 /* ──────────────────────────────────────────────────────────
  * [Clean Architecture] Infrastructure Layer - Interface
  *
- * 역할: 제스처 → WAM 내비게이션 전달 인터페이스
- * 수행범위: zyl_server::gesture_signal_fn 에 꽂는 송신 함수
+ * 역할: 컴포지터 → OS 서비스 알림 인터페이스 (시스템 버스)
+ * 수행범위: 제스처 → WAM 내비게이션(zyl_server::gesture_signal_fn 에 꽂는 함수),
+ *           사용자 입력 → 전원 서비스의 사용자 활동
  * 의존방향: zyl_compositor.h
  * SOLID: DIP — 제스처 코드는 함수 포인터만 안다
  * ────────────────────────────────────────────────────────── */
 
-#ifndef ZYL_IPC_WAM_NAV_H
-#define ZYL_IPC_WAM_NAV_H
+#ifndef ZYL_IPC_OS_BUS_H
+#define ZYL_IPC_OS_BUS_H
 
 #include "zyl_compositor.h"
 
@@ -19,4 +20,8 @@
 void zyl_wam_nav_send(struct zyl_server *server, const char *signal_name,
                       const char *detail);
 
-#endif /* ZYL_IPC_WAM_NAV_H */
+/* A touch, click or key: the screen is in use, so it must not dim or go off
+   (org.zylos.PowerManager.UserActivity — at most once a second) */
+void zyl_power_user_activity(void);
+
+#endif /* ZYL_IPC_OS_BUS_H */

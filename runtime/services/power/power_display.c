@@ -116,6 +116,17 @@ int zyl_power_request_screen_on(ZylPowerService *svc) {
     return 0;
 }
 
+/* ─── 사용자 활동 — 쓰는 동안에는 어두워지거나 꺼지지 않는다 ─── */
+int zyl_power_user_activity(ZylPowerService *svc) {
+    if (!svc) return -1;
+    if (svc->state == ZYL_POWER_STATE_DIM) {
+        apply_brightness(svc, svc->brightness);
+        transition_state(svc, ZYL_POWER_STATE_ACTIVE);
+    }
+    if (svc->state == ZYL_POWER_STATE_ACTIVE) reset_idle_timers(svc);
+    return 0;
+}
+
 /* ─── 밝기 — 사용자 밝기(svc->brightness)와 지금 백라이트가 보이는 값은 다르다 ─── */
 void apply_brightness(ZylPowerService *svc, int level) {
     (void)svc;

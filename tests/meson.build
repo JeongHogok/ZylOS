@@ -328,7 +328,7 @@ test('storage',
 )
 
 # Test: power state machine — screen off/on keeps the user's brightness, idle
-# dims to 30% then off, wakelocks (hold, cap,
+# dims to 30% then off, user activity keeps it awake, wakelocks (hold, cap,
 # 10-minute expiry, timers resume after the last release), doze → suspend →
 # back to the state it left (fake sysfs; StateChanged over a socket-pair D-Bus)
 test('power',

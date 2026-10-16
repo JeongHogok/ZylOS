@@ -11,6 +11,7 @@
  * ────────────────────────────────────────────────────────── */
 
 #include "gesture.h"
+#include "../ipc/os_bus.h"
 
 #include <stdlib.h>
 #include <wayland-server-core.h>
@@ -74,7 +75,7 @@ static void emit_compositor_signal(struct zyl_server *server,
     wlr_log(WLR_INFO, "compositor signal: %s(%s)", signal_name,
             detail ? detail : "");
 
-    /* main.c wires the WAM navigation sender (ipc/wam_nav.c) */
+    /* main.c wires the WAM navigation sender (ipc/os_bus.c) */
     if (server->gesture_signal_fn) {
         server->gesture_signal_fn(server, signal_name, detail);
     }
@@ -205,6 +206,7 @@ static void handle_touch_down(struct wl_listener *listener, void *data)
     struct zyl_server *server =
         wl_container_of(listener, server, touch_down);
     struct wlr_touch_down_event *event = data;
+    zyl_power_user_activity();
 
     double abs_x = event->x * server->screen_width;
     double abs_y = event->y * server->screen_height;
@@ -328,6 +330,7 @@ static void handle_cursor_button(struct wl_listener *listener, void *data)
     struct zyl_server *server =
         wl_container_of(listener, server, cursor_button);
     struct wlr_pointer_button_event *event = data;
+    zyl_power_user_activity();
     wlr_seat_pointer_notify_button(server->seat,
         event->time_msec, event->button, event->state);
 

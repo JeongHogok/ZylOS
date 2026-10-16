@@ -166,7 +166,7 @@ struct zyl_server {
     int   screen_height;
 
     /* Gesture → IPC: main.c wires the WAM navigation sender
-     * (ipc/wam_nav.c). NULL leaves only the log line.
+     * (ipc/os_bus.c). NULL leaves only the log line.
      *
      * Signature: fn(server, signal_name, detail_or_NULL)
      */
