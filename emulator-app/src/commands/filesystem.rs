@@ -67,8 +67,15 @@ fn safe_path(mount_point: &Path, rel_path: &str) -> Result<PathBuf, String> {
         return Err("Path traversal blocked".into());
     }
 
-    // Block access to protected system files via filesystem service
-    let relative = cleaned.to_lowercase();
+    // Block access to protected system files via filesystem service — judged on
+    // the path's parts, not its spelling: "./.system/x" is ".system/x" (as the
+    // device's fs.c and apps/system/security.js)
+    let relative = cleaned
+        .split('/')
+        .filter(|p| !p.is_empty() && *p != ".")
+        .collect::<Vec<_>>()
+        .join("/")
+        .to_lowercase();
     if relative == "settings.json"
         || relative.starts_with(".credentials")
         || relative.starts_with(".system")
@@ -472,6 +479,18 @@ mod tests {
         assert_eq!(handoff_one(&user, "Pictures", &app, "Inbox"), None);
         assert_eq!(handoff_one(&user, "Pictures/none.jpg", &app, "Inbox"), None);
         assert_eq!(handoff_one(&user, "settings.json", &app, "Inbox"), None);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn protected_paths_are_judged_on_their_parts() {
+        let root = std::env::temp_dir().join(format!("zyl-protected-{}", std::process::id()));
+        fs::create_dir_all(root.join(".system/apps")).unwrap();
+        for p in [".system/apps/x", "./.system/apps/x", ".//.SYSTEM/x", "/./settings.json",
+                  "././.credentials/key"] {
+            assert!(safe_path(&root, p).is_err(), "{} must be refused", p);
+        }
+        assert!(safe_path(&root, "./Documents/a.txt").is_ok());
         let _ = fs::remove_dir_all(&root);
     }
 }

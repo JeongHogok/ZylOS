@@ -62,12 +62,23 @@ static bool room_for(const char *path, guint64 len) {
 
 static const char *const STANDARD_DIRS[] = { "Documents", "Pictures", "Music", "Downloads", NULL };
 
-/* ─── Path policy ─── */
+/* ─── Path policy ───
+   Judged on the path's parts, not its spelling: "./.system/x", ".//.SYSTEM/x"
+   and ".system/x" are the same place (only a leading ".system" was caught) */
 static bool protected_path(const char *rel) {
-    char *lower = g_ascii_strdown(rel, -1);
+    char **parts = g_strsplit(rel, "/", -1);
+    GString *norm = g_string_new(NULL);
+    for (int i = 0; parts[i]; i++) {
+        if (!*parts[i] || strcmp(parts[i], ".") == 0) continue;
+        if (norm->len) g_string_append_c(norm, '/');
+        g_string_append(norm, parts[i]);
+    }
+    char *lower = g_ascii_strdown(norm->str, -1);
     bool p = strcmp(lower, "settings.json") == 0 || g_str_has_prefix(lower, ".credentials") ||
              g_str_has_prefix(lower, ".system");
     g_free(lower);
+    g_string_free(norm, TRUE);
+    g_strfreev(parts);
     return p;
 }
 

@@ -1542,6 +1542,21 @@ console.log('\n■ ZylPermissions');
    appId is its own, other apps' notifications are notification.read's,
    internals are not methods, an unlisted service is closed
    ═══════════════════════════════════════════════════════ */
+console.log('\n■ protected paths');
+(function () {
+  var vm = require('vm');
+  var ctx = {};
+  ctx.window = ctx;
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'apps', 'system', 'security.js'), 'utf8'), ctx);
+  test('judged on the path\'s parts, not its spelling (as fs.c and filesystem.rs)', function () {
+    ['.system/apps/x', './.system/apps/x', './/.SYSTEM/x', '/./settings.json', '././.credentials/key', 'Settings.json']
+      .forEach(function (p) { assert.ok(ctx.ZylSecurity.isProtectedPath(p), p); });
+    ['Documents/a.txt', './Documents/.system', 'settings.json.bak'].forEach(function (p) {
+      assert.ok(!ctx.ZylSecurity.isProtectedPath(p), p);
+    });
+  });
+})();
+
 console.log('\n■ request gate');
 
 var gateTests = (function () {

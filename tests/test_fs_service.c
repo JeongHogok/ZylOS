@@ -43,6 +43,9 @@ static void test_nothing_outside_the_root(void) {
 static void test_protected_paths_are_refused(void) {
     assert(!resolve(ZYL_FILES_ROOT, "settings.json") && !resolve(ZYL_FILES_ROOT, ".credentials/key") && !resolve(ZYL_FILES_ROOT, ".SYSTEM/x"));
     assert(!write_file(ZYL_FILES_ROOT, "settings.json", "{}", NULL));
+    /* the same places spelt otherwise */
+    assert(!resolve(ZYL_FILES_ROOT, "./.system/x") && !resolve(ZYL_FILES_ROOT, ".//.credentials/key"));
+    assert(!resolve(ZYL_FILES_ROOT, "/./settings.json") && !resolve(ZYL_FILES_ROOT, "././.SYSTEM"));
 }
 
 static void test_listing_folders_first_without_hidden_or_links(void) {
