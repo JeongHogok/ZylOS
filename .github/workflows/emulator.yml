@@ -1,0 +1,49 @@
+# ──────────────────────────────────────────────────────────
+# [Clean Architecture] Infrastructure Layer - CI
+#
+# 역할: 에뮬레이터(Tauri 2, Rust) 빌드 + 단위 테스트 — 이 잡 전에는 에뮬레이터
+#       Rust 코드를 컴파일하는 CI 가 하나도 없었다 (verify-all 의 cargo check 는
+#       로컬에서만 돈다)
+# 수행범위: cargo test --locked, 컴파일 경고는 실패(-D warnings)
+# 의존방향: rustup/cargo, WebKitGTK 4.1·GTK 3·libsoup 3 개발 패키지 (Tauri 리눅스 백엔드)
+# SOLID: SRP — 이 관심사만. 어떤 경로가 이 검사를 부르는지는 아래 paths 가
+#        유일한 출처다 (원격 PR 과 tools/ci-local.sh 가 같은 목록을 읽는다)
+# ──────────────────────────────────────────────────────────
+name: Emulator
+# PR 은 paths 에 걸린 변경이 있을 때만, main 은 머지마다 전부 돈다
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - 'emulator-app/src/**'
+      - 'emulator-app/Cargo.toml'
+      - 'emulator-app/Cargo.lock'
+      - 'emulator-app/build.rs'
+      - 'emulator-app/tauri.conf.json'
+      - 'emulator-app/capabilities/**'
+      - '.github/workflows/emulator.yml'
+# 같은 PR 에 새 커밋이 오면 이전 커밋의 런은 취소한다. main 은 끝까지 검증한다
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  # ─── Emulator build + unit tests ───
+  test-emulator:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Tauri's Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential curl pkg-config libssl-dev \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev librsvg2-dev
+      # GitHub 러너에는 있고, 로컬 act 이미지에는 없다
+      - name: Rust toolchain
+        run: |
+          command -v cargo >/dev/null || curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - name: Build and test (warnings fail)
+        env:
+          RUSTFLAGS: -D warnings
+        run: cargo test --manifest-path emulator-app/Cargo.toml --locked

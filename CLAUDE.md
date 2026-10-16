@@ -198,7 +198,7 @@ tools/ci-local.sh                 # main 대비 바뀐 것(커밋 안 한 것 �
 tools/ci-local.sh --dry-run       # 무엇이 걸리는지만
 tools/ci-local.sh lint-js fuzz    # 잡 이름으로 골라서 / --all 은 전부
 ```
-워크플로는 관심사별로 나뉘어 있고(web·native·image·riscv64·docker·licenses·
+워크플로는 관심사별로 나뉘어 있고(web·native·image·riscv64·docker·licenses·emulator·
 bootloader), **각 워크플로의 `pull_request.paths` 가 "어떤 변경이 이 검사를
 부르는가" 의 유일한 출처**다 — 원격 PR 과 `ci-local.sh` 가 같은 목록을 읽는다
 (`tests/test_ci_select.sh` 가 규칙을 검증). 새 검사를 넣으면 그 검사가 읽는
