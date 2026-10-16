@@ -650,10 +650,10 @@ static void on_webkit_bridge_message(WebKitUserContentManager *manager,
 }
 
 /* ════════════════════════════════════════════════════════════════
- *  Where an app's view may go: its own origin. A frame of an app allowed
- *  the web ("webview") may load https; its top document stays the app's —
- *  checked as it commits, since WebKit asks per navigation, not per frame.
- *  A page that got there has run without the bridge (no token) until then
+ *  Where an app's view may go: its own origin only (and about:/its blob).
+ *  No app frames the web — web content is an OS-owned content view
+ *  (webcontent), its own bridge-less web process. The top document is also
+ *  held to the app's origin as it commits (on_top_document).
  * ════════════════════════════════════════════════════════════════ */
 
 static gboolean on_decide_policy(WebKitWebView *webview, WebKitPolicyDecision *decision,
@@ -669,7 +669,7 @@ static gboolean on_decide_policy(WebKitWebView *webview, WebKitPolicyDecision *d
         WEBKIT_NAVIGATION_POLICY_DECISION(decision));
     const char *uri = webkit_uri_request_get_uri(webkit_navigation_action_get_request(action));
     const ZylAppManifest *m = instance->manifest;
-    if (zyl_app_scheme_may_load(m->id, uri, zyl_bridge_app_holds(m, "webview"))) return FALSE;
+    if (zyl_app_scheme_may_load(m->id, uri)) return FALSE;
     g_warning("WAM: %s may not load %s", m->id, uri ? uri : "(none)");
     webkit_policy_decision_ignore(decision);
     return TRUE;
@@ -720,8 +720,7 @@ static void on_app_request(WebKitURISchemeRequest *req, gpointer user_data) {
         GInputStream *in = g_memory_input_stream_new_from_bytes(bytes);
         /* The policy rides on every response, so it binds from the first byte
            of the document and each worker script — not after the page ran */
-        char *csp = zyl_app_scheme_csp(zyl_bridge_app_holds(m, "network"),
-                                       zyl_bridge_app_holds(m, "webview"));
+        char *csp = zyl_app_scheme_csp(zyl_bridge_app_holds(m, "network"));
         SoupMessageHeaders *headers = soup_message_headers_new(SOUP_MESSAGE_HEADERS_RESPONSE);
         soup_message_headers_append(headers, "Content-Security-Policy", csp);
         WebKitURISchemeResponse *resp = webkit_uri_scheme_response_new(in, (gint64)len);

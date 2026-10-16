@@ -186,7 +186,7 @@ window.ZylPermissions = (function () {
     'credential', 'system', 'wifi', 'bluetooth',
     'notification', 'notification.read', 'camera', 'microphone',
     'audio', 'app.manage', 'app.list', 'app.launch',
-    'location', 'network', 'webview', 'downloads', 'bookmarks',
+    'location', 'network', 'downloads', 'bookmarks',
     'input', 'i18n', 'battery', 'time', 'auth', 'wallpaper', 'gallery',
     'contacts', 'messaging', 'telephony', 'push', 'webcontent'
   ];

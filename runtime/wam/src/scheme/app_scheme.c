@@ -95,19 +95,18 @@ gboolean zyl_app_scheme_is_own(const char *app_id, const char *uri) {
     return own;
 }
 
-gboolean zyl_app_scheme_may_load(const char *app_id, const char *uri, gboolean webview) {
+gboolean zyl_app_scheme_may_load(const char *app_id, const char *uri) {
     if (!uri) return FALSE;
     if (zyl_app_scheme_is_own(app_id, uri)) return TRUE;
     if (strcmp(uri, "about:blank") == 0 || strcmp(uri, "about:srcdoc") == 0) return TRUE;
-    if (g_str_has_prefix(uri, "blob:") && zyl_app_scheme_is_own(app_id, uri + 5)) return TRUE;
-    return webview && g_ascii_strncasecmp(uri, "https://", 8) == 0;
+    return g_str_has_prefix(uri, "blob:") && zyl_app_scheme_is_own(app_id, uri + 5);
 }
 
-char *zyl_app_scheme_csp(gboolean network, gboolean webview) {
+char *zyl_app_scheme_csp(gboolean network) {
     const char *web = network ? " https:" : "";
     return g_strdup_printf(
         "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data: blob:%s; media-src 'self' blob:%s; connect-src 'self'%s; "
-        "font-src 'self'%s; frame-src 'self'%s; object-src 'none'",
-        web, web, network ? " https: wss:" : "", web, webview ? " https:" : "");
+        "font-src 'self'%s; frame-src 'self'; object-src 'none'",
+        web, web, network ? " https: wss:" : "", web);
 }

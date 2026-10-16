@@ -3290,18 +3290,11 @@ console.log('\n■ ZylSandbox content policy');
       "font-src 'self'; frame-src 'self'; object-src 'none'");
   });
 
-  test('with the network: https/wss out, never plain http, never remote or inline code', function () {
+  test('with the network: https/wss out, never plain http; no app frames the web (frame-src self)', function () {
     assert.strictEqual(S.getContentPolicy(['network']),
       "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
       "img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; " +
       "font-src 'self' https:; frame-src 'self'; object-src 'none'");
-  });
-
-  test('network and webview (as a system app holds): https frames, still no inline code', function () {
-    assert.strictEqual(S.getContentPolicy(['network', 'webview']),
-      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
-      "img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; " +
-      "font-src 'self' https:; frame-src 'self' https:; object-src 'none'");
   });
 })();
 

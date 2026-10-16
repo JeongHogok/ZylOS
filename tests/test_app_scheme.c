@@ -70,15 +70,16 @@ static void test_mime_and_uri(void) {
 }
 
 /* The same strings test_services.js expects of sandbox.js getContentPolicy */
-static void same_csp(gboolean network, gboolean webview, const char *want) {
-    char *got = zyl_app_scheme_csp(network, webview);
+static void same_csp(gboolean network, const char *want) {
+    char *got = zyl_app_scheme_csp(network);
     if (strcmp(got, want) != 0) printf("\n    got  %s\n    want %s\n", got, want);
     assert(strcmp(got, want) == 0);
     g_free(got);
 }
 
-/* The app's view loads its own origin; the web only in a frame of an app
-   allowed it (its top document is checked with is_own as it loads) */
+/* An app's view loads its own origin only — no app frames the web (web content
+   is an OS-owned view, webcontent). The top document is held to its origin as
+   it commits (is_own). */
 static void test_the_view_stays_the_apps(void) {
     const char *id = "com.example.x";
     assert(zyl_app_scheme_is_own(id, "zyl-app://com.example.x/index.html"));
@@ -87,39 +88,32 @@ static void test_the_view_stays_the_apps(void) {
     assert(!zyl_app_scheme_is_own(id, "zyl-app://com.zylos.settings/index.html"));
     assert(!zyl_app_scheme_is_own(id, "https://example.com/"));
     assert(!zyl_app_scheme_is_own("", "zyl-app:///index.html") && !zyl_app_scheme_is_own(id, NULL));
-    for (int webview = 0; webview <= 1; webview++) {
-        assert(zyl_app_scheme_may_load(id, "zyl-app://com.example.x/b.html", webview));
-        assert(zyl_app_scheme_may_load(id, "about:blank", webview));
-        assert(zyl_app_scheme_may_load(id, "blob:zyl-app://com.example.x/5f1c", webview));
-        assert(!zyl_app_scheme_may_load(id, "blob:zyl-app://com.example.other/5f1c", webview));
-        assert(!zyl_app_scheme_may_load(id, "zyl-app://com.example.other/", webview));
-        assert(!zyl_app_scheme_may_load(id, "http://example.com/", webview));        /* never plain http */
-        assert(!zyl_app_scheme_may_load(id, "file:///etc/passwd", webview));
-        assert(!zyl_app_scheme_may_load(id, "data:text/html,x", webview));
-        assert(!zyl_app_scheme_may_load(id, NULL, webview));
-    }
-    assert(!zyl_app_scheme_may_load(id, "https://example.com/", FALSE));
-    assert(zyl_app_scheme_may_load(id, "https://example.com/", TRUE));
+    assert(zyl_app_scheme_may_load(id, "zyl-app://com.example.x/b.html"));
+    assert(zyl_app_scheme_may_load(id, "about:blank"));
+    assert(zyl_app_scheme_may_load(id, "blob:zyl-app://com.example.x/5f1c"));
+    assert(!zyl_app_scheme_may_load(id, "blob:zyl-app://com.example.other/5f1c"));
+    assert(!zyl_app_scheme_may_load(id, "zyl-app://com.example.other/"));
+    assert(!zyl_app_scheme_may_load(id, "https://example.com/"));   /* no app frames the web */
+    assert(!zyl_app_scheme_may_load(id, "http://example.com/"));
+    assert(!zyl_app_scheme_may_load(id, "file:///etc/passwd"));
+    assert(!zyl_app_scheme_may_load(id, "data:text/html,x"));
+    assert(!zyl_app_scheme_may_load(id, NULL));
 }
 
 static void test_csp_follows_permissions(void) {
     /* Without the network: its own files, nothing out */
-    same_csp(FALSE, FALSE,
+    same_csp(FALSE,
         "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; "
         "font-src 'self'; frame-src 'self'; object-src 'none'");
-    /* With it: https/wss out, still never plain http, never remote or inline code */
-    same_csp(TRUE, FALSE,
+    /* With it: https/wss out, still never plain http, never remote or inline code.
+       frame-src stays 'self' — no app frames the web (web content is the OS's) */
+    same_csp(TRUE,
         "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; "
         "font-src 'self' https:; frame-src 'self'; object-src 'none'");
-    /* Both (a system app holds every permission): https pages in frames */
-    same_csp(TRUE, TRUE,
-        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
-        "img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; "
-        "font-src 'self' https:; frame-src 'self' https:; object-src 'none'");
     /* Whatever the permissions: no eval, no remote and no inline script */
-    char *all = zyl_app_scheme_csp(TRUE, TRUE);
+    char *all = zyl_app_scheme_csp(TRUE);
     assert(!strstr(all, "eval"));
     assert(strstr(all, "script-src 'self';"));
     g_free(all);

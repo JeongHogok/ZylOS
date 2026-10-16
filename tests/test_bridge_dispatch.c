@@ -316,7 +316,7 @@ static void test_app_holds_follows_declaration_and_revocation(void)
     const char *perms[] = { "network", "system", NULL };
     ZylAppManifest m = perm_manifest("com.example.net", FALSE, perms);
     assert(zyl_bridge_app_holds(&m, "network"));
-    assert(!zyl_bridge_app_holds(&m, "webview"));       /* not declared */
+    assert(!zyl_bridge_app_holds(&m, "camera"));        /* not declared */
     assert(!zyl_bridge_app_holds(&m, "system"));        /* reserved */
     revocations_set("com.example.net", "network");
     assert(!zyl_bridge_app_holds(&m, "network"));
@@ -326,7 +326,7 @@ static void test_app_holds_follows_declaration_and_revocation(void)
     ZylAppManifest sys = perm_manifest("com.zylos.browser", TRUE, none);
     revocations_set("com.zylos.browser", "network");
     assert(zyl_bridge_app_holds(&sys, "network"));
-    assert(zyl_bridge_app_holds(&sys, "webview"));
+    assert(zyl_bridge_app_holds(&sys, "webcontent"));   /* system holds all */
     assert(!zyl_bridge_app_holds(NULL, "network"));
 }
 

@@ -63,9 +63,7 @@
   var bookmarksSidebar = document.getElementById('bookmarks-sidebar');
   var btnCloseBookmarks = document.getElementById('btn-close-bookmarks');
   var newTabPage = document.getElementById('new-tab-page');
-  var webPage = document.getElementById('web-page');
-  var pageLoading = document.getElementById('page-loading');
-  var pageContent = document.getElementById('page-content');
+  var webviewContainer = document.getElementById('webview-container');
   var ntpSearchInput = document.getElementById('ntp-search-input');
   var privateIndicator = document.getElementById('private-indicator');
   var menuPopup = document.getElementById('menu-popup');
@@ -77,7 +75,6 @@
   /* 북마크/빠른링크는 서비스에서 로드 — Mock 데이터 금지 (CLAUDE.md §5) */
   var bookmarksData = [];
   var quickLinksData = [];
-  var pageFrame = document.getElementById('page-frame');
 
   /* Bookmarks, quick links and history are this app's own: its private
      container (appdata), gone with the app, readable by no other app */
@@ -124,6 +121,23 @@
   });
 
   requestBrowserData();
+
+  /* The content view reports back (device: real; emulator: only the URL we set,
+     no cross-origin title). data = [view_id, owner, value]. */
+  if (ZylBridge.onServiceEvent) {
+    ZylBridge.onServiceEvent('webcontent', 'TitleChanged', function (d) {
+      var tab = getActiveTab();
+      if (tab && d && d[2]) { tab.title = d[2]; renderTabs(); }
+    });
+    ZylBridge.onServiceEvent('webcontent', 'UrlChanged', function (d) {
+      var tab = getActiveTab();
+      if (tab && d && d[2]) { tab.url = d[2]; urlInput.value = d[2]; }
+    });
+  }
+
+  /* Hide the content view while the browser is not in front, show it again when
+     it returns — the view is the OS's, not in this document. */
+  document.addEventListener('visibilitychange', refreshContentVisibility);
 
   /* ─── Helper: Get active tab ─── */
   function getActiveTab() {
@@ -222,11 +236,13 @@
   function openMenu() {
     menuPopup.classList.remove('hidden');
     menuOverlay.classList.remove('hidden');
+    refreshContentVisibility();
   }
 
   function closeMenu() {
     menuPopup.classList.add('hidden');
     menuOverlay.classList.add('hidden');
+    refreshContentVisibility();
   }
 
   /* ─── Render Tabs ─── */
@@ -320,17 +336,31 @@
   /* ─── Show New Tab Page ─── */
   function showNewTabPage() {
     newTabPage.classList.add('active');
-    webPage.classList.add('hidden');
-    pageLoading.classList.remove('active');
+    refreshContentVisibility();   /* hides the content view */
   }
 
-  /* ─── Show Web Page (real iframe rendering) ─── */
+  /* The OS owns the page: a bridge-less content view (webcontent) renders it
+     out of this app's process. We drive it by URL and the chrome shrinks to its
+     toolbar; title/url come back as events. Back/forward re-navigate by URL. */
+  function anyOverlayOpen() {
+    return (bookmarksSidebar && !bookmarksSidebar.classList.contains('hidden')) ||
+           (historySidebar && !historySidebar.classList.contains('hidden')) ||
+           (menuPopup && !menuPopup.classList.contains('hidden'));
+  }
+
+  function refreshContentVisibility() {
+    var tab = getActiveTab();
+    if (tab && tab.url && !anyOverlayOpen() && !document.hidden) {
+      var top = (webviewContainer && webviewContainer.offsetTop) || 0;
+      ZylBridge.requestService('webcontent', 'show', { view_id: 'main', x: 0, y: top,
+        w: window.innerWidth, h: Math.max(0, window.innerHeight - top) });
+    } else {
+      ZylBridge.requestService('webcontent', 'hide', { view_id: 'main' });
+    }
+  }
+
   function showWebPage(url, skipHistory) {
     newTabPage.classList.remove('active');
-    webPage.classList.remove('hidden');
-    pageLoading.classList.add('active');
-    if (pageFrame) pageFrame.style.display = 'none';
-
     var tab = getActiveTab();
     if (!tab) return;
     var domain = extractDomain(url);
@@ -346,52 +376,9 @@
 
     renderTabs();
     updateNavButtons();
-
-    /* 실제 URL을 iframe에 로드 */
-    if (pageFrame) {
-      pageFrame.onload = function () {
-        pageLoading.classList.remove('active');
-        pageFrame.style.display = 'block';
-        /* X-Frame-Options 차단 감지 — contentDocument 접근 불가 시 */
-        var blocked = false;
-        try {
-          var doc = pageFrame.contentDocument;
-          if (doc && doc.title) {
-            tab.title = doc.title;
-          } else if (doc && doc.body && doc.body.innerHTML.length < 10) {
-            blocked = true;
-          } else {
-            tab.title = domain || url;
-          }
-        } catch (e) {
-          /* cross-origin — 정상 로드됨 (타이틀 접근 불가는 보안상 정상) */
-          tab.title = domain || url;
-        }
-        if (blocked) {
-          pageFrame.style.display = 'none';
-          showBlockedPage(url, domain);
-        }
-        renderTabs();
-        pageFrame.onload = null;
-      };
-      pageFrame.onerror = function () {
-        pageLoading.classList.remove('active');
-        pageFrame.style.display = 'none';
-        showBlockedPage(url, domain);
-        pageFrame.onerror = null;
-      };
-      pageFrame.src = url;
-
-      /* 8초 타임아웃 */
-      setTimeout(function () {
-        if (pageLoading.classList.contains('active')) {
-          pageLoading.classList.remove('active');
-          pageFrame.style.display = 'block';
-          tab.title = domain || url;
-          renderTabs();
-        }
-      }, 8000);
-    }
+    urlInput.value = url;
+    ZylBridge.requestService('webcontent', 'open', { view_id: 'main', url: url });
+    refreshContentVisibility();
   }
 
   /* ─── Navigation ─── */
@@ -445,31 +432,6 @@
     }
     /* Treat as search query */
     return 'https://duckduckgo.com/?q=' + encodeURIComponent(trimmed);
-  }
-
-  /* X-Frame-Options 차단 시 안내 페이지 표시 */
-  function showBlockedPage(url, domain) {
-    var webPage = document.getElementById('web-page');
-    if (!webPage) return;
-    /* page-frame 뒤에 안내 div 추가 */
-    var existing = document.getElementById('blocked-notice');
-    if (existing) existing.remove();
-    var notice = document.createElement('div');
-    notice.id = 'blocked-notice';
-    notice.style.cssText = 'position:absolute;inset:0;background:#f8f9fa;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;text-align:center;color:#333;z-index:2';
-    var iconDiv = document.createElement('div');
-    iconDiv.style.cssText = 'font-size:48px;margin-bottom:16px';
-    iconDiv.textContent = '\uD83D\uDD12';
-    var domainDiv = document.createElement('div');
-    domainDiv.style.cssText = 'font-size:16px;font-weight:600;margin-bottom:8px';
-    domainDiv.textContent = domain || url;
-    var msgDiv = document.createElement('div');
-    msgDiv.style.cssText = 'font-size:13px;color:#666;line-height:1.6;max-width:280px';
-    msgDiv.textContent = zylI18n.t('browser.blocked_iframe');
-    notice.appendChild(iconDiv);
-    notice.appendChild(domainDiv);
-    notice.appendChild(msgDiv);
-    webPage.appendChild(notice);
   }
 
   function extractDomain(url) {
@@ -527,10 +489,12 @@
   btnBookmarks.addEventListener('click', function () {
     historySidebar.classList.add('hidden');
     bookmarksSidebar.classList.toggle('hidden');
+    refreshContentVisibility();
   });
 
   btnCloseBookmarks.addEventListener('click', function () {
     bookmarksSidebar.classList.add('hidden');
+    refreshContentVisibility();
   });
 
   /* ─── Render Bookmarks from service data ─── */
@@ -645,6 +609,7 @@
     bookmarksSidebar.classList.add('hidden');
     historySidebar.classList.toggle('hidden');
     renderHistory();
+    refreshContentVisibility();
   });
 
   document.getElementById('menu-private').addEventListener('click', function () {
@@ -661,6 +626,7 @@
   /* ─── History Sidebar ─── */
   btnCloseHistory.addEventListener('click', function () {
     historySidebar.classList.add('hidden');
+    refreshContentVisibility();
   });
 
   btnClearHistory.addEventListener('click', function () {
