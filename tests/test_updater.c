@@ -6,7 +6,7 @@
  *           기록(실행 중인 슬롯은 그대로), 일부가 빠진 패키지는 부트로더를
  *           새 슬롯으로 돌리지 않음, 시험 부팅 중엔 되돌아갈 슬롯을 덮지 않음,
  *           전체 이미지만 허용, 지원 여부(키·U-Boot 환경), 시험 부팅 판정,
- *           U-Boot 변수 이름이 u-boot-env.txt 와 일치
+ *           U-Boot 변수 이름이 부트 정책(board/boot-policy.txt)과 일치
  * 의존방향: runtime/services/updater/{updater,ota_verify,ota_install}.c,
  *           runtime/hal/hal_boot.c, 가짜 fw_printenv/fw_setenv,
  *           파일로 만든 가짜 파티션, tar, OpenSSL (테스트 키로 서명)
@@ -237,7 +237,7 @@ static void test_the_booted_slot_is_read_from_a_long_signed_command_line(void) {
 
 static void test_variables_are_the_ones_u_boot_reads(void) {
     char *env = NULL;
-    assert(g_file_get_contents("board/bpi-f3/u-boot-env.txt", &env, NULL, NULL));
+    assert(g_file_get_contents("board/boot-policy.txt", &env, NULL, NULL));
     assert(strstr(env, "\nzyl_next_slot=") && strstr(env, "\nzyl_boot_count=") &&
            strstr(env, "\nzyl_active_slot=") && strstr(env, "fit-image-${zyl_slot}.itb"));
     g_free(env);

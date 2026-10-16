@@ -2,31 +2,34 @@
 # ──────────────────────────────────────────────────────────
 # [Clean Architecture] Infrastructure Layer - Bootloader Build
 #
-# 역할: BPI-F3(SpacemiT K1) 부트로더를 Zyl OS 키와 부트 정책으로 빌드·서명
+# 역할: 보드의 부트로더를 Zyl OS 부트 정책(과 키)으로 빌드 — BPI-F3(SpacemiT K1)는
+#       서명까지, generic-riscv64(QEMU virt)는 검증 부팅 레인이 쓰는 메인라인 U-Boot
 # 수행범위: 고정한 제조사 U-Boot·OpenSBI 커밋 → Zyl 패치(부트 정책, 칩 ID 기기
 #           ID, 선택 시 eFuse 굽기) + 설정 조각 → 빌드 →
 #           FSBL: 루트 키(zylos-rotpk)로 헤더, zylos-spl-key 로 SPL 서명 (Boot ROM 검증)
 #           OpenSBI·U-Boot FIT: zylos-fw-key 서명, 공개키는 SPL DTB 에 required
 #           U-Boot DTB 들: OS 키(zylos-boot-key) required — 커널 FIT 검증
-#           기본 환경 = board/bpi-f3/u-boot-env.txt, 저장소가 쓸 수 있는 변수는
-#           그 파일의 "Runtime state" 절만 → 결과물을 다시 검사(서명·키·설정)
+#           기본 환경 = board/boot-policy.txt + board/<id>/u-boot-env.txt, 저장소가 쓸 수
+#           있는 변수는 정책의 "Runtime state" 절만, 환경의 자리·크기는 보드의
+#           partitions.conf 와 같아야 함 → 결과물을 다시 검사(서명·키·설정)
 # 의존방향: git, make, riscv64 크로스 gcc, python3(+yaml), openssl, dtc, xxd,
 #           board/bpi-f3/bootloader/*, tools/gen-boot-keys.sh 의 키
 # SOLID: SRP — 부트로더 빌드만 담당
 #
-# 사용법: tools/build-bootloader.sh [--key-dir DIR] [--burn-rotpk] [output-dir]
+# 사용법: tools/build-bootloader.sh [--board ID] [--key-dir DIR] [--burn-rotpk] [output-dir]
+#   --board       bpi-f3(기본) | generic-riscv64 — generic-riscv64 는 키가 필요 없다:
+#                 커널 FIT 의 공개키는 QEMU 가 넘기는 DTB 에 든다(tools/sign-image.sh)
 #   --burn-rotpk  eFuse 에 루트 공개키 해시를 굽는 부트로더 (되돌릴 수 없음,
 #                 docs/INSTALLATION_INFORMATION.md). 기본은 굽지 않는다
 #   ZYL_UBOOT_SRC / ZYL_OPENSBI_SRC  고정 커밋의 로컬 사본 (없으면 받아 온다)
 #   CROSS_COMPILE  기본 riscv64-linux-gnu-
-# 출력: FSBL.bin bootinfo_emmc.bin bootinfo_sd.bin fw_dynamic.itb u-boot.itb
+# 출력: bpi-f3 — FSBL.bin bootinfo_emmc.bin bootinfo_sd.bin fw_dynamic.itb u-boot.itb
 #       u-boot-env-default.bin rotpk-sha256.txt MANIFEST.sha256
+#       generic-riscv64 — u-boot.bin uboot.env(부트 파티션에 둘 첫 환경) MANIFEST.sha256
 # ──────────────────────────────────────────────────────────
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-BOOT="$ROOT/board/bpi-f3/bootloader"
-ENV_FILE="$ROOT/board/bpi-f3/u-boot-env.txt"
 
 # The vendor's K1 boot firmware, branch k1-bl-v2.2.y — pinned: what is signed is
 # exactly this source plus board/bpi-f3/bootloader
@@ -35,10 +38,12 @@ UBOOT_COMMIT=7f51f4453f9811eeaafbdd839b1bf1b0cc27a413
 OPENSBI_REPO=https://github.com/spacemit-com/opensbi.git
 OPENSBI_COMMIT=fc02b891b17b8bdc1273a39f80aa374cd99ba9a2
 
-KEY_DIR="$ROOT/board/bpi-f3/keys"
+BOARD=bpi-f3
+KEY_DIR=""
 BURN=0
 while [ $# -gt 0 ]; do
     case "$1" in
+        --board)      BOARD="$2"; shift 2 ;;
         --key-dir)    KEY_DIR="$2"; shift 2 ;;
         --burn-rotpk) BURN=1; shift ;;
         -*) echo "✗ unknown option $1" >&2; exit 2 ;;
@@ -48,15 +53,27 @@ done
 OUT="${1:-build/bootloader}"
 CROSS_COMPILE="${CROSS_COMPILE:-riscv64-linux-gnu-}"
 export CROSS_COMPILE ARCH=riscv
+BOOT="$ROOT/board/$BOARD/bootloader"
+ENV_POLICY="$ROOT/board/boot-policy.txt"
+ENV_BOARD="$ROOT/board/$BOARD/u-boot-env.txt"
+LAYOUT="$ROOT/board/$BOARD/partitions.conf"
+for f in "$BOOT/uboot.config" "$ENV_POLICY" "$ENV_BOARD" "$LAYOUT"; do
+    [ -f "$f" ] || { echo "✗ $f not found — board $BOARD has no bootloader" >&2; exit 1; }
+done
+# shellcheck disable=SC1090
+. "$LAYOUT"
 
 for c in git make python3 openssl dtc fdtget xxd "${CROSS_COMPILE}gcc"; do
     command -v "$c" >/dev/null 2>&1 || { echo "✗ Required command not found: $c" >&2; exit 1; }
 done
-python3 -c 'import yaml' 2>/dev/null || { echo "✗ python3 yaml module needed (vendor build_binary_file.py)" >&2; exit 1; }
-for k in zylos-boot-key.key zylos-boot-key.crt zylos-fw-key.key zylos-fw-key.crt zylos-spl-key.key zylos-rotpk.key; do
-    [ -f "$KEY_DIR/$k" ] || { echo "✗ $KEY_DIR/$k missing — tools/gen-boot-keys.sh $KEY_DIR" >&2; exit 1; }
-done
-KEY_DIR="$(cd "$KEY_DIR" && pwd)"
+if [ "$BOARD" = bpi-f3 ]; then
+    python3 -c 'import yaml' 2>/dev/null || { echo "✗ python3 yaml module needed (vendor build_binary_file.py)" >&2; exit 1; }
+    KEY_DIR="${KEY_DIR:-$ROOT/board/bpi-f3/keys}"
+    for k in zylos-boot-key.key zylos-boot-key.crt zylos-fw-key.key zylos-fw-key.crt zylos-spl-key.key zylos-rotpk.key; do
+        [ -f "$KEY_DIR/$k" ] || { echo "✗ $KEY_DIR/$k missing — tools/gen-boot-keys.sh $KEY_DIR" >&2; exit 1; }
+    done
+    KEY_DIR="$(cd "$KEY_DIR" && pwd)"
+fi
 mkdir -p "$OUT"
 OUT="$(cd "$OUT" && pwd)"
 W="$OUT/work"
@@ -77,6 +94,79 @@ source_tree() {   # repo commit local-copy dest
     [ "$(git -C "$4" rev-parse HEAD)" = "$2" ] || { echo "✗ $4 is not at $2" >&2; exit 1; }
 }
 
+# The default environment: the policy every board shares, then the board's constants and hooks
+compose_env() {
+    cat "$ENV_POLICY" "$ENV_BOARD" | sed -e "s/^zyl_rotpk_burn=.*/zyl_rotpk_burn=$BURN/"
+}
+# The variables storage may set: the policy's "Runtime state" section, nothing else
+env_flags_header() {
+    python3 -I - "$ENV_POLICY" <<'PY'
+import re, sys
+names, inside = [], False
+for line in open(sys.argv[1]):
+    if line.startswith('# ──'):
+        inside = line.startswith('# ── Runtime state')
+    elif inside and re.match(r'^[A-Za-z_][A-Za-z0-9_]*=', line):
+        names.append(line.split('=', 1)[0])
+if not names:
+    sys.exit('no Runtime state variables in ' + sys.argv[1])
+flags = ','.join(n + ':sw' for n in names)
+print('/* Generated by tools/build-bootloader.sh from board/boot-policy.txt */')
+print('#define CFG_ENV_FLAGS_LIST_STATIC "%s"' % flags)            # mainline
+print('#define CONFIG_ENV_FLAGS_LIST_STATIC CFG_ENV_FLAGS_LIST_STATIC')   # the vendor's 2022.10
+PY
+}
+# defconfig + our fragment, and every line of ours must have stuck
+configure() {   # tree defconfig fragment
+    ( cd "$1" && make -s "$2" && scripts/kconfig/merge_config.sh -m .config "$3" >/dev/null \
+      && make -s olddefconfig )
+    while IFS= read -r line; do
+        case "$line" in
+            CONFIG_*=*) grep -qxF "$line" "$1/.config" || { echo "✗ not in .config: $line" >&2; exit 1; } ;;
+            "# CONFIG_"*" is not set") n="${line#\# }"; n="${n%% *}"
+                ! grep -q "^$n=" "$1/.config" || { echo "✗ still set: $n" >&2; exit 1; } ;;
+        esac
+    done < "$3"
+}
+
+# ── generic-riscv64: mainline U-Boot for QEMU virt (S-mode, after OpenSBI) ──
+if [ "$BOARD" = generic-riscv64 ]; then
+    UBOOT_REPO=https://github.com/u-boot/u-boot.git
+    UBOOT_COMMIT=6d41f0a39d6423c8e57e92ebbe9f8c0333a63f72     # v2025.01
+    [ "$ZYL_ENV_IN" = fat ] || { echo "✗ $LAYOUT: generic-riscv64 keeps its env in a FAT file" >&2; exit 1; }
+    echo "═══ Zyl OS bootloader (generic-riscv64, QEMU virt) ═══"
+    step "source (U-Boot ${UBOOT_COMMIT:0:12})"
+    source_tree "$UBOOT_REPO" "$UBOOT_COMMIT" "${ZYL_UBOOT_SRC:-}" "$W/u-boot"
+    U="$W/u-boot"
+    step "boot policy (board/boot-policy.txt + board/$BOARD/u-boot-env.txt)"
+    compose_env > "$U/zyl-env.txt"
+    env_flags_header > "$U/include/zyl_env_flags.h"
+    echo '#include <zyl_env_flags.h>' >> "$U/include/configs/qemu-riscv.h"
+    step "configuration"
+    {
+        cat "$BOOT/uboot.config"
+        echo 'CONFIG_DEFAULT_ENV_FILE="zyl-env.txt"'
+        # Where the env lives — the same place the OS's fw_env.config names (build-image.sh)
+        echo "CONFIG_ENV_FAT_DEVICE_AND_PART=\"0:$ZYL_PART_BOOT\""
+        echo "CONFIG_ENV_FAT_FILE=\"$ZYL_ENV_FILE\""
+        echo "CONFIG_ENV_SIZE=$ZYL_ENV_SIZE"
+    } > "$W/zyl.config"
+    configure "$U" qemu-riscv64_smode_defconfig "$W/zyl.config"
+    step "U-Boot"
+    make -C "$U" -s -j"$JOBS" >"$W/u-boot.log" 2>&1 || { tail -30 "$W/u-boot.log"; exit 1; }
+    make -C "$U" -s u-boot-initial-env >>"$W/u-boot.log" 2>&1 || { tail -30 "$W/u-boot.log"; exit 1; }
+    grep -q '^bootcmd=.*run zyl_pick_slot' "$U/u-boot-initial-env" \
+        || { echo "✗ the boot policy is not U-Boot's default environment" >&2; exit 1; }
+    # The env the boot partition starts with (the OS reads and writes it with fw_setenv)
+    "$U/tools/mkenvimage" -s "$ZYL_ENV_SIZE" -o "$OUT/$ZYL_ENV_FILE" "$U/u-boot-initial-env"
+    cp "$U/u-boot.bin" "$OUT/"
+    ( cd "$OUT" && openssl dgst -sha256 -r u-boot.bin "$ZYL_ENV_FILE" > MANIFEST.sha256 )
+    rm -rf "$W"
+    echo "  ✓ U-Boot with the boot policy, FIT signature check, env in $ZYL_ENV_FILE (writeable list)"
+    echo "Run: tools/run-qemu.sh --firmware $OUT … (the OS key goes into the QEMU DTB — tools/sign-image.sh)"
+    exit 0
+fi
+
 echo "═══ Zyl OS bootloader (BPI-F3, SpacemiT K1)$([ $BURN = 1 ] && echo ' — burns the root key hash into eFuse') ═══"
 step "sources (U-Boot ${UBOOT_COMMIT:0:12}, OpenSBI ${OPENSBI_COMMIT:0:12})"
 source_tree "$UBOOT_REPO" "$UBOOT_COMMIT" "${ZYL_UBOOT_SRC:-}" "$W/u-boot"
@@ -95,21 +185,9 @@ openssl pkey -in "$KEY_DIR/zylos-boot-key.key" -pubout -out "$FK/kernel_pubkey_p
 cp "$FK/kernel_pubkey_pub.key" "$FK/rootfs_pubkey_pub.key"
 
 # ── The boot policy, and the variables storage may set (its Runtime state) ──
-step "boot policy (board/bpi-f3/u-boot-env.txt)"
-sed -e "s/^zyl_rotpk_burn=.*/zyl_rotpk_burn=$BURN/" "$ENV_FILE" > "$U/board/spacemit/k1-x/zyl-env.txt"
-python3 -I - "$ENV_FILE" > "$U/include/zyl_env_flags.h" <<'PY'
-import re, sys
-names, inside = [], False
-for line in open(sys.argv[1]):
-    if line.startswith('# ──'):
-        inside = line.startswith('# ── Runtime state')
-    elif inside and re.match(r'^[A-Za-z_][A-Za-z0-9_]*=', line):
-        names.append(line.split('=', 1)[0])
-if not names:
-    sys.exit('no Runtime state variables in ' + sys.argv[1])
-print('/* Generated by tools/build-bootloader.sh from board/bpi-f3/u-boot-env.txt */')
-print('#define CONFIG_ENV_FLAGS_LIST_STATIC "%s"' % ','.join(n + ':sw' for n in names))
-PY
+step "boot policy (board/boot-policy.txt + board/bpi-f3/u-boot-env.txt)"
+compose_env > "$U/board/spacemit/k1-x/zyl-env.txt"
+env_flags_header > "$U/include/zyl_env_flags.h"
 # Placeholder until the FSBL exists (only CONFIG_ZYL_ROTPK_BURN reads it)
 printf '#define ZYL_FSBL_SIZE 0\n#define ZYL_FSBL_SHA256 { 0 }\n' > "$U/include/zyl_rotpk.h"
 
@@ -120,15 +198,13 @@ step "configuration"
     echo 'CONFIG_DEFAULT_ENV_FILE="board/spacemit/k1-x/zyl-env.txt"'
     [ $BURN = 1 ] && echo 'CONFIG_ZYL_ROTPK_BURN=y' || echo '# CONFIG_ZYL_ROTPK_BURN is not set'
 } > "$W/zyl.config"
-( cd "$U" && make -s k1_defconfig && scripts/kconfig/merge_config.sh -m .config "$W/zyl.config" >/dev/null \
-  && make -s olddefconfig )
-while IFS= read -r line; do
-    case "$line" in
-        CONFIG_*=*) grep -qxF "$line" "$U/.config" || { echo "✗ not in .config: $line" >&2; exit 1; } ;;
-        "# CONFIG_"*" is not set") n="${line#\# }"; n="${n%% *}"
-            ! grep -q "^$n=" "$U/.config" || { echo "✗ still set: $n" >&2; exit 1; } ;;
-    esac
-done < "$W/zyl.config"
+configure "$U" k1_defconfig "$W/zyl.config"
+# The env's place must be the one the OS's fw_env.config names (partitions.conf)
+for kv in "CONFIG_ENV_OFFSET=$ZYL_ENV_OFFSET" "CONFIG_ENV_SIZE=$ZYL_ENV_SIZE"; do
+    have="$(grep "^${kv%%=*}=" "$U/.config" || true)"
+    [ "$(( ${have#*=} ))" = "$(( ${kv#*=} ))" ] 2>/dev/null \
+        || { echo "✗ U-Boot ${have:-${kv%%=*} unset}, $LAYOUT says ${kv#*=}" >&2; exit 1; }
+done
 
 step "U-Boot and SPL"
 make -C "$U" -s -j"$JOBS" >"$W/u-boot.log" 2>&1 || { tail -30 "$W/u-boot.log"; exit 1; }

@@ -93,7 +93,7 @@ test('telephony-dbus',
 )
 
 # Test: bootloader lock requests (GPLv3 §6 unlock path) against fake
-# fw_printenv/fw_setenv, and the variable names in board/bpi-f3/u-boot-env.txt
+# fw_printenv/fw_setenv, and the variable names in board/boot-policy.txt
 test('bootctl',
   executable('test-bootctl',
     'test_bootctl.c',

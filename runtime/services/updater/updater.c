@@ -751,7 +751,7 @@ bool zyl_updater_mark_verified(ZylUpdater *u) {
     fprintf(stderr, "[UPDATER] Health: zyl-wam OK\n");
 
     /* 3. The try is over: this slot becomes the one U-Boot falls back to, and
-          it stops counting boots (board/bpi-f3/u-boot-env.txt rolls back after three) */
+          it stops counting boots (board/boot-policy.txt rolls back after zyl_boot_limit) */
     const ZylBootHal *boot = zyl_hal_boot();
     if (!boot->env_set("zyl_active_slot", u->active_slot) ||
         !boot->env_set("zyl_next_slot", NULL) || !boot->env_set("zyl_boot_count", "0")) {
