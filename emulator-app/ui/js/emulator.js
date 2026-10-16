@@ -18,8 +18,9 @@
   'use strict';
 
   /* ═══ 앱 경로 ═══
-     부팅 시 Rust가 OS 이미지(.img)를 마운트 → apps/를 ui/apps/로 복사.
-     셧다운 시 정리. 따라서 앱은 항상 상대 경로로 접근.
+     앱 페이지는 언제나 ui/apps/ 에서 읽는다 — cargo tauri dev 전에
+     scripts/deploy-apps.sh 가 OS 이미지의 apps/ 를 그리로 동기화한다.
+     따라서 앱은 항상 상대 경로로 접근.
      앱 레지스트리는 OS 레벨 ZylAppRegistry (apps/system/app-registry.js)가 관리.
      서비스 init 시 apps.getInstalled()로 자동 등록된다. */
 
@@ -767,12 +768,11 @@
       }
     }
 
-    syslog('Zyl OS v0.1.0 booting...', 'sys');
+    syslog('Zyl OS v' + ZylRelease.version + ' booting...', 'sys');
     syslog('Device: ' + profile.name, 'sys');
-    syslog('SoC: ' + profile.soc + ' (RISC-V)', 'sys');
-    syslog('RAM: ' + profile.ram + ' LPDDR4X', 'sys');
+    syslog('SoC: ' + profile.soc, 'sys');
+    syslog('RAM: ' + profile.ram, 'sys');
     syslog('Nav: ' + profile.navMode + ' (hardware config)', 'sys');
-    syslog('GPU: IMG BXE-2-32 (PVR)', 'sys');
 
     setTimeout(function () {
       syslog('Compositor started', 'sys');
@@ -834,7 +834,7 @@
       deviceId: (bootInfo && bootInfo.device_id) || '',
     };
 
-    /* 부팅 정보 로그 (앱은 Rust에서 ui/apps/로 복사됨) */
+    /* 부팅 정보 로그 */
     if (bootInfo && bootInfo.os_image_mount) {
       syslog('OS image: ' + esc(bootInfo.os_image_mount), 'sys');
     }

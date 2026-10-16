@@ -124,7 +124,7 @@ pub async fn boot_device(
     {
         let app_state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
         if app_state.booted {
-            return Err("Device already booted. Call shutdown_device first.".into());
+            return Err("Device already booted.".into());
         }
     }
 

@@ -21,7 +21,7 @@ var ZylConfigUI = (function () {
   var _selectedProfile = null;
   var _selectedStorage = 8;
   var _selectedRam = 1024;
-  var _selectedOsVersion = '0.1.0';
+  var _selectedOsVersion = ZylRelease.version;   /* until an image is picked */
   var _selectedOsPath = ''; /* 선택된 OS 이미지 경로 (deploy-apps.sh에서 사용) */
   var _onBoot = null;
 
