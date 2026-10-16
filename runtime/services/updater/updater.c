@@ -35,13 +35,14 @@
 /* ─── 내부 상수 ─── */
 /* Overridable so tests install into scratch files */
 #ifndef ZYL_STATE_DIR
-#define ZYL_STATE_DIR         "/var/lib/zyl-os"
+#define ZYL_STATE_DIR         "/data/updater"
 #endif
 #ifndef ZYL_OTA_KEY
 #define ZYL_OTA_KEY           "/etc/zyl-os/ota-signing-key.pem"
 #endif
 #define SLOT_METADATA_PATH    ZYL_STATE_DIR "/slot-metadata"
-#define UPDATE_CACHE_DEFAULT  "/var/cache/zyl-os/updates"
+/* On /data: a package is as large as a rootfs and /var is RAM (tmpfs) */
+#define UPDATE_CACHE_DEFAULT  ZYL_STATE_DIR "/cache"
 #define CURRENT_VERSION_FILE  "/etc/zyl-os/version"
 #define VERIFY_FLAG_FILE      ZYL_STATE_DIR "/slot-verified"
 

@@ -669,7 +669,7 @@ int main(int argc, char *argv[]) {
     (void)argc; (void)argv;
 
     ZylCredentialStore *store = zyl_credential_create(
-        "/var/lib/zyl-os/credentials");
+        "/data/credentials");
     if (!store) {
         g_critical("[Credential] Failed to create store");
         return 1;

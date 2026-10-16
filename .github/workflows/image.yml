@@ -54,7 +54,7 @@ jobs:
             libwayland-dev wayland-protocols libxkbcommon-dev libpixman-1-dev \
             libinput-dev libdrm-dev libegl-dev libgles-dev libdisplay-info-dev \
             libseat-dev libgps-dev hwdata libwlroots-0.18-dev \
-            debootstrap systemd systemd-sysv fdisk e2fsprogs dbus ca-certificates \
+            debootstrap systemd systemd-sysv fdisk e2fsprogs dosfstools dbus ca-certificates \
             qemu-system-x86 qemu-system-arm
       - name: Build (board=emulator, profile=phone)
         run: |

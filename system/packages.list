@@ -78,6 +78,7 @@ wireplumber
 apparmor                 # system/apparmor/zyl-* 프로필
 apparmor-utils           # apparmor_parser (zyl-apparmor.service)
 cryptsetup-bin           # dm-verity (veritysetup)
+libubootenv-tool         # fw_printenv/fw_setenv — Boot HAL (슬롯·잠금 상태). 없으면 업데이트·잠금 해제가 꺼진다
 openssl                  # 서명 검증 도구
 
 # ── 그 밖 ──

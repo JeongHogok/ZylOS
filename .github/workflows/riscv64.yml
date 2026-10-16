@@ -58,7 +58,7 @@ jobs:
             libpixman-1-dev:riscv64 libinput-dev:riscv64 libdrm-dev:riscv64 \
             libegl-dev:riscv64 libgles-dev:riscv64 libdisplay-info-dev:riscv64 \
             libseat-dev:riscv64 libgps-dev:riscv64 libwlroots-0.18-dev:riscv64 \
-            debootstrap systemd systemd-sysv fdisk e2fsprogs dbus ca-certificates \
+            debootstrap systemd systemd-sysv fdisk e2fsprogs dosfstools dbus ca-certificates \
             qemu-user-static qemu-system-misc
       - name: Register the riscv64 binfmt handler
         run: |

@@ -15,7 +15,7 @@ TimeoutStopSec=5
 # Security hardening
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/var/log/zyl-os
+ReadWritePaths=/data/log
 ProtectHome=true
 PrivateTmp=true
 PrivateDevices=true

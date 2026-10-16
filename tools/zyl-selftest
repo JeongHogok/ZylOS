@@ -109,7 +109,42 @@ else
     skipped "drm 장치 없음 — 화면 없는 기기면 정상 ($(ls /dev/dri 2>/dev/null | tr '\n' ' '))"
 fi
 
+# ── 저장소: 루트는 읽기 전용(기기에서는 dm-verity), 남는 것은 /data, /var 는 휘발 ──
+opts="$(findmnt -n -o OPTIONS / 2>/dev/null)"
+case ",$opts," in
+    *,ro,*) ok "루트 읽기 전용" ;;
+    *) bad "루트가 쓰기 가능하다 ($opts)" ;;
+esac
+if [ "$(findmnt -n -o FSTYPE /var 2>/dev/null)" = tmpfs ]; then ok "/var 휘발(tmpfs)"
+else bad "/var 가 tmpfs 가 아니다 — 읽기 전용 루트에서 쓰기가 실패한다"; fi
+mountpoint -q /boot && ok "/boot 마운트" || bad "/boot 가 마운트되지 않았다 — 업데이터·부트 환경이 쓰는 곳"
+
+# ── A/B: 부트로더가 띄운 슬롯이 확정되는가 ──
+# 커널 인자의 zyl.slot= 은 서명된 FIT 이 준다 — 없으면 QEMU 가 커널을 직접 띄운 것
+slot="$(sed -n 's/.*zyl\.slot=\([ab]\).*/\1/p' /proc/cmdline)"
+if [ -z "$slot" ]; then
+    skipped "A/B — 부트로더 없이 부팅"
+elif ! active="$(fw_printenv -n zyl_active_slot 2>/dev/null)"; then
+    bad "부트로더 환경을 읽지 못한다 (/etc/fw_env.config) — 업데이트·잠금 해제가 꺼진다"
+else
+    # 시험 중인 슬롯(zyl_next_slot)이면 업데이터가 건강 검사 뒤 확정할 때까지 기다린다
+    # (업데이터는 기동 후 1분에 확정한다 — 유닛의 TimeoutStartSec 안에서 끝나야 한다)
+    i=0
+    while [ "$(fw_printenv -n zyl_next_slot 2>/dev/null)" = "$slot" ] && [ $i -lt 110 ]; do
+        sleep 2; i=$((i + 2))
+    done
+    active="$(fw_printenv -n zyl_active_slot 2>/dev/null)"
+    if [ "$active" = "$slot" ]; then ok "슬롯 $slot 부팅·확정 (zyl_active_slot=$active)"
+    else
+        bad "슬롯 $slot 로 부팅했는데 확정되지 않았다 (zyl_active_slot=$active, zyl_next_slot=$(fw_printenv -n zyl_next_slot 2>/dev/null))"
+        # 기기에는 셸이 없다 — 왜 확정하지 않았는지는 업데이터의 기록이 콘솔로 말한다
+        journalctl -u zyl-updater -n 20 -o cat --no-pager 2>/dev/null | while IFS= read -r l; do say "  updater: $l"; done
+    fi
+fi
+
 # ── 보고 ──
+# 기록을 디스크로 — 레인은 PASS 를 보자마자 머신을 끈다(업데이터가 쓴 부트 환경 등)
+sync
 total=$((pass + fail))
 if [ "$fail" -eq 0 ]; then
     say "PASS ($pass/$total, 건너뜀 $skip)"
