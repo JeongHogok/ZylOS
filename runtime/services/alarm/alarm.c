@@ -92,7 +92,13 @@ static void post_alarm_notification(ZylAlarmService *svc, const ZylAlarm *a) {
 typedef struct {
     ZylAlarmService *svc;
     char             tag[256];
+    char             app_id[256];
 } AlarmTimerCtx;
+
+/* An alarm is its app's tag: two apps' "wake" are two alarms */
+static gboolean is_alarm(const ZylAlarm *a, const char *app_id, const char *tag) {
+    return g_strcmp0(a->tag, tag) == 0 && g_strcmp0(a->app_id, app_id ? app_id : "") == 0;
+}
 
 static gboolean on_alarm_fire(gpointer data) {
     AlarmTimerCtx *ctx = data;
@@ -102,7 +108,7 @@ static gboolean on_alarm_fire(gpointer data) {
     /* 엔트리 검색 */
     AlarmEntry *entry = NULL;
     for (int i = 0; i < svc->count; i++) {
-        if (g_strcmp0(svc->entries[i].alarm.tag, ctx->tag) == 0) {
+        if (is_alarm(&svc->entries[i].alarm, ctx->app_id, ctx->tag)) {
             entry = &svc->entries[i];
             break;
         }
@@ -156,9 +162,11 @@ static const char *alarm_introspection_xml =
     "    </method>"
     "    <method name='Cancel'>"
     "      <arg type='s' name='tag' direction='in'/>"
+    "      <arg type='s' name='app_id' direction='in'/>"
     "      <arg type='b' name='ok'  direction='out'/>"
     "    </method>"
     "    <method name='List'>"
+    "      <arg type='s' name='app_id' direction='in'/>"
     "      <arg type='aa{sv}' name='alarms' direction='out'/>"
     "    </method>"
     "    <signal name='AlarmTriggered'>"
@@ -202,16 +210,20 @@ static void handle_alarm_method(GDBusConnection      *conn,
             g_variant_new("(b)", rc == 0));
 
     } else if (g_strcmp0(method, "Cancel") == 0) {
-        const gchar *tag;
-        g_variant_get(params, "(&s)", &tag);
-        int rc = zyl_alarm_cancel(svc, tag);
+        /* app_id: the bridge's — a third-party app's own, never another's */
+        const gchar *tag, *app_id;
+        g_variant_get(params, "(&s&s)", &tag, &app_id);
+        int rc = zyl_alarm_cancel(svc, app_id, tag);
         g_dbus_method_invocation_return_value(inv,
             g_variant_new("(b)", rc == 0));
 
     } else if (g_strcmp0(method, "List") == 0) {
+        /* A third-party app sees its own; a system app the one it names, "" all */
+        const gchar *app_id;
+        g_variant_get(params, "(&s)", &app_id);
         ZylAlarm *alarms = NULL;
         int count = 0;
-        zyl_alarm_list(svc, &alarms, &count);
+        zyl_alarm_list(svc, app_id, &alarms, &count);
 
         GVariantBuilder builder;
         g_variant_builder_init(&builder, G_VARIANT_TYPE("aa{sv}"));
@@ -431,10 +443,10 @@ void zyl_alarm_service_destroy(ZylAlarmService *svc) {
 int zyl_alarm_set(ZylAlarmService *svc, const ZylAlarm *alarm) {
     if (!svc || !alarm || !alarm->tag || alarm->tag[0] == '\0') return -1;
 
-    /* 중복 tag 확인 — 기존 알람 갱신 */
+    /* 같은 앱의 같은 tag — 기존 알람 갱신 (다른 앱의 것은 건드리지 않는다) */
     AlarmEntry *entry = NULL;
     for (int i = 0; i < svc->count; i++) {
-        if (g_strcmp0(svc->entries[i].alarm.tag, alarm->tag) == 0) {
+        if (is_alarm(&svc->entries[i].alarm, alarm->app_id, alarm->tag)) {
             entry = &svc->entries[i];
             break;
         }
@@ -478,6 +490,7 @@ int zyl_alarm_set(ZylAlarmService *svc, const ZylAlarm *alarm) {
     AlarmTimerCtx *ctx = g_new(AlarmTimerCtx, 1);
     ctx->svc = svc;
     g_strlcpy(ctx->tag, alarm->tag, sizeof(ctx->tag));
+    g_strlcpy(ctx->app_id, entry->alarm.app_id, sizeof(ctx->app_id));
 
     entry->timer_id = g_timeout_add(delay_ms, on_alarm_fire, ctx);
 
@@ -491,11 +504,11 @@ int zyl_alarm_set(ZylAlarmService *svc, const ZylAlarm *alarm) {
     return 0;
 }
 
-int zyl_alarm_cancel(ZylAlarmService *svc, const char *tag) {
+int zyl_alarm_cancel(ZylAlarmService *svc, const char *app_id, const char *tag) {
     if (!svc || !tag) return -1;
 
     for (int i = 0; i < svc->count; i++) {
-        if (g_strcmp0(svc->entries[i].alarm.tag, tag) == 0) {
+        if (is_alarm(&svc->entries[i].alarm, app_id, tag)) {
             if (svc->entries[i].timer_id) {
                 g_source_remove(svc->entries[i].timer_id);
                 svc->entries[i].timer_id = 0;
@@ -535,29 +548,29 @@ int zyl_alarm_forget_app(ZylAlarmService *svc, const char *app_id) {
     return removed;
 }
 
-int zyl_alarm_list(ZylAlarmService *svc, ZylAlarm **out, int *count) {
+int zyl_alarm_list(ZylAlarmService *svc, const char *app_id, ZylAlarm **out, int *count) {
     if (!svc || !out || !count) return -1;
-
-    if (svc->count == 0) {
-        *out = NULL;
-        *count = 0;
-        return 0;
-    }
+    *out = NULL;
+    *count = 0;
+    if (svc->count == 0) return 0;
 
     ZylAlarm *result = calloc((size_t)svc->count, sizeof(ZylAlarm));
     if (!result) return -1;
 
+    int n = 0;
     for (int i = 0; i < svc->count; i++) {
-        result[i].tag        = g_strdup(svc->entries[i].alarm.tag);
-        result[i].trigger_at = svc->entries[i].alarm.trigger_at;
-        result[i].interval_ms = svc->entries[i].alarm.interval_ms;
-        result[i].app_id     = g_strdup(svc->entries[i].alarm.app_id);
-        result[i].repeating  = svc->entries[i].alarm.repeating;
-        result[i].title      = g_strdup(svc->entries[i].alarm.title);
+        if (app_id && *app_id && g_strcmp0(svc->entries[i].alarm.app_id, app_id) != 0) continue;
+        result[n].tag        = g_strdup(svc->entries[i].alarm.tag);
+        result[n].trigger_at = svc->entries[i].alarm.trigger_at;
+        result[n].interval_ms = svc->entries[i].alarm.interval_ms;
+        result[n].app_id     = g_strdup(svc->entries[i].alarm.app_id);
+        result[n].repeating  = svc->entries[i].alarm.repeating;
+        result[n].title      = g_strdup(svc->entries[i].alarm.title);
+        n++;
     }
 
     *out   = result;
-    *count = svc->count;
+    *count = n;
     return 0;
 }
 

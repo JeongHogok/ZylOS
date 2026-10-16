@@ -86,7 +86,7 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
   모든 앱 위의 표면으로 그린다 — 기기는 WAM 이 투명한 전체 화면 창으로(입력 영역만
   바꾼다), 에뮬레이터는 두 번째 iframe 으로. 얼마나 보일지(bar·banner·full)는 셸
   정책(`panelMode`)이 정한다. 에뮬레이터·컴포지터가 이런 UI 를 직접 그리지 말 것
-- 서비스 이벤트 중 한 앱의 것(알림, 지오펜스)은 제3자 앱에 자기 것만 간다 —
+- 서비스 이벤트 중 한 앱의 것(알림, 지오펜스, 알람)은 제3자 앱에 자기 것만 간다 —
   `permissions.js` 의 `OWNED_EVENTS` 가 권위, `bridge.c` 사본(verify-all 대조)
 - `settings.json`, `.credentials/`, `.system/`은 보호 경로
 - 서비스 권한 체크는 OS 레이어에서만 수행
