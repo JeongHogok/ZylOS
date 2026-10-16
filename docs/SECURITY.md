@@ -50,7 +50,7 @@
 | 표 | 뜻 |
 |----|----|
 | `SERVICE_PERMISSIONS` | 서비스마다 필요한 권한 — 하나라도 가지면 부를 수 있고, 빈 목록은 권한 없이 부릅니다. 표에 없는 서비스는 닫혀 있습니다 |
-| `METHOD_PERMISSIONS` | 자기 것 너머에 닿는 메서드(다른 앱의 알림, 기기 전체의 방해 금지, 전원 — 화면·절전·종료·재부팅·웨이크락 등)에 더 필요한 권한 |
+| `METHOD_PERMISSIONS` | 자기 것 너머에 닿는 메서드(다른 앱의 알림, 알림 액션 누르기, 기기 전체의 방해 금지, 전원 — 화면·절전·종료·재부팅·웨이크락 등)에 더 필요한 권한 |
 | `OWNED_EVENTS` | 한 앱의 것에 관한 이벤트는 그 주인에게만 갑니다 — 주인은 시그널의 두 번째 인자이고, 주인을 밝히지 않는 이벤트는 아무에게도 가지 않습니다. 모두 읽을 권한(`readAll`)을 가진 앱은 예외 |
 | `RESERVED_PERMISSIONS` | OS 만 갖는 권한. 제3자 앱이 선언해도 주어지지 않습니다 |
 
@@ -62,6 +62,19 @@
   `ZylPermissions.setAppOverride` 로, 기기는 WAM 이 `CategoryChanged` 시그널을 따라 다시 읽어
   다음 호출부터 거부합니다.
 - 첫 사용 때 묻는 동의 창은 없습니다. 넣을 자리는 [CLAUDE.md](../CLAUDE.md) 규칙 8.
+
+### 웹 플랫폼의 권한 요청
+
+페이지가 WebKit 에 묻는 것도 앱 권한으로 정합니다 — 묻는 창은 없습니다. 기기는 WAM 의
+`on_permission_request`(`wam.c`), 에뮬레이터는 앱 iframe 의 Permissions Policy
+(`sandbox.js` 의 `getPolicy`)로, 같은 규칙입니다.
+
+| 요청 | 판정 |
+|---|---|
+| `getUserMedia` 카메라 / 마이크 | `camera` / `microphone` 권한 (둘 다 요청하면 둘 다) |
+| 장치 목록의 이름 | `camera` 나 `microphone` 중 하나 |
+| 화면 공유, 위치(`navigator.geolocation`), 웹 알림, 포인터 잠금 등 | 거부 — OS 서비스(`location`, `notification`)를 쓴다 |
+| `<input type=file>` | 열지 않음 — 데스크톱 대화창이 컨테이너 밖 경로를 건넬 수 있다. 파일은 PICK (§5) |
 
 ### 앱이 닿는 곳 — CSP
 

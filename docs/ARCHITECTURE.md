@@ -63,6 +63,7 @@ JS, 기기에서는 `runtime/` 의 C 다(`apps/system/` 은 기기 이미지에 
 | 앱 사이 파일 건네기 (받는 앱 루트로 복사) | `apps/system/services/fs.js` `_handoff` → `filesystem.rs` | `runtime/services/fs/fs.c` 의 `Handoff` 인터페이스 | `tests/test_fs_service.c`, `filesystem.rs` 테스트 |
 | 서비스·메서드 권한, 받을 수 있는 이벤트 | `apps/system/permissions.js` (권위) | `runtime/wam/src/bridge/bridge.c` 의 표 | `tests/verify-all.sh` 가 표를 대조 |
 | 네트워크 허용 도메인 | `apps/system/sandbox.js` (권위) | `runtime/services/network/network.c` | `tests/verify-all.sh` |
+| 웹 권한 요청 (카메라·마이크, 그 밖은 거부) | `apps/system/sandbox.js` 의 `getPolicy` | `runtime/wam/src/wam.c` 의 `on_permission_request` | `tests/test_services.js` |
 | 앱의 CSP (권한 → 닿는 곳) | `apps/system/sandbox.js` 의 `getContentPolicy` | `runtime/wam/src/scheme/app_scheme.c` 의 `zyl_app_scheme_csp` | `tests/test_app_scheme.c`, `tests/test_services.js` (같은 문자열) |
 | 앱 봉인 | `apps/system/services/app-seal.js` | `runtime/lib/app_seal.c` | `tests/test_app_seal.c`, `tests/test_services.js` |
 | 앱이 부르는 서비스 계약 | 앱의 `requestService` 호출 | 서비스의 D-Bus 메서드·인자 | `tests/verify-all.sh` 의 계약 공백 검사 |
