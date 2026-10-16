@@ -222,9 +222,7 @@ static gboolean close_after_cleanup(gpointer data) {
     ZylAppInterface *iface    = ctx[0];
     ZylAppInstance  *instance = ctx[1];
     char            *app_id   = ctx[2]; /* strdup'd — we own it */
-
-    /* Remove from registry first (uses app_id before we free it) */
-    iface->remove_instance(iface, app_id);
+    (void)iface;
 
     /* Now destroy the window */
     gtk_window_close(GTK_WINDOW(instance->window));
@@ -242,6 +240,14 @@ void zyl_lifecycle_close(ZylAppInterface *iface,
                          const char      *app_id) {
     ZylAppInstance *instance = iface->get_instance(iface, app_id);
     if (!instance) return;
+
+    /* It is gone from now: a second close, an event or a launch in the next
+       100 ms no longer finds it, and what its page still sends reaches no one
+       — its manifest may go with it (an update or removal frees it) */
+    iface->remove_instance(iface, app_id);
+    WebKitWebView *view = WEBKIT_WEB_VIEW(instance->webview_widget);
+    g_signal_handlers_disconnect_by_data(view, instance);
+    g_signal_handlers_disconnect_by_data(webkit_web_view_get_user_content_manager(view), instance);
 
     /* Give the web app a chance to run final cleanup */
     inject_js(instance,

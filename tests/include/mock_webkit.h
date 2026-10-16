@@ -22,6 +22,11 @@ typedef struct _JSCValue JSCValue;
 struct _WebKitWebView {
     gchar *last_script;
 };
+
+/* The mock view lives on the test's stack, not a GObject: nothing to hold
+   (bridge.c holds a real view until a late answer has gone to it) */
+#define ZYL_BRIDGE_VIEW_REF(v)   (v)
+#define ZYL_BRIDGE_VIEW_UNREF(v) ((void)(v))
 struct _WebKitUserContentManager { int unused; };
 struct _WebKitUserScript { int unused; };
 struct _WebKitJavascriptResult { int unused; };

@@ -376,8 +376,15 @@ void zyl_bridge_dispatch(WebKitWebView    *webview,
 
 /* == D-Bus async callback context ========================== */
 
+/* An answer can come after its app closed: the view it goes to is held
+   until then (the test mock's view is no GObject and overrides these) */
+#ifndef ZYL_BRIDGE_VIEW_REF
+#define ZYL_BRIDGE_VIEW_REF(v)   ((v) ? g_object_ref(v) : NULL)
+#define ZYL_BRIDGE_VIEW_UNREF(v) do { if (v) g_object_unref(v); } while (0)
+#endif
+
 typedef struct {
-    WebKitWebView *webview;
+    WebKitWebView *webview;     /* held: ZYL_BRIDGE_VIEW_REF */
     int            callback_id;
 } DbusReplyCtx;
 
@@ -570,6 +577,7 @@ static void on_dbus_call_done(GObject      *source,
 
     if (err) g_error_free(err);
     g_object_unref(source);
+    ZYL_BRIDGE_VIEW_UNREF(ctx->webview);
     g_free(ctx);
 }
 
@@ -1150,6 +1158,7 @@ typedef struct {
 } ServiceCall;
 
 static void service_call_free(ServiceCall *c) {
+    ZYL_BRIDGE_VIEW_UNREF(c->reply.webview);
     g_free(c->method);
     g_free(c->app_id);
     if (c->params) json_object_unref(c->params);
@@ -1180,7 +1189,7 @@ static void service_call_invoke(ServiceCall *c, GDBusNodeInfo *node) {
 
     if (c->reply.callback_id >= 0) {
         DbusReplyCtx *ctx = g_new(DbusReplyCtx, 1);
-        ctx->webview     = c->reply.webview;
+        ctx->webview     = ZYL_BRIDGE_VIEW_REF(c->reply.webview);
         ctx->callback_id = c->reply.callback_id;
         g_object_ref(c->conn);   /* released by on_dbus_call_done */
         g_dbus_connection_call(c->conn,
@@ -1282,6 +1291,7 @@ static void handle_service_request(const char *type, gpointer msg_obj,
     call->app_id = g_strdup(app_id);
     call->is_system = manifest->is_system;
     call->reply  = *reply_ctx;
+    call->reply.webview = ZYL_BRIDGE_VIEW_REF(reply_ctx->webview);   /* service_call_free */
     call->conn   = bus;   /* g_bus_get_sync returned a ref; the call owns it */
     JsonNode *params_node = json_object_get_member(msg, "params");
     if (params_node && JSON_NODE_HOLDS_OBJECT(params_node))
