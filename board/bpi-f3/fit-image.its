@@ -6,8 +6,8 @@
  * 의존방향: U-Boot mkimage, RSA-2048 서명 키
  * SOLID: SRP — 부트 이미지 정의만 담당
  *
- * 사용법:
- *   mkimage -f fit-image.its -k keys/ -K u-boot.dtb -r fit-image.itb
+ * 사용법: tools/sign-image.sh --board bpi-f3 가 @KERNEL@·@FDT@·@RAMDISK@ 를 채우고
+ *         슬롯의 커널 인자를 FDT 에 넣은 뒤 서명한다
  *
  * 서명 검증 체인:
  *   U-Boot SPL (ROM) → U-Boot (SPL 서명검증)
@@ -24,7 +24,7 @@
     images {
         kernel-1 {
             description = "Zyl OS Linux Kernel 6.6 (RISC-V)";
-            data = /incbin/("../../vmlinuz");
+            data = /incbin/("@KERNEL@");
             type = "kernel";
             arch = "riscv";
             os = "linux";
@@ -38,7 +38,7 @@
 
         fdt-1 {
             description = "BPI-F3 Device Tree (SpacemiT K1)";
-            data = /incbin/("../../system/dts/bpi-f3-zyl.dtb");
+            data = /incbin/("@FDT@");
             type = "flat_dt";
             arch = "riscv";
             compression = "none";
@@ -49,7 +49,7 @@
 
         ramdisk-1 {
             description = "Zyl OS initramfs";
-            data = /incbin/("../../initramfs.cpio.gz");
+            data = /incbin/("@RAMDISK@");
             type = "ramdisk";
             arch = "riscv";
             os = "linux";

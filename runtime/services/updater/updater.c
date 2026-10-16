@@ -35,13 +35,14 @@
 /* ─── 내부 상수 ─── */
 /* Overridable so tests install into scratch files */
 #ifndef ZYL_STATE_DIR
-#define ZYL_STATE_DIR         "/var/lib/zyl-os"
+#define ZYL_STATE_DIR         "/data/updater"
 #endif
 #ifndef ZYL_OTA_KEY
 #define ZYL_OTA_KEY           "/etc/zyl-os/ota-signing-key.pem"
 #endif
 #define SLOT_METADATA_PATH    ZYL_STATE_DIR "/slot-metadata"
-#define UPDATE_CACHE_DEFAULT  "/var/cache/zyl-os/updates"
+/* On /data: a package is as large as a rootfs and /var is RAM (tmpfs) */
+#define UPDATE_CACHE_DEFAULT  ZYL_STATE_DIR "/cache"
 #define CURRENT_VERSION_FILE  "/etc/zyl-os/version"
 #define VERIFY_FLAG_FILE      ZYL_STATE_DIR "/slot-verified"
 
@@ -249,15 +250,23 @@ static ZylUpdateType parse_update_type(const char *type_str) {
 /* The slot that actually booted: its signed FIT carries zyl.slot= (tools/
  * sign-image.sh), so this is the truth even while U-Boot is trying an update
  * and zyl_active_slot still names the previous slot. */
+#ifndef ZYL_CMDLINE
+#define ZYL_CMDLINE "/proc/cmdline"
+#endif
 static char *detect_active_slot(void) {
-    char *cmdline = read_file_string("/proc/cmdline");
-    const char *p = cmdline ? strstr(cmdline, "zyl.slot=") : NULL;
-    if (p && (p[9] == 'a' || p[9] == 'b')) {
-        char *slot = strndup(p + 9, 1);
-        free(cmdline);
-        return slot;
+    /* The whole line: a signed one carries the verity values ahead of zyl.slot=
+       and is longer than any fixed buffer — a cut-off line read slot "a" on
+       slot B, so no update was ever confirmed and every one rolled back */
+    gchar *cmdline = NULL;
+    if (g_file_get_contents(ZYL_CMDLINE, &cmdline, NULL, NULL)) {
+        const char *p = strstr(cmdline, "zyl.slot=");
+        if (p && (p[9] == 'a' || p[9] == 'b')) {
+            char *slot = strndup(p + 9, 1);
+            g_free(cmdline);
+            return slot;
+        }
     }
-    free(cmdline);
+    g_free(cmdline);
     char *slot = read_file_string(SLOT_METADATA_PATH);
     return slot ? slot : strdup("a");
 }
@@ -742,7 +751,7 @@ bool zyl_updater_mark_verified(ZylUpdater *u) {
     fprintf(stderr, "[UPDATER] Health: zyl-wam OK\n");
 
     /* 3. The try is over: this slot becomes the one U-Boot falls back to, and
-          it stops counting boots (board/bpi-f3/u-boot-env.txt rolls back after three) */
+          it stops counting boots (board/boot-policy.txt rolls back after zyl_boot_limit) */
     const ZylBootHal *boot = zyl_hal_boot();
     if (!boot->env_set("zyl_active_slot", u->active_slot) ||
         !boot->env_set("zyl_next_slot", NULL) || !boot->env_set("zyl_boot_count", "0")) {

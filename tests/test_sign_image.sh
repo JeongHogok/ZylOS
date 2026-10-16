@@ -42,23 +42,56 @@ dumpimage -T flat_dt -p 1 -o "$W/fdt.dtb" "$W/out/fit-image-b.itb" >/dev/null
 ARGS=$(fdtget -t s "$W/fdt.dtb" /chosen bootargs)
 . "$W/out/verity-params-b.txt"
 case "$ARGS" in
-  *"/dev/mmcblk0p4 /dev/mmcblk0p5"*"$ROOT_HASH"*"zyl.slot=b"*) ok "signed command line names slot B's partitions, root hash and slot" ;;
+  *"zyl.verity=/dev/mmcblk0p4,/dev/mmcblk0p5,"*"$ROOT_HASH"*"zyl.slot=b"*) ok "signed command line names slot B's partitions, root hash and slot" ;;
   *) bad "signed command line wrong: $ARGS" ;;
 esac
-SECTORS=$(( DATA_BLOCKS * DATA_BLOCK_SIZE / 512 ))
 case "$ARGS" in
-  *"ro,0 $SECTORS verity"*) ok "dm table length is in 512-byte sectors ($SECTORS)" ;;
-  *) bad "dm table length is not $SECTORS sectors: $ARGS" ;;
+  *"root=/dev/mapper/zyl-root"*" panic="*) ok "the root is the verity device, and one that does not verify reboots (no shell)" ;;
+  *) bad "root or panic= missing: $ARGS" ;;
 esac
-# The kernel reads the table as given — check it verifies the image with
-# exactly those values: <dbs> <hbs> <blocks> <hash start block> sha256 <root> <salt>
-read -r DBS HBS NB HSTART ALG RH SALT_ <<<"$(printf '%s\n' "$ARGS" | sed -n 's/.*mmcblk0p5 \([0-9]*\) \([0-9]*\) \([0-9]*\) \([0-9]*\) \([a-z0-9]*\) \([0-9a-f]*\) \([0-9a-f]*\)".*/\1 \2 \3 \4 \5 \6 \7/p')"
-if [ -n "${SALT_:-}" ] && veritysetup verify --no-superblock --data-block-size "$DBS" --hash-block-size "$HBS" \
-     --data-blocks "$NB" --hash-offset $(( HSTART * HBS )) --hash "$ALG" --salt "$SALT_" \
+# The initramfs opens the root with exactly these eight values
+# (system/initramfs/zyl-verity.local-top) — check they verify the image
+SPEC=$(printf '%s\n' "$ARGS" | sed -n 's/.*zyl\.verity=\([^ ]*\).*/\1/p')
+IFS=, read -r _DATA _HASH NB DBS HBS HSTART RH SALT_ <<<"$SPEC"
+if [ -n "${SALT_:-}" ] && veritysetup verify --no-superblock --format=1 --hash=sha256 \
+     --data-blocks "$NB" --data-block-size "$DBS" --hash-block-size "$HBS" \
+     --hash-offset $(( HSTART * HBS )) --salt "$SALT_" \
      "$W/rootfs.img" "$W/out/verity-hashtree-b.img" "$RH" >/dev/null 2>&1; then
-  ok "the signed dm-verity table verifies the rootfs"
+  ok "the signed verity values open the rootfs the way the initramfs does"
 else
-  bad "the signed dm-verity table does not verify the rootfs: $ARGS"
+  bad "the signed verity values do not verify the rootfs: $SPEC"
+fi
+
+# Another board, extra signed arguments, installed straight into a disk image
+if command -v mcopy >/dev/null && command -v mkfs.vfat >/dev/null && command -v sfdisk >/dev/null; then
+  truncate -s 40M "$W/disk.img"
+  printf 'label: gpt\nsize=8MiB, name=boot\nsize=10MiB, name=rootfs-a\nsize=2MiB, name=verity-a\nsize=10MiB, name=rootfs-b\nsize=2MiB, name=verity-b\nsize=4MiB, name=userdata\n' \
+    | sfdisk -q "$W/disk.img" >/dev/null
+  BOOT_AT=$(sfdisk --json "$W/disk.img" | python3 -I -c 'import json,sys; print(json.load(sys.stdin)["partitiontable"]["partitions"][0]["start"])')
+  mkfs.vfat -C "$W/boot.img" 8192 >/dev/null
+  dd if="$W/boot.img" of="$W/disk.img" bs=512 seek="$BOOT_AT" conv=notrunc status=none
+  if ZYL_KERNEL="$W/vmlinuz" ZYL_DTB="$W/board.dtb" ZYL_INITRAMFS="$W/initramfs.cpio.gz" \
+     bash "$ROOT/tools/sign-image.sh" --board generic-riscv64 --slot b --key-dir "$W/keys" \
+       --cmdline-extra "systemd.wants=zyl-selftest.service" --disk "$W/disk.img" \
+       "$W/rootfs.img" "$W/out2" >"$W/log2" 2>&1; then
+    dumpimage -T flat_dt -p 1 -o "$W/fdt2.dtb" "$W/out2/fit-image-b.itb" >/dev/null
+    ARGS2=$(fdtget -t s "$W/fdt2.dtb" /chosen bootargs)
+    case "$ARGS2" in
+      *"zyl.verity=/dev/vda4,/dev/vda5,"*"zyl.slot=b"*"systemd.wants=zyl-selftest.service"*) ok "the board's partitions, and extra arguments inside the signature" ;;
+      *) bad "generic-riscv64 command line wrong: $ARGS2" ;;
+    esac
+    ROOTB_AT=$(sfdisk --json "$W/disk.img" | python3 -I -c 'import json,sys; print(json.load(sys.stdin)["partitiontable"]["partitions"][3]["start"])')
+    if cmp -s "$W/rootfs.img" <(dd if="$W/disk.img" bs=512 skip="$ROOTB_AT" count=$(( 8 * 2048 )) status=none) \
+       && MTOOLS_SKIP_CHECK=1 mdir -b -i "$W/disk.img@@$(( BOOT_AT * 512 ))" ::/ 2>/dev/null | grep -q 'fit-image-b.itb'; then
+      ok "--disk puts the rootfs in slot B and the FIT in the boot partition"
+    else
+      bad "--disk did not install slot B"
+    fi
+  else
+    bad "signing for generic-riscv64 failed"; cat "$W/log2"
+  fi
+else
+  echo "  - mtools/dosfstools/sfdisk not installed: --disk check skipped"
 fi
 
 grep -q "zylos-boot-key" <(fdtget -l "$W/out/u-boot.dtb" /signature 2>/dev/null) \

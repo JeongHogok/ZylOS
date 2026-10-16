@@ -5,7 +5,9 @@
 # 역할: 소스에서 설치 가능한 Zyl OS 디스크 이미지 한 장을 만든다
 # 수행범위: 최소 rootfs 부트스트랩(debootstrap) → `ninja install` 로 Zyl 설치 →
 #           부팅 설정(fstab·기본 타겟·사용자·디렉터리) → ext4 rootfs 이미지 →
-#           보드 레이아웃대로 파티션 디스크 조립
+#           보드 레이아웃대로 파티션 디스크 조립(부트 파티션 vfat, /data ext4).
+#           루트는 읽기 전용으로 쓰인다(기기에서는 dm-verity) — 바뀌는 것은 /data
+#           (영속)와 /var·/tmp(휘발)뿐이고, 그렇게 되도록 여기서 맞춘다
 # 의존방향: 읽는 사실은 전부 남이 소유한다 —
 #           builddir/zyl-board.conf      (meson: 보드·아키텍처·프로파일)
 #           board/<id>/partitions.conf   (보드: 디스크 레이아웃)
@@ -75,7 +77,7 @@ case "$ZYL_ARCH" in
     *)       echo "✗ 모르는 아키텍처: $ZYL_ARCH" >&2; exit 1 ;;
 esac
 
-for c in debootstrap mkfs.ext4 sfdisk ninja python3 readelf; do
+for c in debootstrap mkfs.ext4 mkfs.vfat sfdisk ninja python3 readelf; do
     command -v "$c" >/dev/null 2>&1 || { echo "✗ 필요한 명령이 없다: $c" >&2; exit 1; }
 done
 [ "$(id -u)" = "0" ] || { echo "✗ root 로 실행해야 한다 (debootstrap) — 컨테이너를 쓸 것" >&2; exit 1; }
@@ -122,11 +124,23 @@ fi
 step "Zyl 파일 설치"
 cp -a "$STAGE"/. "$ROOTFS"/
 
-# 글꼴 캐시: 비어 있으면 WAM 이 뜰 때마다 /var/cache/fontconfig 를 고치려 하고
-# (루트 소유라) 거부당한다. 첫 화면도 그만큼 늦는다. 다른 아키텍처면 binfmt 가
-# 있어야 하므로 실패해도 넘어간다
+# 이미지의 커널을 쓰면 initramfs 를 다시 만든다 — 방금 설치한 dm-verity 훅
+# (system/initramfs)이 들어가야 서명된 슬롯의 루트를 연다
+if [ $WITH_KERNEL = 1 ]; then
+    step "initramfs 재생성 (dm-verity 훅)"
+    chroot "$ROOTFS" update-initramfs -u -k all >>"$W/bootstrap.log" 2>&1 || {
+        tail -20 "$W/bootstrap.log"; echo "✗ update-initramfs 실패" >&2; exit 1; }
+fi
+
+# 글꼴 캐시: 비어 있으면 WAM 이 뜰 때마다 글꼴을 전부 다시 읽는다(첫 화면이 그만큼
+# 늦다). /var 는 기기에서 휘발(tmpfs)이라 캐시는 /usr 쪽 자리에 굽는다 —
+# system/fonts/50-zyl-fonts.conf 가 그 자리를 fontconfig 에 알린다. 다른 아키텍처면
+# binfmt 가 있어야 하므로 실패해도 넘어간다
+FC_CACHE=/usr/lib/zyl-os/fontconfig-cache
 if chroot "$ROOTFS" /usr/bin/fc-cache -s >>"$W/bootstrap.log" 2>&1; then
     step "글꼴 캐시 생성"
+    mkdir -p "$ROOTFS$FC_CACHE"
+    mv "$ROOTFS"/var/cache/fontconfig/* "$ROOTFS$FC_CACHE"/ 2>/dev/null || true
 else
     echo "  (글꼴 캐시 생성 건너뜀 — 첫 실행이 느려진다)" >&2
 fi
@@ -165,12 +179,30 @@ PYLINK
 # ── 3. 부팅 설정 ──
 step "부팅 설정 (fstab·기본 타겟·사용자·디렉터리)"
 part_dev() { echo "${ZYL_DISK_NODE}${ZYL_PART_SEP}$1"; }
+# / 는 커널이 이미 올린 것(슬롯의 rootfs, 기기에서는 그 dm-verity 장치)이라 여기서는
+# 읽기 전용만 정한다. /data 는 잠금 전환이 지운 뒤 첫 부팅에서 다시 만들고(makefs)
+# 설치 장치의 남은 공간까지 늘린다(growfs). /var 는 휘발 — 남길 상태는 /data 에
 cat > "$ROOTFS/etc/fstab" <<EOF
 # tools/build-image.sh 가 board/$ZYL_BOARD/partitions.conf 에서 생성
-$(part_dev "$ZYL_PART_ROOT_A")  /       ext4  defaults,noatime  0 1
-$(part_dev "$ZYL_PART_DATA")    /data   ext4  defaults,noatime  0 2
+LABEL=zyl-root                  /      ext4   ro,noatime                                 0 0
+$(part_dev "$ZYL_PART_BOOT")    /boot  vfat   nosuid,nodev,noexec,umask=0077,noatime    0 2
+$(part_dev "$ZYL_PART_DATA")    /data  ext4   noatime,nosuid,nodev,x-systemd.makefs,x-systemd.growfs  0 2
+tmpfs                           /var   tmpfs  mode=0755,nosuid,nodev                     0 0
 EOF
-mkdir -p "$ROOTFS/data"
+mkdir -p "$ROOTFS/data" "$ROOTFS/boot"
+
+# 읽기 전용 /etc 에 남는 것: 기기마다 달라야 할 machine-id 는 비워 두면 systemd 가
+# 부팅마다 만든다. DNS 는 NetworkManager 가 /run 에 쓴 것을 가리킨다
+: > "$ROOTFS/etc/machine-id"
+ln -sfn ../run/NetworkManager/resolv.conf "$ROOTFS/etc/resolv.conf"
+
+# 부트로더 환경의 자리 — Boot HAL·업데이터의 fw_printenv/fw_setenv 가 읽는다
+case "${ZYL_ENV_IN:-none}" in
+    raw)  echo "$ZYL_DISK_NODE $ZYL_ENV_OFFSET $ZYL_ENV_SIZE" > "$ROOTFS/etc/fw_env.config" ;;
+    fat)  echo "/boot/$ZYL_ENV_FILE 0x0 $ZYL_ENV_SIZE" > "$ROOTFS/etc/fw_env.config" ;;
+    none) rm -f "$ROOTFS/etc/fw_env.config" ;;
+    *)    echo "✗ ZYL_ENV_IN=$ZYL_ENV_IN — raw·fat·none 중 하나" >&2; exit 1 ;;
+esac
 
 echo "zyl" > "$ROOTFS/etc/hostname"
 printf '127.0.0.1\tlocalhost\n127.0.1.1\tzyl\n' > "$ROOTFS/etc/hosts"
@@ -270,9 +302,14 @@ expect "$ZYL_PART_DATA"     userdata
 
 start_of() { echo "$LAYOUT_SEEN" | awk -v n="$1" '$1 == n { print $3 }'; }
 
-step "rootfs → 슬롯 A, /data 포맷"
+step "rootfs → 슬롯 A, 부트 파티션 vfat, /data 포맷"
 OFF="$(start_of "$ZYL_PART_ROOT_A")"
 dd if="$ROOT_IMG" of="$DISK" bs=512 seek="$OFF" conv=notrunc status=none
+
+BOOT_IMG="$W/boot.img"
+mkfs.vfat -n ZYL-BOOT -C "$BOOT_IMG" $(( ZYL_SIZE_BOOT_MIB * 1024 )) >/dev/null
+BOFF="$(start_of "$ZYL_PART_BOOT")"
+dd if="$BOOT_IMG" of="$DISK" bs=512 seek="$BOFF" conv=notrunc status=none
 
 DATA_IMG="$W/data.img"
 truncate -s "${DATA_MIB}M" "$DATA_IMG"

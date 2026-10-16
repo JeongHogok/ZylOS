@@ -27,7 +27,7 @@ extern "C" {
 /* -- Configuration ------------------------------------------ */
 
 #ifndef ZYL_LOG_DIR
-#define ZYL_LOG_DIR          "/var/log/zyl-os"
+#define ZYL_LOG_DIR          "/data/log"
 #endif
 #define ZYL_LOG_FILE         ZYL_LOG_DIR "/system.jsonl"
 #define ZYL_LOG_FILTER_FILE  ZYL_LOG_DIR "/logger-filter.conf"

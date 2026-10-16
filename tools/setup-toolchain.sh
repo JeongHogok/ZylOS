@@ -68,7 +68,7 @@ elif [ "$OS" = "Linux" ]; then
         sudo apt install -y meson ninja-build pkg-config cmake git
 
         info "이미지 빌드 도구 설치 (tools/build-image.sh)..."
-        sudo apt install -y debootstrap fdisk e2fsprogs systemd dbus
+        sudo apt install -y debootstrap fdisk e2fsprogs dosfstools systemd dbus
 
         info "QEMU RISC-V 설치..."
         # qemu-system-riscv64 는 qemu-system-misc 안에 있다. qemu-user-static

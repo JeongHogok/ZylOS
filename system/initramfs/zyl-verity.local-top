@@ -1,0 +1,45 @@
+#!/bin/sh
+# ----------------------------------------------------------
+# [Clean Architecture] Infrastructure Layer - Initramfs Script
+#
+# 역할: 슬롯의 rootfs 를 dm-verity 로 열어 루트(/dev/mapper/zyl-root)로 내놓는다
+# 수행범위: 커널 인자 zyl.verity=<데이터 장치>,<해시 장치>,<데이터 블록 수>,
+#           <데이터 블록 크기>,<해시 블록 크기>,<해시 시작 블록>,<루트 해시>,<솔트>
+#           (tools/sign-image.sh 가 서명한 FIT 의 DTB 에 넣는다 — 모든 값이 서명 안에
+#           있으니 디스크의 verity 수퍼블록은 읽지 않는다). 어긋나면 panic — 커널 인자의
+#           panic= 이 셸 대신 재부팅하게 하고, 시험 중인 슬롯이면 U-Boot 가 그 시도를 센다
+# 의존방향: initramfs-tools (scripts/functions), veritysetup (hooks/zyl-verity)
+# SOLID: SRP — 루트를 여는 일만. zyl.verity= 이 없으면(커널을 직접 띄운 레인) 아무것도 안 한다
+# ----------------------------------------------------------
+PREREQ="udev"
+prereqs() { echo "$PREREQ"; }
+case "$1" in prereqs) prereqs; exit 0 ;; esac
+
+. /scripts/functions
+
+spec=""
+for arg in $(cat /proc/cmdline); do
+    case "$arg" in zyl.verity=*) spec="${arg#zyl.verity=}" ;; esac
+done
+[ -n "$spec" ] || exit 0
+
+old_ifs="$IFS"; IFS=,
+# shellcheck disable=SC2086
+set -- $spec
+IFS="$old_ifs"
+[ $# -eq 8 ] || panic "zyl-verity: zyl.verity= needs 8 fields, got $#"
+data="$1" hash="$2" blocks="$3" dbs="$4" hbs="$5" hstart="$6" roothash="$7" salt="$8"
+
+modprobe -q dm_verity
+wait_for_udev 10
+i=0
+while { [ ! -b "$data" ] || [ ! -b "$hash" ]; } && [ $i -lt 30 ]; do sleep 1; i=$((i + 1)); done
+[ -b "$data" ] && [ -b "$hash" ] || panic "zyl-verity: $data or $hash did not appear"
+
+log_begin_msg "Verifying the system partition (dm-verity)"
+veritysetup open --no-superblock --format=1 --hash=sha256 \
+    --data-blocks="$blocks" --data-block-size="$dbs" --hash-block-size="$hbs" \
+    --hash-offset=$((hstart * hbs)) --salt="$salt" --restart-on-corruption \
+    "$data" zyl-root "$hash" "$roothash" \
+    || panic "zyl-verity: the system partition does not verify"
+log_end_msg

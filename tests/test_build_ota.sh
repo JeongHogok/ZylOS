@@ -48,7 +48,7 @@ tar -xzOf "$PKG" rootfs.img | cmp -s - "$W/rootfs.img" \
   && ok "rootfs.img is the image itself, not a link" || bad "rootfs.img differs"
 
 for slot in a b; do
-  case $slot in a) parts="/dev/mmcblk0p2 /dev/mmcblk0p3" ;; b) parts="/dev/mmcblk0p4 /dev/mmcblk0p5" ;; esac
+  case $slot in a) parts="zyl.verity=/dev/mmcblk0p2,/dev/mmcblk0p3," ;; b) parts="zyl.verity=/dev/mmcblk0p4,/dev/mmcblk0p5," ;; esac
   tar -xzOf "$PKG" "fit-image-$slot.itb" > "$W/fit-$slot.itb"
   dumpimage -T flat_dt -p 1 -o "$W/fdt-$slot.dtb" "$W/fit-$slot.itb" >/dev/null
   case "$(fdtget -t s "$W/fdt-$slot.dtb" /chosen bootargs)" in
