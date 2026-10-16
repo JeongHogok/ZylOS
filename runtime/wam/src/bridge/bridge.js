@@ -12,7 +12,7 @@
  *   {{APP_VERSION}} - version string
  *
  * Copyright (c) 2026 Zyl OS Project
- * SPDX-License-Identifier: MIT
+ * SPDX-License-Identifier: GPL-3.0-only
  *
  * [Clean Architecture] Platform Layer - Bridge
  * 역할: 웹앱에 navigator.system(앱 정체·닫기·실행 요청)을 주입

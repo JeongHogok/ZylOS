@@ -187,7 +187,7 @@ configure_file(
 )
 
 # Native font defaults + per-language CJK glyph selection (web apps use
-# apps/shared/fonts.css). Requires the Noto packages listed in DEPLOYMENT_GUIDE.
+# apps/shared/fonts.css). Requires the Noto packages in system/packages.list.
 install_data('system/fonts/50-zyl-fonts.conf',
              install_dir: get_option('sysconfdir') / 'fonts' / 'conf.d')
 

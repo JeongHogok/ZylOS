@@ -623,7 +623,8 @@ static const ServiceRoute SERVICE_ROUTES[] = {
  * Mirror of SERVICE_PERMISSIONS and RESERVED_PERMISSIONS in
  * apps/system/permissions.js, which is the authority (CLAUDE.md rule 8).
  * tests/verify-all.sh fails when the two drift apart, and when a routed
- * service has no entry here (that would silently allow every app).
+ * service has no entry here (app_may_call refuses an unlisted service to
+ * every third-party app, so the route would work for system apps only).
  *
  * Before this table the device bridge routed service.request straight to
  * D-Bus with no check at all: the emulator enforced permissions in
