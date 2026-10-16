@@ -76,7 +76,7 @@ static void test_relock_never_needs_permission(void) {
 }
 
 static void test_booted_slot_comes_from_the_signed_cmdline(void) {
-    g_file_set_contents(ZYL_CMDLINE, "root=/dev/dm-0 ro zyl.slot=b quiet\n", -1, NULL);
+    g_file_set_contents(ZYL_CMDLINE, "root=/dev/mapper/zyl-root ro zyl.slot=b quiet\n", -1, NULL);
     char *slot = booted_slot();
     assert(strcmp(slot, "b") == 0);
     g_free(slot);
