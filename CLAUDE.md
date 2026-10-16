@@ -183,6 +183,21 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 
 ## 빌드 & 검증
 
+### CI 는 로컬에서 — 푸시 전 관문
+```bash
+tools/ci-local.sh                 # main 대비 바뀐 것(커밋 안 한 것 포함)에 걸리는 잡만 act 로
+tools/ci-local.sh --dry-run       # 무엇이 걸리는지만
+tools/ci-local.sh lint-js fuzz    # 잡 이름으로 골라서 / --all 은 전부
+```
+워크플로는 관심사별로 나뉘어 있고(web·native·image·riscv64·docker·licenses·
+bootloader), **각 워크플로의 `pull_request.paths` 가 "어떤 변경이 이 검사를
+부르는가" 의 유일한 출처**다 — 원격 PR 과 `ci-local.sh` 가 같은 목록을 읽는다
+(`tests/test_ci_select.sh` 가 규칙을 검증). 새 검사를 넣으면 그 검사가 읽는
+경로를 그 워크플로의 paths 에 함께 적을 것.
+**로컬에서 녹색을 본 뒤에만 푸시한다** — 원격 GitHub Actions 는 같은 워크플로의
+기록일 뿐 검증 수단이 아니다. 워크플로를 바꾸면 로컬에서도 돌아야 한다
+(ARM 맥: Arch 이미지 잡만 amd64 에뮬레이션, 나머지는 네이티브).
+
 ### 전체 검증 (모든 영역)
 ```bash
 bash tests/verify-all.sh
