@@ -98,9 +98,13 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 - 앱이 닿을 수 있는 곳은 OS 가 권한으로 만든 CSP 가 정한다 — 기기 `app_scheme.c` 의
   `zyl_app_scheme_csp`(WAM 이 모든 응답 헤더로), 에뮬레이터 `sandbox.js` 의
   `getContentPolicy`(같은 문자열, `test_app_scheme.c`·`test_services.js`). 코드는 앱 자기
-  파일에서만 — 바깥 스크립트·eval 을 열지 말고, 제3자 앱에 인라인 스크립트를 열지 말 것
-  (네트워크와 합치면 받아 온 코드가 돌아 봉인을 건너뛴다). `network` 는 https/wss 만.
+  파일에서만 — 바깥 스크립트·eval·인라인 스크립트를 어느 앱에도 열지 말 것(네트워크와
+  합치면 받아 온 코드가 봉인을 건너뛰고, 시스템 앱은 남이 보낸 문자열 — 알림·파일 이름·
+  Wi-Fi 이름 — 을 그린다. verify-all A3b). `network` 는 https/wss 만.
   권한이 바뀐 앱은 실행 중이면 닫는다 — CSP 는 문서와 함께 오므로
+- 앱 페이지가 OS 에 닿는 길은 그 앱 자기 최상위 문서뿐 — WAM 이 웹뷰마다 만든 토큰을
+  브리지 스크립트(`runtime/wam/src/bridge/bridge.js`)만 갖는다. 앱이 띄운 프레임이나
+  옮겨 간 페이지에 브리지를 열지 말 것(에뮬레이터 `emulator.js` 의 `senderOf` 도 같은 규칙)
 - 화면에 없는 앱에 닿는 길은 푸시(`org.zylos.Push`, 서버 연결 하나)와 알람(절전 중에도
   깨움)뿐 — 앱마다 지속 연결이나 백그라운드 실행 장치를 새로 만들지 말 것. 푸시 토픽은
   ntfy 의 UnifiedPush 꼴(`up`+12자)이어야 서버가 앱 서버가 아닌 기기 쪽 한도로 센다

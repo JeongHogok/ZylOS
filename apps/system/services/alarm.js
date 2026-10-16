@@ -26,6 +26,16 @@
   var STORE_KEY = 'scheduled';
   /* An alarm must sound through Do Not Disturb (notification.js drops < 3) */
   var ALARM_PRIORITY = 3;
+  /* The device's limits (runtime/services/alarm/alarm.h, verify-all C5c): no app
+     holds them all, and a repeating one wakes the device at most each minute */
+  var MAX_ALARMS = 1024;
+  var MAX_PER_APP = 128;
+  var MIN_INTERVAL_MS = 60000;
+  var MAX_INTERVAL_MS = 31622400000;
+
+  function intervalOk(a) {
+    return !a.repeating || (a.intervalMs >= MIN_INTERVAL_MS && a.intervalMs <= MAX_INTERVAL_MS);
+  }
 
   ns.alarm = function (deps) {
     var notificationSvc = deps.notificationSvc;
@@ -98,7 +108,7 @@
         if (!Array.isArray(list)) return null;
         var now = Date.now();
         list.forEach(function (a) {
-          if (!a || !a.tag) return;
+          if (!a || !a.tag || !intervalOk(a)) return;
           if (entries[keyOf(a.appId, a.tag)]) return;   /* set while loading: the live one wins */
           /* A one-shot alarm whose time passed while the OS was down is gone */
           if (!a.repeating && a.triggerAt < now) return;
@@ -123,7 +133,6 @@
       set: function (p) {
         if (!p || !p.tag) return Promise.resolve(false);
         var existing = entries[keyOf(p.appId, String(p.tag))];
-        if (existing && existing.timer) clearTimeout(existing.timer);
         var e = {
           tag: String(p.tag),
           triggerAt: Number(p.triggerAt) || 0,
@@ -133,6 +142,13 @@
           title: p.title || '',
           timer: null
         };
+        if (!intervalOk(e)) return Promise.resolve(false);
+        if (!existing) {
+          var all = Object.keys(entries);
+          var own = all.filter(function (k) { return entries[k].appId === e.appId; }).length;
+          if (all.length >= MAX_ALARMS || own >= MAX_PER_APP) return Promise.resolve(false);
+        }
+        if (existing && existing.timer) clearTimeout(existing.timer);
         entries[keyOf(e.appId, e.tag)] = e;
         arm(e);
         save();

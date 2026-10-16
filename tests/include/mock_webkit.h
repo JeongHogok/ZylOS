@@ -22,6 +22,11 @@ typedef struct _JSCValue JSCValue;
 struct _WebKitWebView {
     gchar *last_script;
 };
+
+/* The mock view lives on the test's stack, not a GObject: nothing to hold
+   (bridge.c holds a real view until a late answer has gone to it) */
+#define ZYL_BRIDGE_VIEW_REF(v)   (v)
+#define ZYL_BRIDGE_VIEW_UNREF(v) ((void)(v))
 struct _WebKitUserContentManager { int unused; };
 struct _WebKitUserScript { int unused; };
 struct _WebKitJavascriptResult { int unused; };
@@ -29,6 +34,7 @@ struct _JSCValue { int unused; };
 
 typedef enum {
     WEBKIT_USER_CONTENT_INJECT_ALL_FRAMES = 0,
+    WEBKIT_USER_CONTENT_INJECT_TOP_FRAME = 1,
 } WebKitUserContentInjectedFrames;
 
 typedef enum {
@@ -43,13 +49,19 @@ static inline WebKitUserContentManager *webkit_web_view_get_user_content_manager
     return &manager;
 }
 
+static gchar *mock_user_script_source;   /* the last script bridge.c built */
+static WebKitUserContentInjectedFrames mock_user_script_frames;
+
 static inline WebKitUserScript *webkit_user_script_new(const gchar *source,
                                                        WebKitUserContentInjectedFrames frames,
                                                        WebKitUserScriptInjectionTime time,
                                                        gpointer whitelist,
                                                        gpointer blacklist)
 {
-    (void)source; (void)frames; (void)time; (void)whitelist; (void)blacklist;
+    (void)time; (void)whitelist; (void)blacklist;
+    g_free(mock_user_script_source);
+    mock_user_script_source = g_strdup(source);
+    mock_user_script_frames = frames;
     static WebKitUserScript script;
     return &script;
 }

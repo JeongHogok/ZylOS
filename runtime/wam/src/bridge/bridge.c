@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/random.h>
 #include <json-glib/json-glib.h>
 
 /* == Handler Registry Entry ================================= */
@@ -91,17 +92,57 @@ int zyl_bridge_register_handler(const char       *type,
     return 0;
 }
 
+/* == The view's token ======================================= */
+
+gboolean zyl_bridge_new_token(char out[ZYL_BRIDGE_TOKEN_LEN + 1])
+{
+    unsigned char raw[ZYL_BRIDGE_TOKEN_LEN / 2];
+    out[0] = '\0';
+    if (getrandom(raw, sizeof(raw), 0) != (ssize_t)sizeof(raw)) return FALSE;
+    for (size_t i = 0; i < sizeof(raw); i++)
+        g_snprintf(out + 2 * i, 3, "%02x", raw[i]);
+    return TRUE;
+}
+
+const char *zyl_bridge_untoken(const char *msg, const char *token)
+{
+    if (!msg || !token || strlen(token) != ZYL_BRIDGE_TOKEN_LEN) return NULL;
+    if (strlen(msg) < ZYL_BRIDGE_TOKEN_LEN) return NULL;
+    unsigned char diff = 0;
+    for (size_t i = 0; i < ZYL_BRIDGE_TOKEN_LEN; i++)
+        diff |= (unsigned char)(msg[i] ^ token[i]);
+    return diff ? NULL : msg + ZYL_BRIDGE_TOKEN_LEN;
+}
+
 /* == Load and inject the JS bridge ========================== */
+
+/* A JS string literal of s: the manifest's strings are the app's to write,
+   and the bridge script runs before — and outside — the app's CSP */
+static gchar *js_literal(const char *s)
+{
+    GString *out = g_string_new("\"");
+    for (const unsigned char *p = (const unsigned char *)(s ? s : ""); *p; p++) {
+        if (*p == '"' || *p == '\\') { g_string_append_c(out, '\\'); g_string_append_c(out, (char)*p); }
+        else if (*p < 0x20 || *p == '<' || *p == '>') g_string_append_printf(out, "\\u%04x", *p);
+        else if (p[0] == 0xE2 && p[1] == 0x80 && (p[2] == 0xA8 || p[2] == 0xA9)) {   /* U+2028/9 end ES5 lines */
+            g_string_append_printf(out, "\\u%04x", p[2] == 0xA8 ? 0x2028 : 0x2029);
+            p += 2;
+        } else g_string_append_c(out, (char)*p);
+    }
+    g_string_append_c(out, '"');
+    return g_string_free(out, FALSE);
+}
 
 gboolean zyl_bridge_inject(const char      *bridge_js_path,
                            WebKitWebView   *webview,
-                           ZylAppManifest  *manifest)
+                           ZylAppManifest  *manifest,
+                           const char      *token)
 {
     gchar *template = NULL;
     gsize length = 0;
     GError *error = NULL;
 
-    if (!bridge_js_path || !webview || !manifest) {
+    if (!bridge_js_path || !webview || !manifest || !token) {
         g_warning("Bridge: inject called with NULL argument");
         return FALSE;
     }
@@ -113,34 +154,26 @@ gboolean zyl_bridge_inject(const char      *bridge_js_path,
         return FALSE;
     }
 
-    gchar *s1 = g_strdup(template);
-    if (!s1) { g_free(template); return FALSE; }
-    gchar *s2, *s3;
-    gchar **parts;
-
-    parts = g_strsplit(s1, "{{APP_ID}}", -1);
-    s2 = g_strjoinv(manifest->id, parts);
-    g_strfreev(parts);
-    g_free(s1);
-    if (!s2) { g_free(template); return FALSE; }
-
-    parts = g_strsplit(s2, "{{APP_NAME}}", -1);
-    s3 = g_strjoinv(manifest->name, parts);
-    g_strfreev(parts);
-    g_free(s2);
-    if (!s3) { g_free(template); return FALSE; }
-
-    parts = g_strsplit(s3, "{{APP_VERSION}}", -1);
-    s1 = g_strjoinv(manifest->version, parts);
-    g_strfreev(parts);
-    g_free(s3);
-    if (!s1) { g_free(template); return FALSE; }
+    /* One pass over the template: a value is never read again for tokens */
+    const char *names[] = { "{{APP_ID}}", "{{APP_NAME}}", "{{APP_VERSION}}", "{{BRIDGE_TOKEN}}", NULL };
+    const char *values[] = { manifest->id, manifest->name, manifest->version, token };
+    GString *script = g_string_new(NULL);
+    for (const char *p = template; *p; ) {
+        int i = 0;
+        while (names[i] && !g_str_has_prefix(p, names[i])) i++;
+        if (!names[i]) { g_string_append_c(script, *p++); continue; }
+        gchar *lit = js_literal(values[i]);
+        g_string_append(script, lit);
+        g_free(lit);
+        p += strlen(names[i]);
+    }
+    gchar *s1 = g_string_free(script, FALSE);
 
     WebKitUserContentManager *ucm =
         webkit_web_view_get_user_content_manager(webview);
     WebKitUserScript *user_script = webkit_user_script_new(
         s1,
-        WEBKIT_USER_CONTENT_INJECT_ALL_FRAMES,
+        WEBKIT_USER_CONTENT_INJECT_TOP_FRAME,     /* the token stays out of frames */
         WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START,
         NULL, NULL);
     webkit_user_content_manager_add_script(ucm, user_script);
@@ -346,8 +379,15 @@ void zyl_bridge_dispatch(WebKitWebView    *webview,
 
 /* == D-Bus async callback context ========================== */
 
+/* An answer can come after its app closed: the view it goes to is held
+   until then (the test mock's view is no GObject and overrides these) */
+#ifndef ZYL_BRIDGE_VIEW_REF
+#define ZYL_BRIDGE_VIEW_REF(v)   ((v) ? g_object_ref(v) : NULL)
+#define ZYL_BRIDGE_VIEW_UNREF(v) do { if (v) g_object_unref(v); } while (0)
+#endif
+
 typedef struct {
-    WebKitWebView *webview;
+    WebKitWebView *webview;     /* held: ZYL_BRIDGE_VIEW_REF */
     int            callback_id;
 } DbusReplyCtx;
 
@@ -540,6 +580,7 @@ static void on_dbus_call_done(GObject      *source,
 
     if (err) g_error_free(err);
     g_object_unref(source);
+    ZYL_BRIDGE_VIEW_UNREF(ctx->webview);
     g_free(ctx);
 }
 
@@ -709,6 +750,37 @@ static const ServicePermission METHOD_PERMISSIONS[] = {
     {"power.setBrightness",            {"system", NULL}},
     {"power.acquireWakelock",          {"system", NULL}},
     {"power.releaseWakelock",          {"system", NULL}},
+    /* The device's settings: any app may read them, only system apps change
+       them (USB mode, display, accessibility, input). The log is the OS's — it
+       names every app */
+    {"usb.setMode",                    {"system", NULL}},
+    {"display.setMode",                {"system", NULL}},
+    {"display.setScale",               {"system", NULL}},
+    {"display.setRotation",            {"system", NULL}},
+    {"display.setAutoRotate",          {"system", NULL}},
+    {"accessibility.setHighContrast",  {"system", NULL}},
+    {"accessibility.setFontScale",     {"system", NULL}},
+    {"accessibility.setScreenReader",  {"system", NULL}},
+    {"input.showKeyboard",             {"system", NULL}},
+    {"input.hideKeyboard",             {"system", NULL}},
+    {"input.switchLayout",             {"system", NULL}},
+    {"logger.getLogs",                 {"system", NULL}},
+    {"logger.getCrashReports",         {"system", NULL}},
+    {"logger.setFilterLevel",          {"system", NULL}},
+    /* Which apps are on the device is the user's to give (app.list); bringing
+       one forward is app.launch — another app's data goes in an intent. What is
+       in front, panels, recents and app switching are the OS's own */
+    {"apps.getInstalled",              {"app.list", NULL}},
+    {"apps.listApps",                  {"app.list", NULL}},
+    {"apps.listRunning",               {"app.list", NULL}},
+    {"apps.launch",                    {"app.launch", NULL}},
+    {"apps.suspend",                   {"system", NULL}},
+    {"apps.resume",                    {"system", NULL}},
+    {"apps.goHome",                    {"system", NULL}},
+    {"apps.goBack",                    {"system", NULL}},
+    {"apps.openPanel",                 {"system", NULL}},
+    {"apps.showRecents",               {"system", NULL}},
+    {"apps.switchApp",                 {"system", NULL}},
     {NULL, {NULL}}
 };
 
@@ -895,11 +967,15 @@ static gboolean app_may_call(const ZylAppManifest *m, const char *service) {
     return FALSE;
 }
 
-/* The method rule, after app_may_call: system apps hold every permission */
+/* The method rule, after app_may_call: system apps hold every permission.
+   The rule is keyed by the method that is called: "reboot" and "Reboot" are
+   both D-Bus Reboot (capitalize_method), so both meet the rule for "reboot" */
 static gboolean app_may_call_method(const ZylAppManifest *m, const char *service,
                                     const char *method) {
     if (m->is_system) return TRUE;
     char *key = g_strconcat(service, ".", method, NULL);
+    char *first = key + strlen(service) + 1;
+    *first = g_ascii_tolower(*first);
     gboolean ok = TRUE;
     for (int i = 0; METHOD_PERMISSIONS[i].service; i++) {
         if (strcmp(METHOD_PERMISSIONS[i].service, key) != 0) continue;
@@ -909,6 +985,31 @@ static gboolean app_may_call_method(const ZylAppManifest *m, const char *service
     }
     g_free(key);
     return ok;
+}
+
+gboolean zyl_bridge_app_may_call(const ZylAppManifest *m, const char *service, const char *method)
+{
+    return service && method && app_may_call(m, service) && app_may_call_method(m, service, method);
+}
+
+/* Services only the app in front may use (the emulator has one app alive at a
+   time, so its frame is always the front one): the clipboard holds what the
+   user copied — a background app neither reads nor swaps it */
+static const char *const FRONT_ONLY_SERVICES[] = { "clipboard", NULL };
+static gboolean (*front_query)(const char *app_id);
+
+void zyl_bridge_set_front_query(gboolean (*is_front)(const char *app_id))
+{
+    front_query = is_front;
+}
+
+static gboolean app_may_use_now(const ZylAppManifest *m, const char *service)
+{
+    if (m->is_system) return TRUE;
+    for (int i = 0; FRONT_ONLY_SERVICES[i]; i++)
+        if (strcmp(FRONT_ONLY_SERVICES[i], service) == 0)
+            return front_query && m->id && front_query(m->id);
+    return TRUE;
 }
 
 /* Events about one app's own things reach a third-party app only when they
@@ -1116,6 +1217,7 @@ typedef struct {
 } ServiceCall;
 
 static void service_call_free(ServiceCall *c) {
+    ZYL_BRIDGE_VIEW_UNREF(c->reply.webview);
     g_free(c->method);
     g_free(c->app_id);
     if (c->params) json_object_unref(c->params);
@@ -1146,7 +1248,7 @@ static void service_call_invoke(ServiceCall *c, GDBusNodeInfo *node) {
 
     if (c->reply.callback_id >= 0) {
         DbusReplyCtx *ctx = g_new(DbusReplyCtx, 1);
-        ctx->webview     = c->reply.webview;
+        ctx->webview     = ZYL_BRIDGE_VIEW_REF(c->reply.webview);
         ctx->callback_id = c->reply.callback_id;
         g_object_ref(c->conn);   /* released by on_dbus_call_done */
         g_dbus_connection_call(c->conn,
@@ -1226,6 +1328,11 @@ static void handle_service_request(const char *type, gpointer msg_obj,
         zyl_bridge_reply_error(reply_ctx, "Permission denied");
         return;
     }
+    if (!app_may_use_now(manifest, service)) {
+        g_warning("Bridge: %s denied %s.%s (not in front)", app_id, service, method);
+        zyl_bridge_reply_error(reply_ctx, "Not in front");
+        return;
+    }
 
     char *dbus_method = capitalize_method(method);
 
@@ -1248,6 +1355,7 @@ static void handle_service_request(const char *type, gpointer msg_obj,
     call->app_id = g_strdup(app_id);
     call->is_system = manifest->is_system;
     call->reply  = *reply_ctx;
+    call->reply.webview = ZYL_BRIDGE_VIEW_REF(reply_ctx->webview);   /* service_call_free */
     call->conn   = bus;   /* g_bus_get_sync returned a ref; the call owns it */
     JsonNode *params_node = json_object_get_member(msg, "params");
     if (params_node && JSON_NODE_HOLDS_OBJECT(params_node))

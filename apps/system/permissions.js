@@ -101,7 +101,38 @@ window.ZylPermissions = (function () {
     'power.reboot':                   ['system'],
     'power.setBrightness':            ['system'],
     'power.acquireWakelock':          ['system'],
-    'power.releaseWakelock':          ['system']
+    'power.releaseWakelock':          ['system'],
+    /* The device's settings: any app may read them, only system apps change
+       them (USB mode, display, accessibility, input). The log is the OS's — it
+       names every app */
+    'usb.setMode':                    ['system'],
+    'display.setMode':                ['system'],
+    'display.setScale':               ['system'],
+    'display.setRotation':            ['system'],
+    'display.setAutoRotate':          ['system'],
+    'accessibility.setHighContrast':  ['system'],
+    'accessibility.setFontScale':     ['system'],
+    'accessibility.setScreenReader':  ['system'],
+    'input.showKeyboard':             ['system'],
+    'input.hideKeyboard':             ['system'],
+    'input.switchLayout':             ['system'],
+    'logger.getLogs':                 ['system'],
+    'logger.getCrashReports':         ['system'],
+    'logger.setFilterLevel':          ['system'],
+    /* Which apps are on the device is the user's to give (app.list); bringing
+       one forward is app.launch — another app's data goes in an intent. What is
+       in front, panels, recents and app switching are the OS's own */
+    'apps.getInstalled':              ['app.list'],
+    'apps.listApps':                  ['app.list'],
+    'apps.listRunning':               ['app.list'],
+    'apps.launch':                    ['app.launch'],
+    'apps.suspend':                   ['system'],
+    'apps.resume':                    ['system'],
+    'apps.goHome':                    ['system'],
+    'apps.goBack':                    ['system'],
+    'apps.openPanel':                 ['system'],
+    'apps.showRecents':               ['system'],
+    'apps.switchApp':                 ['system']
   };
 
   /* Events about one app's own things reach a third-party app only when they

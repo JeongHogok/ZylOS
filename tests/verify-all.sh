@@ -48,6 +48,13 @@ HITS=$(grep -rn 'emulator-app\|hal-tauri' "$ROOT/apps" --include='*.js' --includ
   | grep -v '//' | grep -v 'See ' || true)
 if [ -n "$HITS" ]; then fail "에뮬레이터 참조:\n$HITS"; else pass "에뮬레이터 참조 없음"; fi
 
+# A3b: 인라인 스크립트 없음 — OS 의 CSP 가 어느 앱에도 허락하지 않아(app_scheme.c,
+# sandbox.js) 기기에서 조용히 돌지 않는다. 마크업으로 그린 남의 문자열이 돌지 않게 한 규칙
+HITS=$( { grep -rnE '<script(\s[^>]*)?>' "$ROOT/apps" --include='*.html' | grep -v 'src='
+          grep -rnE '\son[a-z]+\s*=' "$ROOT/apps" --include='*.html'
+          grep -rnE "\son[a-z]+=['\"\\\\]" "$ROOT/apps" --include='*.js'; } 2>/dev/null || true)
+if [ -n "$HITS" ]; then fail "인라인 스크립트·핸들러 (CSP 가 막음):\n$HITS"; else pass "인라인 스크립트·핸들러 없음"; fi
+
 # ─────────────────────────────────────────────────────────────
 section "apps/ — ES5 호환성"
 
@@ -433,6 +440,26 @@ if [ -n "$DOMAIN_DRIFT" ]; then
   fail "네트워크 허용 도메인이 sandbox.js 와 다름: $DOMAIN_DRIFT"
 else
   pass "네트워크 허용 도메인(network.c) = sandbox.js"
+fi
+
+# C5c: 알람 한도가 alarm.h 와 같은지 — 기기가 권위, alarm.js 는 사본. 어긋나면 에뮬레이터에서
+#      되는 알람이 기기에서 거부된다
+ALARM_DRIFT=$(python3 - "$ROOT" <<'PYCHK'
+import re, sys
+root = sys.argv[1]
+h = dict(re.findall(r'#define\s+ZYL_ALARM_(MAX|MAX_PER_APP|MIN_INTERVAL_MS|MAX_INTERVAL_MS)\s+(\d+)',
+                    open(root + '/runtime/services/alarm/alarm.h').read()))
+names = {'MAX': 'MAX_ALARMS', 'MAX_PER_APP': 'MAX_PER_APP',
+         'MIN_INTERVAL_MS': 'MIN_INTERVAL_MS', 'MAX_INTERVAL_MS': 'MAX_INTERVAL_MS'}
+js = dict(re.findall(r'var\s+(\w+)\s*=\s*(\d+);', open(root + '/apps/system/services/alarm.js').read()))
+bad = [k for k in names if k not in h or js.get(names[k]) != h[k]]
+print(('h=%s js=%s' % (h, {names[k]: js.get(names[k]) for k in names})) if bad or len(h) != 4 else '')
+PYCHK
+)
+if [ -n "$ALARM_DRIFT" ]; then
+  fail "알람 한도가 alarm.h 와 다름: $ALARM_DRIFT"
+else
+  pass "알람 한도(alarm.js) = alarm.h"
 fi
 
 # C5: 앱의 서비스 호출이 실기기 D-Bus 메서드와 맞는지 (래칫)

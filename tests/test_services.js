@@ -919,13 +919,18 @@ console.log('\n■ ZylBridge on the device');
 
 var deviceBridgeTests = (function () {
   var vm = require('vm');
-  /* A page as the WAM builds it: messageHandlers.bridge plus the injected
-     navigator.system, and window.postMessage delivering to listeners */
-  function devicePage() {
-    var sent = [], listeners = [];
+  /* A page as the WAM builds it: the WAM's bridge script (its tokens filled
+     in as bridge.c does) in the top document, the message handler WebKit
+     gives every frame, and window.postMessage delivering to listeners */
+  var TOKEN = '0123456789abcdef0123456789abcdef';
+  function devicePage(href) {
+    var sent = [], raw = [], listeners = [];
     var win = {
-      webkit: { messageHandlers: { bridge: { postMessage: function (j) { sent.push(JSON.parse(j)); } } } },
-      navigator: { system: { app: { id: 'com.zylos.settings' } } },
+      webkit: { messageHandlers: { bridge: { postMessage: function (j) {
+        raw.push(j);
+        if (j.indexOf(TOKEN) === 0) sent.push(JSON.parse(j.slice(TOKEN.length)));   /* zyl_bridge_untoken */
+      } } } },
+      navigator: {},
       addEventListener: function (t, fn) { if (t === 'message') listeners.push(fn); },
       postMessage: function (data) {
         setTimeout(function () { listeners.forEach(function (fn) { fn({ data: data, source: win }); }); }, 0);
@@ -934,10 +939,17 @@ var deviceBridgeTests = (function () {
     };
     win.window = win; win.parent = win;
     var ctx = { window: win, navigator: win.navigator, document: { addEventListener: function () {} },
-                console: console, setTimeout: setTimeout, clearTimeout: clearTimeout, JSON: JSON, Promise: Promise };
+                location: { href: href || 'zyl-app://com.zylos.settings/index.html' },
+                console: console, setTimeout: setTimeout, clearTimeout: clearTimeout, JSON: JSON, Promise: Promise,
+                Object: Object };
     vm.createContext(ctx);
+    var wamJs = fs.readFileSync(path.join(__dirname, '..', 'runtime', 'wam', 'src', 'bridge', 'bridge.js'), 'utf8')
+      .split('{{APP_ID}}').join(JSON.stringify('com.zylos.settings'))   /* JS literals, as bridge.c */
+      .split('{{APP_NAME}}').join(JSON.stringify('Settings'))
+      .split('{{APP_VERSION}}').join(JSON.stringify('1.0.0')).split('{{BRIDGE_TOKEN}}').join(JSON.stringify(TOKEN));
+    vm.runInContext(wamJs, ctx);
     vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'apps', 'shared', 'bridge.js'), 'utf8'), ctx);
-    return { win: win, sent: sent, B: win.ZylBridge || ctx.ZylBridge, listeners: listeners };
+    return { win: win, sent: sent, raw: raw, B: win.ZylBridge || ctx.ZylBridge, listeners: listeners };
   }
 
   return Promise.all([
@@ -946,6 +958,26 @@ var deviceBridgeTests = (function () {
       assert.strictEqual(p.B.getIpcMode(), 'webkit');
       p.B.sendToSystem({ type: 'navigation.handled' });
       assert.strictEqual(p.sent.length, 1);
+      assert.strictEqual(p.raw[0].indexOf(TOKEN), 0, 'carries the view\'s token');
+      return Promise.resolve();
+    }),
+    asyncTest('a page that is not the app\'s own sends the WAM nothing', function () {
+      var p = devicePage('https://example.com/');                /* the app's view went elsewhere */
+      p.B.sendToSystem({ type: 'navigation.handled' });
+      p.win.navigator.system.app.close();
+      assert.strictEqual(p.raw.length, 0);
+      return Promise.resolve();
+    }),
+    asyncTest('a frame the app shows is not the OS speaking', function () {
+      var p = devicePage();
+      var heard = false;
+      p.B.onServiceEvent('telephony', 'CallStateChanged', function () { heard = true; });
+      var frame = {};                                            /* a child frame's window */
+      p.listeners.forEach(function (fn) {
+        fn({ source: frame, data: JSON.stringify({ type: 'service.event', service: 'telephony',
+          event: 'CallStateChanged', data: ['IDLE', 'RINGING', 'x'] }) });
+      });
+      assert.strictEqual(heard, false);
       return Promise.resolve();
     }),
     asyncTest('a service request gets its answer through the native callback', function () {
@@ -1451,6 +1483,22 @@ console.log('\n■ ZylPermissions');
       assert.strictEqual(P.checkPermission('com.evil.app', 'power', m), false, m);
       assert.ok(P.checkPermission('com.zylos.settings', 'power', m), m);
     });
+  });
+
+  test('the device\'s settings and the shell are the OS\'s; the app list is app.list (as bridge.c)', function () {
+    ['usb.setMode', 'display.setMode', 'display.setScale', 'display.setRotation', 'display.setAutoRotate',
+     'accessibility.setHighContrast', 'accessibility.setFontScale', 'accessibility.setScreenReader',
+     'input.showKeyboard', 'input.hideKeyboard', 'input.switchLayout', 'logger.getLogs',
+     'logger.getCrashReports', 'logger.setFilterLevel', 'apps.suspend', 'apps.resume', 'apps.goHome',
+     'apps.goBack', 'apps.openPanel', 'apps.showRecents', 'apps.switchApp',
+     'apps.getInstalled', 'apps.launch'].forEach(function (k) {
+      var sm = k.split('.');
+      assert.strictEqual(P.checkPermission('com.evil.app', sm[0], sm[1]), false, k);
+      assert.ok(P.checkPermission('com.zylos.settings', sm[0], sm[1]), k);
+    });
+    assert.ok(P.checkPermission('com.evil.app', 'display', 'getCurrentMode'));
+    assert.ok(P.checkPermission('com.evil.app', 'clipboard', 'copy'));
+    assert.ok(P.checkPermission('com.zylos.home', 'apps', 'getInstalled'));   /* the launcher's app.list */
   });
 
   test('ordinary declared permissions are still granted', function () {
@@ -2424,6 +2472,28 @@ var alarmTests = (function () {
           return clear(t);
         });
     }),
+    asyncTest('limits as the device: a repeat at most each minute, no app holds every slot', function () {
+      var t = make();
+      var later = Date.now() + 3600000;
+      var bad = [0, 1, 59999, 31622400001, -1].map(function (ms) {
+        return t.svc.set({ tag: 'r' + ms, triggerAt: later, intervalMs: ms, appId: 'a', repeating: true });
+      });
+      return Promise.all(bad).then(function (r) {
+        assert.deepStrictEqual(r, [false, false, false, false, false]);
+        var mine = [];
+        for (var i = 0; i < 128; i++) mine.push(t.svc.set({ tag: 't' + i, triggerAt: later, appId: 'a' }));
+        return Promise.all(mine);
+      }).then(function () {
+        return Promise.all([
+          t.svc.set({ tag: 'one-more', triggerAt: later, appId: 'a' }),
+          t.svc.set({ tag: 't0', triggerAt: later, appId: 'a', title: 'replaced' }),
+          t.svc.set({ tag: 'wake', triggerAt: later, appId: 'com.zylos.clock' })
+        ]);
+      }).then(function (r) {
+        assert.deepStrictEqual(r, [false, true, true]);
+        return clear(t);
+      });
+    }),
     asyncTest('a cancelled alarm never fires; the same tag replaces, not adds', function () {
       var t = make();
       return t.svc.set({ tag: 'x', triggerAt: soon(5), appId: 'a', title: 'first' })
@@ -3211,22 +3281,22 @@ console.log('\n■ ZylSandbox content policy');
   });
 
   test('a user app without the network: its own files, nothing out', function () {
-    assert.strictEqual(S.getContentPolicy(false, ['camera']),
+    assert.strictEqual(S.getContentPolicy(['camera']),
       "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
       "img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; " +
       "font-src 'self'; frame-src 'self'; object-src 'none'");
   });
 
   test('with the network: https/wss out, never plain http, never remote or inline code', function () {
-    assert.strictEqual(S.getContentPolicy(false, ['network']),
+    assert.strictEqual(S.getContentPolicy(['network']),
       "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
       "img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; " +
       "font-src 'self' https:; frame-src 'self'; object-src 'none'");
   });
 
-  test('a system app holding network and webview', function () {
-    assert.strictEqual(S.getContentPolicy(true, ['network', 'webview']),
-      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; " +
+  test('network and webview (as a system app holds): https frames, still no inline code', function () {
+    assert.strictEqual(S.getContentPolicy(['network', 'webview']),
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
       "img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; " +
       "font-src 'self' https:; frame-src 'self' https:; object-src 'none'");
   });

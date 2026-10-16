@@ -86,12 +86,28 @@ char *zyl_app_scheme_uri(const char *app_id, const char *entry) {
     return g_strdup_printf(ZYL_APP_SCHEME "://%s/%s", app_id, entry && *entry ? entry : "index.html");
 }
 
-char *zyl_app_scheme_csp(gboolean system, gboolean network, gboolean webview) {
+gboolean zyl_app_scheme_is_own(const char *app_id, const char *uri) {
+    if (!app_id || !*app_id || !uri) return FALSE;
+    char *origin = g_strdup_printf(ZYL_APP_SCHEME "://%s", app_id);
+    size_t n = strlen(origin);
+    gboolean own = strncmp(uri, origin, n) == 0 && (uri[n] == '/' || uri[n] == '\0');
+    g_free(origin);
+    return own;
+}
+
+gboolean zyl_app_scheme_may_load(const char *app_id, const char *uri, gboolean webview) {
+    if (!uri) return FALSE;
+    if (zyl_app_scheme_is_own(app_id, uri)) return TRUE;
+    if (strcmp(uri, "about:blank") == 0 || strcmp(uri, "about:srcdoc") == 0) return TRUE;
+    if (g_str_has_prefix(uri, "blob:") && zyl_app_scheme_is_own(app_id, uri + 5)) return TRUE;
+    return webview && g_ascii_strncasecmp(uri, "https://", 8) == 0;
+}
+
+char *zyl_app_scheme_csp(gboolean network, gboolean webview) {
     const char *web = network ? " https:" : "";
     return g_strdup_printf(
-        "default-src 'self'; script-src 'self'%s; style-src 'self' 'unsafe-inline'; "
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data: blob:%s; media-src 'self' blob:%s; connect-src 'self'%s; "
         "font-src 'self'%s; frame-src 'self'%s; object-src 'none'",
-        system ? " 'unsafe-inline'" : "", web, web, network ? " https: wss:" : "",
-        web, webview ? " https:" : "");
+        web, web, network ? " https: wss:" : "", web, webview ? " https:" : "");
 }

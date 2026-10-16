@@ -68,16 +68,17 @@ window.ZylSandbox = (function () {
 
   /**
    * The Content-Security-Policy every file of an app is served with. Code only
-   * from its own files (what was sealed): never remote, never eval, and no
-   * inline script for a user-installed app — with the network it could run
-   * what it fetched. 'network' opens https/wss (never plain http), 'webview'
-   * lets it frame https pages. The same rule as the device's
-   * runtime/wam/src/scheme/app_scheme.c zyl_app_scheme_csp.
+   * from its own files (what was sealed): never remote, never eval, never
+   * inline — with the network an app could run what it fetched, and every app
+   * draws strings others sent (a notification, a file name, a Wi-Fi
+   * network's), which as markup must not run. 'network' opens https/wss
+   * (never plain http), 'webview' lets it frame https pages. The same rule as
+   * the device's runtime/wam/src/scheme/app_scheme.c zyl_app_scheme_csp.
    */
-  function getContentPolicy(system, grantedPerms) {
+  function getContentPolicy(grantedPerms) {
     var network = grantedPerms.indexOf('network') !== -1;
     var web = network ? ' https:' : '';
-    return "default-src 'self'; script-src 'self'" + (system ? " 'unsafe-inline'" : '') +
+    return "default-src 'self'; script-src 'self'" +
       "; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:" + web +
       "; media-src 'self' blob:" + web + "; connect-src 'self'" + (network ? ' https: wss:' : '') +
       "; font-src 'self'" + web + "; frame-src 'self'" +

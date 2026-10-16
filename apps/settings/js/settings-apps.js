@@ -31,6 +31,12 @@
     sensors:      'settings.perm_sensors'
   };
 
+  /* An app's manifest is the app's to write: its strings go in as text */
+  function esc(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
   /* ─── Render App List ─── */
   function renderAppList(apps) {
     var list = document.getElementById('app-list');
@@ -45,8 +51,8 @@
       el.className = 'setting-item';
       el.innerHTML =
         '<div class="setting-text">' +
-          '<span class="setting-label">' + (app.name || app.id) + '</span>' +
-          '<span class="setting-value">' + (app.version || '') + '</span>' +
+          '<span class="setting-label">' + esc(app.name || app.id) + '</span>' +
+          '<span class="setting-value">' + esc(app.version || '') + '</span>' +
         '</div>' +
         '<svg class="chevron" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>';
       el.setAttribute('tabindex', '0');
@@ -83,11 +89,11 @@
       header.innerHTML =
         '<div class="setting-item no-tap">' +
           '<span class="setting-label">' + (core.t('settings.app_version') || 'Version') + '</span>' +
-          '<span class="setting-value">' + (app.version || '1.0.0') + '</span>' +
+          '<span class="setting-value">' + esc(app.version || '1.0.0') + '</span>' +
         '</div>' +
         '<div class="setting-item no-tap">' +
           '<span class="setting-label">' + (core.t('settings.app_package') || 'Package') + '</span>' +
-          '<span class="setting-value" style="font-size:12px;opacity:0.7">' + (app.id || '') + '</span>' +
+          '<span class="setting-value" style="font-size:12px;opacity:0.7">' + esc(app.id || '') + '</span>' +
         '</div>';
     }
 
@@ -122,7 +128,7 @@
         var labelKey = PERM_LABELS[perm] || '';
         var label = labelKey ? core.t(labelKey) : perm;
         row.innerHTML =
-          '<span class="setting-label">' + label + '</span>' +
+          '<span class="setting-label">' + esc(label) + '</span>' +
           '<label class="toggle">' +
             '<input type="checkbox" checked disabled>' +
             '<span class="toggle-slider"></span>' +
@@ -142,9 +148,9 @@
       var labelKey = PERM_LABELS[perm] || '';
       var label = labelKey ? core.t(labelKey) : perm;
       row.innerHTML =
-        '<span class="setting-label">' + label + '</span>' +
+        '<span class="setting-label">' + esc(label) + '</span>' +
         '<label class="toggle">' +
-          '<input type="checkbox" class="app-perm-toggle" data-app="' + app.id + '" data-perm="' + perm + '"' + (granted ? ' checked' : '') + '>' +
+          '<input type="checkbox" class="app-perm-toggle" data-app="' + esc(app.id) + '" data-perm="' + esc(perm) + '"' + (granted ? ' checked' : '') + '>' +
           '<span class="toggle-slider"></span>' +
         '</label>';
       row.querySelector('.app-perm-toggle').addEventListener('change', function () {

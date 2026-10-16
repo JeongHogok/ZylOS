@@ -64,12 +64,28 @@ int zyl_bridge_register_handler(const char       *type,
                                 gpointer          data);
 
 /*
- * Load bridge.js, substitute app-specific tokens, and inject into the webview.
- * Returns TRUE on success.
+ * A web view's bridge token: the WAM answers only messages that carry it, and
+ * only the bridge script in the app's own top document knows it. A page the
+ * app frames, or one it navigates to, can reach the message handler (WebKit
+ * gives it to every frame) but is not the app.
+ */
+#define ZYL_BRIDGE_TOKEN_LEN 32
+
+/* A fresh token from the kernel's random source; FALSE (out empty) if none */
+gboolean zyl_bridge_new_token(char out[ZYL_BRIDGE_TOKEN_LEN + 1]);
+
+/* The message past the token, or NULL when it does not start with it (or the
+   view has no token) */
+const char *zyl_bridge_untoken(const char *msg, const char *token);
+
+/*
+ * Load bridge.js, substitute app-specific tokens, and inject it into the
+ * webview's top frame. Returns TRUE on success.
  */
 gboolean zyl_bridge_inject(const char      *bridge_js_path,
                            WebKitWebView   *webview,
-                           ZylAppManifest  *manifest);
+                           ZylAppManifest  *manifest,
+                           const char      *token);
 
 /*
  * Process an incoming bridge message JSON string.
@@ -121,6 +137,15 @@ void zyl_bridge_watch_revocations(GDBusConnection *conn, ZylBridgeAppFn changed,
 /* Does the app hold the permission now: system apps hold all, a user-installed
  * app what it declared, minus the reserved and what the user switched off */
 gboolean zyl_bridge_app_holds(const ZylAppManifest *m, const char *perm);
+
+/* May the app call service.method — the service rule and the method rule, as
+   for a service.request (for a WAM message that does what a method does) */
+gboolean zyl_bridge_app_may_call(const ZylAppManifest *m, const char *service, const char *method);
+
+/* Whether an app is the one in front (the WAM's shell knows). The clipboard is
+   the front app's: one in the background neither reads nor replaces it. Unset,
+   no third-party app is in front */
+void zyl_bridge_set_front_query(gboolean (*is_front)(const char *app_id));
 
 /* window.postMessage of {type:"service.event", service, event, data}, or NULL */
 char *zyl_bridge_service_event_script(const ZylAppManifest *manifest,

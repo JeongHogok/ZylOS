@@ -26,8 +26,8 @@ Zyl OS 앱을 만드는 사람(제3자 앱·이 저장소의 시스템 앱)을 �
   보는 API 는 `ZylBridge` 하나다 — 앱은 자기가 기기에 있는지 에뮬레이터에 있는지 알 필요가 없다.
 - **앱 자기 파일과 OS 코드만 읽는다**: OS 코드는 `/shared/`(앱에서는 `../shared/…`)와
   `bridge.js` 가 불러오는 화면 키보드 `/keyboard/` 이고, 이미지의 것이 나간다. 코드는 이
-  파일에서만 돈다(CSP): 바깥 스크립트·`eval` 은 없고, 제3자 앱은 인라인 스크립트(`<script>`
-  본문, `onclick="…"`)도 안 된다 — `<script src>` 와 `addEventListener` 를 쓴다.
+  파일에서만 돈다(CSP): 바깥 스크립트·`eval` 은 없고, 인라인 스크립트(`<script>` 본문,
+  `onclick="…"`)도 안 된다 — `<script src>` 와 `addEventListener` 를 쓴다.
 - **`network` 권한이 있으면 바깥에 직접 나간다**: `fetch`·`XMLHttpRequest`·`WebSocket` 으로
   https/wss 만(평문 http 는 막힘), 이미지·미디어·글꼴도 https 에서. 권한이 없으면 자기 출처
   밖으로는 아무것도 못 나간다. 자세한 규칙은 [SECURITY.md §3](SECURITY.md#3-권한).
@@ -216,6 +216,8 @@ ZylBridge.onServiceEvent('notification', 'NotificationPosted', function (d) {
   앱이 떠 있지 않으면 등록 때 준 제목·본문의 알림이 뜨고, 누르면 앱이 열린다. 끝점은 앱마다
   하나이고 다시 등록해도 같다. 내용은 서버를 지나가므로 민감하면 암호화하거나 신호만 보낸다.
 - **알람** (`notification` 권한) — 정한 시각. 기기가 절전 중이어도 깨워서 울린다(벽시계 타이머).
+  반복 간격은 1분~366일, 한 앱에 128개까지(같은 `tag` 는 덮어쓰므로 셈에 더해지지 않는다) —
+  그 밖은 `set` 이 `false` 다(한도는 `runtime/services/alarm/alarm.h`).
 
 ### 웹 플랫폼이 묻는 것 — 카메라·마이크·위치·파일
 

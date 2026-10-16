@@ -13,6 +13,7 @@
 #include <glib.h>
 #include <gtk/gtk.h>
 #include "../manifest/manifest.h"
+#include "../bridge/bridge.h"
 
 /* ─── App states ─── */
 typedef enum {
@@ -86,6 +87,7 @@ typedef struct {
     GtkWidget      *window;
     GtkWidget      *webview_widget;
     ZylAppState     state;
+    char            bridge_token[ZYL_BRIDGE_TOKEN_LEN + 1];   /* zyl_bridge_new_token */
 } ZylAppInstance;
 
 /*
