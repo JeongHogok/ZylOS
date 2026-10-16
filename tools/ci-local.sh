@@ -18,6 +18,7 @@
 # 컨테이너 아키텍처: Arch 이미지 잡은 Arch 가 amd64 만 내므로 amd64 에뮬레이션,
 # 나머지는 호스트 그대로 — 에뮬레이션 안에서는 ASan(fuzz)이 깨지고 QEMU 부팅이
 # 수십 배 느려진다. QEMU 를 띄우는 잡은 게스트가 2 GiB 씩 써서 하나씩 돈다.
+# 실행은 기기마다 하나씩 — 다른 작업 트리의 실행은 끝날 때까지 기다린다.
 # ──────────────────────────────────────────────────────────
 set -uo pipefail
 
@@ -99,6 +100,20 @@ case "$(docker info --format '{{.Architecture}}')" in
     aarch64|arm64) NATIVE=linux/arm64 ;;
     *)             NATIVE=linux/amd64 ;;
 esac
+# 한 기기에 한 실행만: act 컨테이너 이름은 잡마다 고정이고 로그도 한 곳이라, 다른
+# 작업 트리·세션이 동시에 돌리면 서로의 컨테이너를 지우고(exit 137) 결과를 덮는다.
+# QEMU 잡을 하나씩 돌린다는 전제도 실행 사이에서 깨진다. macOS 에 flock 이 없어 mkdir
+# 로 잡고, 주인이 죽은 잠금은 치운다
+LOCK="$LOGS.lock"
+until mkdir "$LOCK" 2>/dev/null; do
+    owner="$(cat "$LOCK/pid" 2>/dev/null)"
+    if [ -n "$owner" ] && ! kill -0 "$owner" 2>/dev/null; then rm -rf "$LOCK"; continue; fi
+    echo "  … 다른 ci-local 실행(pid ${owner:-?})이 끝나길 기다린다"
+    sleep 15
+done
+echo $$ > "$LOCK/pid"
+trap 'rm -rf "$LOCK"' EXIT
+
 mkdir -p "$LOGS"; : > "$LOGS/results"
 echo "로그: $LOGS"
 
