@@ -1,0 +1,16 @@
+#!/bin/sh
+# ----------------------------------------------------------
+# [Clean Architecture] Infrastructure Layer - Initramfs Hook
+#
+# 역할: initramfs 에 dm-verity 를 여는 도구와 모듈을 싣는다
+# 수행범위: veritysetup, dm-mod·dm-verity 모듈. 여는 일은 local-top/zyl-verity
+# 의존방향: initramfs-tools, cryptsetup-bin
+# SOLID: SRP — 싣기만
+# ----------------------------------------------------------
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case "$1" in prereqs) prereqs; exit 0 ;; esac
+
+. /usr/share/initramfs-tools/hook-functions
+copy_exec /usr/sbin/veritysetup /sbin
+manual_add_modules dm_mod dm_verity

@@ -198,6 +198,11 @@ install_data('system/fonts/50-zyl-fonts.conf',
 # Install recovery scripts
 install_data('system/recovery/recovery.sh',       install_dir: get_option('datadir') / 'zyl-os' / 'recovery', install_mode: 'rwxr-xr-x')
 install_data('system/recovery/factory-reset.sh',  install_dir: get_option('datadir') / 'zyl-os' / 'recovery', install_mode: 'rwxr-xr-x')
+# dm-verity: the initramfs opens the slot's rootfs from the signed kernel arguments
+install_data('system/initramfs/zyl-verity.hook', rename: 'zyl-verity', install_mode: 'rwxr-xr-x',
+             install_dir: get_option('datadir') / 'initramfs-tools' / 'hooks')
+install_data('system/initramfs/zyl-verity.local-top', rename: 'zyl-verity', install_mode: 'rwxr-xr-x',
+             install_dir: get_option('datadir') / 'initramfs-tools' / 'scripts' / 'local-top')
 install_data('system/recovery/recovery.service',  install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
 
 # Boot self test: not enabled by default (the unit has no [Install]).

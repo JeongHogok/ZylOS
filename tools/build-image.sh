@@ -124,6 +124,14 @@ fi
 step "Zyl 파일 설치"
 cp -a "$STAGE"/. "$ROOTFS"/
 
+# 이미지의 커널을 쓰면 initramfs 를 다시 만든다 — 방금 설치한 dm-verity 훅
+# (system/initramfs)이 들어가야 서명된 슬롯의 루트를 연다
+if [ $WITH_KERNEL = 1 ]; then
+    step "initramfs 재생성 (dm-verity 훅)"
+    chroot "$ROOTFS" update-initramfs -u -k all >>"$W/bootstrap.log" 2>&1 || {
+        tail -20 "$W/bootstrap.log"; echo "✗ update-initramfs 실패" >&2; exit 1; }
+fi
+
 # 글꼴 캐시: 비어 있으면 WAM 이 뜰 때마다 글꼴을 전부 다시 읽는다(첫 화면이 그만큼
 # 늦다). /var 는 기기에서 휘발(tmpfs)이라 캐시는 /usr 쪽 자리에 굽는다 —
 # system/fonts/50-zyl-fonts.conf 가 그 자리를 fontconfig 에 알린다. 다른 아키텍처면
