@@ -50,9 +50,10 @@ static const char *introspection_xml =
     "    </method>"
     "    <method name='Cancel'>"
     "      <arg direction='in'  type='t' name='id'/>"
+    "      <arg direction='in'  type='s' name='app_id'/>"
     "    </method>"
     "    <method name='GetActive'>"
-    "      <arg direction='out' type='a(tsssssbbi)' name='notifications'/>"
+    "      <arg direction='out' type='aa{sv}' name='notifications'/>"
     "    </method>"
     "    <method name='ClearAll'/>"
     "    <method name='RegisterChannel'>"
@@ -412,8 +413,9 @@ static void handle_cancel(ZylNotificationService *service,
                           GDBusMethodInvocation  *invocation)
 {
     guint64 id;
-    g_variant_get(parameters, "(t)", &id);
-    zyl_notification_cancel(service, id);
+    const char *app_id;
+    g_variant_get(parameters, "(t&s)", &id, &app_id);
+    zyl_notification_cancel(service, id, app_id);
     g_dbus_method_invocation_return_value(invocation, NULL);
 }
 
@@ -427,27 +429,32 @@ static void handle_get_active(ZylNotificationService *service,
     int count = 0;
     zyl_notification_get_active(service, &list, &count);
 
+    /* Named fields, the same as the emulator's (apps/system/services/
+       notification.js): what draws them reads one shape on both */
     GVariantBuilder builder;
-    g_variant_builder_init(&builder, G_VARIANT_TYPE("a(tsssssbbi)"));
+    g_variant_builder_init(&builder, G_VARIANT_TYPE("aa{sv}"));
 
     for (int i = 0; i < count; i++) {
         ZylNotification *n = &list[i];
-        g_variant_builder_add(&builder, "(tsssssbbi)",
-                              n->id,
-                              n->app_id     ? n->app_id     : "",
-                              n->channel_id ? n->channel_id : "",
-                              n->title      ? n->title      : "",
-                              n->body       ? n->body       : "",
-                              n->icon       ? n->icon       : "",
-                              n->read,
-                              n->persistent,
-                              n->priority);
+        GVariantBuilder d;
+        g_variant_builder_init(&d, G_VARIANT_TYPE("a{sv}"));
+        g_variant_builder_add(&d, "{sv}", "id", g_variant_new_uint64(n->id));
+        g_variant_builder_add(&d, "{sv}", "appId", g_variant_new_string(n->app_id ? n->app_id : ""));
+        g_variant_builder_add(&d, "{sv}", "channelId", g_variant_new_string(n->channel_id ? n->channel_id : ""));
+        g_variant_builder_add(&d, "{sv}", "title", g_variant_new_string(n->title ? n->title : ""));
+        g_variant_builder_add(&d, "{sv}", "body", g_variant_new_string(n->body ? n->body : ""));
+        g_variant_builder_add(&d, "{sv}", "icon", g_variant_new_string(n->icon ? n->icon : ""));
+        g_variant_builder_add(&d, "{sv}", "timestamp", g_variant_new_uint64(n->timestamp));
+        g_variant_builder_add(&d, "{sv}", "read", g_variant_new_boolean(n->read));
+        g_variant_builder_add(&d, "{sv}", "persistent", g_variant_new_boolean(n->persistent));
+        g_variant_builder_add(&d, "{sv}", "priority", g_variant_new_int32(n->priority));
+        g_variant_builder_add_value(&builder, g_variant_builder_end(&d));
         zyl_notification_free(n);
     }
     g_free(list);
 
     g_dbus_method_invocation_return_value(invocation,
-                                          g_variant_new("(a(tsssssbbi))", &builder));
+                                          g_variant_new("(aa{sv})", &builder));
 }
 
 static void handle_clear_all(ZylNotificationService *service,
@@ -820,13 +827,15 @@ uint64_t zyl_notification_post_with_actions(ZylNotificationService *service,
     return notif.id;
 }
 
-void zyl_notification_cancel(ZylNotificationService *service, uint64_t id)
+void zyl_notification_cancel(ZylNotificationService *service, uint64_t id, const char *app_id)
 {
     if (!service) return;
 
     for (guint i = 0; i < service->notifications->len; i++) {
         ZylNotification *n = &g_array_index(service->notifications, ZylNotification, i);
         if (n->id == id) {
+            /* Another app's is not this app's to take away */
+            if (app_id && app_id[0] && g_strcmp0(n->app_id, app_id) != 0) return;
             notification_clear(n);
             g_array_remove_index(service->notifications, i);
 

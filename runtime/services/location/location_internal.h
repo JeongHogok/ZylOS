@@ -47,6 +47,7 @@ typedef struct {
 /* ─── 지오펜스 내부 상태 ─── */
 typedef struct {
     ZylGeofence fence;
+    char       *app;     /* 등록한 앱 (D-Bus caller) — tag 는 이 앱 안에서 고유 */
     bool        inside;  /* 직전 폴링 시 내부 여부 */
     bool        active;  /* 등록됨 여부 */
 } GeofenceEntry;
@@ -71,8 +72,9 @@ struct ZylLocationService {
 
     /* 폴링 스레드 */
     pthread_t poll_thread;
-    bool thread_running;
+    bool thread_running;          /* lock 아래에서 읽고 쓴다 */
     pthread_mutex_t lock;
+    pthread_cond_t wake;          /* 멈춤을 기다리는 폴링 스레드를 깨운다 */
 
     /* D-Bus */
     GDBusConnection *dbus;

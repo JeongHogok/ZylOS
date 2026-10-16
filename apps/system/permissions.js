@@ -76,20 +76,29 @@ window.ZylPermissions = (function () {
 
   /* Methods that reach past the caller's own, checked after the service rule:
      every app's notifications and the device-wide quiet settings. An app posts
-     its own (its appId is always its own); reading, dismissing or silencing
-     other apps' is the status bar's. runtime/wam/src/bridge/bridge.c has the
+     and cancels its own (its appId is always its own); reading, dismissing or
+     silencing other apps' is the status bar's. runtime/wam/src/bridge/bridge.c has the
      same table (verify-all compares them). */
   var METHOD_PERMISSIONS = {
     'notification.getActive':         ['notification.read'],
     'notification.getHistory':        ['notification.read'],
     'notification.getAllBadgeCounts': ['notification.read'],
     'notification.getGroupSummary':   ['notification.read'],
-    'notification.cancel':            ['notification.read'],
     'notification.clearAll':          ['notification.read'],
     'notification.clearHistory':      ['notification.read'],
     'notification.setDndMode':        ['system'],
     'notification.setChannelEnabled': ['system']
   };
+
+  /* Events about one app's own things reach a third-party app only when they
+     are its own: they carry the owner second (data[1]); one that names none
+     goes to none of them. event null: every event of the service. The same
+     table as OWNED_EVENTS in bridge.c (verify-all compares them). */
+  var OWNED_EVENTS = [
+    { service: 'notification', event: null,            readAll: 'notification.read' },
+    { service: 'location',     event: 'GeofenceEnter', readAll: null },
+    { service: 'location',     event: 'GeofenceExit',  readAll: null }
+  ];
 
   /* App-declared permissions from app.json */
   var _appPermissions = {};
@@ -224,6 +233,21 @@ window.ZylPermissions = (function () {
   }
 
   /**
+   * May this app hear this service event? It must be allowed to call the
+   * service, and an event about one app's own things must be its own.
+   */
+  function mayReceive(appId, service, event, data) {
+    if (!appId || !checkPermission(appId, service, '')) return false;
+    for (var i = 0; i < OWNED_EVENTS.length; i++) {
+      var r = OWNED_EVENTS[i];
+      if (r.service !== service || (r.event && r.event !== event)) continue;
+      if (r.readAll && hasPermission(appId, r.readAll)) return true;
+      return Object.prototype.toString.call(data) === '[object Array]' && data[1] === appId;
+    }
+    return true;
+  }
+
+  /**
    * Check if a specific permission is granted for an app.
    */
   function hasPermission(appId, permission) {
@@ -245,6 +269,7 @@ window.ZylPermissions = (function () {
   return {
     RESERVED_PERMISSIONS: RESERVED_PERMISSIONS,
     checkPermission: checkPermission,
+    mayReceive: mayReceive,
     hasPermission: hasPermission,
     registerApp: registerApp,
     registerFromAppList: registerFromAppList,

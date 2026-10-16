@@ -81,10 +81,10 @@ ZylBridge.notify('알림 제목', '알림 내용', {
 | 메서드 | 파라미터 | 권한 |
 |--------|----------|------|
 | post | `{ appId, title, body, icon, priority }` | `notification` |
-| cancel | `{ id }` | `notification` |
-| getActive | — | `notification` |
-| clearAll | — | `notification` |
-| setDndMode | `{ enabled }` | `notification` |
+| cancel | `{ id, appId }` — 자기 앱 것만 (시스템 앱의 `appId: ''` 는 모든 앱) | `notification` |
+| getActive | — | `notification.read` |
+| clearAll | — | `notification.read` |
+| setDndMode | `{ enabled }` | `system` |
 
 ### alarm — 알람
 | 메서드 | 파라미터 | 권한 |

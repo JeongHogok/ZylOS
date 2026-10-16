@@ -115,8 +115,13 @@ uint64_t zyl_notification_post_with_actions(ZylNotificationService *service,
                                             const ZylNotifAction   *actions,
                                             int                     num_actions);
 
-/** Cancel (dismiss) a single notification by ID. */
-void zyl_notification_cancel(ZylNotificationService *service, uint64_t id);
+/**
+ * Cancel (dismiss) a single notification by ID — only if app_id posted it.
+ * app_id NULL or "" (a system app's call) cancels any app's. The bridge fills
+ * app_id with the calling app for third-party apps, so an app cancels its own.
+ */
+void zyl_notification_cancel(ZylNotificationService *service, uint64_t id,
+                             const char *app_id);
 
 /**
  * Retrieve all active (unread) notifications.

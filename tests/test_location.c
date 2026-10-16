@@ -6,7 +6,9 @@
  *           지구 밖 좌표는 위치가 되지 않음, wpa_cli 스캔 결과의 잡음 무시,
  *           gpsd 가 모른다고(NaN) 남긴 값은 앱에 NaN 으로 가지 않음,
  *           GPS > Wi-Fi > GeoIP 순서와 못 쓰는 위치일 때의 다음 순위,
- *           지오펜스 슬롯·태그·한도, 불가능한 지오펜스 거부, 진입/이탈 판정
+ *           지오펜스는 부른 앱의 것(다른 앱이 지우지 못함, 앱별·기기별 한도,
+ *           앱 삭제 때 정리), 불가능한 지오펜스 거부, 진입/이탈 판정,
+ *           갱신 간격의 범위와 즉시 멈춤(긴 간격에도 메인 루프를 막지 않음)
  * 의존방향: runtime/services/location 의 네 .c (ZYL_TEST, GEOIP_URL·MLS_URL 을
  *           file:// 로 교체, PATH 의 가짜 wpa_cli, gps_* 를 가짜 gpsd 로),
  *           gio, libcurl, libgps(있으면)
@@ -18,6 +20,7 @@
 #define GEOIP_URL "file://" ROOT_ "/geoip.json"
 #define MLS_URL "file://" ROOT_ "/mls.json"
 #include <assert.h>
+#include <limits.h>
 #include <sys/stat.h>
 
 #ifdef HAVE_GPSD
@@ -75,7 +78,10 @@ static void put(const char *path, const char *text) {
 }
 
 static void reset(void) {
-    for (int i = 0; i < ZYL_GEOFENCE_MAX; i++) free(svc.geofences[i].fence.tag);
+    for (int i = 0; i < ZYL_GEOFENCE_MAX; i++) {
+        free(svc.geofences[i].fence.tag);
+        free(svc.geofences[i].app);
+    }
     memset(svc.geofences, 0, sizeof(svc.geofences));
     svc.geofence_count = 0;
     memset(&loc, 0, sizeof(loc));
@@ -224,28 +230,64 @@ static ZylGeofence fence(double lat, double lon, double r, char *tag) {
     return f;
 }
 
+#define APP_A "com.example.a"
+#define APP_B "com.example.b"
+
 static void test_geofence_slots_tags_and_limits(void) {
     char tag[16] = "home";
     ZylGeofence f = fence(37.5663, 126.9779, 200, tag);
-    assert(zyl_location_add_geofence(&svc, &f) == 0);
-    assert(zyl_location_add_geofence(&svc, &f) == -1);              /* same tag twice */
+    assert(zyl_location_add_geofence(&svc, APP_A, &f) == 0);
+    assert(zyl_location_add_geofence(&svc, APP_A, &f) == -1);       /* same tag twice */
     tag[0] = 'X';                                                   /* the service keeps a copy */
-    assert(zyl_location_remove_geofence(&svc, "home") == 0);
-    assert(zyl_location_remove_geofence(&svc, "home") == -1);
-    assert(zyl_location_remove_geofence(&svc, NULL) == -1);
+    assert(zyl_location_remove_geofence(&svc, APP_A, "home") == 0);
+    assert(zyl_location_remove_geofence(&svc, APP_A, "home") == -1);
+    assert(zyl_location_remove_geofence(&svc, APP_A, NULL) == -1);
     f.tag = NULL;
-    assert(zyl_location_add_geofence(&svc, &f) == -1);
-    assert(zyl_location_add_geofence(&svc, NULL) == -1);
-    for (int i = 0; i < ZYL_GEOFENCE_MAX; i++) {
+    assert(zyl_location_add_geofence(&svc, APP_A, &f) == -1);
+    assert(zyl_location_add_geofence(&svc, APP_A, NULL) == -1);
+    f = fence(10, 10, 50, "nobody");
+    assert(zyl_location_add_geofence(&svc, NULL, &f) == -1);        /* every fence has an owner */
+    assert(zyl_location_add_geofence(&svc, "", &f) == -1);
+    assert(zyl_location_remove_geofence(&svc, NULL, "nobody") == -1);
+    for (int i = 0; i < ZYL_GEOFENCE_PER_APP_MAX; i++) {            /* one app can't take them all */
         snprintf(tag, sizeof(tag), "f%d", i);
         f = fence(10, 10, 50, tag);
-        assert(zyl_location_add_geofence(&svc, &f) == 0);
+        assert(zyl_location_add_geofence(&svc, APP_A, &f) == 0);
     }
     f = fence(10, 10, 50, "one-too-many");
-    assert(zyl_location_add_geofence(&svc, &f) == -1);
+    assert(zyl_location_add_geofence(&svc, APP_A, &f) == -1);
+    assert(zyl_location_add_geofence(&svc, APP_B, &f) == 0);
+    char app[32];
+    for (int n = 0; svc.geofence_count < ZYL_GEOFENCE_MAX; n++) {   /* all apps: the device's limit */
+        snprintf(app, sizeof(app), "com.example.app%d", n / ZYL_GEOFENCE_PER_APP_MAX);
+        snprintf(tag, sizeof(tag), "g%d", n);
+        f = fence(10, 10, 50, tag);
+        assert(zyl_location_add_geofence(&svc, app, &f) == 0);
+    }
+    f = fence(10, 10, 50, "late");
+    assert(zyl_location_add_geofence(&svc, "com.example.late", &f) == -1);
     assert(svc.geofence_count == ZYL_GEOFENCE_MAX);
-    assert(zyl_location_remove_geofence(&svc, "f7") == 0);
-    assert(zyl_location_add_geofence(&svc, &f) == 0);               /* the slot is free again */
+    assert(zyl_location_remove_geofence(&svc, APP_A, "f0") == 0);
+    assert(zyl_location_add_geofence(&svc, "com.example.late", &f) == 0);  /* the slot is free again */
+}
+
+static void test_geofences_belong_to_the_calling_app(void) {
+    ZylGeofence home = fence(37.5663, 126.9779, 200, "home");
+    ZylGeofence work = fence(37.4979, 127.0276, 300, "work");
+    assert(zyl_location_add_geofence(&svc, APP_A, &home) == 0);
+    assert(zyl_location_add_geofence(&svc, APP_B, &home) == 0);     /* the same tag, B's own */
+    assert(zyl_location_add_geofence(&svc, APP_A, &work) == 0);
+    assert(zyl_location_remove_geofence(&svc, APP_B, "work") == -1);/* not B's to remove */
+    assert(zyl_location_remove_geofence(&svc, APP_B, "home") == 0);
+    assert(zyl_location_remove_geofence(&svc, APP_B, "home") == -1);
+    assert(svc.geofence_count == 2);
+    assert(zyl_location_remove_geofence(&svc, APP_A, "home") == 0); /* A's outlived B's removal */
+    assert(zyl_location_add_geofence(&svc, APP_B, &home) == 0);
+    assert(zyl_location_forget_app(&svc, APP_A) == 1);              /* uninstalled: its fences go */
+    assert(zyl_location_forget_app(&svc, APP_A) == 0);
+    assert(zyl_location_remove_geofence(&svc, APP_A, "work") == -1);
+    assert(svc.geofence_count == 1 && zyl_location_remove_geofence(&svc, APP_B, "home") == 0);
+    assert(zyl_location_forget_app(&svc, NULL) == 0 && zyl_location_forget_app(NULL, APP_A) == 0);
 }
 
 static void test_impossible_geofences_are_refused(void) {
@@ -255,7 +297,7 @@ static void test_impossible_geofences_are_refused(void) {
         fence(0, 0, -5, "g"), fence(0, 0, NAN, "h"), fence(0, 0, INFINITY, "i"),
     };
     for (size_t i = 0; i < G_N_ELEMENTS(bad); i++)
-        assert(zyl_location_add_geofence(&svc, &bad[i]) == -1);
+        assert(zyl_location_add_geofence(&svc, APP_A, &bad[i]) == -1);
     assert(svc.geofence_count == 0);
 }
 
@@ -264,7 +306,7 @@ static void test_geofence_enter_and_exit_follow_distance(void) {
     assert(seoul_busan > 320000 && seoul_busan < 330000);
     assert(haversine_m(37.5, 127.0, 37.5, 127.0) == 0.0);
     ZylGeofence f = fence(37.5663, 126.9779, 200, "home");
-    assert(zyl_location_add_geofence(&svc, &f) == 0);
+    assert(zyl_location_add_geofence(&svc, APP_A, &f) == 0);
     ZylLocation at = { .latitude = 37.5672, .longitude = 126.9779 };   /* ~100 m north */
     check_geofences(&svc, &at);
     assert(svc.geofences[0].inside);
@@ -276,9 +318,35 @@ static void test_geofence_enter_and_exit_follow_distance(void) {
     assert(svc.geofences[0].inside);
 }
 
+static double since_ms(const struct timespec *t0) {
+    struct timespec t1;
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    return (double)(t1.tv_sec - t0->tv_sec) * 1000.0 + (double)(t1.tv_nsec - t0->tv_nsec) / 1e6;
+}
+
+static void test_interval_is_bounded_and_stopping_is_prompt(void) {
+    alarm(10);                                                      /* a hang fails the run */
+    assert(zyl_location_request_updates(&svc, -5, NULL, NULL) == 0);
+    assert(svc.interval_ms == 100);
+    assert(zyl_location_request_updates(&svc, INT_MAX, NULL, NULL) == 0);  /* restarts it */
+    assert(svc.interval_ms == 10 * 60 * 1000);
+    usleep(300000);                                                 /* the thread is asleep now */
+    struct timespec t0;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+    zyl_location_stop_updates(&svc);                                /* on the D-Bus main loop */
+    assert(since_ms(&t0) < 1000 && !svc.updates_active);
+    assert(zyl_location_request_updates(&svc, 60 * 60 * 1000, NULL, NULL) == 0);
+    usleep(300000);
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+    assert(zyl_location_request_updates(&svc, 1000, NULL, NULL) == 0);
+    assert(since_ms(&t0) < 1000);
+    zyl_location_stop_updates(&svc);
+    alarm(0);
+}
+
 int main(void) {
     printf("=== Zyl OS Location Service Tests ===\n");
-    pthread_mutex_init(&svc.lock, NULL);
+    init_sync(&svc);
     const char *path = g_getenv("PATH");
     char *with_fake = g_strconcat(ROOT_ "/bin:", path ? path : "/usr/bin:/bin", NULL);
     g_setenv("PATH", with_fake, TRUE);
@@ -294,8 +362,10 @@ int main(void) {
     RUN_TEST(test_gps_without_a_usable_fix_falls_back);
 #endif
     RUN_TEST(test_geofence_slots_tags_and_limits);
+    RUN_TEST(test_geofences_belong_to_the_calling_app);
     RUN_TEST(test_impossible_geofences_are_refused);
     RUN_TEST(test_geofence_enter_and_exit_follow_distance);
+    RUN_TEST(test_interval_is_bounded_and_stopping_is_prompt);
     reset();
     printf("\nResults: %d/%d passed\n", tests_pass, tests_run);
     return tests_pass == tests_run ? 0 : 1;

@@ -763,14 +763,14 @@ static const ServicePermission SERVICE_PERMISSIONS[] = {
 };
 
 /* Methods that reach past the caller's own, checked after the service rule:
- * every app's notifications and the device-wide quiet settings. Mirror of
+ * every app's notifications and the device-wide quiet settings (Cancel takes
+ * app_id, so an app cancels only its own without these). Mirror of
  * METHOD_PERMISSIONS in apps/system/permissions.js (verify-all compares). */
 static const ServicePermission METHOD_PERMISSIONS[] = {
     {"notification.getActive",         {"notification.read", NULL}},
     {"notification.getHistory",        {"notification.read", NULL}},
     {"notification.getAllBadgeCounts", {"notification.read", NULL}},
     {"notification.getGroupSummary",   {"notification.read", NULL}},
-    {"notification.cancel",            {"notification.read", NULL}},
     {"notification.clearAll",          {"notification.read", NULL}},
     {"notification.clearHistory",      {"notification.read", NULL}},
     {"notification.setDndMode",        {"system", NULL}},
@@ -924,19 +924,34 @@ static gboolean app_may_call_method(const ZylAppManifest *m, const char *service
     return ok;
 }
 
-/* A third-party app hears of its own notifications only — another app's
-   title and body (a message, a code) are not its to read. Posted carries the
-   owner as its second argument; what does not name one goes to none of them. */
-static gboolean event_is_apps_own(const ZylAppManifest *m, const char *service, GVariant *params) {
-    if (m->is_system || strcmp(service, "notification") != 0) return TRUE;
-    if (manifest_holds(m, "notification.read")) return TRUE;
-    if (!params || !g_variant_is_of_type(params, G_VARIANT_TYPE_TUPLE) || g_variant_n_children(params) < 2)
-        return FALSE;
-    GVariant *owner = g_variant_get_child_value(params, 1);
-    gboolean own = g_variant_is_of_type(owner, G_VARIANT_TYPE_STRING) &&
-                   strcmp(g_variant_get_string(owner, NULL), m->id) == 0;
-    g_variant_unref(owner);
-    return own;
+/* Events about one app's own things reach a third-party app only when they
+   are its own — another app's notification (a message, a code) or geofence
+   is not its to see. They carry the owner as their second argument; one that
+   names no owner goes to none of them. signal NULL: every signal of the service. */
+static const struct { const char *service, *signal, *read_all; } OWNED_EVENTS[] = {
+    {"notification", NULL,            "notification.read"},
+    {"location",     "GeofenceEnter", NULL},
+    {"location",     "GeofenceExit",  NULL},
+    {NULL, NULL, NULL}
+};
+
+static gboolean event_is_apps_own(const ZylAppManifest *m, const char *service,
+                                  const char *signal, GVariant *params) {
+    if (m->is_system) return TRUE;
+    for (int i = 0; OWNED_EVENTS[i].service; i++) {
+        if (strcmp(OWNED_EVENTS[i].service, service) != 0) continue;
+        if (OWNED_EVENTS[i].signal && strcmp(OWNED_EVENTS[i].signal, signal) != 0) continue;
+        if (OWNED_EVENTS[i].read_all && manifest_holds(m, OWNED_EVENTS[i].read_all)) return TRUE;
+        if (!params || !g_variant_is_of_type(params, G_VARIANT_TYPE_TUPLE) ||
+            g_variant_n_children(params) < 2)
+            return FALSE;
+        GVariant *owner = g_variant_get_child_value(params, 1);
+        gboolean own = g_variant_is_of_type(owner, G_VARIANT_TYPE_STRING) &&
+                       strcmp(g_variant_get_string(owner, NULL), m->id) == 0;
+        g_variant_unref(owner);
+        return own;
+    }
+    return TRUE;
 }
 
 static const ServiceRoute *find_route(const char *service) {
@@ -982,7 +997,7 @@ char *zyl_bridge_service_event_script(const ZylAppManifest *manifest,
                                       const char *service, const char *signal,
                                       GVariant *params) {
     if (!find_route(service) || !app_may_call(manifest, service) ||
-        !event_is_apps_own(manifest, service, params)) return NULL;
+        !event_is_apps_own(manifest, service, signal, params)) return NULL;
     JsonObject *msg = json_object_new();
     json_object_set_string_member(msg, "type", "service.event");
     json_object_set_string_member(msg, "service", service);

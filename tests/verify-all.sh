@@ -333,6 +333,17 @@ for svc in sorted(set(J) | set(C)):
     if J.get(svc) != C.get(svc):
         out.append('%s: js=%s c=%s' % (svc, sorted(J.get(svc, [])) if svc in J else '-',
                                         sorted(C.get(svc, [])) if svc in C else '-'))
+def js_owned():
+    blk = js.split('var OWNED_EVENTS = [', 1)[1].split('];', 1)[0]
+    return sorted(re.findall(r"service:\s*'([a-z]+)',\s*event:\s*(?:'([A-Za-z]+)'|null),\s*readAll:\s*(?:'([a-z.]+)'|null)", blk))
+
+def c_owned():
+    blk = c.split('OWNED_EVENTS[] = {', 1)[1].split('{NULL, NULL, NULL}', 1)[0]
+    return sorted((s, e or '', r or '') for s, e, r in re.findall(
+        r'\{"([a-z]+)",\s*(?:"([A-Za-z]+)"|NULL),\s*(?:"([a-z.]+)"|NULL)\}', blk))
+
+if js_owned() != c_owned():
+    out.append('owned events: js=%s c=%s' % (js_owned(), c_owned()))
 JM, CM = js_methods(), c_methods()
 for m in sorted(set(JM) | set(CM)):
     if JM.get(m) != CM.get(m):
