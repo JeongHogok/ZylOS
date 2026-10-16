@@ -2,8 +2,10 @@
 // [Clean Architecture] Presentation Layer - Page
 //
 // 역할: Zyl OS 네이티브 에뮬레이터 — Tauri 통합 + 프리부팅 설정 연동
-// 수행범위: 앱 라우팅, 잠금 정책, 네비게이션, HAL 자동 감지
-// 의존방향: hal-tauri.js | hal-browser.js, config-ui.js, boot-sequence.js
+// 수행범위: 앱 라우팅, 네비게이션 입력, HAL 자동 감지. 어느 앱이 앞에 올지
+//           (설정·잠금·홈·최근 앱)는 OS 의 ZylShell 이 정하고 여기는 띄우기만 한다
+// 의존방향: hal-tauri.js | hal-browser.js, config-ui.js, boot-sequence.js,
+//           OS: ZylShell (apps/system/shell.js), ZylAppRegistry, ZylIntent
 // SOLID: OCP — 디바이스 프로필 배열에 추가만으로 새 기종 지원
 //
 // 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
@@ -31,13 +33,13 @@
     previousApp: null,
     runningApps: [],
     screenOn: true,
-    locked: true,
     recentsOpen: false,
   };
 
-  /* ═══ Notifications ═══ */
-  var notifications = []; // { id, appId, appName, icon, title, body, channel, priority, timestamp, read }
-  var notifIdCounter = 0;
+  /* ═══ Notifications ═══
+     What the OS notification service holds (apps/system/services/notification.js
+     announces posted/dismissed); the container draws the shade and banners */
+  var notifications = []; // { id, appId, appName, icon, title, body, channel, priority, timestamp, read, persistent }
 
   /* ═══ DOM ═══ */
   var emulatorScreen  = document.getElementById('emulator-screen');
@@ -86,21 +88,19 @@
   var _clockInterval = setInterval(updateClock, 1000);
 
   /* ═══════════════════════════════════════════════════════
-     잠금 상태 정책
-     잠금 중에는 모든 네비게이션을 차단한다
+     Which app may be in front is the OS's (ZylShell): setup, the lock
+     screen, home. show() brings what it decided; open() asks it first.
      ═══════════════════════════════════════════════════════ */
-  function isLocked() {
-    return state.locked;
+  function show(appId) {
+    if (appId) launchApp(appId);
   }
 
-  function requireUnlock(action) {
-    if (!isLocked()) return false;
-    syslog('[BLOCKED] ' + action + ' — device is locked', 'warn');
-    /* 잠금화면이 아닌 다른 곳이면 잠금화면으로 강제 */
-    if (state.currentApp !== 'com.zylos.lockscreen') {
-      launchApp('com.zylos.lockscreen');
+  function open(appId, intent) {
+    if (!ZylShell.mayLaunch(appId)) {
+      syslog('[BLOCKED] ' + appId + ' — not now (setup or locked)', 'warn');
+      return;
     }
-    return true;
+    launchApp(appId, intent);
   }
 
   /* ═══ App Lifecycle ═══ */
@@ -138,12 +138,6 @@
     }
     if (state.recentsOpen) hideRecents();
 
-    /* 잠금 중에는 잠금화면만 실행 가능 */
-    if (isLocked() && appId !== 'com.zylos.lockscreen') {
-      syslog('[BLOCKED] Cannot launch ' + app.name + ' while locked', 'warn');
-      return;
-    }
-
     /* Hardware input hint for the OS. The container reports what input
        hardware exists; apps/shared/form-factor.js decides the form factor.
        A host mouse cannot emulate a TV remote, so this cannot be detected. */
@@ -156,6 +150,7 @@
 
     state.previousApp = state.currentApp;
     state.currentApp = appId;
+    ZylShell.shown(appId);
 
     /* Leaving the displayed app: ask for its state, then navigate. Navigating
        the frame unloads the old document, which is the background execution
@@ -205,17 +200,11 @@
             broadcastToCurrentApp('lifecycle.restore', { state: restored.state });
           }
 
-          /* Lockscreen: notifications (the PIN is the OS lock service's, not ours) */
-          if (loadAppId === 'com.zylos.lockscreen') {
+          /* The notifications the device holds, where the OS shows them */
+          if (ZylShell.showsNotifications(loadAppId)) {
             notifications.forEach(function (n) {
               broadcastToCurrentApp('notification.push', n);
             });
-          }
-          /* Home: wallpaper */
-          if (loadAppId === 'com.zylos.home') {
-            if (_currentWallpaper !== 'default') {
-              broadcastToCurrentApp('settings.wallpaperChanged', { wallpaper: _currentWallpaper });
-            }
           }
         }, 200);
         appFrame.onload = null;
@@ -249,25 +238,15 @@
     if (e.detail) closeApp(e.detail);
   });
 
-  /* 잠금 검사를 거치는 네비게이션 */
-  /* OOBE blocks all navigation — user must complete setup */
-  function isInOobe() {
-    return state.currentApp === 'com.zylos.oobe';
-  }
-
+  /* Home: the lock screen while locked, nothing during setup (the OS's) */
   function goHome() {
-    if (requireUnlock('Home')) return;
-    if (isInOobe()) return;
-    if (state.currentApp === 'com.zylos.home') return;
-    launchApp('com.zylos.home');
+    show(ZylShell.home());
   }
 
   var _backResponsePending = false;
 
+  /* Back goes to the app first; an app that exits goes where home goes */
   function goBack() {
-    if (requireUnlock('Back')) return;
-    if (isInOobe()) return;
-    if (state.currentApp === 'com.zylos.home') return;
     if (_backResponsePending) return;
 
     syslog('\u2190 Back', 'sys');
@@ -312,8 +291,7 @@
   }
 
   function showRecents() {
-    if (requireUnlock('Recents')) return;
-    if (isInOobe()) return;
+    if (!ZylShell.navigable()) return;
     state.recentsOpen = true;
     recentsOverlay.classList.remove('hidden');
     renderRecentsCards();
@@ -331,17 +309,15 @@
   }
 
   function switchApp(direction) {
-    if (requireUnlock('App switch')) return;
-    var apps = state.runningApps.filter(function (a) {
-      return a.id !== 'com.zylos.lockscreen';
-    });
+    if (!ZylShell.navigable()) return;
+    var apps = state.runningApps;
     if (apps.length < 2) return;
     var idx = apps.findIndex(function (a) { return a.id === state.currentApp; });
     if (idx < 0) return;
     var next = direction > 0
       ? (idx + 1) % apps.length
       : (idx - 1 + apps.length) % apps.length;
-    launchApp(apps[next].id);
+    open(apps[next].id);
     syslog('Switch → ' + apps[next].name, 'sys');
   }
 
@@ -349,13 +325,13 @@
   function renderRecentsCards() {
     if (!recentsCards) return;
     recentsCards.innerHTML = '';
-    var apps = state.runningApps.filter(function (a) { return a.id !== 'com.zylos.lockscreen'; });
+    var apps = state.runningApps;
     if (recentsEmpty) recentsEmpty.style.display = apps.length === 0 ? 'block' : 'none';
     apps.forEach(function (app) {
       var card = document.createElement('div');
       card.className = 'recents-card';
       card.style.cursor = 'pointer';
-      card.onclick = function () { hideRecents(); launchApp(app.id); };
+      card.onclick = function () { hideRecents(); open(app.id); };
       var nameEl = document.createElement('span');
       nameEl.className = 'recents-card-name';
       nameEl.textContent = app.name;
@@ -364,7 +340,7 @@
       close.textContent = '\u00d7';
       close.onclick = function (e) { e.stopPropagation(); closeApp(app.id); renderRecentsCards(); if (state.runningApps.length === 0) hideRecents(); };
       card.appendChild(nameEl);
-      if (app.id !== 'com.zylos.home') card.appendChild(close);
+      if (ZylShell.mayClose(app.id)) card.appendChild(close);
       recentsCards.appendChild(card);
     });
   }
@@ -386,13 +362,13 @@
       var name = document.createElement('span');
       name.textContent = app.name;
       name.style.cursor = 'pointer';
-      name.onclick = function () { launchApp(app.id); };
+      name.onclick = function () { open(app.id); };
       var closeBtn = document.createElement('button');
       closeBtn.className = 'app-close-btn';
       closeBtn.textContent = '×';
       closeBtn.onclick = function (e) { e.stopPropagation(); closeApp(app.id); };
       item.appendChild(name);
-      if (app.id !== 'com.zylos.home') item.appendChild(closeBtn);
+      if (ZylShell.mayClose(app.id)) item.appendChild(closeBtn);
       appsList.appendChild(item);
     });
   }
@@ -466,7 +442,7 @@
   var qsBackdrop = document.getElementById('qs-backdrop');
 
   function openQsPanel() {
-    if (qsOpen || isLocked() || isInOobe()) return;
+    if (qsOpen || !ZylShell.navigable()) return;
     qsOpen = true;
     updateQsClock();
     renderQsNotifications();
@@ -522,11 +498,11 @@
   /* Statusbar: drag down to open, click to toggle */
   statusbar.addEventListener('mousedown', function (e) {
     _qsDragMoved = false;
-    if (qsPanelDrag && !isLocked() && !isInOobe()) qsPanelDrag.start(e.clientY, blockIframe);
+    if (qsPanelDrag && ZylShell.navigable()) qsPanelDrag.start(e.clientY, blockIframe);
   });
   statusbar.addEventListener('touchstart', function (e) {
     _qsDragMoved = false;
-    if (qsPanelDrag && !isLocked() && !isInOobe()) qsPanelDrag.start(e.touches[0].clientY, blockIframe);
+    if (qsPanelDrag && ZylShell.navigable()) qsPanelDrag.start(e.touches[0].clientY, blockIframe);
   }, { passive: true });
 
   statusbar.addEventListener('click', function () {
@@ -541,12 +517,12 @@
   qsPanel.addEventListener('mousedown', function (e) {
     if (e.target.closest('button, input, .qs-tile, .qs-notif-card')) return;
     _qsDragMoved = false;
-    if (qsPanelDrag && !isLocked() && !isInOobe()) qsPanelDrag.start(e.clientY, blockIframe);
+    if (qsPanelDrag && ZylShell.navigable()) qsPanelDrag.start(e.clientY, blockIframe);
   });
   qsPanel.addEventListener('touchstart', function (e) {
     if (e.target.closest('button, input, .qs-tile, .qs-notif-card')) return;
     _qsDragMoved = false;
-    if (qsPanelDrag && !isLocked() && !isInOobe()) qsPanelDrag.start(e.touches[0].clientY, blockIframe);
+    if (qsPanelDrag && ZylShell.navigable()) qsPanelDrag.start(e.touches[0].clientY, blockIframe);
   }, { passive: true });
 
   /* Global move/end listeners */
@@ -617,20 +593,15 @@
     state.screenOn = !state.screenOn;
     frameEl.classList.toggle('screen-off', !state.screenOn);
     syslog('Screen ' + (state.screenOn ? 'ON' : 'OFF'), 'sys');
-    /* Screen off: close panels + lock (skip lock during OOBE) */
+    /* Screen off locks (the lock screen goes up behind the dark screen);
+       screen on shows what holds the device — the OS decides both */
     if (!state.screenOn) {
       if (qsOpen) closeQsPanel();
       if (state.recentsOpen) hideRecents();
       hideToast();
-      if (!isInOobe()) state.locked = true;
-    }
-    /* Screen on: show lockscreen (or resume OOBE if in setup) */
-    if (state.screenOn) {
-      if (isInOobe()) {
-        launchApp('com.zylos.oobe');
-      } else {
-        launchApp('com.zylos.lockscreen');
-      }
+      show(ZylShell.lock());
+    } else {
+      show(ZylShell.screenOn());
     }
   }
   var sidePower = document.getElementById('side-power');
@@ -644,7 +615,6 @@
     /* Clean up persistent timers before reboot to prevent accumulation */
     if (_clockInterval) { clearInterval(_clockInterval); _clockInterval = null; }
     if (_volumeOsdTimer) { clearTimeout(_volumeOsdTimer); _volumeOsdTimer = null; }
-    state.locked = true;
     state.runningApps = [];
     state.currentApp = null;
     /* Reset battery watcher flag so bootDevice re-initialises it cleanly */
@@ -659,18 +629,20 @@
   /* ═══════════════════════════════════════════════════════
      알림 시스템
      ═══════════════════════════════════════════════════════ */
-  function pushNotification(data) {
+  function pushNotification(n) {
+    var app = n.appId ? ZylAppRegistry.getApp(n.appId) : null;
     var notif = {
-      id: ++notifIdCounter,
-      appId: data.appId || 'com.zylos.system',
-      appName: data.appName || (ZylAppRegistry.getApp(data.appId) && ZylAppRegistry.getApp(data.appId).name) || 'System',
-      icon: data.icon || '🔔',
-      title: data.title || '',
-      body: data.body || '',
-      channel: data.channel || 'default',
-      priority: data.priority || 1,
-      timestamp: Date.now(),
+      id: n.id,
+      appId: n.appId || '',
+      appName: app ? app.name : 'System',
+      icon: n.icon || '🔔',
+      title: n.title || '',
+      body: n.body || '',
+      channel: n.channelId || 'default',
+      priority: n.priority || 1,
+      timestamp: n.timestamp || Date.now(),
       read: false,
+      persistent: !!n.persistent
     };
     notifications.unshift(notif);
     updateNotifBadge();
@@ -680,13 +652,11 @@
     playNotifSound();
     triggerVibrate();
 
-    /* Show toast banner if screen is on and not locked */
-    if (state.screenOn && !isLocked()) {
+    /* A banner unless locked; the lock screen lists them itself */
+    if (state.screenOn && !ZylShell.isLocked()) {
       showToast(notif);
     }
-
-    /* If on lockscreen, push to lockscreen iframe */
-    if (state.currentApp === 'com.zylos.lockscreen') {
+    if (ZylShell.showsNotifications(state.currentApp)) {
       broadcastToCurrentApp('notification.push', notif);
     }
 
@@ -694,10 +664,18 @@
     return notif.id;
   }
 
-  function dismissNotification(id) {
-    notifications = notifications.filter(function(n) { return n.id !== id; });
+  window.addEventListener('zyl:notification-posted', function (e) {
+    if (e.detail) pushNotification(e.detail);
+  });
+  window.addEventListener('zyl:notification-dismissed', function (e) {
+    notifications = notifications.filter(function(n) { return n.id !== e.detail; });
     updateNotifBadge();
     renderQsNotifications();
+  });
+
+  /* The user dismissed it in the shade: the service drops it and says so */
+  function dismissNotification(id) {
+    ZylServices.handleRequest('notification', 'cancel', { id: id });
   }
 
   function clearAllNotifications() {
@@ -705,9 +683,7 @@
     var list = document.getElementById('qs-notif-list');
     var cards = list ? list.querySelectorAll('.qs-notif-card') : [];
     if (cards.length === 0) {
-      notifications = notifications.filter(function(n) { return n.persistent; });
-      updateNotifBadge();
-      renderQsNotifications();
+      ZylServices.handleRequest('notification', 'clearAll', {});
       return;
     }
     cards.forEach(function(card, i) {
@@ -720,9 +696,7 @@
       card.style.opacity = '0';
     });
     setTimeout(function() {
-      notifications = notifications.filter(function(n) { return n.persistent; });
-      updateNotifBadge();
-      renderQsNotifications();
+      ZylServices.handleRequest('notification', 'clearAll', {});
       syslog('Notifications cleared', 'sys');
     }, cards.length * 50 + 350);
   }
@@ -755,7 +729,7 @@
   /* The OS decided who handles an intent; the container launches and delivers */
   function runIntent(d) {
     if (!d) return;
-    if (d.launch) launchApp(d.launch, d.intent);
+    if (d.launch) open(d.launch, d.intent);
     else if (d.choose) broadcastToCurrentApp('intent.choose', d.choose);
     else broadcastToCurrentApp('intent.none', {});
   }
@@ -783,7 +757,7 @@
 
     toast.onclick = function() {
       hideToast();
-      if (notif.appId && ZylAppRegistry.getApp(notif.appId)) launchApp(notif.appId);
+      if (notif.appId && ZylAppRegistry.getApp(notif.appId)) open(notif.appId);
     };
 
     clearTimeout(toast._timer);
@@ -823,7 +797,7 @@
 
       card.addEventListener('click', function() {
         closeQsPanel();
-        if (notif.appId && ZylAppRegistry.getApp(notif.appId)) launchApp(notif.appId);
+        if (notif.appId && ZylAppRegistry.getApp(notif.appId)) open(notif.appId);
       });
 
       // Swipe to dismiss
@@ -957,14 +931,6 @@
     }
   }
   var _systemSilentMode = false;
-  var _currentWallpaper = 'default';
-  var _wallpaperGradients = {
-    'default':         'linear-gradient(160deg, #0a0a1a 0%, #0d1b2a 40%, #1b2838 100%)',
-    'gradient-blue':   'linear-gradient(135deg, #0c3547 0%, #1a6b8a 50%, #0a2a3a 100%)',
-    'gradient-purple': 'linear-gradient(135deg, #1a0a2e 0%, #4a2080 50%, #1a0a2e 100%)',
-    'gradient-dark':   'linear-gradient(160deg, #050505 0%, #1a1a1a 50%, #0a0a0a 100%)',
-    'gradient-sunset':  'linear-gradient(135deg, #2d1b3d 0%, #b44a2a 50%, #1a0a2e 100%)',
-  };
 
   function applySettingSideEffect(category, key, value) {
     /* ── 밝기: CSS filter로 화면 밝기 시뮬레이션 ── */
@@ -1029,14 +995,6 @@
         ZylPermissions.setAppOverride(key, revoked);
       }
     }
-
-    /* ── 배경화면 변경 → 홈 앱 배경 실제 변경 ── */
-    if (category === 'wallpaper' && key === 'current') {
-      _currentWallpaper = value;
-      syslog('Wallpaper → ' + value, 'sys');
-      /* 현재 앱(설정)이 아닌 홈 앱에 전달해야 하므로 저장만.
-         홈으로 돌아갈 때 launchApp에서 iframe 로드 후 전파 */
-    }
   }
 
   /* ═══ iframe 메시지 ═══ */
@@ -1052,30 +1010,26 @@
           _appStates.onState(msg.state);
           break;
         case 'app.launch':
-          if (!isLocked()) launchApp(msg.appId);
+          open(msg.appId);
           break;
         case 'app.close':
-          if (state.currentApp && !isLocked()) closeApp(state.currentApp);
+          if (state.currentApp && ZylShell.mayClose(state.currentApp)) closeApp(state.currentApp);
           break;
         case 'intent.start':
-          if (!isLocked()) runIntent(ZylIntent.start(state.currentApp, msg.intent));
+          runIntent(ZylIntent.start(state.currentApp, msg.intent));
           break;
         case 'intent.chosen':
-          if (!isLocked()) runIntent(ZylIntent.choose(state.currentApp, msg.token, msg.appId));
+          runIntent(ZylIntent.choose(state.currentApp, msg.token, msg.appId));
           break;
+        /* Only the lock screen unlocks, only setup finishes setup: the OS
+           checks who sent it (the app in front) */
         case 'unlock':
-          state.locked = false;
-          syslog('Device unlocked', 'sys');
-          goHome();
+          var opened = ZylShell.unlock(state.currentApp, msg.appId);
+          if (opened) syslog('Device unlocked', 'sys');
+          show(opened);
           break;
-        case 'notification.create':
-          pushNotification(msg);
-          break;
-        case 'notification.dismiss':
-          dismissNotification(msg.id);
-          break;
-        case 'notification.clearAll':
-          clearAllNotifications();
+        case 'setup.done':
+          show(ZylShell.setupDone(state.currentApp));
           break;
         case 'service.request':
           handleServiceRequest(msg, e.source);
@@ -1139,8 +1093,7 @@
     else if (e.key === 'Escape') goBack();
     else if (e.key === 'r' && !e.ctrlKey) toggleRecents();
     else if (e.key === 'l' && !e.ctrlKey) {
-      state.locked = true;
-      launchApp('com.zylos.lockscreen');
+      show(ZylShell.lock());
       syslog('Locked', 'sys');
     }
     else if (e.key === 'p' && !e.ctrlKey) powerToggle();
@@ -1218,7 +1171,6 @@
       syslog('WAM started', 'sys');
       syslog('Boot complete', 'sys');
       state.booted = true;
-      state.locked = true;
 
       /* Load persisted time zone */
       var tzLoad = ZylServices.handleRequest('settings', 'get', { category: 'datetime' });
@@ -1237,22 +1189,14 @@
       }
 
 
-      /* Check if OOBE was completed; if not, show OOBE first */
-      var oobeCheck = ZylServices.handleRequest('settings', 'get', { category: 'system' });
-      if (oobeCheck && typeof oobeCheck.then === 'function') {
-        oobeCheck.then(function (sys) {
-          if (sys && sys.oobe_completed) {
-            launchApp('com.zylos.lockscreen');
-          } else {
-            state.locked = false;
-            launchApp('com.zylos.oobe');
-          }
-        }).catch(function () {
-          launchApp('com.zylos.lockscreen');
-        });
-      } else {
-        launchApp('com.zylos.lockscreen');
-      }
+      /* Setup first until it is done, then the lock screen (the OS's call);
+         settings unreadable → locked, never open */
+      var setupCheck = ZylServices.handleRequest('settings', 'get', { category: 'system' });
+      Promise.resolve(setupCheck).then(function (sys) {
+        show(ZylShell.boot(!!(sys && sys.oobe_completed)));
+      }, function () {
+        show(ZylShell.boot(true));
+      });
 
       /* HAL에서 실제 배터리 정보 가져오기 (중복 init 방지) */
       if (HAL && HAL.battery && !state._batteryStarted) {

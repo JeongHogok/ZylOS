@@ -3,7 +3,9 @@ Description=Zyl OS Settings Service
 After=local-fs.target
 
 [Service]
-Type=simple
+# Ready when its name is on the bus: the WAM reads the setup state from it at boot
+Type=dbus
+BusName=org.zylos.Settings
 ExecStart=/usr/bin/zyl-settings
 Restart=on-failure
 RestartSec=10

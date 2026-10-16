@@ -27,7 +27,9 @@
 #endif
 
 /* ─── 내부 상수 ─── */
+#ifndef GEOIP_URL
 #define GEOIP_URL           "http://ip-api.com/json/?fields=lat,lon,city,query"
+#endif
 #define GPSD_HOST           "localhost"
 #define GPSD_PORT           "2947"
 #define NETWORK_ACCURACY_M  5000.0f    /* GeoIP 정확도 추정치 */

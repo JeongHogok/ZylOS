@@ -32,7 +32,7 @@ D-Bus 버스 정책, 앱 권한 시행)과 OpenSSL 기반 암호화, 앱 서명 
 
 ## 앱 패키지 서명 (봉인)
 
-### 판정 (`runtime/services/appstore/app_seal.c`, 에뮬레이터는 `apps/system/services/app-seal.js`)
+### 판정 (`runtime/lib/app_seal.c`, 에뮬레이터는 `apps/system/services/app-seal.js`)
 - 패키지마다 `.zyl-seal/seal.json`(모든 파일의 SHA-256) + RSA-SHA256 서명
 - **공식 앱**: 스토어 키 봉인만 카탈로그로 설치
 - **개발 빌드**: 스토어가 서명한 개발자 인증서(만료·폐기)와 프로비저닝 프로필

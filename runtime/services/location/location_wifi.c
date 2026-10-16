@@ -80,7 +80,9 @@ bool wifi_triangulate(ZylLocationService *svc, ZylLocation *out) {
      * Falls through to local weighted average (lat/lon from local DB cache)
      * if MLS is unreachable or returns an error.
      */
+#ifndef MLS_URL
 #define MLS_URL "https://location.services.mozilla.com/v1/geolocate?key=geoclue"
+#endif
 
     /* Build JSON request body */
     char req_body[8192];

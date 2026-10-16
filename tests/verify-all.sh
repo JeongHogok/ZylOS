@@ -40,7 +40,7 @@ if [ -n "$HITS" ]; then fail "Tauri 참조 발견: $HITS"; else pass "Tauri 참�
 
 # A2: postMessage 직접 호출 금지
 HITS=$(grep -rn 'window\.parent\.postMessage' "$ROOT/apps" --include='*.js' 2>/dev/null \
-  | grep -v 'shared/bridge.js' | grep -v 'shared/i18n.js' || true)
+  | grep -v 'shared/bridge.js' || true)
 if [ -n "$HITS" ]; then fail "postMessage 직접 호출:\n$HITS"; else pass "IPC가 ZylBridge 경유"; fi
 
 # A3: 에뮬레이터 경로 금지
@@ -63,11 +63,10 @@ if [ -n "$HITS" ]; then fail "Arrow function (=>) 발견"; else pass "Arrow func
 section "apps/ — i18n 완전성"
 
 # A5: 하드코딩 영어 탐지 (notification body, textContent에서 영어 문장)
-# Heuristic: Find strings like textContent = 'Some English' (3+ words)
-HITS=$(grep -rn "textContent\s*=\s*['\"]" "$ROOT/apps" --include='*.js' 2>/dev/null \
-  | grep -v 'zylI18n\|\.t(' | grep -v '^\s*//' | grep -v "textContent = ''" \
-  | grep -v "textContent = '--'" | grep -v 'escapeHtml\|initial\|displayName\|timeStr\|dayName' \
-  | grep -v "'0:00'\|'00:00'\|'\\\\u00'" | grep -v 'icon\|emoji\|label\|temp\|maxTemp\|minTemp' || true)
+# 영어 단어가 둘 이상 이어지는 문자열 리터럴만 잡는다 — 기호('×', '/'),
+# 숫자 형식('00:00'), 접두어('v' + 버전)는 번역할 말이 아니다
+HITS=$(grep -rnE "(textContent|innerText|title|placeholder)\s*=\s*['\"][A-Za-z]+[ ,.!?:]+[A-Za-z]+" \
+  "$ROOT/apps" --include='*.js' 2>/dev/null | grep -v 'zylI18n\|\.t(' | grep -v '^\s*//' || true)
 if [ -n "$HITS" ]; then
   warn "i18n 미적용 의심 (영어 하드코딩 가능):\n$(echo "$HITS" | head -5)"
 else
@@ -292,7 +291,7 @@ else
   pass "도구·테스트·선언 파일 CA 헤더 존재"
 fi
 
-# C5: 실기기 WAM 권한 정책이 permissions.js 와 같은지
+# C5: 실기기 WAM 권한 정책(서비스·메서드 단위)이 permissions.js 와 같은지
 #     permissions.js 가 권위(규칙 8). bridge.c 는 사본이며, 어긋나면 에뮬레이터와
 #     실기기가 서로 다른 권한으로 동작한다. 라우트가 있는데 정책이 없는 서비스는
 #     모든 앱에 열리므로 따로 확인한다.
@@ -312,6 +311,16 @@ def c_table():
     return {n: set(re.findall(r'"([^"]+)"', p))
             for n, p in re.findall(r'\{"([a-z.]+)",\s*\{([^}]*)\}\}', blk)}
 
+def js_methods():
+    blk = js.split('var METHOD_PERMISSIONS = {', 1)[1].split('};', 1)[0]
+    return {n: set(re.findall(r"'([^']+)'", p))
+            for n, p in re.findall(r"'([a-zA-Z.]+)':\s*\[([^\]]*)\]", blk)}
+
+def c_methods():
+    blk = c.split('METHOD_PERMISSIONS[] = {', 1)[1].split('{NULL, {NULL}}', 1)[0]
+    return {n: set(re.findall(r'"([^"]+)"', p))
+            for n, p in re.findall(r'\{"([a-zA-Z.]+)",\s*\{([^}]*)\}\}', blk)}
+
 js_res = set(re.findall(r"'([a-z.]+)'",
              js.split('var RESERVED_PERMISSIONS = [', 1)[1].split('];', 1)[0]))
 c_res = set(re.findall(r'"([a-z.]+)"',
@@ -324,6 +333,11 @@ for svc in sorted(set(J) | set(C)):
     if J.get(svc) != C.get(svc):
         out.append('%s: js=%s c=%s' % (svc, sorted(J.get(svc, [])) if svc in J else '-',
                                         sorted(C.get(svc, [])) if svc in C else '-'))
+JM, CM = js_methods(), c_methods()
+for m in sorted(set(JM) | set(CM)):
+    if JM.get(m) != CM.get(m):
+        out.append('%s: js=%s c=%s' % (m, sorted(JM.get(m, [])) if m in JM else '-',
+                                        sorted(CM.get(m, [])) if m in CM else '-'))
 if js_res != c_res:
     out.append('reserved: js=%s c=%s' % (sorted(js_res), sorted(c_res)))
 for r in routes:

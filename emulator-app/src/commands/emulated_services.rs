@@ -2,7 +2,7 @@
 // [Clean Architecture] Infrastructure Layer - Emulated Services
 //
 // 역할: 실기기 D-Bus 시스템 서비스를 HAL 수준으로 에뮬레이션
-// 수행범위: power/battery, location, user, credential,
+// 수행범위: power/battery, location, credential(호스트 키에 묶인 보안 저장소),
 //           wifi, bluetooth
 // 의존방향: state (AppState, mount_point), tauri AppHandle
 // SOLID: SRP — 에뮬레이션 서비스만 담당
@@ -113,46 +113,6 @@ pub async fn location_get_last_known() -> serde_json::Value {
 }
 
 // ════════════════════════════════════════════
-// 4. User Service
-// ════════════════════════════════════════════
-
-#[tauri::command]
-pub fn user_get_current(state: State<'_, Mutex<AppState>>) -> serde_json::Value {
-    let mut user_name = "user".to_string();
-    if let Ok(app_state) = state.lock() {
-        let base = app_state.mount_point.as_ref().unwrap_or(&app_state.data_dir);
-        let settings_path = base.join("settings.json");
-        if let Ok(content) = fs::read_to_string(&settings_path) {
-            if let Ok(data) = serde_json::from_str::<serde_json::Value>(&content) {
-                if let Some(name) = data["user"]["name"].as_str() {
-                    if !name.is_empty() {
-                        user_name = name.to_string();
-                    }
-                }
-            }
-        }
-    }
-    serde_json::json!({
-        "uid": 1000,
-        "name": user_name,
-        "type": "OWNER",
-        "avatar": "",
-        "dataDir": "/data/users/1000"
-    })
-}
-
-#[tauri::command]
-pub fn user_list(state: State<'_, Mutex<AppState>>) -> Vec<serde_json::Value> {
-    let current = user_get_current(state);
-    vec![serde_json::json!({
-        "uid": current["uid"],
-        "name": current["name"],
-        "type": current["type"],
-        "isActive": true
-    })]
-}
-
-// ════════════════════════════════════════════
 // 5. Credential Service (AES-256-GCM)
 // ════════════════════════════════════════════
 
@@ -236,6 +196,22 @@ fn read_machine_id() -> String {
     "zyl-emu-machine-unknown".to_string()
 }
 
+/// A service or account name as the device accepts it (runtime/services/credential
+/// is_safe_name): non-empty, at most 255 bytes, no path separator, no "..".
+fn safe_name(name: &str) -> bool {
+    !name.is_empty() && name.len() <= 255 && !name.contains(['/', '\\', '\0']) && !name.contains("..")
+}
+
+/// `.credentials/<service>/<account>.enc` — the device's layout. A directory per
+/// service keeps every pair apart (the old `<service>_<account>` file name made
+/// "a_b"+"c" and "a"+"b_c" the same file) and the names cannot leave the store.
+fn credential_path(base: &std::path::Path, service: &str, account: &str) -> Result<std::path::PathBuf, String> {
+    if !safe_name(service) || !safe_name(account) {
+        return Err("Invalid service or account name".into());
+    }
+    Ok(base.join(".credentials").join(service).join(format!("{}.enc", account)))
+}
+
 #[tauri::command]
 pub fn credential_store(
     service: String,
@@ -246,8 +222,10 @@ pub fn credential_store(
     let app_state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
     let base = app_state.mount_point.as_ref()
         .unwrap_or(&app_state.data_dir);
-    let cred_dir = base.join(".credentials");
-    let _ = fs::create_dir_all(&cred_dir);
+    let path = credential_path(base, &service, &account)?;
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir).map_err(|e| format!("Write error: {}", e))?;
+    }
 
     let passphrase = get_master_passphrase(&app_state);
 
@@ -267,9 +245,6 @@ pub fn credential_store(
     output.extend_from_slice(&salt);
     output.extend_from_slice(&nonce_bytes);
     output.extend_from_slice(&ciphertext);
-
-    let key_name = format!("{}_{}", service, account);
-    let path = cred_dir.join(format!("{}.enc", key_name));
 
     fs::write(&path, &output).map_err(|e| format!("Write error: {}", e))?;
     #[cfg(unix)]
@@ -293,8 +268,15 @@ pub fn credential_lookup(
 
     let passphrase = get_master_passphrase(&app_state);
 
-    let key_name = format!("{}_{}", service, account);
-    let path = base.join(".credentials").join(format!("{}.enc", key_name));
+    let path = credential_path(base, &service, &account)?;
+    // Stored before the per-service layout: move it over on first read
+    let legacy = base.join(".credentials").join(format!("{}_{}.enc", service, account));
+    if !path.exists() && legacy.is_file() {
+        if let Some(dir) = path.parent() {
+            let _ = fs::create_dir_all(dir);
+        }
+        let _ = fs::rename(&legacy, &path);
+    }
     let data = fs::read(&path).map_err(|_| "Credential not found".to_string())?;
 
     if data.len() < 16 + 12 + 16 {
@@ -326,8 +308,7 @@ pub fn credential_delete(
     let base = app_state.mount_point.as_ref()
         .unwrap_or(&app_state.data_dir);
 
-    let key_name = format!("{}_{}", service, account);
-    let path = base.join(".credentials").join(format!("{}.enc", key_name));
+    let path = credential_path(base, &service, &account)?;
 
     if path.exists() {
         if let Ok(metadata) = fs::metadata(&path) {
@@ -765,4 +746,28 @@ pub fn get_battery_state(app_handle: tauri::AppHandle) -> serde_json::Value {
         "temperature": s.temperature,
         "voltage": s.voltage,
     })
+}
+
+#[cfg(test)]
+mod credential_tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn names_stay_in_the_store() {
+        let base = Path::new("/data");
+        for bad in ["", "..", "../x", "a/b", "a\\b", "x..y", "a\0b"] {
+            assert!(credential_path(base, bad, "acct").is_err(), "service {:?}", bad);
+            assert!(credential_path(base, "svc", bad).is_err(), "account {:?}", bad);
+        }
+        assert!(credential_path(base, &"s".repeat(256), "a").is_err());
+        assert_eq!(credential_path(base, "wifi", "home.net").unwrap(),
+                   Path::new("/data/.credentials/wifi/home.net.enc"));
+    }
+
+    #[test]
+    fn pairs_do_not_collide() {
+        let base = Path::new("/data");
+        assert_ne!(credential_path(base, "a_b", "c").unwrap(), credential_path(base, "a", "b_c").unwrap());
+    }
 }

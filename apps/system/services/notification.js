@@ -3,7 +3,11 @@
 //
 // Role: Notification service — post, cancel, list, clear, DND,
 //       history, grouping, timeout, badge counts
-// Scope: OS notification management (actions, DND, history, groups)
+// Scope: OS notification management (actions, DND, history, groups).
+//        Posted and dismissed are announced as zyl:notification-posted /
+//        zyl:notification-dismissed window events — the device service's
+//        NotificationPosted / NotificationDismissed signals — and whatever
+//        draws notifications (the emulator's shade, the lock screen) follows them
 // Dependency Direction: Domain -> none (state kept here)
 // SOLID: SRP — notification management only
 // ----------------------------------------------------------
@@ -72,6 +76,12 @@
       }, timeout);
     }
 
+    function _announce(type, detail) {
+      if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function' ||
+          typeof CustomEvent !== 'function') return;
+      window.dispatchEvent(new CustomEvent(type, { detail: detail }));
+    }
+
     function _dismiss(id) {
       var notif = _activeMap[id];
       if (!notif) return;
@@ -82,6 +92,7 @@
       }
       _removeFromGroup(notif);
       _updateBadge(notif.appId, -1);
+      _announce('zyl:notification-dismissed', notif.id);
     }
 
     function _postInternal(p, actions) {
@@ -109,6 +120,7 @@
       _updateBadge(notif.appId, 1);
       _addToGroup(notif);
       _scheduleAutoDismiss(notif);
+      _announce('zyl:notification-posted', notif);
 
       return { id: notif.id };
     }

@@ -75,8 +75,6 @@ fn main() {
             // Emulated system services
             commands::emulated_services::power_get_state,
             commands::emulated_services::location_get_last_known,
-            commands::emulated_services::user_get_current,
-            commands::emulated_services::user_list,
             commands::emulated_services::credential_store,
             commands::emulated_services::credential_lookup,
             commands::emulated_services::credential_delete,

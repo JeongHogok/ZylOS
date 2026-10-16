@@ -15,6 +15,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifndef ZYL_ATSPI_REGISTRYD
+#define ZYL_ATSPI_REGISTRYD "/usr/libexec/at-spi2-registryd"
+#endif
+
 /* -- D-Bus Introspection XML -------------------------------- */
 
 static const char *introspection_xml =
@@ -81,14 +85,16 @@ static void speak_text(const char *text)
     if (!text || !text[0]) {
         return;
     }
-    gchar *argv[] = { (gchar *)"espeak-ng", (gchar *)text, NULL };
+    /* "--": an app's text starting with '-' is words, never an option such
+       as -w <file> (write anywhere) or -f <file> (read any file aloud) */
+    gchar *argv[] = { (gchar *)"espeak-ng", (gchar *)"--", (gchar *)text, NULL };
     spawn_detached(argv);
 }
 
 static void screen_reader_start(void)
 {
     /* at-spi2-registryd is what carries the widget tree to the reader */
-    gchar *registry[] = { (gchar *)"/usr/libexec/at-spi2-registryd", NULL };
+    gchar *registry[] = { (gchar *)ZYL_ATSPI_REGISTRYD, NULL };
     gchar *orca[]     = { (gchar *)"orca", (gchar *)"--no-setup", NULL };
     spawn_detached(registry);
     spawn_detached(orca);
@@ -154,7 +160,8 @@ static void handle_method_call(GDBusConnection       *connection,
         g_variant_get(parameters, "(d)", &scale);
 
         gboolean success = TRUE;
-        if (scale < ZYL_FONT_SCALE_MIN || scale > ZYL_FONT_SCALE_MAX) {
+        /* Written so NaN fails too: it compares false with everything */
+        if (!(scale >= ZYL_FONT_SCALE_MIN && scale <= ZYL_FONT_SCALE_MAX)) {
             success = FALSE;
             g_warning("Accessibility: font scale %.2f out of range [%.1f, %.1f]",
                       scale, ZYL_FONT_SCALE_MIN, ZYL_FONT_SCALE_MAX);
@@ -310,6 +317,7 @@ void zyl_accessibility_service_destroy(ZylAccessibilityService *svc)
 
 /* -- main() ------------------------------------------------- */
 
+#ifndef ZYL_TEST
 int main(int argc, char *argv[])
 {
     (void)argc;
@@ -331,3 +339,4 @@ int main(int argc, char *argv[])
     g_message("Zyl OS Accessibility Service stopped");
     return 0;
 }
+#endif /* ZYL_TEST */

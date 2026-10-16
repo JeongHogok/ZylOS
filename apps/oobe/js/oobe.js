@@ -226,7 +226,7 @@
     nextStep();
   };
 
-  /* ─── Setup Complete → save flag + go home ─── */
+  /* ─── Setup Complete → save flag + tell the OS ─── */
   window.finishSetup = function () {
     /* Save OOBE completion flag so it doesn't show again */
     ZylBridge.sendToSystem({
@@ -235,10 +235,8 @@
       method: 'update',
       params: { category: 'system', key: 'oobe_completed', value: true }
     });
-    /* Launch home */
-    ZylBridge.sendToSystem({
-      type: 'app.launch', appId: 'com.zylos.home'
-    });
+    /* Setup holds the device until it says it is done; the OS opens home */
+    ZylBridge.sendToSystem({ type: 'setup.done' });
   };
 
   /* Select default language based on i18n locale (avoid navigator.language bypass) */

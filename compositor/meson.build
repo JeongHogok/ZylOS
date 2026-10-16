@@ -2,7 +2,7 @@
 # Layer: System / Compositor
 # Role: Build the wlroots-based Wayland compositor
 # Scope: Compile compositor sources, link wlroots + Wayland deps
-# Dependency direction: depends on wlroots, wayland-server, xkbcommon, pixman
+# Dependency direction: depends on wlroots, wayland-server, xkbcommon, pixman, gio
 # SOLID: Single-responsibility — only compositor build logic
 
 # wlroots dependency (0.18+)
@@ -30,11 +30,14 @@ compositor_deps = [
   wayland_server,
   xkbcommon,
   pixman,
+  # Gestures reach the WAM, input the power service, over the system bus (src/ipc/os_bus.c)
+  dependency('gio-2.0'),
 ]
 
 compositor_sources = files(
   'src/main.c',
   'src/input/gesture.c',
+  'src/ipc/os_bus.c',
   'src/output/output.c',
   'src/view/view.c',
 )
@@ -48,6 +51,6 @@ executable('zyl-compositor',
   compositor_sources, xdg_shell_protocol_h,
   include_directories: compositor_inc,
   dependencies: compositor_deps,
-  c_args: ['-DWLR_USE_UNSTABLE', '-D_POSIX_C_SOURCE=200809L', '-Wno-error'],
+  c_args: ['-DWLR_USE_UNSTABLE', '-D_POSIX_C_SOURCE=200809L'],
   install: true,
 )

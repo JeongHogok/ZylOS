@@ -38,6 +38,11 @@ static const char *introspection_xml =
     "      <arg type='as' name='app_ids' direction='out'/>"
     "      <arg type='i' name='count' direction='out'/>"
     "    </method>"
+    "    <method name='GoHome'/>"
+    "    <method name='GoBack'/>"
+    "    <method name='SwitchApp'>"
+    "      <arg type='i' name='direction' direction='in'/>"
+    "    </method>"
     "    <signal name='AppLaunched'>"
     "      <arg type='s' name='app_id'/>"
     "    </signal>"
@@ -89,6 +94,7 @@ static const GDBusInterfaceVTable vtable = {
 static void on_bus_acquired(GDBusConnection *connection,
                             const gchar     *name,
                             gpointer         user_data) {
+    (void)name;
     DbusCtx *ctx = user_data;
     ctx->connection = connection;
 

@@ -785,28 +785,18 @@ window.zylI18n = (function () {
   /* ─── Initialization ─── */
   currentLocale = detectLocale();
 
-  /* Defer applyTranslations to DOMContentLoaded so per-app i18n.js
-     files have time to register their keys via addTranslations() */
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function () {
-      applyTranslations();
-      /* Request saved locale — uses ZylBridge if available, else postMessage */
-      var localeMsg = { type: 'service.request', service: 'settings', method: 'get', params: { category: 'language' } };
-      if (typeof ZylBridge !== 'undefined' && ZylBridge.sendToSystem) {
-        ZylBridge.sendToSystem(localeMsg);
-      } else if (window.parent && window.parent !== window) {
-        window.parent.postMessage(JSON.stringify(localeMsg), '*');
-      }
-    });
-  } else {
+  /* After DOMContentLoaded: per-app i18n.js files have registered their keys
+     (addTranslations) and bridge.js — loaded after this file in most apps —
+     is there. The saved locale is asked through it like any service; a page
+     without the bridge has no system to ask. */
+  function start() {
     applyTranslations();
-    var localeMsg2 = { type: 'service.request', service: 'settings', method: 'get', params: { category: 'language' } };
     if (typeof ZylBridge !== 'undefined' && ZylBridge.sendToSystem) {
-      ZylBridge.sendToSystem(localeMsg2);
-    } else if (window.parent && window.parent !== window) {
-      window.parent.postMessage(JSON.stringify(localeMsg2), '*');
+      ZylBridge.sendToSystem({ type: 'service.request', service: 'settings', method: 'get', params: { category: 'language' } });
     }
   }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
 
   /* Handle settings response for saved locale */
   window.addEventListener('message', function (e) {

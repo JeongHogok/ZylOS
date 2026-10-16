@@ -11,7 +11,7 @@
  * ────────────────────────────────────────────────────────── */
 
 #include "gesture.h"
-#include "../view/view.h"
+#include "../ipc/os_bus.h"
 
 #include <stdlib.h>
 #include <wayland-server-core.h>
@@ -75,18 +75,7 @@ static void emit_compositor_signal(struct zyl_server *server,
     wlr_log(WLR_INFO, "compositor signal: %s(%s)", signal_name,
             detail ? detail : "");
 
-    /*
-     * Narrow IPC stub interface: if the coordinator has wired a sender
-     * (e.g. D-Bus, Unix socket), delegate to it.  Otherwise the log
-     * line above is the sole delivery path.
-     *
-     * Coordinator follow-up (see zyl_compositor.h::gesture_signal_fn):
-     *   Implement a GLib + wl_event_loop bridge in main.c and assign
-     *   server->gesture_signal_fn before wl_display_run().  The
-     *   sender receives (server, signal_name, detail) and should emit
-     *   the corresponding D-Bus signal on the session bus interface
-     *   com.zylos.Compositor1.
-     */
+    /* main.c wires the WAM navigation sender (ipc/os_bus.c) */
     if (server->gesture_signal_fn) {
         server->gesture_signal_fn(server, signal_name, detail);
     }
@@ -98,17 +87,12 @@ static void emit_compositor_signal(struct zyl_server *server,
 
 /*
  * SWIPE UP from bottom — go home.
- * Sends GoHome to WAM.  If the home screen is already visible, no-op.
+ * Sends GoHome to WAM: its shell policy decides (already home, the lock
+ * screen while locked, nothing during setup).
  */
 static void action_go_home(struct zyl_server *server)
 {
-    if (server->home_screen_visible) {
-        wlr_log(WLR_DEBUG, "Gesture: Go Home — already on home screen");
-        return;
-    }
-
     wlr_log(WLR_INFO, "Gesture: Go Home");
-    server->home_screen_visible = true;
     emit_compositor_signal(server, "GoHome", NULL);
 }
 
@@ -153,53 +137,24 @@ static void action_notification_panel(struct zyl_server *server)
 
 /*
  * SWIPE LEFT — go back.
- * Sends GoBack to the focused app.  If nothing is focused, go home.
+ * Sends GoBack to WAM: the app in front gets it first, an app that exits
+ * goes where home goes.
  */
 static void action_go_back(struct zyl_server *server)
 {
-    if (wl_list_empty(&server->views)) {
-        wlr_log(WLR_INFO, "Gesture: Go Back — no views, going home");
-        server->home_screen_visible = true;
-        emit_compositor_signal(server, "GoHome", NULL);
-        return;
-    }
-
-    struct zyl_view *top =
-        wl_container_of(server->views.next, top, link);
-
-    const char *app_id = top->xdg_toplevel->app_id;
-    wlr_log(WLR_INFO, "Gesture: Go Back → %s", app_id ? app_id : "(unknown)");
-    emit_compositor_signal(server, "GoBack", app_id);
+    wlr_log(WLR_INFO, "Gesture: Go Back");
+    emit_compositor_signal(server, "GoBack", NULL);
 }
 
 /*
- * SWIPE RIGHT — cycle to the next app in the view list.
+ * SWIPE RIGHT — the next app the user returns to.
+ * The WAM picks it and brings it up; raising a view here would raise one
+ * over the lock screen.
  */
 static void action_app_switcher(struct zyl_server *server)
 {
-    if (wl_list_empty(&server->views))
-        return;
-
-    /* Current top view */
-    struct zyl_view *current =
-        wl_container_of(server->views.next, current, link);
-
-    struct wl_list *next_link = current->link.next;
-
-    /* Wrap around — if we hit the sentinel, we are at the only view */
-    if (next_link == &server->views) {
-        wlr_log(WLR_DEBUG, "Gesture: App Switcher — only one view");
-        return;
-    }
-
-    struct zyl_view *next_view =
-        wl_container_of(next_link, next_view, link);
-
-    view_focus(next_view);
-
-    const char *app_id = next_view->xdg_toplevel->app_id;
-    wlr_log(WLR_INFO, "Gesture: App Switch → %s",
-            app_id ? app_id : "(unknown)");
+    wlr_log(WLR_INFO, "Gesture: App Switch");
+    emit_compositor_signal(server, "SwitchApp", "next");
 }
 
 void gesture_init_handlers(struct zyl_server *server)
@@ -251,6 +206,7 @@ static void handle_touch_down(struct wl_listener *listener, void *data)
     struct zyl_server *server =
         wl_container_of(listener, server, touch_down);
     struct wlr_touch_down_event *event = data;
+    zyl_power_user_activity();
 
     double abs_x = event->x * server->screen_width;
     double abs_y = event->y * server->screen_height;
@@ -374,6 +330,7 @@ static void handle_cursor_button(struct wl_listener *listener, void *data)
     struct zyl_server *server =
         wl_container_of(listener, server, cursor_button);
     struct wlr_pointer_button_event *event = data;
+    zyl_power_user_activity();
     wlr_seat_pointer_notify_button(server->seat,
         event->time_msec, event->button, event->state);
 

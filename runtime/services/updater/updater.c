@@ -790,6 +790,7 @@ ZylPartitionInfo *zyl_updater_get_partition_info(const ZylUpdater *u) {
     if (!u) return NULL;
 
     ZylPartitionInfo *info = calloc(1, sizeof(ZylPartitionInfo));
+    if (!info) return NULL;
     info->active_slot = strdup(u->active_slot);
     info->inactive_slot = strdup(
         strcmp(u->active_slot, "a") == 0 ? "b" : "a");

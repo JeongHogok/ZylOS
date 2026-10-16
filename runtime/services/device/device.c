@@ -79,6 +79,7 @@ static void handle(GDBusConnection *c, const gchar *sender, const gchar *path, c
 
 static const GDBusInterfaceVTable vtable = { .method_call = handle };
 
+#ifndef ZYL_TEST
 static void on_bus(GDBusConnection *conn, const gchar *name, gpointer data) {
     (void)name; (void)data;
     GDBusNodeInfo *info = g_dbus_node_info_new_for_xml(device_xml, NULL);
@@ -100,3 +101,4 @@ int main(void) {
     g_main_loop_unref(loop);
     return 0;
 }
+#endif /* ZYL_TEST */

@@ -3,7 +3,7 @@
  *
  * 역할: Wayland 디스플레이, wlroots 백엔드, 렌더러 초기화 및 이벤트 루프 진입
  * 수행범위: 컴포지터 프로세스의 시작점으로 모든 모듈을 초기화하고 이벤트 루프 실행
- * 의존방향: output, view, gesture 모듈 → zyl_compositor.h
+ * 의존방향: output, view, gesture, ipc(os_bus) 모듈 → zyl_compositor.h
  * SOLID: SRP — main()은 초기화와 이벤트 루프 진입만 담당
  * ────────────────────────────────────────────────────────── */
 
@@ -30,6 +30,7 @@
 
 #include "zyl_compositor.h"
 #include "input/gesture.h"
+#include "ipc/os_bus.h"
 #include "output/output.h"
 #include "view/view.h"
 
@@ -63,8 +64,7 @@ int main(int argc, char *argv[])
 
     struct zyl_server server = {0};
     server.config              = zyl_config_defaults();
-    server.home_screen_visible = true;
-    server.gesture_signal_fn   = NULL; /* Coordinator: wire D-Bus sender here */
+    server.gesture_signal_fn   = zyl_wam_nav_send;
     wl_list_init(&server.views);
     wl_list_init(&server.outputs);
     wl_list_init(&server.keyboards);

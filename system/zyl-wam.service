@@ -1,6 +1,9 @@
 [Unit]
 Description=Zyl OS Web Application Manager
-After=zyl-compositor.service
+# 첫 화면(설정이 끝났는가 → OOBE 아니면 잠금 화면)을 settings 에서 읽는다.
+# 못 읽으면 잠금 화면으로 시작한다 (열린 채로는 시작하지 않는다)
+After=zyl-compositor.service zyl-settings.service
+Wants=zyl-settings.service
 Requires=zyl-compositor.service
 PartOf=zyl-compositor.service
 # 앱 런타임은 화면 장치가 있어야 뜻이 있다. 없으면 컴포지터와 함께 건너뛴다

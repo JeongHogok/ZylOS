@@ -42,9 +42,6 @@ static void handle_app_close(const char *type, gpointer msg_obj,
 static void handle_app_launch(const char *type, gpointer msg_obj,
                               ZylAppManifest *manifest,
                               ZylBridgeReplyCtx *reply_ctx, gpointer data);
-static void handle_notification_create(const char *type, gpointer msg_obj,
-                                       ZylAppManifest *manifest,
-                                       ZylBridgeReplyCtx *reply_ctx, gpointer data);
 static void handle_battery_get_level(const char *type, gpointer msg_obj,
                                      ZylAppManifest *manifest,
                                      ZylBridgeReplyCtx *reply_ctx, gpointer data);
@@ -66,7 +63,6 @@ void zyl_bridge_init(void)
 
     zyl_bridge_register_handler("app.close",           handle_app_close, NULL);
     zyl_bridge_register_handler("app.launch",          handle_app_launch, NULL);
-    zyl_bridge_register_handler("notification.create", handle_notification_create, NULL);
     zyl_bridge_register_handler("battery.getLevel",    handle_battery_get_level, NULL);
     zyl_bridge_register_handler("wifi.scan",           handle_wifi_scan, NULL);
     zyl_bridge_register_handler("service.request",     handle_service_request, NULL);
@@ -587,31 +583,6 @@ static void handle_app_launch(const char *type, gpointer msg_obj,
            app_id, target ? target : "(none)");
 }
 
-static void handle_notification_create(const char *type, gpointer msg_obj,
-                                       ZylAppManifest *manifest,
-                                       ZylBridgeReplyCtx *reply_ctx, gpointer data)
-{
-    (void)type; (void)data;
-    const char *app_id = (manifest && manifest->id) ? manifest->id : "unknown";
-    JsonObject *msg = msg_obj;
-
-    const char *title = NULL;
-    const char *body  = NULL;
-    if (json_object_has_member(msg, "title"))
-        title = json_object_get_string_member(msg, "title");
-    if (json_object_has_member(msg, "body"))
-        body  = json_object_get_string_member(msg, "body");
-
-    g_info("Bridge: notification.create from %s title='%s'",
-           app_id, title ? title : "(none)");
-    (void)body;
-
-    /* If a callback was requested, acknowledge immediately */
-    if (reply_ctx->callback_id >= 0)
-        zyl_bridge_respond(reply_ctx->webview, reply_ctx->callback_id,
-                           "{\"ok\":true}");
-}
-
 /* -- Battery: async D-Bus query to PowerManager ------------ */
 static void handle_battery_get_level(const char *type, gpointer msg_obj,
                                      ZylAppManifest *manifest,
@@ -772,6 +743,8 @@ static const ServicePermission SERVICE_PERMISSIONS[] = {
     {"lock",          {"system", NULL}},
     /* Installs and restarts into a new OS: Settings only */
     {"updater",       {"system", NULL}},
+    /* Adds, switches and removes users — removing one deletes their data */
+    {"user",          {"system", NULL}},
     {"device",        {NULL}},
     {"storage",       {NULL}},
     {"apps",          {NULL}},
@@ -779,7 +752,6 @@ static const ServicePermission SERVICE_PERMISSIONS[] = {
     {"input",         {NULL}},
     {"sensors",       {NULL}},
     {"usb",           {NULL}},
-    {"user",          {NULL}},
     {"sandbox",       {NULL}},
     {"logger",        {NULL}},
     {"accessibility", {NULL}},
@@ -787,6 +759,22 @@ static const ServicePermission SERVICE_PERMISSIONS[] = {
     /* Every app has its own, named by the bridge's caller — never another's */
     {"appdata",       {NULL}},
     {"power",         {NULL}},
+    {NULL, {NULL}}
+};
+
+/* Methods that reach past the caller's own, checked after the service rule:
+ * every app's notifications and the device-wide quiet settings. Mirror of
+ * METHOD_PERMISSIONS in apps/system/permissions.js (verify-all compares). */
+static const ServicePermission METHOD_PERMISSIONS[] = {
+    {"notification.getActive",         {"notification.read", NULL}},
+    {"notification.getHistory",        {"notification.read", NULL}},
+    {"notification.getAllBadgeCounts", {"notification.read", NULL}},
+    {"notification.getGroupSummary",   {"notification.read", NULL}},
+    {"notification.cancel",            {"notification.read", NULL}},
+    {"notification.clearAll",          {"notification.read", NULL}},
+    {"notification.clearHistory",      {"notification.read", NULL}},
+    {"notification.setDndMode",        {"system", NULL}},
+    {"notification.setChannelEnabled", {"system", NULL}},
     {NULL, {NULL}}
 };
 
@@ -920,6 +908,37 @@ static gboolean app_may_call(const ZylAppManifest *m, const char *service) {
     return FALSE;
 }
 
+/* The method rule, after app_may_call: system apps hold every permission */
+static gboolean app_may_call_method(const ZylAppManifest *m, const char *service,
+                                    const char *method) {
+    if (m->is_system) return TRUE;
+    char *key = g_strconcat(service, ".", method, NULL);
+    gboolean ok = TRUE;
+    for (int i = 0; METHOD_PERMISSIONS[i].service; i++) {
+        if (strcmp(METHOD_PERMISSIONS[i].service, key) != 0) continue;
+        ok = FALSE;
+        for (int j = 0; METHOD_PERMISSIONS[i].perms[j] && !ok; j++)
+            ok = manifest_holds(m, METHOD_PERMISSIONS[i].perms[j]);
+    }
+    g_free(key);
+    return ok;
+}
+
+/* A third-party app hears of its own notifications only — another app's
+   title and body (a message, a code) are not its to read. Posted carries the
+   owner as its second argument; what does not name one goes to none of them. */
+static gboolean event_is_apps_own(const ZylAppManifest *m, const char *service, GVariant *params) {
+    if (m->is_system || strcmp(service, "notification") != 0) return TRUE;
+    if (manifest_holds(m, "notification.read")) return TRUE;
+    if (!params || !g_variant_is_of_type(params, G_VARIANT_TYPE_TUPLE) || g_variant_n_children(params) < 2)
+        return FALSE;
+    GVariant *owner = g_variant_get_child_value(params, 1);
+    gboolean own = g_variant_is_of_type(owner, G_VARIANT_TYPE_STRING) &&
+                   strcmp(g_variant_get_string(owner, NULL), m->id) == 0;
+    g_variant_unref(owner);
+    return own;
+}
+
 static const ServiceRoute *find_route(const char *service) {
     for (int i = 0; SERVICE_ROUTES[i].service; i++) {
         if (strcmp(SERVICE_ROUTES[i].service, service) == 0)
@@ -962,7 +981,8 @@ void zyl_bridge_subscribe_service_events(GDBusConnection *bus,
 char *zyl_bridge_service_event_script(const ZylAppManifest *manifest,
                                       const char *service, const char *signal,
                                       GVariant *params) {
-    if (!find_route(service) || !app_may_call(manifest, service)) return NULL;
+    if (!find_route(service) || !app_may_call(manifest, service) ||
+        !event_is_apps_own(manifest, service, params)) return NULL;
     JsonObject *msg = json_object_new();
     json_object_set_string_member(msg, "type", "service.event");
     json_object_set_string_member(msg, "service", service);
@@ -1196,7 +1216,7 @@ static void handle_service_request(const char *type, gpointer msg_obj,
         return;
     }
 
-    if (!app_may_call(manifest, service)) {
+    if (!app_may_call(manifest, service) || !app_may_call_method(manifest, service, method)) {
         g_warning("Bridge: %s denied %s.%s (missing permission)",
                   app_id, service, method);
         zyl_bridge_reply_error(reply_ctx, "Permission denied");

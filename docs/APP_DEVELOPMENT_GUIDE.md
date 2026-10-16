@@ -135,8 +135,8 @@ myapp/
   "icon": "assets/icon.png",
   "iconSvg": "<svg viewBox='0 0 24 24'>...</svg>",
   "permissions": [
-    "notification.create",
-    "storage.local"
+    "notification",
+    "storage"
   ],
   "min_os_version": "0.1.0",
   "category": "utility"
@@ -524,11 +524,13 @@ var msg  = zylI18n.t('myapp.welcome', { name: '사용자' });
 
 ### 11.1 권한 목록
 
+권한 이름과 서비스의 짝은 `apps/system/permissions.js` 의 `SERVICE_PERMISSIONS` 가
+유일한 출처다 (기기 `bridge.c` 가 같은 표를 쓴다).
+
 | 권한 | 설명 | 위험도 |
 |------|------|--------|
-| `notification.create` | 알림 생성 | 보통 |
-| `storage.local` | 앱 전용 저장소 | 낮음 |
-| `storage.shared` | 공유 저장소 | 높음 |
+| `notification` | 자기 알림 올리기 (`appId` 는 OS 가 이 앱으로 채운다) | 보통 |
+| `storage` / `files.read` / `files.write` / `files.delete` | 파일 (제3자 앱은 자기 컨테이너가 루트) | 보통 |
 | `camera` | 카메라 접근 | 높음 |
 | `microphone` | 마이크 접근 | 높음 |
 | `location` | 위치 정보 | 높음 |
@@ -537,15 +539,18 @@ var msg  = zylI18n.t('myapp.welcome', { name: '사용자' });
 | `contacts` | 연락처 접근 | 높음 |
 | `messaging` | 메시지 접근 | 높음 |
 | `telephony` | 전화 기능 | 높음 |
-| `battery` | 배터리 정보 | 낮음 |
-| `system.info` | 시스템 정보 | 낮음 |
+| `network` | 허용 도메인으로의 HTTP 요청 | 보통 |
+| `audio` | 소리 재생·볼륨 | 낮음 |
+
+`system`·`credential`·`app.manage`·`notification.read`(다른 앱의 알림 읽기·지우기)는
+예약 권한이다 — `app.json` 에 적어도 제3자 앱에는 주어지지 않는다.
 
 ### 11.2 권한 차단 예시
 
 ```javascript
-// app.json에 "notification.create" 없으면 차단
+// app.json에 "notification" 없으면 차단
 navigator.system.notification.create('제목', '내용');
-// → Error: Permission denied: notification.create not declared in app.json
+// → Error: Permission denied
 ```
 
 ---

@@ -3,7 +3,7 @@
  *
  * 역할: WAM 최상위 타입 정의 및 ZylWam 서버 구조체 선언
  * 수행범위: ZylWam 구조체, 모듈 간 공유 타입 정의
- * 의존방향: manifest.h, lifecycle.h, bridge.h, dbus_service.h
+ * 의존방향: manifest.h, lifecycle.h, bridge.h, dbus_service.h, shell.h
  * SOLID: ISP — 각 모듈이 필요한 인터페이스만 참조
  * ────────────────────────────────────────────────────────── */
 
@@ -17,6 +17,7 @@
 #include "lifecycle/lifecycle.h"
 #include "bridge/bridge.h"
 #include "dbus/dbus_service.h"
+#include "shell/shell.h"
 
 #define WAM_APP_DIR     "/usr/share/zyl-os/apps"
 #define WAM_SHARED_DIR  WAM_APP_DIR "/shared"   /* the OS code every app includes */
@@ -37,6 +38,9 @@ typedef struct {
     GHashTable      *instances;   /* id -> ZylAppInstance* */
     GHashTable      *seals;       /* id -> ZylSeal* — every user-installed app has one */
     guint            dbus_owner_id;
+    ZylShell         shell;       /* who may be in front (shell/shell.c) */
+    gboolean         screen_on;   /* as the power service last said */
+    guint            back_timer;  /* a back press the front app has not answered */
 
     /* Abstract interfaces wired up in main() */
     ZylWebEngine     engine;

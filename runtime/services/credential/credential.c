@@ -79,7 +79,11 @@ static bool build_path(char *out, size_t out_len,
     snprintf(out, out_len, "%s/%s", store, service);
     ensure_dir(out);
     size_t len = strlen(out);
-    snprintf(out + len, out_len - len, "/%s.enc", account);
+    /* A path cut short would let two long accounts share one file */
+    if ((size_t)snprintf(out + len, out_len - len, "/%s.enc", account) >= out_len - len) {
+        out[0] = '\0';
+        return false;
+    }
     return true;
 }
 
@@ -95,7 +99,6 @@ static int aes_gcm_encrypt(const uint8_t *key, size_t key_len,
                             const uint8_t *salt, size_t salt_len,
                             uint8_t **out, size_t *out_len) {
     uint8_t iv[IV_LEN];
-    uint8_t tag[TAG_LEN];
 
     if (RAND_bytes(iv, IV_LEN) != 1) {
         fprintf(stderr, "[Credential] RAND_bytes failed for IV\n");
@@ -666,6 +669,7 @@ int zyl_credential_set_master_key(ZylCredentialStore *store,
 
 /* ─── 데몬 진입점 ─── */
 
+#ifndef ZYL_TEST
 int main(int argc, char *argv[]) {
     (void)argc; (void)argv;
 
@@ -687,3 +691,4 @@ int main(int argc, char *argv[]) {
     zyl_credential_destroy(store);
     return 0;
 }
+#endif /* ZYL_TEST */

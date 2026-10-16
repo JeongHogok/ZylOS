@@ -55,6 +55,9 @@ void             zyl_power_destroy(ZylPowerService *svc);
 /* 전환 요청 */
 int zyl_power_request_screen_off(ZylPowerService *svc);
 int zyl_power_request_screen_on(ZylPowerService *svc);
+/* The user touched the screen or pressed a key (the compositor says so): an
+   awake screen stays awake, a dimmed one comes back; a dark one stays dark */
+int zyl_power_user_activity(ZylPowerService *svc);
 int zyl_power_request_suspend(ZylPowerService *svc);
 int zyl_power_request_shutdown(ZylPowerService *svc);
 int zyl_power_request_reboot(ZylPowerService *svc);

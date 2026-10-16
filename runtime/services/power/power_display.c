@@ -12,6 +12,7 @@
 
 /* Static wrapper so zyl_power_request_screen_off can be used as GSourceFunc */
 static gboolean screen_off_source_func(gpointer data) {
+    ((ZylPowerService *)data)->screen_off_timer_id = 0;   /* this timer is done */
     zyl_power_request_screen_off((ZylPowerService *)data);
     return G_SOURCE_REMOVE;
 }
@@ -43,9 +44,9 @@ static gboolean on_dim_timeout(gpointer data) {
     if (svc->state != ZYL_POWER_STATE_ACTIVE) return G_SOURCE_REMOVE;
     if (svc->wakelock_count > 0) return G_SOURCE_REMOVE;
 
-    /* 밝기를 사용자 밝기의 30%로 낮춤 — 사용자 밝기는 그대로 */
-    int dim_brightness = svc->brightness * 30 / 100;
-    apply_brightness(svc, dim_brightness < 5 ? 5 : dim_brightness);
+    /* 밝기를 사용자 밝기의 30%로 낮춤 (최소 5, 사용자 밝기보다 밝게는 안 함) — 사용자 밝기는 그대로 */
+    int dim_brightness = MAX(svc->brightness * 30 / 100, 5);
+    apply_brightness(svc, MIN(dim_brightness, svc->brightness));
     transition_state(svc, ZYL_POWER_STATE_DIM);
 
     /* screen_off 타이머 시작 */
@@ -98,7 +99,7 @@ int zyl_power_request_screen_off(ZylPowerService *svc) {
         } else if (svc->config.auto_suspend) {
             svc->suspend_timer_id = g_timeout_add_seconds(
                 svc->config.suspend_delay_sec,
-                (GSourceFunc)zyl_power_request_suspend, svc);
+                zyl_power_suspend_timeout, svc);
         }
     }
     return 0;
@@ -112,6 +113,17 @@ int zyl_power_request_screen_on(ZylPowerService *svc) {
     apply_brightness(svc, svc->brightness);
     transition_state(svc, ZYL_POWER_STATE_ACTIVE);
     reset_idle_timers(svc);
+    return 0;
+}
+
+/* ─── 사용자 활동 — 쓰는 동안에는 어두워지거나 꺼지지 않는다 ─── */
+int zyl_power_user_activity(ZylPowerService *svc) {
+    if (!svc) return -1;
+    if (svc->state == ZYL_POWER_STATE_DIM) {
+        apply_brightness(svc, svc->brightness);
+        transition_state(svc, ZYL_POWER_STATE_ACTIVE);
+    }
+    if (svc->state == ZYL_POWER_STATE_ACTIVE) reset_idle_timers(svc);
     return 0;
 }
 

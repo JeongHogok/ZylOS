@@ -34,9 +34,9 @@ else
 fi
 echo ""
 
-# ── Check 2: No direct window.parent.postMessage (except bridge.js, i18n.js) ──
+# ── Check 2: No direct window.parent.postMessage (except bridge.js, the bridge itself) ──
 echo "── Check 2: window.parent.postMessage 직접 호출 금지 ──"
-POSTMSG=$(grep -rn 'window\.parent\.postMessage' "$APPS_DIR" --include='*.js' 2>/dev/null | grep -v 'shared/bridge.js' | grep -v 'shared/i18n.js' || true)
+POSTMSG=$(grep -rn 'window\.parent\.postMessage' "$APPS_DIR" --include='*.js' 2>/dev/null | grep -v 'shared/bridge.js' || true)
 if [ -n "$POSTMSG" ]; then
     echo -e "${RED}FAIL${NC}: apps/ 내에 window.parent.postMessage 직접 호출 발견:"
     echo "$POSTMSG"

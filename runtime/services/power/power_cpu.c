@@ -10,8 +10,9 @@
 
 #include "power_internal.h"
 
-/* Static wrapper so zyl_power_request_suspend can be used as GSourceFunc */
-static gboolean suspend_source_func(gpointer data) {
+/* The suspend timer firing: it is done, then suspend */
+gboolean zyl_power_suspend_timeout(gpointer data) {
+    ((ZylPowerService *)data)->suspend_timer_id = 0;
     zyl_power_request_suspend((ZylPowerService *)data);
     return G_SOURCE_REMOVE;
 }
@@ -19,7 +20,9 @@ static gboolean suspend_source_func(gpointer data) {
 /* ─── Doze 모드 진입 ─── */
 gboolean zyl_power_enter_doze(gpointer data) {
     ZylPowerService *svc = data;
-    if (!svc || svc->state != ZYL_POWER_STATE_SCREEN_OFF) return G_SOURCE_REMOVE;
+    if (!svc) return G_SOURCE_REMOVE;
+    svc->suspend_timer_id = 0;                           /* the doze timer: this call */
+    if (svc->state != ZYL_POWER_STATE_SCREEN_OFF) return G_SOURCE_REMOVE;
     if (svc->wakelock_count > 0) return G_SOURCE_REMOVE; /* 웨이크락 보유 → doze 안 함 */
 
     transition_state(svc, ZYL_POWER_STATE_DOZE);
@@ -41,14 +44,9 @@ gboolean zyl_power_enter_doze(gpointer data) {
 
     /* Doze → Deep Sleep 전환 타이머 (30분) */
     if (svc->config.auto_suspend) {
-        /* Cancel existing timer to prevent leak */
-        if (svc->suspend_timer_id) {
-            g_source_remove(svc->suspend_timer_id);
-            svc->suspend_timer_id = 0;
-        }
         svc->suspend_timer_id = g_timeout_add_seconds(
             1800, /* 30 minutes in doze → suspend */
-            suspend_source_func, svc);
+            zyl_power_suspend_timeout, svc);
     }
 
     return G_SOURCE_REMOVE;

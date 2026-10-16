@@ -207,16 +207,28 @@ static bool ensure_log_file(ZylLoggerService *svc)
 
 static void json_escape(const char *src, char *dst, size_t dst_size)
 {
-    size_t j = 0;
-    for (size_t i = 0; src[i] && j + 6 < dst_size; i++) {
+    size_t i = 0, j = 0;
+    for (; src[i] && j + 6 < dst_size; i++) {
         switch (src[i]) {
         case '"':  dst[j++] = '\\'; dst[j++] = '"';  break;
         case '\\': dst[j++] = '\\'; dst[j++] = '\\'; break;
         case '\n': dst[j++] = '\\'; dst[j++] = 'n';  break;
         case '\r': dst[j++] = '\\'; dst[j++] = 'r';  break;
         case '\t': dst[j++] = '\\'; dst[j++] = 't';  break;
-        default:   dst[j++] = src[i]; break;
+        default:
+            /* JSON forbids raw control characters in strings */
+            if ((unsigned char)src[i] < 0x20)
+                j += (size_t)snprintf(dst + j, dst_size - j, "\\u%04x", (unsigned)src[i]);
+            else
+                dst[j++] = src[i];
+            break;
         }
+    }
+    /* Cut short: never end inside a UTF-8 character — GetLogs hands the
+       lines out as a D-Bus string, which must be valid UTF-8 */
+    if (src[i]) {
+        while (j > 0 && ((unsigned char)dst[j - 1] & 0xC0) == 0x80) j--;
+        if (j > 0 && ((unsigned char)dst[j - 1] & 0xC0) == 0xC0) j--;
     }
     dst[j] = '\0';
 }
@@ -372,7 +384,8 @@ static char *read_crash_reports(void)
     bool first = true;
 
     while (fgets(line, sizeof(line), fp)) {
-        if (!strstr(line, "\"CRASH\"")) {
+        /* The level field itself: a source or message ending in "CRASH is not a crash */
+        if (!strstr(line, "\"level\":\"CRASH\"")) {
             continue;
         }
         size_t len = strlen(line);
@@ -574,6 +587,7 @@ void zyl_logger_service_destroy(ZylLoggerService *svc)
 
 /* -- main() ------------------------------------------------- */
 
+#ifndef ZYL_TEST
 int main(int argc, char *argv[])
 {
     (void)argc;
@@ -598,3 +612,4 @@ int main(int argc, char *argv[])
     g_message("Zyl OS Logger Service stopped");
     return 0;
 }
+#endif /* ZYL_TEST */

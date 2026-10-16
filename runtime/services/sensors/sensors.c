@@ -29,6 +29,7 @@
 #define MAX_LISTENERS       16
 #define MAX_IIO_DEVICES     8
 #define SYSFS_BUF           256
+#define IIO_ATTR_MAX        32    /* "/in_illuminance_scale" and the like, with room */
 
 /* ─── IIO 장치 정보 ─── */
 typedef struct {
@@ -132,7 +133,13 @@ static void scan_iio_devices(ZylSensorService *svc) {
             continue;
 
         IioDevice *dev = &svc->devices[svc->device_count];
-        snprintf(dev->path, sizeof(dev->path), "%s/%s", IIO_BASE_PATH, entry->d_name);
+        /* Every attribute path is this plus "/<attr>": take the device only when
+           all of them fit, so no read below can name a cut-off (other) file */
+        int n = snprintf(dev->path, sizeof(dev->path), "%s/%s", IIO_BASE_PATH, entry->d_name);
+        if (n < 0 || (size_t)n + IIO_ATTR_MAX >= SYSFS_BUF) {
+            g_warning("[Sensors] %s: path too long, skipped", entry->d_name);
+            continue;
+        }
 
         if (detect_iio_type(dev->path, &dev->type)) {
             dev->available = true;

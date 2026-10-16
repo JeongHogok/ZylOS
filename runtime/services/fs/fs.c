@@ -22,7 +22,7 @@
 #include <gio/gio.h>
 #include <glib/gstdio.h>
 #include <glib-unix.h>
-#include "../appdata/container.h"
+#include "container.h"
 
 #ifndef ZYL_FILES_ROOT
 #define ZYL_FILES_ROOT "/data/users/0/files"

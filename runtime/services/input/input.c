@@ -129,7 +129,10 @@ static void emit_signal(ZylInputService *svc,
                         const char      *signal_name,
                         GVariant        *params)
 {
-    if (!svc->connection) return;
+    if (!svc->connection) {                       /* no bus yet: params is floating, drop it */
+        g_variant_unref(g_variant_ref_sink(params));
+        return;
+    }
 
     GError *err = NULL;
     g_dbus_connection_emit_signal(svc->connection,
@@ -238,12 +241,16 @@ static gboolean on_evdev_event(GIOChannel  *source,
 
 /* == Helper: Try to open an evdev device ==================== */
 
+#ifndef ZYL_EVDEV_DIR
+#define ZYL_EVDEV_DIR "/dev/input"
+#endif
+
 static void try_open_evdev(ZylInputService *svc)
 {
     /* Try /dev/input/event0 through event9 for a key-capable device */
     for (int i = 0; i < 10; i++) {
         char path[64];
-        snprintf(path, sizeof(path), "/dev/input/event%d", i);
+        snprintf(path, sizeof(path), ZYL_EVDEV_DIR "/event%d", i);
 
         int fd = open(path, O_RDONLY | O_NONBLOCK);
         if (fd < 0) continue;
@@ -566,6 +573,7 @@ void zyl_input_on_hardware_key(ZylInputService *svc, ZylHardwareKey key)
 
 /* == Entry Point ============================================ */
 
+#ifndef ZYL_TEST
 int main(int argc, char *argv[])
 {
     (void)argc;
@@ -588,3 +596,4 @@ int main(int argc, char *argv[])
 
     return 0;
 }
+#endif /* ZYL_TEST */

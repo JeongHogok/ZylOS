@@ -1,7 +1,7 @@
 /* ──────────────────────────────────────────────────────────
  * [Clean Architecture] Infrastructure Layer - Test
  *
- * 역할: 앱 봉인(runtime/services/appstore/app_seal.c) 단위 테스트 —
+ * 역할: 앱 봉인(runtime/lib/app_seal.c) 단위 테스트 —
  *       실제 tools/build-store.py 가 만든 봉인을 기기 쪽 판정으로
  * 수행범위: 스토어 봉인, 파일 변경·추가·삭제, 다른 앱의 봉인, 서명 안 된 봉인,
  *           개발 빌드(스토어가 서명한 인증서·프로필): 허락된 기기·앱 패턴만,
@@ -11,7 +11,7 @@
  * SOLID: SRP — 봉인 규칙 검증만 담당
  * ────────────────────────────────────────────────────────── */
 
-#include "../runtime/services/appstore/app_seal.h"
+#include "../runtime/lib/app_seal.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>

@@ -289,11 +289,7 @@ static const DispatchEntry dispatch_table[] = {
 
 /* ── D-Bus Virtual Table ──────────────────────────────────── */
 
-static const GDBusInterfaceVTable interface_vtable = {
-    handle_method_call,
-    NULL,   /* get_property */
-    NULL    /* set_property */
-};
+static const GDBusInterfaceVTable interface_vtable = { .method_call = handle_method_call };
 
 /* ══════════════════════════════════════════════════════════════
  * D-Bus Method Handler (dispatches to table)

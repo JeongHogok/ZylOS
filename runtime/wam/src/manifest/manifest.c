@@ -64,6 +64,10 @@ ZylAppManifest *zyl_manifest_parse(const char *app_dir) {
     m->icon      = g_strdup(json_object_get_string_member_with_default(
                        obj, "icon", "icon.png"));
     m->base_path = g_strdup(app_dir);
+    m->launcher  = TRUE;
+    if (json_object_has_member(obj, "launcher") &&
+        json_node_get_value_type(json_object_get_member(obj, "launcher")) == G_TYPE_BOOLEAN)
+        m->launcher = json_object_get_boolean_member(obj, "launcher");
 
     /* Parse permissions array */
     if (json_object_has_member(obj, "permissions")) {
@@ -130,10 +134,6 @@ GVariant *zyl_manifest_app_info(const ZylAppManifest *m) {
     const char *last = strrchr(m->id, '.');
     last = last ? last + 1 : m->id;
     char *name_key = g_strconcat("app.", last, NULL);
-    gboolean launcher = TRUE;
-    if (obj && json_object_has_member(obj, "launcher") &&
-        json_node_get_value_type(json_object_get_member(obj, "launcher")) == G_TYPE_BOOLEAN)
-        launcher = json_object_get_boolean_member(obj, "launcher");
 
     GVariantBuilder d;
     g_variant_builder_init(&d, G_VARIANT_TYPE("a{sv}"));
@@ -148,7 +148,7 @@ GVariant *zyl_manifest_app_info(const ZylAppManifest *m) {
     g_variant_builder_add(&d, "{sv}", "permissions", string_array(obj, "permissions"));
     g_variant_builder_add(&d, "{sv}", "formFactors", string_array(obj, "formFactors"));
     g_variant_builder_add(&d, "{sv}", "iconSvg", g_variant_new_string(text_member(obj, "iconSvg", "")));
-    g_variant_builder_add(&d, "{sv}", "launcher", g_variant_new_boolean(launcher));
+    g_variant_builder_add(&d, "{sv}", "launcher", g_variant_new_boolean(m->launcher));
     g_free(name_key);
     g_object_unref(p);
     g_free(path);

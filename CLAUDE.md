@@ -85,6 +85,11 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 ### 8. 보안 원칙
 
 - 시스템앱 판별은 OS 화이트리스트(`ZylPermissions.SYSTEM_APPS`)가 유일한 권위
+- 어느 앱이 앞에 올지(OOBE·잠금 화면·홈·최근 앱·앱 전환)는 OS 만 정한다: 에뮬레이터
+  `apps/system/shell.js`, 기기 `runtime/wam/src/shell` (같은 규칙, `tests/test_shell.c`
+  ·`test_services.js` 가 같은 시나리오로 검증). 에뮬레이터·컴포지터는 그 답대로 띄우기만
+  하고 앱 id 로 분기하지 않는다. 앞에 앱을 올리는 새 경로는 반드시 그 판단을 거칠 것.
+  잠금 해제는 잠금 화면, 설정 완료는 OOBE 가 보낸 것만 — 보낸 앱은 OS 가 말한다
 - 앱이 스스로를 시스템앱으로 선언하는 것을 신뢰하지 않음
 - `settings.json`, `.credentials/`, `.system/`은 보호 경로
 - 서비스 권한 체크는 OS 레이어에서만 수행
@@ -110,6 +115,10 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 | 버스 접근 권한 | `system/dbus-1/zyl-os.conf` | dbus-daemon, `tests/test_dbus_policy.sh` |
 | 서비스 권한 정책 | `apps/system/permissions.js` | `bridge.c`(verify-all 이 대조) |
 | 교차 툴체인 | `tools/cross/<arch>.ini` | 보드의 `board_cross_file` |
+| 둘 이상이 컴파일하는 C 코드 (앱 컨테이너·봉인·서명 검증) | `runtime/lib/` | appdata·fs·appstore·updater·WAM (`zyl_*_dep`) |
+
+서비스 디렉터리는 다른 서비스의 라이브러리가 되지 않는다 — 함께 쓰는 코드는
+`runtime/lib/` 로 옮기고 각 쪽이 그 의존성을 링크한다.
 
 서비스는 **시스템 버스**를 쓴다 — 유닛이 `Type=dbus` + `BusName=` 이므로 systemd 가
 기다리는 버스가 시스템 버스고, 로그인 세션이 없는 기기 부팅에는 세션 버스가 없다.
@@ -189,7 +198,7 @@ tools/ci-local.sh                 # main 대비 바뀐 것(커밋 안 한 것 �
 tools/ci-local.sh --dry-run       # 무엇이 걸리는지만
 tools/ci-local.sh lint-js fuzz    # 잡 이름으로 골라서 / --all 은 전부
 ```
-워크플로는 관심사별로 나뉘어 있고(web·native·image·riscv64·docker·licenses·
+워크플로는 관심사별로 나뉘어 있고(web·native·image·riscv64·docker·licenses·emulator·
 bootloader), **각 워크플로의 `pull_request.paths` 가 "어떤 변경이 이 검사를
 부르는가" 의 유일한 출처**다 — 원격 PR 과 `ci-local.sh` 가 같은 목록을 읽는다
 (`tests/test_ci_select.sh` 가 규칙을 검증). 새 검사를 넣으면 그 검사가 읽는

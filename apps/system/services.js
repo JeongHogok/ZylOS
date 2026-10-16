@@ -270,11 +270,24 @@ window.ZylSystemServices = (function () {
 
     var svc = serviceMap[service];
     if (!svc) { watchdogRelease(appId); return null; }
-    var fn = svc[method];
-    if (!fn) { watchdogRelease(appId); return null; }
+    /* The service's own methods only — never its internals (_forgetApp, the
+       profile hooks) nor what every object has (constructor, toString) */
+    var fn = (typeof method === 'string' && method.charAt(0) !== '_' &&
+              Object.prototype.hasOwnProperty.call(svc, method)) ? svc[method] : null;
+    if (typeof fn !== 'function') { watchdogRelease(appId); return null; }
 
-    /* The caller is the OS's to say, never the request's: whose data it is */
-    var result = fn(params || {}, appId || '');
+    /* The caller is the OS's to say, never the request's: whose data it is.
+       A third-party app's appId is always its own — the device bridge's rule
+       (bridge.c), otherwise any app could post as com.zylos.messages. System
+       apps may name another (the status bar posts for Settings). */
+    var p = params || {};
+    if (appId && SYSTEM_APPS.indexOf(appId) === -1) {
+      var own = {};
+      for (var k in p) { if (Object.prototype.hasOwnProperty.call(p, k)) own[k] = p[k]; }
+      own.appId = appId;
+      p = own;
+    }
+    var result = fn(p, appId || '');
 
     if (result && typeof result.then === 'function') {
       var timeoutMs = NETWORK_SERVICES[service] ? NETWORK_TIMEOUT_MS : SERVICE_TIMEOUT_MS;

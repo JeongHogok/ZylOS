@@ -44,13 +44,17 @@ Linux 커널 위에 Wayland 컴포지터 + WebKitGTK 앱 런타임으로 구성�
 ### Compositor (compositor/)
 - wlroots 0.18 기반 Wayland 컴포지터
 - 모바일 전용: 풀스크린 앱 스택, 제스처, 상태바
-- 모듈: main, input/gesture, output, view
-- D-Bus 시그널: GoHome, GoBack, NotificationPanel, AppSwitcher
+- 모듈: main, input/gesture, ipc/os_bus, output, view
+- 제스처 → WAM D-Bus 메서드 GoHome·GoBack·SwitchApp (무엇이 앞에 올지는 WAM 의 셸 정책 —
+  컴포지터는 창을 직접 올리지 않는다)
+- 터치·클릭 → 전원 서비스 UserActivity (쓰는 동안 화면이 어두워지거나 꺼지지 않게, 초당 1회)
 
 ### WAM - Web Application Manager (runtime/wam/)
 - WebKitGTK 기반 앱 실행 환경
 - 앱별 독립 WebView 프로세스
-- 모듈: manifest, lifecycle (suspend/resume/close), bridge, dbus_service
+- 모듈: manifest, lifecycle (suspend/resume/close), bridge, dbus_service, intent, shell
+- 셸 정책(shell): 부팅 시 OOBE/잠금 화면, 화면 꺼짐 잠금, 홈·뒤로·앱 전환, 잠금 해제는
+  잠금 화면만 — 에뮬레이터의 `apps/system/shell.js` 와 같은 규칙
 - JS Bridge: webkit.messageHandlers → D-Bus → 시스템 서비스
 
 ### C 시스템 서비스 (32개 — runtime/services/, 주요 서비스)

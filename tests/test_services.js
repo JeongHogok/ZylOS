@@ -111,6 +111,17 @@ function createMockInvoker(responses) {
   };
 }
 
+/* Same answers, and every host command it was asked for in invoke.calls */
+function recordingInvoker(responses) {
+  var answer = createMockInvoker(responses);
+  function invoke(cmd, args) {
+    invoke.calls.push({ cmd: cmd, args: args });
+    return answer(cmd, args);
+  }
+  invoke.calls = [];
+  return invoke;
+}
+
 /* ═══════════════════════════════════════════════════════
    Test Suite: Device Service
    ═══════════════════════════════════════════════════════ */
@@ -1180,6 +1191,127 @@ console.log('\n■ ZylIntent');
 })();
 
 /* ═══════════════════════════════════════════════════════
+   Shell policy (real shell.js, isolated) — same scenarios as
+   runtime/wam/src/shell (tests/test_shell.c)
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ ZylShell');
+
+(function () {
+  var vm = require('vm');
+  var HOME = 'com.zylos.home', LOCK = 'com.zylos.lockscreen', SETUP = 'com.zylos.oobe';
+  function shell() {
+    var ctx = { window: {} };
+    vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'apps', 'system', 'shell.js'), 'utf8'), ctx);
+    return ctx.window.ZylShell;
+  }
+  /* Show what the policy said, as the container does */
+  function show(S, app) { if (app) S.shown(app); }
+
+  test('setup holds the device', function () {
+    var S = shell();
+    assert.strictEqual(S.boot(false), SETUP);
+    show(S, SETUP);
+    assert.ok(S.mayLaunch(SETUP));
+    assert.ok(S.mayLaunch('com.zylos.phone'));                     /* an emergency call */
+    assert.ok(!S.mayLaunch(HOME));
+    assert.ok(!S.mayLaunch(LOCK));
+    assert.ok(!S.mayLaunch('com.zylos.settings'));
+    assert.ok(!S.mayLaunch(undefined));
+    assert.strictEqual(S.home(), null);
+    assert.ok(!S.navigable());
+    assert.ok(!S.mayClose(SETUP));
+    assert.strictEqual(S.lock(), null);                              /* setup never locks */
+    assert.strictEqual(S.unlock(LOCK), null);
+    show(S, HOME);
+    assert.strictEqual(S.screenOn(), SETUP);                         /* back to setup */
+  });
+
+  test('only setup finishes setup', function () {
+    var S = shell();
+    show(S, S.boot(false));
+    assert.strictEqual(S.setupDone('com.example.app'), null);
+    assert.strictEqual(S.setupDone(LOCK), null);
+    assert.strictEqual(S.setupDone(SETUP), HOME);
+    show(S, HOME);
+    assert.ok(S.navigable());                                        /* just set up: not locked */
+    assert.ok(S.mayLaunch('com.zylos.settings'));
+    assert.ok(!S.mayLaunch(SETUP));                                  /* not again */
+    assert.strictEqual(S.setupDone(SETUP), null);
+  });
+
+  test('locked shows only the lock screen', function () {
+    var S = shell();
+    assert.strictEqual(S.boot(true), LOCK);
+    show(S, LOCK);
+    assert.ok(S.mayLaunch(LOCK));
+    assert.ok(S.mayLaunch('com.zylos.camera'));                     /* the shortcut */
+    assert.ok(S.mayLaunch('com.zylos.alerts'));
+    assert.ok(!S.mayLaunch(HOME));
+    assert.ok(!S.mayLaunch('com.zylos.gallery'));                   /* not from the camera either */
+    assert.ok(!S.mayLaunch(SETUP));
+    assert.ok(!S.navigable());
+    assert.ok(!S.mayClose(LOCK));
+    assert.strictEqual(S.home(), null);                              /* already there */
+    show(S, 'com.zylos.camera');
+    assert.strictEqual(S.home(), LOCK);                              /* leaving it: the lock screen */
+    assert.strictEqual(S.screenOn(), null);                          /* a call/alert/camera stays */
+  });
+
+  test('only the lock screen unlocks', function () {
+    var S = shell();
+    show(S, S.boot(true));
+    assert.strictEqual(S.unlock('com.zylos.camera'), null);
+    assert.strictEqual(S.unlock('com.example.app'), null);
+    assert.strictEqual(S.unlock(undefined), null);
+    assert.ok(!S.navigable());
+    assert.strictEqual(S.unlock(LOCK, 'com.zylos.messages'), 'com.zylos.messages');
+    assert.ok(S.navigable());
+    assert.strictEqual(S.unlock(LOCK), null);                        /* not locked */
+  });
+
+  test('unlock opens home unless an app may open', function () {
+    var S = shell();
+    show(S, S.boot(true));
+    assert.strictEqual(S.unlock(LOCK), HOME);
+    show(S, S.lock());
+    assert.strictEqual(S.unlock(LOCK, ''), HOME);
+    show(S, S.lock());
+    assert.strictEqual(S.unlock(LOCK, SETUP), HOME);                 /* never setup again */
+    show(S, S.lock());
+    assert.strictEqual(S.unlock(LOCK, LOCK), HOME);
+  });
+
+  test('unlocked: home, close and lock', function () {
+    var S = shell();
+    show(S, S.boot(true));
+    show(S, S.unlock(LOCK));
+    assert.strictEqual(S.home(), null);                              /* already home */
+    show(S, 'com.zylos.notes');
+    assert.strictEqual(S.home(), HOME);
+    assert.ok(!S.mayLaunch(LOCK));                                   /* only by locking */
+    assert.ok(!S.mayClose(HOME));
+    assert.ok(S.mayClose(LOCK));
+    assert.ok(S.mayClose(SETUP));
+    assert.ok(S.mayClose('com.zylos.notes'));
+    assert.strictEqual(S.screenOn(), null);                          /* unlocked: nothing to cover */
+    assert.strictEqual(S.lock(), LOCK);
+    assert.ok(!S.navigable());
+    assert.strictEqual(S.screenOn(), LOCK);                          /* not shown yet: cover it */
+    show(S, LOCK);
+    assert.strictEqual(S.lock(), null);                              /* already in front */
+    assert.strictEqual(S.screenOn(), null);
+  });
+
+  test('the same apps as the device policy (shell.c)', function () {
+    var js = fs.readFileSync(path.join(__dirname, '..', 'apps', 'system', 'shell.js'), 'utf8');
+    var c = fs.readFileSync(path.join(__dirname, '..', 'runtime', 'wam', 'src', 'shell', 'shell.c'), 'utf8') +
+            fs.readFileSync(path.join(__dirname, '..', 'runtime', 'wam', 'src', 'shell', 'shell.h'), 'utf8');
+    function ids(text) { return (text.match(/com\.zylos\.[a-z]+/g) || []).filter(function (v, i, a) { return a.indexOf(v) === i; }).sort(); }
+    assert.deepStrictEqual(ids(js), ids(c));
+  });
+})();
+
+/* ═══════════════════════════════════════════════════════
    Permission policy — reserved permissions (real permissions.js, isolated)
    ═══════════════════════════════════════════════════════ */
 console.log('\n■ ZylPermissions');
@@ -1240,6 +1372,95 @@ console.log('\n■ ZylPermissions');
 /* ═══════════════════════════════════════════════════════
    Telemetry consent (JS service, emulator contract)
    ═══════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════
+   The request gate (real services.js + permissions.js + notification.js,
+   isolated) — the device bridge's rules (bridge.c): a third-party app's
+   appId is its own, other apps' notifications are notification.read's,
+   internals are not methods, an unlisted service is closed
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ request gate');
+
+var gateTests = (function () {
+  var vm = require('vm');
+  var events = [];
+  var ctx = { console: console, setTimeout: function () { return 0; }, clearTimeout: function () {},
+              Promise: Promise, CustomEvent: function (type, init) { this.type = type; this.detail = init.detail; } };
+  ctx.window = ctx;
+  ctx.dispatchEvent = function (e) { events.push(e); return true; };
+  ['permissions.js', 'services/notification.js', 'services.js'].forEach(function (f) {
+    vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'apps', 'system', f), 'utf8'), ctx);
+  });
+  var S = ctx.ZylSystemServices;
+  ctx.ZylPermissions.registerFromAppList([
+    { id: 'com.example.chat', permissions: ['notification'] },
+    { id: 'com.example.spy', permissions: ['notification', 'notification.read'] },
+    { id: 'com.zylos.statusbar', permissions: [] }
+  ]);
+  S.init(function () { return Promise.resolve(null); });
+  /* A request's answer — refusals come back as a promise */
+  function ask(service, method, params, app) { return Promise.resolve(S.handleRequest(service, method, params, app)); }
+  function active() {
+    return ask('notification', 'getActive', {}, 'com.zylos.statusbar').then(function (a) { return JSON.parse(JSON.stringify(a)); });
+  }
+
+  /* One after another: they share the service's state */
+  return asyncTest('a third-party app posts only as itself; a system app may name another', function () {
+    return ask('notification', 'post', { appId: 'com.zylos.messages', title: 'fake' }, 'com.example.chat')
+      .then(function () { return ask('notification', 'post', { appId: 'com.zylos.settings', title: 'data' }, 'com.zylos.statusbar'); })
+      .then(active).then(function (a) {
+        assert.strictEqual(a[0].appId, 'com.example.chat');
+        assert.strictEqual(a[1].appId, 'com.zylos.settings');
+      });
+  }).then(function () {
+    return asyncTest("other apps' notifications are not a third-party app's to read, dismiss or silence", function () {
+      var refused = [];
+      ['getActive', 'getHistory', 'cancel', 'clearAll', 'clearHistory', 'setDndMode'].forEach(function (m) {
+        ['com.example.chat', 'com.example.spy'].forEach(function (app) {
+          refused.push(ask('notification', m, { id: 1 }, app).then(function (r) {
+            assert.ok(r && r.error === 'Permission denied', app + ' ' + m);
+          }));
+        });
+      });
+      return Promise.all(refused).then(active).then(function (a) {
+        assert.strictEqual(a.length, 2);                                  /* nothing dismissed */
+        return ask('notification', 'cancel', { id: a[0].id }, 'com.zylos.statusbar');
+      }).then(active).then(function (a) { assert.strictEqual(a.length, 1); });
+    });
+  }).then(function () {
+    return asyncTest('posted and dismissed are announced (what draws notifications follows them)', function () {
+      assert.deepStrictEqual(events.map(function (e) { return e.type; }),
+        ['zyl:notification-posted', 'zyl:notification-posted', 'zyl:notification-dismissed']);
+      assert.strictEqual(events[0].detail.appId, 'com.example.chat');
+      return Promise.resolve();
+    });
+  }).then(function () {
+    return asyncTest('internals and what every object has are not methods', function () {
+      ['_forgetApp', 'constructor', 'toString', '__proto__', 'hasOwnProperty'].forEach(function (m) {
+        assert.strictEqual(S.handleRequest('notification', m, {}, 'com.zylos.statusbar'), null, m);
+      });
+      return active().then(function (a) { assert.strictEqual(a.length, 1); });
+    });
+  }).then(function () {
+    return asyncTest('users are system-only; an unlisted service is closed', function () {
+      return Promise.all([ask('user', 'listUsers', {}, 'com.example.chat'), ask('nosuch', 'x', {}, 'com.example.chat')])
+        .then(function (r) {
+          assert.strictEqual(r[0].error, 'Permission denied');
+          assert.strictEqual(r[1].error, 'Permission denied');
+        });
+    });
+  }).then(function () {
+    return asyncTest('no whitelist loaded is no network', function () {
+      var c2 = { window: {} };
+      vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'apps', 'system', 'services', 'network.js'), 'utf8'), c2);
+      var called = false;
+      var net = c2.window.ZylServiceModules.network({ invoke: function () { called = true; return Promise.resolve('x'); } });
+      return net.fetch({ url: 'https://example.com' }).then(function (r) {
+        assert.ok(r && r.error && !called);
+      });
+    });
+  });
+})();
+
 console.log('\n■ telemetry service');
 
 var telemetryTests = (function () {
@@ -2102,12 +2323,620 @@ var alarmTests = (function () {
 })();
 
 /* ═══════════════════════════════════════════════════════
+   Notification service: state kept in the OS, per app
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ notification service');
+
+(function () {
+  /* Auto-dismiss timers are recorded, not armed: a 30-second timer would hold
+     the runner open, and firing one by hand is the timeout without the wait.
+     The module arms and disarms them synchronously, so the swap cannot leak. */
+  function withTimers(fn) {
+    var realSet = global.setTimeout, realClear = global.clearTimeout;
+    var t = { armed: [], cleared: [] };
+    global.setTimeout = function (cb, ms) { var h = { fire: cb, ms: ms }; t.armed.push(h); return h; };
+    global.clearTimeout = function (h) { t.cleared.push(h); };
+    try { fn(ns.notification({}), t); } finally {
+      global.setTimeout = realSet;
+      global.clearTimeout = realClear;
+    }
+  }
+  function ids(list) { return list.map(function (n) { return n.id; }); }
+  var A = 'com.example.a', B = 'com.example.b';
+
+  test('post: the next id each time, fields defaulted, no actions on a simple post', function () {
+    withTimers(function (n) {
+      var r = [n.post({ appId: A, title: 'Timer', body: 'done', actions: [{ label: 'x', actionId: 'x' }] }),
+               n.post({ appId: A, title: 'Again' })];
+      assert.deepStrictEqual(r, [{ id: 1 }, { id: 2 }]);
+      var got = JSON.parse(JSON.stringify(n.getActive()[0]));
+      assert.ok(got.timestamp > 0);
+      delete got.timestamp;
+      assert.deepStrictEqual(got, { id: 1, appId: A, channelId: '', title: 'Timer', body: 'done', icon: '',
+                                    priority: 1, group: '', persistent: false, actions: [] });
+    });
+  });
+
+  test('postWithActions keeps its buttons; none given is none', function () {
+    withTimers(function (n) {
+      n.postWithActions({ appId: A, title: 'Alarm', actions: [{ label: 'Snooze', actionId: 'snooze' }] });
+      n.postWithActions({ appId: A, title: 'Plain' });
+      assert.deepStrictEqual(n.getActive().map(function (x) { return x.actions; }),
+                             [[{ label: 'Snooze', actionId: 'snooze' }], []]);
+    });
+  });
+
+  test('cancel: gone from active, badge down once, timer disarmed, still in history', function () {
+    withTimers(function (n, t) {
+      n.post({ appId: A, title: '1' });
+      n.post({ appId: A, title: '2' });
+      n.post({ appId: B, title: '3' });
+      assert.deepStrictEqual(n.cancel({ id: 1 }), { success: true });
+      assert.deepStrictEqual(n.cancel({ id: 1 }), { success: true });
+      assert.deepStrictEqual(n.cancel({ id: 99 }), { success: true });
+      assert.deepStrictEqual(ids(n.getActive()), [2, 3]);
+      assert.deepStrictEqual(n.getAllBadgeCounts(), { 'com.example.a': 1, 'com.example.b': 1 });
+      assert.deepStrictEqual(t.cleared, [t.armed[0]]);
+      assert.strictEqual(n.getHistory().length, 3);
+    });
+  });
+
+  test('badges count active notifications per app; apps at zero and no app are not listed', function () {
+    withTimers(function (n) {
+      n.post({ appId: A });
+      n.post({ appId: A });
+      var b = n.post({ appId: B });
+      n.post({ title: 'from nobody' });
+      assert.deepStrictEqual(n.getBadgeCount({ appId: A }), { appId: A, count: 2 });
+      assert.deepStrictEqual(n.getBadgeCount({ appId: 'com.example.none' }), { appId: 'com.example.none', count: 0 });
+      n.cancel({ id: b.id });
+      assert.deepStrictEqual(n.getAllBadgeCounts(), { 'com.example.a': 2 });
+    });
+  });
+
+  test('Do Not Disturb drops all but urgent, and a dropped one leaves no trace', function () {
+    withTimers(function (n) {
+      assert.deepStrictEqual(n.setDndMode({ enabled: true }), { success: true, enabled: true });
+      assert.deepStrictEqual(n.getDndMode(), { enabled: true });
+      assert.deepStrictEqual(n.post({ appId: A, priority: 2 }), { suppressed: true, reason: 'dnd' });
+      assert.deepStrictEqual(n.postWithActions({ appId: A, actions: [] }), { suppressed: true, reason: 'dnd' });
+      assert.deepStrictEqual(n.post({ appId: A, priority: 3, title: 'call' }), { id: 1 });
+      assert.deepStrictEqual(ids(n.getActive()), [1]);
+      assert.strictEqual(n.getHistory().length, 1);
+      assert.deepStrictEqual(n.getAllBadgeCounts(), { 'com.example.a': 1 });
+      assert.deepStrictEqual(n.setDndMode(), { success: true, enabled: false });
+      assert.deepStrictEqual(n.post({ appId: A }), { id: 2 });
+    });
+  });
+
+  test('a normal post dismisses itself after 30 s; urgent and persistent ones stay', function () {
+    withTimers(function (n, t) {
+      n.post({ appId: A, group: 'chat' });
+      var urgent = n.post({ appId: A, priority: 3 });
+      var sticky = n.post({ appId: A, persistent: true });
+      assert.strictEqual(t.armed.length, 1);
+      assert.strictEqual(t.armed[0].ms, 30000);
+      t.armed[0].fire();
+      assert.deepStrictEqual(ids(n.getActive()), [urgent.id, sticky.id]);
+      assert.deepStrictEqual(n.getAllBadgeCounts(), { 'com.example.a': 2 });
+      assert.deepStrictEqual(n.getGroupSummary(), {});
+      assert.strictEqual(n.getHistory().length, 3);
+    });
+  });
+
+  test('clearAll keeps persistent notifications and disarms the rest', function () {
+    withTimers(function (n, t) {
+      n.post({ appId: A });
+      var sticky = n.post({ appId: A, persistent: true });
+      n.post({ appId: B, priority: 3 });
+      assert.deepStrictEqual(n.clearAll(), { success: true });
+      assert.deepStrictEqual(ids(n.getActive()), [sticky.id]);
+      assert.deepStrictEqual(n.getAllBadgeCounts(), { 'com.example.a': 1 });
+      assert.deepStrictEqual(t.cleared, t.armed);
+    });
+  });
+
+  test('history keeps the newest 100, by app and newest-first limit; clearing it keeps the active', function () {
+    withTimers(function (n) {
+      for (var i = 1; i <= 105; i++) n.post({ appId: i % 2 ? A : B, title: 't' + i });
+      function titles(list) { return list.map(function (x) { return x.title; }); }
+      var all = n.getHistory();
+      assert.strictEqual(all.length, 100);
+      assert.deepStrictEqual([all[0].title, all[99].title], ['t6', 't105']);
+      var onlyB = n.getHistory({ appId: B });
+      assert.strictEqual(onlyB.length, 50);
+      assert.ok(onlyB.every(function (x) { return x.appId === B; }));
+      assert.deepStrictEqual(titles(n.getHistory({ limit: 2 })), ['t104', 't105']);
+      assert.deepStrictEqual(titles(n.getHistory({ appId: B, limit: 1 })), ['t104']);
+      assert.deepStrictEqual(n.clearHistory(), { success: true });
+      assert.deepStrictEqual(n.getHistory(), []);
+      assert.strictEqual(n.getActive().length, 105);
+    });
+  });
+
+  test('groups are per app and name; the summary counts the active; an emptied group is gone', function () {
+    withTimers(function (n) {
+      n.post({ appId: A, group: 'chat' });
+      n.post({ appId: A, group: 'chat' });
+      n.post({ appId: B, group: 'chat' });
+      n.post({ appId: A });
+      assert.deepStrictEqual(n.getGroupSummary(), { 'com.example.a:chat': 2, 'com.example.b:chat': 1 });
+      assert.deepStrictEqual(ids(n.getGroup({ appId: A, group: 'chat' })), [1, 2]);
+      assert.deepStrictEqual(ids(n.getGroup({ appId: B, group: 'chat' })), [3]);
+      assert.deepStrictEqual(n.getGroup({ appId: A }), []);
+      n.cancel({ id: 1 });
+      n.cancel({ id: 2 });
+      assert.deepStrictEqual(n.getGroup({ appId: A, group: 'chat' }), []);
+      assert.deepStrictEqual(n.getGroupSummary(), { 'com.example.b:chat': 1 });
+    });
+  });
+
+  test('a removed app leaves nothing: active (persistent too), history, badge, group, timer', function () {
+    withTimers(function (n, t) {
+      var gone = 'com.example.gone';
+      n.post({ appId: gone, group: 'chat' });
+      n.post({ appId: gone, persistent: true });
+      var kept = n.post({ appId: B, group: 'chat' });
+      n._forgetApp(gone);
+      assert.deepStrictEqual(ids(n.getActive()), [kept.id]);
+      assert.deepStrictEqual(ids(n.getHistory()), [kept.id]);
+      assert.deepStrictEqual(n.getAllBadgeCounts(), { 'com.example.b': 1 });
+      assert.deepStrictEqual(n.getGroupSummary(), { 'com.example.b:chat': 1 });
+      assert.deepStrictEqual(t.cleared, [t.armed[0]]);
+      assert.strictEqual(JSON.stringify([n.getActive(), n.getHistory(), n.getAllBadgeCounts(),
+                                         n.getGroupSummary()]).indexOf(gone), -1);
+    });
+  });
+})();
+
+/* ═══════════════════════════════════════════════════════
+   App registry: the OS image's (and sealed store) apps
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ apps service');
+
+var appsTests = (function () {
+  var SYSTEM = ['com.zylos.settings', 'com.zylos.lockscreen'];
+  var MANIFESTS = [
+    { id: 'com.zylos.settings', name: 'Settings', iconKey: 'gear', color: 'icon-gray', version: '2.1.0',
+      description: 'd', permissions: ['system'], formFactors: ['*'], iconSvg: '<svg/>',
+      intents: [{ action: 'VIEW', mimeType: 'text/*' }], entry: 'main.html' },
+    { id: 'com.zylos.lockscreen', launcher: false, system: false },
+    { id: 'com.example.hello', name: 'Hello', system: true, source: 'store', intents: 'VIEW', launcher: 0 },
+    { id: 'com.example.side', source: 'sideload' }
+  ];
+  /* The stubs stay as they were; this only remembers what they were given */
+  var toPermissions = [], toRegistry = [];
+  var realPerm = ZylPermissions.registerFromAppList, realReg = ZylAppRegistry.register;
+  ZylPermissions.registerFromAppList = function (list) { toPermissions.push(list); return realPerm(list); };
+  ZylAppRegistry.register = function (list) { toRegistry.push(list); return realReg(list); };
+
+  function make(answer, seal) {
+    var invoke = recordingInvoker({ list_installed_apps: answer });
+    return { svc: ns.apps({ invoke: invoke, SYSTEM_APPS: SYSTEM, seal: seal }), invoke: invoke };
+  }
+  function byId(list) {
+    var m = {};
+    list.forEach(function (a) { m[a.id] = a; });
+    return m;
+  }
+
+  return Promise.all([
+    asyncTest('one entry per manifest: what it declares is kept, the rest defaulted', function () {
+      return make(MANIFESTS).svc.getInstalled().then(function (list) {
+        var a = byId(list);
+        assert.strictEqual(list.length, 4);
+        assert.deepStrictEqual(a['com.zylos.lockscreen'], {
+          id: 'com.zylos.lockscreen', name: 'lockscreen', nameKey: 'app.lockscreen', icon: 'lockscreen',
+          color: 'icon-blue', version: '1.0.0', description: '', system: true, permissions: [],
+          formFactors: [], iconSvg: '', launcher: false, intents: [], entry: 'index.html', source: 'image' });
+        var s = a['com.zylos.settings'];
+        assert.deepStrictEqual([s.name, s.nameKey, s.icon, s.color, s.version, s.description, s.iconSvg, s.entry],
+                               ['Settings', 'app.settings', 'gear', 'icon-gray', '2.1.0', 'd', '<svg/>', 'main.html']);
+        assert.deepStrictEqual([s.permissions, s.formFactors, s.intents],
+                               [['system'], ['*'], [{ action: 'VIEW', mimeType: 'text/*' }]]);
+        assert.deepStrictEqual(a['com.example.hello'].intents, [], 'intents that are not a list are none');
+      });
+    }),
+    asyncTest('the system flag is the OS whitelist\'s, never the manifest\'s', function () {
+      return make(MANIFESTS).svc.getInstalled().then(function (list) {
+        var a = byId(list);
+        assert.strictEqual(a['com.zylos.settings'].system, true);
+        assert.strictEqual(a['com.zylos.lockscreen'].system, true, 'manifest said false');
+        assert.strictEqual(a['com.example.hello'].system, false, 'manifest said true');
+        assert.strictEqual(a['com.example.side'].system, false);
+      });
+    }),
+    asyncTest('only an explicit launcher:false hides an app; only source "store" is a store app', function () {
+      return make(MANIFESTS).svc.getInstalled().then(function (list) {
+        var a = byId(list);
+        assert.deepStrictEqual([a['com.zylos.settings'].launcher, a['com.zylos.lockscreen'].launcher,
+                                a['com.example.hello'].launcher], [true, false, true]);
+        assert.deepStrictEqual([a['com.zylos.settings'].source, a['com.example.hello'].source,
+                                a['com.example.side'].source], ['image', 'store', 'image']);
+      });
+    }),
+    asyncTest('the list is asked for once and cached; getById reads it; invalidate asks again', function () {
+      var host = MANIFESTS.slice(0, 2);
+      var t = make(function () { return host; });
+      assert.strictEqual(t.svc.getById({ id: 'com.zylos.settings' }), null, 'nothing before the first load');
+      return t.svc.getInstalled().then(function (first) {
+        return t.svc.getInstalled().then(function (again) {
+          assert.strictEqual(again, first);
+          assert.deepStrictEqual(t.invoke.calls, [{ cmd: 'list_installed_apps', args: undefined }]);
+          assert.strictEqual(t.svc.getById({ id: 'com.zylos.settings' }).name, 'Settings');
+          assert.strictEqual(t.svc.getById({ id: 'com.example.hello' }), null);
+          host = MANIFESTS;
+          t.svc._invalidate();
+          return t.svc.getInstalled();
+        });
+      }).then(function (list) {
+        assert.strictEqual(t.invoke.calls.length, 2);
+        assert.strictEqual(list.length, 4);
+        assert.strictEqual(t.svc.getById({ id: 'com.example.hello' }).source, 'store');
+      });
+    }),
+    asyncTest('the mapped list is what the permission tables and the app registry get', function () {
+      return make(MANIFESTS).svc.getInstalled().then(function (list) {
+        assert.ok(toPermissions.indexOf(list) !== -1);
+        assert.ok(toRegistry.indexOf(list) !== -1);
+      });
+    }),
+    asyncTest('a store app is listed only while its seal holds', function () {
+      var given = [];
+      var seal = { sealedOnly: function (list) {
+        given.push(list);
+        return Promise.resolve(list.filter(function (m) { return m.id !== 'com.example.hello'; }));
+      } };
+      return make(MANIFESTS, seal).svc.getInstalled().then(function (list) {
+        assert.deepStrictEqual(given, [MANIFESTS]);
+        assert.deepStrictEqual(list.map(function (a) { return a.id; }),
+                               ['com.zylos.settings', 'com.zylos.lockscreen', 'com.example.side']);
+      });
+    }),
+    asyncTest('no apps, a malformed answer or a failure is an empty list, and nothing is cached', function () {
+      var none = make(null);
+      var failing = make(function () { return Promise.reject(new Error('io')); });
+      var badSeal = make(MANIFESTS, { sealedOnly: function () { return Promise.reject(new Error('seal')); } });
+      return Promise.all([none.svc.getInstalled(), make({ apps: MANIFESTS }).svc.getInstalled(),
+                          make([]).svc.getInstalled(), failing.svc.getInstalled(),
+                          badSeal.svc.getInstalled()]).then(function (r) {
+        assert.deepStrictEqual(r, [[], [], [], [], []]);
+        assert.strictEqual(none.svc.getById({ id: 'com.zylos.settings' }), null);
+        return none.svc.getInstalled();
+      }).then(function () {
+        assert.strictEqual(none.invoke.calls.length, 2, 'an empty answer is asked again');
+      });
+    })
+  ]);
+})();
+
+/* ═══════════════════════════════════════════════════════
+   Sandbox policy: system-ness is the whitelist's alone
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ sandbox service');
+
+var sandboxTests = (function () {
+  function make(installed, logs) {
+    return ns.sandbox({
+      appsSvc: { getInstalled: function () {
+        return installed instanceof Error ? Promise.reject(installed) : Promise.resolve(installed);
+      } },
+      SYSTEM_APPS: ['com.zylos.settings'],
+      logFn: logs ? function (level, tag, msg) { logs.push([level, tag, msg]); } : null
+    });
+  }
+  /* What an installed-list entry claims is not what the policy says */
+  var INSTALLED = [{ id: 'com.zylos.settings', system: false }, { id: 'com.example.hello', system: true }];
+
+  return Promise.all([
+    asyncTest('policy: system from the whitelist, not from the installed list\'s claim', function () {
+      var svc = make(INSTALLED);
+      return Promise.all([svc.getPolicy({ appId: 'com.zylos.settings' }),
+                          svc.getPolicy({ appId: 'com.example.hello' })]).then(function (r) {
+        assert.deepStrictEqual(r[0], { appId: 'com.zylos.settings', system: true, permissions: 0, seccompProfile: 'DEFAULT' });
+        assert.deepStrictEqual(r[1], { appId: 'com.example.hello', system: false, permissions: 0, seccompProfile: 'DEFAULT' });
+      });
+    }),
+    asyncTest('policy: an app that is not installed is not system, even under a system id', function () {
+      var svc = make([{ id: 'com.example.hello' }]);
+      return Promise.all([svc.getPolicy({ appId: 'com.zylos.settings' }), svc.getPolicy({})]).then(function (r) {
+        assert.strictEqual(r[0].system, false);
+        assert.deepStrictEqual([r[1].appId, r[1].system], ['', false]);
+      });
+    }),
+    asyncTest('policy: without the app list it is null, not a default policy', function () {
+      return make(new Error('down')).getPolicy({ appId: 'com.zylos.settings' }).then(function (r) {
+        assert.strictEqual(r, null);
+      });
+    }),
+    asyncTest('apply is logged with the app id, and works without a logger', function () {
+      var logs = [];
+      var svc = make(INSTALLED, logs);
+      return Promise.all([svc.apply({ appId: 'com.example.hello' }), svc.apply({}),
+                          make(INSTALLED).apply({ appId: 'com.example.hello' })]).then(function (r) {
+        assert.deepStrictEqual(r, [true, true, true]);
+        assert.deepStrictEqual(logs, [['INFO', 'sandbox', 'Policy applied for com.example.hello'],
+                                      ['INFO', 'sandbox', 'Policy applied for unknown']]);
+      });
+    })
+  ]);
+})();
+
+/* ═══════════════════════════════════════════════════════
+   Accessibility: kept in settings, coerced on the way in and out
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ accessibility service');
+
+var accessibilityTests = (function () {
+  function make(stored, failing) {
+    var writes = [];
+    var settingsSvc = {
+      _getSetting: function (cat) {
+        if (failing) return Promise.reject(new Error('settings down'));
+        return Promise.resolve(cat === 'accessibility' ? stored || null : null);
+      },
+      _updateSetting: function (cat, k, v) { writes.push([cat, k, v]); }
+    };
+    return { svc: ns.accessibility({ settingsSvc: settingsSvc }), writes: writes };
+  }
+
+  return Promise.all([
+    asyncTest('nothing stored: contrast off, scale 1, no screen reader', function () {
+      return make(null).svc.getState().then(function (s) {
+        assert.deepStrictEqual(s, { highContrast: false, fontScale: 1, screenReader: false });
+      });
+    }),
+    asyncTest('stored values read back as booleans and a number; a bad scale is 1', function () {
+      return Promise.all([make({ highContrast: 1, fontScale: '1.25', screenReader: 'on' }).svc.getState(),
+                          make({ fontScale: 'huge' }).svc.getState()]).then(function (r) {
+        assert.deepStrictEqual(r[0], { highContrast: true, fontScale: 1.25, screenReader: true });
+        assert.deepStrictEqual(r[1], { highContrast: false, fontScale: 1, screenReader: false });
+      });
+    }),
+    asyncTest('each switch is stored in the accessibility settings, coerced, and answered', function () {
+      var t = make(null);
+      return Promise.all([t.svc.setHighContrast({ enabled: 'yes' }), t.svc.setFontScale({ scale: '1.5' }),
+                          t.svc.setScreenReader({}), t.svc.setFontScale({ scale: 'x' })]).then(function (r) {
+        assert.deepStrictEqual(r, [true, 1.5, false, 1]);
+        assert.deepStrictEqual(t.writes, [['accessibility', 'highContrast', true], ['accessibility', 'fontScale', 1.5],
+                                          ['accessibility', 'screenReader', false], ['accessibility', 'fontScale', 1]]);
+        return t.svc.getState();
+      }).then(function (s) {
+        assert.deepStrictEqual(s, { highContrast: true, fontScale: 1, screenReader: false });
+      });
+    }),
+    asyncTest('a settings failure answers null, not a guess', function () {
+      return make(null, true).svc.getState().then(function (s) { assert.strictEqual(s, null); });
+    }),
+    asyncTest('speak: nothing to say or no speech engine is false; otherwise the text is spoken', function () {
+      var svc = make(null).svc;
+      var spoken = [];
+      var noEngine = svc.speak({ text: 'hello' });
+      /* The engine is used before the first await, so the swap cannot leak */
+      window.speechSynthesis = { speak: function (u) { spoken.push(u.text); } };
+      window.SpeechSynthesisUtterance = function (text) { this.text = text; };
+      var r;
+      try {
+        r = [noEngine, svc.speak({ text: 'hello' }), svc.speak({ text: '' }), svc.speak()];
+      } finally {
+        delete window.speechSynthesis;
+        delete window.SpeechSynthesisUtterance;
+      }
+      return Promise.all(r).then(function (v) {
+        assert.deepStrictEqual(v, [false, true, false, false]);
+        assert.deepStrictEqual(spoken, ['hello']);
+      });
+    })
+  ]);
+})();
+
+/* ═══════════════════════════════════════════════════════
+   Storage usage: host reading behind a 30-second cache
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ storage service');
+
+var storageTests = (function () {
+  var USAGE = { total: 64e9, used: 16e9, available: 48e9, percent: 25 };
+  /* Each call reads one more byte used, so a fresh reading is told from a cached one */
+  function counting() {
+    var n = 0;
+    return function () { n++; return { total: 100, used: n, available: 100 - n, percent: n }; };
+  }
+
+  return Promise.all([
+    asyncTest('usage comes from the host once, then from the cache', function () {
+      var invoke = recordingInvoker({ fs_get_usage: USAGE });
+      var svc = ns.storage({ invoke: invoke });
+      return svc.getUsage().then(function (u) {
+        assert.strictEqual(u, USAGE);
+        return svc.getUsage();
+      }).then(function (u) {
+        assert.strictEqual(u, USAGE);
+        assert.deepStrictEqual(invoke.calls, [{ cmd: 'fs_get_usage', args: undefined }]);
+      });
+    }),
+    asyncTest('a reading older than 30 seconds is asked for again', function () {
+      var invoke = recordingInvoker({ fs_get_usage: counting() });
+      var svc = ns.storage({ invoke: invoke });
+      return svc.getUsage().then(function () {
+        /* The age is checked before the first await, so the clock swap cannot leak */
+        var realNow = Date.now;
+        Date.now = function () { return realNow() + 30001; };
+        try { return svc.getUsage(); } finally { Date.now = realNow; }
+      }).then(function (u) {
+        assert.strictEqual(u.used, 2);
+        assert.strictEqual(invoke.calls.length, 2);
+      });
+    }),
+    asyncTest('prefetch always asks the host, and getUsage then serves that reading', function () {
+      var invoke = recordingInvoker({ fs_get_usage: counting() });
+      var svc = ns.storage({ invoke: invoke });
+      return svc.getUsage().then(function () { return svc.prefetch(); }).then(function (u) {
+        assert.strictEqual(u.used, 2);
+        return svc.getUsage();
+      }).then(function (u) {
+        assert.strictEqual(u.used, 2);
+        assert.strictEqual(invoke.calls.length, 2);
+      });
+    }),
+    asyncTest('a host failure answers the last reading, or zeros before any', function () {
+      var fail = true;
+      var svc = ns.storage({ invoke: recordingInvoker({ fs_get_usage: function () {
+        return fail ? Promise.reject(new Error('io')) : USAGE;
+      } }) });
+      return svc.getUsage().then(function (u) {
+        assert.deepStrictEqual(u, { total: 0, used: 0, available: 0, percent: 0 });
+        fail = false;
+        return svc.prefetch();
+      }).then(function () {
+        fail = true;
+        return svc.prefetch();
+      }).then(function (u) {
+        assert.strictEqual(u, USAGE);
+      });
+    }),
+    asyncTest('no answer is passed on as none and not cached', function () {
+      var invoke = recordingInvoker({});
+      var svc = ns.storage({ invoke: invoke });
+      return svc.getUsage().then(function (u) {
+        assert.strictEqual(u, null);
+        return svc.getUsage();
+      }).then(function () {
+        assert.strictEqual(invoke.calls.length, 2);
+      });
+    })
+  ]);
+})();
+
+/* ═══════════════════════════════════════════════════════
+   Network: the sandbox whitelist before the host fetch
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ network service');
+
+var networkTests = (function () {
+  /* The whitelist is checked before the first await, so the swap cannot leak */
+  function withSandbox(allowed, checked, fn) {
+    var real = global.ZylSandbox;
+    global.ZylSandbox = { isAllowedDomain: function (url) { checked.push(url); return allowed; } };
+    try { return fn(); } finally { global.ZylSandbox = real; }
+  }
+
+  return Promise.all([
+    asyncTest('an allowed URL is fetched by the host with the URL alone', function () {
+      var checked = [];
+      var invoke = recordingInvoker({ http_fetch: { status: 200, body: 'ok' } });
+      var svc = ns.network({ invoke: invoke });
+      return withSandbox(true, checked, function () {
+        return svc.fetch({ url: 'https://api.example/x', method: 'POST', headers: { a: '1' } });
+      }).then(function (r) {
+        assert.deepStrictEqual(r, { status: 200, body: 'ok' });
+        assert.deepStrictEqual(checked, ['https://api.example/x']);
+        assert.deepStrictEqual(invoke.calls, [{ cmd: 'http_fetch', args: { url: 'https://api.example/x' } }]);
+      });
+    }),
+    asyncTest('a domain outside the whitelist is refused and never reaches the host', function () {
+      var checked = [];
+      var invoke = recordingInvoker({ http_fetch: { status: 200 } });
+      var svc = ns.network({ invoke: invoke });
+      return withSandbox(false, checked, function () {
+        return Promise.all([svc.fetch({ url: 'https://tracker.example/' }), svc.fetch({})]);
+      }).then(function (r) {
+        assert.deepStrictEqual(r, [{ error: 'Domain not in whitelist' }, { error: 'Domain not in whitelist' }]);
+        assert.deepStrictEqual(checked, ['https://tracker.example/', ''], 'a missing URL is checked as empty');
+        assert.strictEqual(invoke.calls.length, 0);
+      });
+    })
+  ]);
+})();
+
+/* ═══════════════════════════════════════════════════════
+   Credential store: exactly the keychain fields, nothing more
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ credential service');
+
+var credentialTests = (function () {
+  return Promise.all([
+    asyncTest('store sends only service, account and secret', function () {
+      var invoke = recordingInvoker({ credential_store: true });
+      return ns.credential({ invoke: invoke })
+        .store({ service: 'mail', account: 'bo', secret: 's3', appId: 'com.example.other' }).then(function (r) {
+          assert.strictEqual(r, true);
+          assert.deepStrictEqual(invoke.calls, [{ cmd: 'credential_store',
+                                                  args: { service: 'mail', account: 'bo', secret: 's3' } }]);
+        });
+    }),
+    asyncTest('lookup and delete never send a secret; lookup answers what the host found', function () {
+      var invoke = recordingInvoker({ credential_lookup: 's3', credential_delete: true });
+      var svc = ns.credential({ invoke: invoke });
+      return Promise.all([svc.lookup({ service: 'mail', account: 'bo', secret: 'x' }),
+                          svc['delete']({ service: 'mail', account: 'bo', secret: 'x' })]).then(function (r) {
+        assert.deepStrictEqual(r, ['s3', true]);
+        assert.deepStrictEqual(invoke.calls, [{ cmd: 'credential_lookup', args: { service: 'mail', account: 'bo' } },
+                                              { cmd: 'credential_delete', args: { service: 'mail', account: 'bo' } }]);
+      });
+    }),
+    asyncTest('a missing entry is null and a keychain failure reaches the caller', function () {
+      var svc = ns.credential({ invoke: recordingInvoker({
+        credential_store: function () { return Promise.reject(new Error('locked')); } }) });
+      return svc.lookup({ service: 'mail', account: 'nobody' }).then(function (v) {
+        assert.strictEqual(v, null);
+        return svc.store({ service: 'mail', account: 'bo', secret: 's' });
+      }).then(function () {
+        throw new Error('a failed store answered success');
+      }, function (e) {
+        assert.strictEqual(e.message, 'locked');
+      });
+    })
+  ]);
+})();
+
+/* ═══════════════════════════════════════════════════════
+   Location and user: host answers passed through, none invented
+   ═══════════════════════════════════════════════════════ */
+console.log('\n■ location service');
+
+var locationTests = (function () {
+  return Promise.all([
+    asyncTest('getLastKnown asks the host, with nothing from the request, and passes its fix on', function () {
+      var fix = { latitude: 37.5, longitude: 127.0, accuracy: 20 };
+      var invoke = recordingInvoker({ location_get_last_known: fix });
+      return ns.location({ invoke: invoke }).getLastKnown({ latitude: 0 }).then(function (r) {
+        assert.strictEqual(r, fix);
+        assert.deepStrictEqual(invoke.calls, [{ cmd: 'location_get_last_known', args: undefined }]);
+      });
+    }),
+    asyncTest('no fix is null — no position invented', function () {
+      return ns.location({ invoke: recordingInvoker({}) }).getLastKnown().then(function (r) {
+        assert.strictEqual(r, null);
+      });
+    })
+  ]);
+})();
+
+console.log('\n■ user service');
+
+var userTests = (function () {
+  return Promise.all([
+    asyncTest("the device's owner, as runtime/services/user starts — nothing from the host or the request", function () {
+      var svc = ns.user({ invoke: function () { throw new Error('the host is not asked'); } });
+      return Promise.all([svc.getCurrent({ uid: 0 }), svc.listUsers({ all: true })]).then(function (r) {
+        assert.strictEqual(r[0].uid, 1000);
+        assert.strictEqual(r[0].type, 'OWNER');
+        assert.strictEqual(r[0].dataDir, '/data/users/1000');
+        assert.deepStrictEqual(r[1], [r[0]]);
+      });
+    })
+  ]);
+})();
+
+/* ═══════════════════════════════════════════════════════
    Wait for all async tests and report
    ═══════════════════════════════════════════════════════ */
 Promise.all([settingsTests, displayTests, inputTests, sensorsTests,
              usbTests, powerTests, audioTests, fsTests, updaterTests, telemetryTests, callTests, storeTests,
              netstatsTests, alertTests, lockTests, deviceBridgeTests, appStateTests,
-             alarmTests])
+             alarmTests, appsTests, sandboxTests, accessibilityTests, storageTests, networkTests,
+             credentialTests, locationTests, userTests, gateTests])
   .then(function () {
     console.log('\n════════════════════════');
     console.log('Total: ' + total + '  Passed: ' + passed + '  Failed: ' + failed);

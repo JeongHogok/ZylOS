@@ -29,6 +29,7 @@ expect "앱 JS 는 웹 검사 + 이미지 부팅(홈 앱이 떠야 한다)" \
 expect "C 런타임은 네이티브 + 두 부팅 레인" \
        "build-native fuzz qemu-boot qemu-boot-riscv64 test-integration" runtime/wam/src/wam.c
 expect "Dockerfile 은 docker 빌드만" "build-docker" Dockerfile
+expect "에뮬레이터 Rust 는 에뮬레이터 빌드·테스트만" "test-emulator" emulator-app/src/main.rs
 expect "서비스의 meson.build 는 라이선스 감사도" \
        "audit-licenses build-native fuzz qemu-boot qemu-boot-riscv64 test-integration" \
        runtime/services/alarm/meson.build

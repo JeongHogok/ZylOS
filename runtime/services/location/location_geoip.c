@@ -12,6 +12,8 @@
 #ifdef HAVE_CURL
 #include <curl/curl.h>
 
+#define GEOIP_MAX_RESPONSE (16 * 1024)
+
 typedef struct {
     char *data;
     size_t len;
@@ -21,6 +23,9 @@ static size_t curl_write_cb(void *ptr, size_t size, size_t nmemb,
                              void *userdata) {
     CurlBuffer *buf = userdata;
     size_t total = size * nmemb;
+    /* The answer is ~100 bytes over plain HTTP; anyone on the path could
+       otherwise stream until we run out of memory. 0 aborts the transfer. */
+    if (total > GEOIP_MAX_RESPONSE - buf->len) return 0;
     char *tmp = realloc(buf->data, buf->len + total + 1);
     if (!tmp) return 0;
     buf->data = tmp;
@@ -54,7 +59,7 @@ bool geoip_query(ZylLocation *loc) {
      * that follows, handling whitespace between ':' and the value.
      * Avoids false matches from keys that are substrings of other keys.
      */
-    double lat = 0.0, lon = 0.0;
+    double lat = NAN, lon = NAN;     /* a missing field is not 0 */
 
     /* Find "lat": with word-boundary check (look for '"lat":') */
     const char *search = buf.data;
@@ -76,7 +81,7 @@ bool geoip_query(ZylLocation *loc) {
         search++;
     }
     /* Also try "lng": (Google-style) */
-    if (lon == 0.0) {
+    if (isnan(lon)) {
         search = buf.data;
         while ((search = strstr(search, "\"lng\":")) != NULL) {
             const char *val_start = search + 6;
@@ -90,7 +95,7 @@ bool geoip_query(ZylLocation *loc) {
 
     free(buf.data);
 
-    if (lat == 0.0 && lon == 0.0) return false;
+    if (isnan(lat) || isnan(lon) || (lat == 0.0 && lon == 0.0)) return false;
 
     loc->latitude = lat;
     loc->longitude = lon;

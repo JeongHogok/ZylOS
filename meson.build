@@ -3,7 +3,10 @@ project('zyl-os', 'c',
   # gnu11, not c11: with strict ISO mode glibc hides POSIX declarations
   # (mkstemp, lstat, symlink, strdup...) behind feature macros, which this
   # tree had been patching file by file with #define _GNU_SOURCE.
-  default_options: ['c_std=gnu11', 'warning_level=2'],
+  # werror: the tree builds warning-free; a new warning fails the build
+  # instead of joining a pile nobody reads (-Dwerror=false for a newer
+  # compiler's new warnings until they are fixed)
+  default_options: ['c_std=gnu11', 'warning_level=2', 'werror=true'],
 )
 
 # ═══════════════════════════════════════════════════════════
@@ -71,6 +74,7 @@ if not _wam_webkit.found()
   _wam_webkit = dependency('webkit2gtk-4.0', required: false)
 endif
 subdir('runtime/hal')   # before the WAM and services: both take hardware facts from it
+subdir('runtime/lib')   # code more than one of them compiles (containers, seals, signatures)
 if _wam_webkit.found()
   subdir('runtime/wam')
 else

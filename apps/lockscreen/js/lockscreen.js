@@ -2,7 +2,7 @@
 // [Clean Architecture] Presentation Layer - Page
 //
 // 역할: 잠금화면 UI — 시계, PIN 입력, 스와이프 잠금해제, 알림 상호작용
-// 수행범위: 실시간 스와이프 피드백, PIN 인증, 알림 터치→앱 이동, 에뮬레이터 연동
+// 수행범위: 실시간 스와이프 피드백, PIN 인증, 알림 터치→앱 이동, 잠금 해제는 OS 셸에 알림
 // 의존방향: ZylClock (clock.js), ZylBridge (bridge.js)
 // SOLID: SRP — 잠금화면 UI와 인증 로직만 담당
 //
@@ -136,13 +136,7 @@
         /* No PIN set → swipe-only unlock */
         document.body.classList.add('unlocking');
         unlockFlash.classList.add('flash');
-        setTimeout(function () {
-          if (pendingAppId) {
-            ZylBridge.sendToSystem({ type: 'app.launch', appId: pendingAppId });
-          } else {
-            ZylBridge.sendToSystem({ type: 'unlock' });
-          }
-        }, 500);
+        setTimeout(unlockDevice, 500);
       } else {
         /* PIN set → show PIN screen */
         setTimeout(function () {
@@ -284,23 +278,15 @@
     document.body.classList.add('unlocking');
     unlockFlash.classList.add('flash');
 
-    setTimeout(function () {
-      /* 에뮬레이터에 잠금해제 알림 */
-      if (pendingAppId) {
-        ZylBridge.sendToSystem({
-          type: 'app.launch', appId: pendingAppId
-        });
-      } else {
-        ZylBridge.sendToSystem({
-          type: 'unlock'
-        });
-      }
+    setTimeout(unlockDevice, 500);
+  }
 
-      /* 자체 Bridge 호출 (WAM 환경) */
-      if (typeof ZylBridge !== 'undefined') {
-        ZylBridge.closeApp();
-      }
-    }, 500);
+  /* Tell the OS the user got in (only this app may); it opens the app of the
+     notification the user tapped, or home. This screen then goes away — the
+     OS raises it again, fresh, at the next lock. */
+  function unlockDevice() {
+    ZylBridge.sendToSystem({ type: 'unlock', appId: pendingAppId || '' });
+    ZylBridge.closeApp();
   }
 
   function pinRejected(r) {
@@ -406,35 +392,17 @@
   if (btnEmergency) {
     btnEmergency.addEventListener('click', function (e) {
       e.stopPropagation();
-      /* Launch phone app with emergency dial intent */
-      ZylBridge.sendToSystem({
-        type: 'app.launch',
-        appId: 'com.zylos.phone',
-        intent: {
-          action: 'zyl.intent.action.DIAL',
-          data: 'tel:emergency',
-          extras: { emergency: true }
-        }
-      });
+      /* The keypad, over the lock screen (the OS lets calls through) */
+      ZylIntent.startActivity({ targetApp: 'com.zylos.phone', action: ZylIntent.ACTION.DIAL });
     });
   }
 
   if (btnCamera) {
     btnCamera.addEventListener('click', function (e) {
       e.stopPropagation();
-      /* Unlock + launch camera without PIN for quick capture */
-      document.body.classList.add('unlocking');
-      unlockFlash.classList.add('flash');
-      setTimeout(function () {
-        ZylBridge.sendToSystem({
-          type: 'app.launch',
-          appId: 'com.zylos.camera',
-          intent: {
-            action: 'zyl.intent.action.CAPTURE',
-            extras: { fromLockscreen: true }
-          }
-        });
-      }, 500);
+      /* The camera over the lock screen, still locked: leaving it comes
+         back here, and it cannot open anything else meanwhile (the OS's) */
+      ZylIntent.startActivity({ targetApp: 'com.zylos.camera' });
     });
   }
 

@@ -17,7 +17,10 @@ ProtectHome=true
 PrivateTmp=true
 PrivateDevices=false
 PrivateNetwork=true
-ProtectKernelTunables=true
+# false 여야 한다: 모드 전환은 USB 가젯 configfs(/sys/kernel/config/usb_gadget)
+# 의 함수 링크와 UDC 바인딩을 쓰는 것이다. true 면 /sys 전체가 읽기 전용이 되어
+# SetMode 가 기기에서 한 번도 될 수 없다 (tests/test_usb.c 가 경로를 검증)
+ProtectKernelTunables=false
 ProtectKernelModules=true
 ProtectControlGroups=true
 RestrictNamespaces=true

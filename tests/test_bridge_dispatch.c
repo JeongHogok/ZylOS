@@ -533,6 +533,49 @@ static void test_event_reaches_only_apps_allowed_to_call_the_service(void) {
     g_variant_unref(params);
 }
 
+/* Another app's notification (a message, a code) is not a third-party app's
+   to read, dismiss or silence; posting its own is */
+static void test_notifications_are_the_apps_own(void) {
+    const char *notif[] = { "notification", NULL };
+    const char *read[] = { "notification", "notification.read", NULL };   /* reserved: not granted */
+    ZylAppManifest app = perm_manifest("com.example.chat", FALSE, notif);
+    ZylAppManifest greedy = perm_manifest("com.example.spy", FALSE, read);
+    ZylAppManifest bar = perm_manifest("com.zylos.statusbar", TRUE, NULL);
+    assert(app_may_call(&app, "notification") && app_may_call_method(&app, "notification", "post"));
+    const char *others[] = { "getActive", "cancel", "clearAll", "setDndMode", "setChannelEnabled", NULL };
+    for (int i = 0; others[i]; i++) {
+        assert(!app_may_call_method(&app, "notification", others[i]));
+        assert(!app_may_call_method(&greedy, "notification", others[i]));
+        assert(app_may_call_method(&bar, "notification", others[i]));
+    }
+    assert(app_may_call_method(&app, "camera", "capture"));                 /* no method rule */
+
+    GVariant *mine = g_variant_ref_sink(g_variant_new("(tssssi)", (guint64)1, "com.example.chat", "t", "b", "", 1));
+    GVariant *theirs = g_variant_ref_sink(g_variant_new("(tssssi)", (guint64)2, "com.zylos.messages", "Mom", "code 1234", "", 1));
+    GVariant *gone = g_variant_ref_sink(g_variant_new("(t)", (guint64)2));
+    char *s = zyl_bridge_service_event_script(&app, "notification", "NotificationPosted", mine);
+    assert(s);
+    g_free(s);
+    assert(!zyl_bridge_service_event_script(&app, "notification", "NotificationPosted", theirs));
+    assert(!zyl_bridge_service_event_script(&greedy, "notification", "NotificationPosted", theirs));
+    assert(!zyl_bridge_service_event_script(&app, "notification", "NotificationDismissed", gone));
+    s = zyl_bridge_service_event_script(&bar, "notification", "NotificationPosted", theirs);   /* the lock screen's */
+    assert(s);
+    g_free(s);
+    g_variant_unref(mine);
+    g_variant_unref(theirs);
+    g_variant_unref(gone);
+}
+
+/* Users: adding, switching and removing (with the user's data) is the OS's */
+static void test_users_are_system_only(void) {
+    const char *any[] = { "storage", "notification", NULL };
+    ZylAppManifest app = perm_manifest("com.example.app", FALSE, any);
+    ZylAppManifest settings = perm_manifest("com.zylos.settings", TRUE, NULL);
+    assert(!app_may_call(&app, "user"));
+    assert(app_may_call(&settings, "user"));
+}
+
 static int g_events;
 static void count_event(const char *service, const char *signal, GVariant *params, gpointer d) {
     (void)params; (void)d;
@@ -602,6 +645,8 @@ int main(void)
     RUN_TEST(test_args_caller_is_always_the_calling_app);
     RUN_TEST(test_args_container_is_the_app_unless_system);
     RUN_TEST(test_event_reaches_only_apps_allowed_to_call_the_service);
+    RUN_TEST(test_notifications_are_the_apps_own);
+    RUN_TEST(test_users_are_system_only);
     RUN_TEST(test_events_only_from_the_services_own_name);
     RUN_TEST(test_args_params_object_is_the_whole_request);
     RUN_TEST(test_service_request_reaches_typed_dbus_method);
