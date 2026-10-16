@@ -1468,13 +1468,13 @@ console.log('\n■ ZylPermissions');
     { id: 'com.zylos.settings', permissions: [] },
     { id: 'com.evil.app', permissions: ['system', 'credential',
                                         'app.manage', 'notification.read',
-                                        'camera', 'network'] },
+                                        'webcontent', 'camera', 'network'] },
     { id: 'com.zylos.settings', permissions: ['camera'] }   /* ID spoof */
   ]);
 
   test('a third-party app cannot declare itself system permissions', function () {
     var got = P.getEffectivePermissions('com.evil.app');
-    ['system', 'credential', 'app.manage', 'notification.read'].forEach(function (r) {
+    ['system', 'credential', 'app.manage', 'notification.read', 'webcontent'].forEach(function (r) {
       assert.strictEqual(got.indexOf(r), -1, r + ' must not be grantable by declaration');
     });
   });
@@ -3290,18 +3290,11 @@ console.log('\n■ ZylSandbox content policy');
       "font-src 'self'; frame-src 'self'; object-src 'none'");
   });
 
-  test('with the network: https/wss out, never plain http, never remote or inline code', function () {
+  test('with the network: https/wss out, never plain http; no app frames the web (frame-src self)', function () {
     assert.strictEqual(S.getContentPolicy(['network']),
       "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
       "img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; " +
       "font-src 'self' https:; frame-src 'self'; object-src 'none'");
-  });
-
-  test('network and webview (as a system app holds): https frames, still no inline code', function () {
-    assert.strictEqual(S.getContentPolicy(['network', 'webview']),
-      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
-      "img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; " +
-      "font-src 'self' https:; frame-src 'self' https:; object-src 'none'");
   });
 })();
 

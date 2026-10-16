@@ -96,12 +96,15 @@
 앱 응답에 OS 가 준 것을(`sandbox.js` 의 `getContentPolicy` → `store.rs`) 붙입니다. 헤더라서
 문서의 첫 바이트와 워커 스크립트부터 묶입니다.
 
-| | 기본 | `network` | `webview` |
-|---|---|---|---|
-| 스크립트 | 자기 파일만. eval·인라인 없음 | 같음 | 같음 |
-| `fetch`·XHR·WebSocket | 자기 출처만 | + https·wss (평문 http 는 막힘) | — |
-| 이미지·미디어·글꼴 | 자기 출처, `data:`·`blob:` | + https | — |
-| iframe | 자기 출처 | — | + https 페이지 |
+| | 기본 | `network` |
+|---|---|---|
+| 스크립트 | 자기 파일만. eval·인라인 없음 | 같음 |
+| `fetch`·XHR·WebSocket | 자기 출처만 | + https·wss (평문 http 는 막힘) |
+| 이미지·미디어·글꼴 | 자기 출처, `data:`·`blob:` | + https |
+| iframe | 자기 출처 | 자기 출처 |
+
+어느 앱도 웹을 프레이밍하지 않습니다 — 웹 콘텐츠는 OS 가 소유하는 별도 뷰입니다(§7의
+`webcontent`). 그래서 `frame-src` 는 늘 `'self'` 입니다.
 
 - **어느 앱에도 인라인 스크립트가 없는 이유:** 네트워크와 합치면 받아 온 문자열을 스크립트로
   넣어 실행할 수 있어, 봉인한 코드만 돈다는 보장(§6)이 깨집니다. 시스템 앱은 다른 앱·
@@ -117,11 +120,11 @@
   줍니다. 그래서 WAM 은 웹뷰마다 토큰을 만들어 브리지 스크립트(`runtime/wam/src/bridge/bridge.js`)
   에만 넣고, 그 스크립트는 최상위 문서가 `zyl-app://<앱 id>/` 일 때만 토큰을 붙여 보냅니다
   (`window.__zylPost`). 토큰이 없는 메시지는 버립니다(`zyl_bridge_untoken`). 앱이 띄운
-  프레임(브라우저의 웹 페이지 포함)이나 앱이 옮겨 간 페이지는 앱이 아닙니다. 웹뷰는 자기
-  출처 밖으로 가지 않습니다 — `webview` 가 없는 앱은 이동 자체가 막히고, 있는 앱도 https 는
-  프레임 안에서만(최상위 문서가 바뀌면 앱 첫 화면으로 되돌림, `zyl_app_scheme_may_load`·
-  `zyl_app_scheme_is_own`). 에뮬레이터는 프레임 문서의 출처가 표시 중인 앱의 것일 때만 그
-  앱으로 봅니다(`emulator.js` 의 `senderOf`).
+  프레임이나 앱이 옮겨 간 페이지는 앱이 아닙니다. 앱 웹뷰는 자기 출처 밖으로 가지 않습니다
+  — 어떤 앱도 웹을 자기 문서에 프레이밍하지 않고(최상위 문서가 바뀌면 앱 첫 화면으로 되돌림,
+  `zyl_app_scheme_may_load`·`zyl_app_scheme_is_own`), 웹 페이지는 OS 가 소유하는 별도 콘텐츠
+  뷰(§7)가 띄웁니다. 에뮬레이터는 프레임 문서의 출처가 표시 중인 앱의 것일 때만 그 앱으로
+  봅니다(`emulator.js` 의 `senderOf`).
 - **권한을 바꾸면:** CSP 는 문서와 함께 오므로, 설정에서 권한이 바뀐 앱은 실행 중이면 WAM 이
   닫습니다(Android 가 권한을 거둔 앱을 멈추는 것과 같음). 다음 실행부터 새 규칙입니다.
   에뮬레이터는 앱을 바꿀 때마다 문서를 새로 읽으므로 따로 할 일이 없습니다.
@@ -197,6 +200,15 @@
 **앱 — WebKit 샌드박스.** 앱 코드는 WebKitGTK 웹 프로세스에서 돌고, 그 격리는 WebKit 이
 직접 합니다 (bubblewrap 네임스페이스 + seccomp + xdg-dbus-proxy). `webkitgtk-6.0` 은 늘
 켜져 있고, `webkit2gtk-4.x` 로 빌드하면 WAM 이 켭니다 (`runtime/wam/src/wam.c`).
+
+**웹 콘텐츠 — 앱 밖 별도 프로세스.** 앱은 웹을 자기 문서에 프레이밍하지 않습니다. 웹
+페이지는 OS 가 소유하는 콘텐츠 뷰(`webcontent` 서비스)가 띄웁니다 — 자기 WebKitWebView,
+자기 웹 프로세스, **브리지 없음**(토큰·`navigator.system`·`messageHandlers` 없음). 그래서
+웹 콘텐츠의 렌더러 취약점에 OS 로 닿을 길도, 훔칠 토큰도 없습니다. 브라우저(크롬: 주소창·
+탭)는 이 서비스로만 콘텐츠를 몰고(navigate/back/…) url·title·loading 을 이벤트로 받을 뿐,
+콘텐츠의 DOM·JS 에는 닿지 않습니다. 임베드는 시스템 앱만(예약 권한 `webcontent`). 기기는
+WAM 이 콘텐츠 뷰를 앱 창 안에 합성하고, 에뮬레이터는 별도 iframe 으로 근사합니다(교차
+출처라 title·url·favicon·진짜 back/forward 는 못 봄 — 기기에서만 충실).
 `bubblewrap`·`xdg-dbus-proxy` 가 이미지에 없으면 격리가 조용히 꺼지므로 둘은
 `system/packages.list` 에 있습니다. OS 가 자체 seccomp·네임스페이스 코드로 앱을 가두지는
 않습니다 — WAM 이 앱 프로세스를 직접 띄우지 않고, 같은 일을 WebKit 이 합니다.

@@ -657,6 +657,8 @@ static const ServiceRoute SERVICE_ROUTES[] = {
     {"push",         "org.zylos.Push",               "/org/zylos/Push",               "org.zylos.Push"},
     {"appstore",     "org.zylos.AppStore",           "/org/zylos/AppStore",           "org.zylos.AppStore"},
     {"alarm",        "org.zylos.AlarmService",       "/org/zylos/AlarmService",       "org.zylos.AlarmService"},
+    /* OS-owned web content view the browser drives — WAM answers (like apps) */
+    {"webcontent",   "org.zylos.WebAppManager",      "/org/zylos/WebContent",         "org.zylos.WebContent"},
     {NULL, NULL, NULL, NULL}
 };
 
@@ -722,6 +724,8 @@ static const ServicePermission SERVICE_PERMISSIONS[] = {
     {"appdata",       {NULL}},
     {"push",          {"push", NULL}},
     {"power",         {NULL}},
+    /* Embedding a web content view is the OS's browser only (reserved) */
+    {"webcontent",    {"webcontent", NULL}},
     {NULL, {NULL}}
 };
 
@@ -924,7 +928,7 @@ void zyl_bridge_watch_revocations(GDBusConnection *conn, ZylBridgeAppFn changed,
 
 /* Never granted by declaring them in app.json — only system apps hold these */
 static const char *const RESERVED_PERMISSIONS[] = {
-    "system", "credential", "app.manage", "notification.read", NULL
+    "system", "credential", "app.manage", "notification.read", "webcontent", NULL
 };
 
 static gboolean is_reserved_permission(const char *perm) {
@@ -1022,6 +1026,7 @@ static const struct { const char *service, *signal, *read_all; } OWNED_EVENTS[] 
     {"location",     "GeofenceExit",  NULL},
     {"alarm",        "AlarmTriggered", NULL},
     {"push",         "PushReceived",   NULL},
+    {"webcontent",   NULL,             NULL},
     {NULL, NULL, NULL}
 };
 

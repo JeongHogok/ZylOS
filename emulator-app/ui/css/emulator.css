@@ -70,7 +70,10 @@
   flex: 1; position: relative; overflow: hidden; background: #0a0a1a;
   margin-top: 36px; z-index: 1;
 }
-#app-frame { width: 100%; height: 100%; border: none; background: #0a0a1a; }
+#app-frame { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; background: #0a0a1a; z-index: 2; }
+/* The OS content view sits below the app's chrome; the webcontent service
+   reveals it and sizes the chrome to its toolbar (mirrors the device box). */
+#content-frame { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; background: #fff; z-index: 1; display: none; }
 
 @keyframes app-enter {
   from { opacity: 0; transform: scale(0.95); }

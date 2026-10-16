@@ -81,8 +81,7 @@ window.ZylSandbox = (function () {
     return "default-src 'self'; script-src 'self'" +
       "; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:" + web +
       "; media-src 'self' blob:" + web + "; connect-src 'self'" + (network ? ' https: wss:' : '') +
-      "; font-src 'self'" + web + "; frame-src 'self'" +
-      (grantedPerms.indexOf('webview') !== -1 ? ' https:' : '') + "; object-src 'none'";
+      "; font-src 'self'" + web + "; frame-src 'self'; object-src 'none'";
   }
 
   return {

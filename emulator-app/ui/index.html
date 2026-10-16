@@ -98,6 +98,12 @@
           allow="camera 'none'; microphone 'none'; geolocation 'none'"></iframe>
 
         <div id="app-viewport">
+          <!-- OS-owned web content view (webcontent service): a separate frame
+               the OS drives, with no bridge — mirrors the device's bridge-less
+               WebKitWebView. An app embedding web content never touches it. -->
+          <iframe id="content-frame" src="" frameborder="0"
+            sandbox="allow-scripts allow-forms allow-popups allow-presentation"
+            allow="camera 'none'; microphone 'none'; geolocation 'none'"></iframe>
           <iframe id="app-frame" src="" frameborder="0"
             sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
             allow="camera 'none'; microphone 'none'; geolocation 'none'"></iframe>

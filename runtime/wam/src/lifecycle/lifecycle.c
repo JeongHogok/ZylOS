@@ -179,8 +179,14 @@ ZylAppInstance *zyl_lifecycle_launch(ZylAppInterface *iface,
     /* Create webview via the abstract engine */
     instance->webview_widget = engine->create_webview(engine, manifest,
                                                       instance);
+    /* The chrome webview lives in a vertical box; an OS-owned web content view
+       (webcontent service) is packed below it on demand. The box is one child
+       for apps that never open one, so nothing changes for them. */
+    instance->content_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_widget_set_vexpand(instance->webview_widget, TRUE);
+    gtk_box_append(GTK_BOX(instance->content_box), instance->webview_widget);
     gtk_window_set_child(GTK_WINDOW(instance->window),
-                         instance->webview_widget);
+                         instance->content_box);
 
     /* The app's own origin: zyl-app://<id>/<entry> (wam.c serves it) */
     char *entry_uri = zyl_app_scheme_uri(manifest->id, manifest->entry);

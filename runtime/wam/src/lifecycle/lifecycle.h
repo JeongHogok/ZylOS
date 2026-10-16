@@ -88,6 +88,11 @@ typedef struct {
     GtkWidget      *webview_widget;
     ZylAppState     state;
     char            bridge_token[ZYL_BRIDGE_TOKEN_LEN + 1];   /* zyl_bridge_new_token */
+    /* The app's chrome webview sits in a vertical box; an OS-owned web content
+       view (webcontent service) is packed below it when the app opens one. The
+       content view has no bridge and its own web process — see wam.c. */
+    GtkWidget      *content_box;    /* GtkBox holding chrome (and content) */
+    GtkWidget      *content_view;   /* content WebKitWebView, or NULL */
 } ZylAppInstance;
 
 /*
