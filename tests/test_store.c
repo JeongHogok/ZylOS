@@ -136,6 +136,13 @@ static void test_install_swap_and_removal_leave_nothing(void) {
     assert(!remove_app("../appdata"));
 }
 
+/* com.zylos.* is the OS image's: a store app under one would hand its
+   container to the system app an update later ships with that id */
+static void test_the_os_names_are_not_the_store_s(void) {
+    assert(reserved_id("com.zylos.maps") && reserved_id("com.zylos.settings"));
+    assert(!reserved_id("com.zylosx.app") && !reserved_id("com.example.zylos") && !reserved_id("com.zylos"));
+}
+
 static void test_system_apps_are_not_the_store_s(void) {
     put(ZYL_SYSTEM_APPS_DIR "/settings/app.json", "{\"id\":\"com.zylos.settings\"}");
     assert(is_system_app("com.zylos.settings") && !is_system_app("com.example.hello"));
@@ -160,6 +167,7 @@ int main(void) {
     RUN_TEST(test_unpack_refuses_what_could_escape);
     RUN_TEST(test_install_swap_and_removal_leave_nothing);
     RUN_TEST(test_system_apps_are_not_the_store_s);
+    RUN_TEST(test_the_os_names_are_not_the_store_s);
     RUN_TEST(test_config_needs_https_and_a_key);
     assert(system("rm -rf " ROOT_) == 0);
     printf("=== %d/%d passed ===\n", tests_pass, tests_run);

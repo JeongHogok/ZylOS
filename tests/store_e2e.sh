@@ -46,6 +46,24 @@ python3 -I "$TOOL" package --key "$R/dev.key" --cert "$R/acme.cert.json" --profi
 mkdir -p "$R/elsewhere"
 python3 -I "$TOOL" package --key "$R/dev.key" --cert "$R/acme.cert.json" --profile "$R/there.profile.json" "$R/src/devapp" "$R/elsewhere" >/dev/null
 cp "$R/elsewhere/com.acme.devapp-1.0.0.zpkg" "$R/files/Downloads/elsewhere.zpkg"
+# Another developer the store vouches for, same app pattern: their build of
+# acme's app must not take over acme's installed one (its container)
+openssl genrsa -out "$R/mal.key" 2048 2>/dev/null
+openssl rsa -in "$R/mal.key" -pubout -out "$R/mal.pub" 2>/dev/null
+python3 -I "$TOOL" dev-cert --key "$R/store.key" --developer mallory --name Mallory --pubkey "$R/mal.pub" --out "$R/mal.cert.json" >/dev/null
+python3 -I "$TOOL" profile --key "$R/store.key" --cert "$R/mal.cert.json" --app 'com.acme.*' --device DEV-E2E --out "$R/mal.profile.json" >/dev/null
+mkdir -p "$R/src/next" "$R/mal" "$R/next"
+printf '{"id":"com.acme.devapp","name":"devapp","version":"1.0.1","entry":"index.html"}' > "$R/src/next/app.json"
+echo '<p>next</p>' > "$R/src/next/index.html"
+python3 -I "$TOOL" package --key "$R/mal.key" --cert "$R/mal.cert.json" --profile "$R/mal.profile.json" "$R/src/next" "$R/mal" >/dev/null
+cp "$R/mal/com.acme.devapp-1.0.1.zpkg" "$R/files/Downloads/mallory.zpkg"
+python3 -I "$TOOL" package --key "$R/dev.key" --cert "$R/acme.cert.json" --profile "$R/here.profile.json" "$R/src/next" "$R/next" >/dev/null
+cp "$R/next/com.acme.devapp-1.0.1.zpkg" "$R/files/Downloads/acme-next.zpkg"
+# com.zylos.* is the OS image's: the store's own tool will not package it
+mkdir -p "$R/src/zylos" && printf '{"id":"com.zylos.maps","name":"m","version":"1.0.0","entry":"index.html"}' > "$R/src/zylos/app.json"
+echo '<p>m</p>' > "$R/src/zylos/index.html"
+python3 -I "$TOOL" package --key "$R/store.key" "$R/src/zylos" "$R/elsewhere" >/dev/null 2>&1 \
+  && { echo "✗ build-store packaged a com.zylos.* app"; exit 1; }
 # A development build slipped into the store's catalog
 python3 -I "$TOOL" package --key "$R/dev.key" --cert "$R/acme.cert.json" --profile "$R/here.profile.json" "$R/src/sneaky" "$R/srv" >/dev/null
 python3 -I "$TOOL" catalog --key "$R/store.key" "$R/srv" >/dev/null
@@ -126,6 +144,14 @@ echo "$OUT" | grep -q "'ok': <true>" || fail "provisioned development build refu
 call AppStore InstallFile Downloads/elsewhere.zpkg | grep -q "not_provisioned" || fail "a build for another device installed"
 call AppStore InstallFile ../../etc/passwd | grep -q "invalid_package" || fail "a path outside the user's files was read"
 echo "  ✓ development builds only on the provisioned device; none through the catalog"
+
+call AppData SetItem com.acme.devapp secret acme >/dev/null
+call AppStore InstallFile Downloads/mallory.zpkg | grep -q "signer_changed" || fail "another developer's build replaced an installed app"
+grep -q "dev" "$R/apps/com.acme.devapp/index.html" || fail "the installed app changed"
+OUT=$(call AppStore InstallFile Downloads/acme-next.zpkg)
+echo "$OUT" | grep -q "'ok': <true>" || fail "the same developer's update refused: $OUT"
+call AppData GetItem com.acme.devapp secret | grep -q "acme" || fail "an update lost the app's data"
+echo "  ✓ an update only from the installed app's signer"
 
 # The store revokes the developer: the next catalog says so, and their builds stop
 sha256sum "$R/acme.cert.json" | cut -c1-64 > "$R/revoked.txt"

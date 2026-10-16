@@ -2080,7 +2080,8 @@ var storeTests = (function () {
       }
       if (cmd === 'fs_read_binary') return Promise.resolve(pkg.toString('base64'));
       if (cmd === 'store_unpack') return Promise.resolve(opts.unpacked || sealed());
-      if (cmd === 'store_inspect') return Promise.resolve(opts.inspect[a.appId]);
+      /* what is installed: the store's own unless the test says otherwise */
+      if (cmd === 'store_inspect') return Promise.resolve((opts.inspect || {})[a.appId] || sealed({ id: a.appId }));
       if (cmd === 'store_revoked') {
         if (a.list) revoked = a.list;
         return Promise.resolve(revoked);
@@ -2186,6 +2187,25 @@ var storeTests = (function () {
         assert.strictEqual(r[1].reason, 'invalid_package');
         assert.strictEqual(r[2].reason, 'up_to_date');
         assert.strictEqual(r[3].ok, true);                    /* a developer's next build, same version */
+      });
+    }),
+    asyncTest('an update only from the installed app\'s signer; com.zylos.* is the image\'s', function () {
+      var over = store({ unpacked: sealed({ dev: true }),            /* a dev build over the store's app */
+                         installed: [{ id: 'com.example.hello', source: 'store', version: '1.0.0' }] });
+      var next = store({ unpacked: sealed({ dev: true }),            /* the same developer's next build */
+                         installed: [{ id: 'com.example.hello', source: 'store', version: '1.0.0' }],
+                         inspect: { 'com.example.hello': sealed({ dev: true, version: '1.0.0' }) } });
+      var storeOver = store({ installed: [{ id: 'com.example.hello', source: 'store', version: '1.0.0' }],
+                              inspect: { 'com.example.hello': sealed({ dev: true, version: '1.0.0' }) } });
+      var os = store({ unpacked: sealed({ id: 'com.zylos.maps' }) });
+      return Promise.all([over.svc.installFile({ path: 'a.zpkg' }), next.svc.installFile({ path: 'a.zpkg' }),
+                          storeOver.svc.install({ appId: 'com.example.hello' }),
+                          os.svc.installFile({ path: 'a.zpkg' })]).then(function (r) {
+        assert.deepStrictEqual(r[0], { ok: false, reason: 'signer_changed' });
+        assert.ok(over.committed.length === 0 && over.calls.indexOf('store_discard') !== -1);
+        assert.strictEqual(r[1].ok, true);
+        assert.deepStrictEqual(r[2], { ok: false, reason: 'signer_changed' });   /* the store's over a dev build */
+        assert.deepStrictEqual(r[3], { ok: false, reason: 'system_app' });
       });
     }),
     asyncTest('apps list: a store app whose seal does not hold is not listed', function () {

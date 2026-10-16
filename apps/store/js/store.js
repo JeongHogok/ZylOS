@@ -82,7 +82,8 @@
     download_failed: 'store.error_network', untrusted: 'store.error_untrusted',
     bad_package: 'store.error_untrusted', invalid_package: 'store.error_untrusted',
     not_provisioned: 'store.error_not_provisioned', expired: 'store.error_expired',
-    revoked: 'store.error_revoked', busy: 'store.error_busy'
+    revoked: 'store.error_revoked', busy: 'store.error_busy',
+    signer_changed: 'store.error_signer_changed'
   };
 
   function act(method, appId, pending) {

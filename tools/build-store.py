@@ -40,6 +40,10 @@ def manifest_of(app_dir):
         m = json.load(f)
     if not ID.match(m.get('id', '')) or '..' in m['id']:
         sys.exit('✗ app.json id must be a reverse-domain name: %r' % m.get('id'))
+    if m['id'].startswith('com.zylos.'):
+        # the OS image's names: a store app under one would hand its container
+        # to the system app an update later ships with that id
+        sys.exit('✗ com.zylos.* ids are the OS image\'s: %r' % m['id'])
     if not VERSION.match(m.get('version', '')):
         sys.exit('✗ app.json version must be digits and dots: %r' % m.get('version'))
     if not os.path.isfile(os.path.join(app_dir, m.get('entry', 'index.html'))):

@@ -119,6 +119,22 @@ static void test_development_build_only_where_provisioned(void) {
     assert(open_as(R "/selfcert", "com.acme.hello", "DEV-1", NULL, NOW) == ZYL_SEAL_BAD_SIGNATURE);
 }
 
+/* Who signed it decides who may update it: the store's own (NULL) or the
+   developer's key from the certificate — the same key, not the same name */
+static void test_the_signer_is_the_store_or_the_developers_key(void) {
+    assert(zyl_seal_signer_key(R "/app") == NULL);                         /* the store's own */
+    char *k = zyl_seal_signer_key(R "/devapp"), *pub = NULL;
+    g_file_get_contents(R "/dev.pub", &pub, NULL, NULL);
+    assert(k && strstr(pub, "BEGIN PUBLIC KEY") && g_strcmp0(g_strstrip(k), g_strstrip(pub)) == 0);
+    g_free(k);
+    g_free(pub);
+    /* a certificate with no key is no one's — and never the store's */
+    sh("rm -rf " R "/nokey && cp -r " R "/devapp " R "/nokey && echo '{}' > " R "/nokey/.zyl-seal/cert.json");
+    k = zyl_seal_signer_key(R "/nokey");
+    assert(k && strcmp(k, "?") == 0);
+    g_free(k);
+}
+
 static void test_store_key_and_revoked_list(void) {
     sh("printf '{\"url\":\"https://s/c.json\",\"publicKey\":\"PEM\"}' > " R "/store.json");
     char *k = zyl_seal_store_key(R "/store.json");
@@ -141,6 +157,7 @@ int main(void) {
     RUN_TEST(test_files_must_be_exactly_as_sealed);
     RUN_TEST(test_not_signed_by_the_store);
     RUN_TEST(test_development_build_only_where_provisioned);
+    RUN_TEST(test_the_signer_is_the_store_or_the_developers_key);
     RUN_TEST(test_store_key_and_revoked_list);
     g_free(store_pem);
     sh("rm -rf " R);
