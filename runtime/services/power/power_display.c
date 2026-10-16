@@ -21,6 +21,8 @@ static gboolean screen_off_source_func(gpointer data) {
 void transition_state(ZylPowerService *svc, ZylPowerState new_state) {
     if (svc->state == new_state) return;
     ZylPowerState old = svc->state;
+    /* However doze is left, the cores come back — a suspend returns to it */
+    if (old == ZYL_POWER_STATE_DOZE && new_state != ZYL_POWER_STATE_SUSPEND) exit_doze();
     svc->state = new_state;
 
     g_message("[Power] %d → %d", old, new_state);
@@ -108,8 +110,6 @@ int zyl_power_request_screen_off(ZylPowerService *svc) {
 /* ─── 화면 켜기 ─── */
 int zyl_power_request_screen_on(ZylPowerService *svc) {
     if (!svc) return -1;
-    /* Exit doze if in doze state */
-    if (svc->state == ZYL_POWER_STATE_DOZE) exit_doze(svc);
     apply_brightness(svc, svc->brightness);
     transition_state(svc, ZYL_POWER_STATE_ACTIVE);
     reset_idle_timers(svc);

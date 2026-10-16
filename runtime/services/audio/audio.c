@@ -3,8 +3,9 @@
  *
  * 역할: 오디오 서비스 (org.zylos.AudioService) — 소리 정책과 D-Bus
  * 수행범위: 스트림별 볼륨(이름: media·notif·alarm·ringtone·system, media 가
- *           기기 출력), 출력 음소거, 무음 모드(키 클릭 조용, 경보음은 울림 — 시작 때
- *           설정 sound.silentMode 를 따름), 마이크 음소거(통화 중 음소거), 톤,
+ *           기기 출력 — 시작 때 설정 sound.<스트림>Volume 을 따름), 출력 음소거,
+ *           무음 모드(키 클릭 조용, 경보음은 울림 — 시작 때 설정 sound.silentMode 를
+ *           따름), 마이크 음소거(통화 중 음소거), 톤,
  *           스피커폰, 진동(설정 sound.vibration 을 따름), 이
  *           기기에 있는 기능(스피커폰·진동 모터) 보고 — 없는 기능은 앱이 비활성
  * 의존방향: audio.h, hal.h (Audio·Vibrator HAL), gio/gio.h (D-Bus)
@@ -187,7 +188,8 @@ static void handle_audio_method(GDBusConnection *conn, const gchar *sender,
     }
 }
 
-/* Silent mode the user left on (Settings keeps sound.silentMode) */
+/* Silent mode and the volumes the user left (Settings keeps sound.silentMode and
+   sound.<stream>Volume — JSON numbers, so int64 or double, int32 from older writers) */
 static void on_saved_sound(GObject *src, GAsyncResult *res, gpointer data) {
     ZylAudioService *svc = data;
     GVariant *r = g_dbus_connection_call_finish(G_DBUS_CONNECTION(src), res, NULL);
@@ -195,6 +197,19 @@ static void on_saved_sound(GObject *src, GAsyncResult *res, gpointer data) {
     GVariant *d = g_variant_get_child_value(r, 0);
     gboolean on = FALSE;
     if (g_variant_lookup(d, "silentMode", "b", &on)) svc->silent = on;
+    for (int i = 0; i < (int)G_N_ELEMENTS(STREAM_NAMES); i++) {
+        char key[32];
+        snprintf(key, sizeof(key), "%sVolume", STREAM_NAMES[i]);
+        GVariant *v = g_variant_lookup_value(d, key, NULL);
+        if (!v) continue;
+        if (g_variant_is_of_type(v, G_VARIANT_TYPE_INT64))
+            zyl_audio_set_volume(svc, (ZylAudioStream)i, (int)CLAMP(g_variant_get_int64(v), 0, 100));
+        else if (g_variant_is_of_type(v, G_VARIANT_TYPE_INT32))
+            zyl_audio_set_volume(svc, (ZylAudioStream)i, g_variant_get_int32(v));
+        else if (g_variant_is_of_type(v, G_VARIANT_TYPE_DOUBLE))
+            zyl_audio_set_volume(svc, (ZylAudioStream)i, (int)CLAMP(g_variant_get_double(v), 0, 100));
+        g_variant_unref(v);
+    }
     g_variant_unref(d);
     g_variant_unref(r);
 }

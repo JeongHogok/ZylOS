@@ -4,7 +4,8 @@
  * 역할: Bluetooth HAL Linux 구현(runtime/hal/hal_bt.c) 종단 테스트 — 사설 버스의
  *       가짜 BlueZ
  * 수행범위: 어댑터를 찾아 씀(hci0 고정 아님), 기기 목록(이름 없으면 주소),
- *           전원 켜고 끄기, 페어링이 그 어댑터 아래 기기 경로로, 어댑터가 없으면
+ *           전원 켜고 끄기, 페어링이 그 어댑터 아래 기기 경로로(주소가 아닌 글은
+ *           객체 경로가 되지 않음, 소문자 주소는 대문자 경로로), 어댑터가 없으면
  *           블루투스 없음
  * 의존방향: hal_bt.c, gio, dbus-daemon (없으면 SKIP)
  * SOLID: SRP — 블루투스 장치 접근 검증만 담당
@@ -129,6 +130,7 @@ static gpointer fake_thread(gpointer ready) {
 
 int main(void) {
     printf("=== Bluetooth HAL (BlueZ) ===\n");
+    g_log_set_always_fatal(G_LOG_FATAL_MASK | G_LOG_LEVEL_CRITICAL);  /* e.g. a bad object path */
     if (!g_find_program_in_path("dbus-daemon")) { printf("  SKIP (no dbus-daemon)\n"); return 0; }
     g_calls = g_string_new("");
     GTestDBus *tb = g_test_dbus_new(G_TEST_DBUS_NONE);
@@ -159,6 +161,19 @@ int main(void) {
     g_mutex_unlock(&g_lock);
     printf("PASS\n");
 
+    printf("  %-56s ", "only a real address names a device object");
+    /* 17 characters each, none of them an address: "/" would make a child
+       object, "-" or "G" are not hex (and "-" is not allowed in a path) */
+    const char *bad[] = { "AA:BB:CC:DD:EE/01", "AA-BB-CC-DD-EE-01", "AA:BB:CC:DD:EE:0G",
+                          "AAA:BB:CC:DD:EE:0", "AA:BB:CC:DD:EE:0 ", "AA:BB:CC:DD:EE:01:", "", NULL };
+    for (int i = 0; i < (int)G_N_ELEMENTS(bad); i++)
+        assert(!bt->pair(bad[i]) && !bt->connect(bad[i]) && !bt->disconnect(bad[i]) && !bt->remove(bad[i]));
+    assert(bt->connect("aa:bb:cc:dd:ee:01"));                    /* BlueZ names objects in capitals */
+    g_mutex_lock(&g_lock);
+    assert(!strstr(g_calls->str, "RemoveDevice") && strstr(g_calls->str, "Connect " DEV1 "\n"));
+    g_mutex_unlock(&g_lock);
+    printf("PASS\n");
+
     printf("  %-56s ", "no adapter: no Bluetooth");
     g_atomic_int_set(&g_no_adapter, 1);
     assert(!bt->present() && !bt->set_enabled(true));
@@ -168,6 +183,6 @@ int main(void) {
     g_thread_join(t);
     g_test_dbus_down(tb);
     g_object_unref(tb);
-    printf("\nResults: 4/4 passed\n");
+    printf("\nResults: 5/5 passed\n");
     return 0;
 }

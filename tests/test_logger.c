@@ -4,7 +4,8 @@
  * 역할: 로거 서비스(runtime/services/logger) 단위 테스트
  * 수행범위: 한 줄에 JSON 하나(제어 문자·따옴표·줄바꿈·거대한 메시지·잘리는 UTF-8
  *           에도 유효한 JSON·UTF-8), 시각 이후 로그 읽기, 메시지로 크래시 보고를
- *           위조할 수 없음, 치명 시그널은 크래시 줄을 남기고 그대로 죽음, 크기
+ *           위조할 수 없음, 치명 시그널은 시각이 찍힌 크래시 줄을 남기고(시각 이후
+ *           로그에도 나옴) 그대로 죽음, 크기
  *           한도에서 로테이션(옛 파일 5개, 가장 오래된 것 삭제, 재시작 후 꽉 찬
  *           파일도), 필터 레벨(낮은 레벨 버림, 재시작 후 유지, 깨진 파일은 전부 기록)
  * 의존방향: runtime/services/logger/logger.c (ZYL_TEST), gio, json-glib
@@ -141,6 +142,7 @@ static void test_a_message_cannot_fake_a_crash_report(void) {
 }
 
 static void test_a_fatal_signal_leaves_a_crash_line_and_still_kills(void) {
+    int64_t start = now_unix_ms();
     zyl_logger_write(svc, ZYL_LOG_INFO, "t", "before");          /* log open before the fork */
     pid_t pid = fork();
     assert(pid >= 0);
@@ -160,6 +162,14 @@ static void test_a_fatal_signal_leaves_a_crash_line_and_still_kills(void) {
     assert(count(n) == 1 && strcmp(member(n, 0, "source"), "signal") == 0);
     json_node_unref(n);
     g_free(r);
+    /* Stamped like any entry, so the log read from a time has it too */
+    char *logs = read_logs_since(start);
+    JsonNode *l = parse(logs);
+    assert(count(l) == 2 && strcmp(member(l, 1, "level"), "CRASH") == 0);
+    gint64 ts = json_object_get_int_member(json_node_get_object(json_array_get_element(json_node_get_array(l), 1)), "ts");
+    assert(ts >= start && ts <= now_unix_ms());
+    json_node_unref(l);
+    g_free(logs);
 }
 
 static void test_log_rotates_once_it_passes_the_size_limit(void) {

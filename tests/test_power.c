@@ -5,7 +5,8 @@
  * 수행범위: 화면 끄기·켜기와 사용자 밝기 복원, 대기 → 30% 어둡게 → 꺼짐,
  *           어둡게가 밝아지지 않음, 밝기 0-100 고정과 꺼진 동안 보류,
  *           웨이크락(화면 유지·서스펜드 차단·태그당 하나·32개 한도·10분 만료·
- *           마지막 해제 후 타이머 재개), 도즈(powersave·코어 절반 끄기) → 서스펜드
+ *           마지막 해제 후 타이머 재개, 어두울 때 잡으면 밝아지고 꺼지지 않음,
+ *           도즈 중 해제 후 서스펜드 타이머 재개), 도즈 중 화면 끄기 후에도 코어 복귀, 도즈(powersave·코어 절반 끄기) → 서스펜드
  *           → 떠난 상태로 복귀, StateChanged(이전, 새) 값, GetState, 설정의 저장 밝기
  * 의존방향: runtime/services/power/power{,_cpu,_display,_wakelock}.c (ZYL_TEST),
  *           runtime/hal/hal_{display,cpu,battery}.c (ZYL_SYSFS_ROOT 로 빌드),
@@ -238,6 +239,41 @@ static void test_the_last_wakelock_released_restarts_the_countdown(void) {
     assert(due_in(svc->suspend_timer_id, 300));
 }
 
+/* Taken while dimmed, a wakelock holds the screen too: it comes back and the
+   screen-off that was due is dropped; released, the countdown starts over */
+static void test_a_wakelock_taken_while_dimmed_keeps_the_screen_on(void) {
+    fire(svc->dim_timer_id);
+    assert(svc->state == ZYL_POWER_STATE_DIM && svc->screen_off_timer_id && saw("ACTIVE>DIM"));
+    zyl_power_acquire_wakelock(svc, "video");
+    assert(svc->state == ZYL_POWER_STATE_ACTIVE && shown() == 60 && saw("DIM>ACTIVE"));
+    assert(svc->screen_off_timer_id == 0);
+    zyl_power_release_wakelock(svc, "video");
+    assert(svc->state == ZYL_POWER_STATE_ACTIVE && due_in(svc->dim_timer_id, 25));
+}
+
+/* A wakelock in doze holds off the suspend; the last one released counts down again */
+static void test_doze_suspends_again_once_the_last_wakelock_goes(void) {
+    zyl_power_request_screen_off(svc);
+    fire(svc->suspend_timer_id);
+    assert(svc->state == ZYL_POWER_STATE_DOZE && due_in(svc->suspend_timer_id, 1800));
+    zyl_power_acquire_wakelock(svc, "alarm");
+    assert(svc->suspend_timer_id == 0);
+    zyl_power_release_wakelock(svc, "alarm");
+    assert(svc->state == ZYL_POWER_STATE_DOZE && due_in(svc->suspend_timer_id, 1800));
+}
+
+/* However doze is left, the cores come back */
+static void test_screen_off_while_dozing_still_brings_every_core_back(void) {
+    zyl_power_request_screen_off(svc);
+    fire(svc->suspend_timer_id);
+    assert(svc->state == ZYL_POWER_STATE_DOZE && strcmp(got(CPU "cpu3/online"), "0") == 0);
+    zyl_power_request_screen_off(svc);
+    zyl_power_request_screen_on(svc);
+    assert(svc->state == ZYL_POWER_STATE_ACTIVE);
+    assert(strcmp(got(CPU "cpu2/online"), "1") == 0 && strcmp(got(CPU "cpu3/online"), "1") == 0);
+    assert(strcmp(got(CPU "cpu0/cpufreq/scaling_governor"), ACTIVE_GOVERNOR) == 0);
+}
+
 static void test_wakelocks_count_once_per_tag_and_are_capped(void) {
     assert(zyl_power_acquire_wakelock(svc, "a") == 0 && zyl_power_acquire_wakelock(svc, "a") == 0);
     assert(svc->wakelock_count == 1);
@@ -392,6 +428,9 @@ int main(void) {
     RUN_TEST(test_brightness_is_clamped_and_waits_while_the_screen_is_dark);
     RUN_TEST(test_a_wakelock_keeps_the_screen_on_and_the_device_awake);
     RUN_TEST(test_the_last_wakelock_released_restarts_the_countdown);
+    RUN_TEST(test_a_wakelock_taken_while_dimmed_keeps_the_screen_on);
+    RUN_TEST(test_doze_suspends_again_once_the_last_wakelock_goes);
+    RUN_TEST(test_screen_off_while_dozing_still_brings_every_core_back);
     RUN_TEST(test_wakelocks_count_once_per_tag_and_are_capped);
     RUN_TEST(test_a_tag_too_long_to_expire_is_refused);
     RUN_TEST(test_a_forgotten_wakelock_expires_after_ten_minutes);

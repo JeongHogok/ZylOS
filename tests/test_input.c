@@ -4,18 +4,59 @@
  * 역할: 입력 서비스(runtime/services/input) 단위 테스트
  * 수행범위: evdev 키 → ZylHardwareKey 매핑(전원·볼륨·뒤로·홈·메뉴)과
  *           HardwareKeyPressed 시그널 값, 누름만(뗌·자동반복 제외), 다른 키·이벤트
- *           무시, 장치 분리 시 감시 종료, evdev 가 아닌 파일 거부,
+ *           무시, 전원·볼륨 키가 다른 장치여도 모두 도착, 빠진 장치만 닫고 나머지는
+ *           계속, 터치스크린·evdev 가 아닌 파일은 열지 않음, 감시가 깨지면 종료,
  *           가상 키보드 표시·숨김·배열(알려진 배열만)과 D-Bus GetState
- * 의존방향: runtime/services/input/input.c (ZYL_TEST, ZYL_EVDEV_DIR), gio —
+ * 의존방향: runtime/services/input/input.c (ZYL_TEST), runtime/hal/hal_input.c
+ *           (ZYL_DEV_ROOT, ioctl 을 가짜 evdev 드라이버로 — 장치 노드는 FIFO), gio —
  *           버스 데몬 없이 소켓 쌍의 D-Bus 로 시그널을 받고 메서드를 부름
  * SOLID: SRP — 하드웨어 키 전달과 키보드 상태 검증만 담당
  * ────────────────────────────────────────────────────────── */
 
+#define _GNU_SOURCE
 #define DIR_ "/tmp/zyl-input-test"
-#define ZYL_EVDEV_DIR DIR_
-#include "../runtime/services/input/input.c"
+#define ZYL_DEV_ROOT DIR_
 #include <assert.h>
+#include <errno.h>
+#include <stdarg.h>
+#include <sys/ioctl.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
+#include <linux/input.h>
+
+/* A fake evdev driver behind the HAL's ioctl: /dev/input/event<N> is a FIFO the
+   test writes events into, and it has the keys caps[N] lists */
+static int fake_ioctl(int fd, unsigned long req, ...);
+#define ioctl fake_ioctl
+#include "../runtime/hal/hal_input.c"
+#include "../runtime/services/input/input.c"
+
+#define DEVICES 8
+static const int *caps[DEVICES];
+static int writer[DEVICES] = { -1, -1, -1, -1, -1, -1, -1, -1 };   /* the kernel's end of each */
+
+static const int ALL_KEYS[] = { KEY_POWER, KEY_VOLUMEUP, KEY_VOLUMEDOWN, KEY_BACK, KEY_HOMEPAGE,
+                                KEY_MENU, KEY_A, KEY_HOME, -1 };
+static const int POWER_KEY[] = { KEY_POWER, -1 };                    /* the PMIC's power key */
+static const int VOLUME_KEYS[] = { KEY_VOLUMEUP, KEY_VOLUMEDOWN, -1 };   /* adc-keys */
+static const int TOUCHSCREEN[] = { BTN_TOUCH, -1 };
+
+static int fake_ioctl(int fd, unsigned long req, ...) {
+    va_list ap;
+    va_start(ap, req);
+    unsigned long *bits = va_arg(ap, unsigned long *);
+    va_end(ap);
+    char link[64], path[256] = "";
+    struct stat st;
+    snprintf(link, sizeof(link), "/proc/self/fd/%d", fd);
+    const char *name = readlink(link, path, sizeof(path) - 1) > 0 ? strstr(path, "/event") : NULL;
+    if (fstat(fd, &st) != 0 || !S_ISFIFO(st.st_mode) || !name) { errno = ENOTTY; return -1; }
+    assert(_IOC_NR(req) == 0x20 + EV_KEY);                 /* the HAL asks for the key bitmap only */
+    memset(bits, 0, _IOC_SIZE(req));
+    for (const int *k = caps[atoi(name + 6)]; k && *k >= 0; k++)
+        bits[*k / LONG_BITS] |= 1UL << (*k % LONG_BITS);
+    return (int)_IOC_SIZE(req);
+}
 
 static int tests_run, tests_pass;
 #define RUN_TEST(fn) do { tests_run++; printf("  %-56s ", #fn); reset(); fn(); tests_pass++; printf("PASS\n"); } while (0)
@@ -23,7 +64,6 @@ static int tests_run, tests_pass;
 static ZylInputService *svc;
 static GDBusConnection *link_svc, *link_peer;   /* the service's end, and where WAM listens */
 static GString *heard;
-static int evdev[2];                            /* a pipe standing in for the event device */
 
 static const char *NAMES[] = { "POWER", "VOLUME_UP", "VOLUME_DOWN", "BACK", "HOME", "MENU" };
 
@@ -83,11 +123,38 @@ static bool saw(const char *want) {
     return ok;
 }
 
-/* One event from the device, as the kernel hands it over */
-static void event(int type, int code, int value) {
+/* One event from device n, as the kernel hands it over */
+static void event(int n, int type, int code, int value) {
     struct input_event ev = { .type = type, .code = code, .value = value };
-    assert(write(evdev[1], &ev, sizeof(ev)) == (ssize_t)sizeof(ev));
-    assert(on_evdev_event(NULL, G_IO_IN, svc) == G_SOURCE_CONTINUE);
+    assert(write(writer[n], &ev, sizeof(ev)) == (ssize_t)sizeof(ev));
+    assert(on_keys_ready(svc->keys_fd, G_IO_IN, svc) == G_SOURCE_CONTINUE);
+}
+
+/* -1 with ENXIO when nobody has the device open: the HAL left it or closed it */
+static int kernel_end(int n) {
+    char *path = g_strdup_printf(DIR_ "/dev/input/event%d", n);
+    int fd = open(path, O_WRONLY | O_NONBLOCK);
+    g_free(path);
+    return fd;
+}
+
+static void plug(int n, const int *keys) {
+    char *path = g_strdup_printf(DIR_ "/dev/input/event%d", n);
+    assert(g_mkdir_with_parents(DIR_ "/dev/input", 0755) == 0 && mkfifo(path, 0600) == 0);
+    caps[n] = keys;
+    g_free(path);
+}
+
+/* The service with the devices plugged so far */
+static void start(void) {
+    svc = zyl_input_create();
+    assert(svc);
+    on_bus_acquired(link_svc, ZYL_INPUT_DBUS_NAME, svc);
+    assert(svc->registration_id);
+    for (int i = 0; i < DEVICES; i++)
+        if (caps[i]) writer[i] = kernel_end(i);
+    settle();
+    g_string_truncate(heard, 0);
 }
 
 /* A method call from the bus, answered by the service on the main loop */
@@ -102,65 +169,101 @@ static GVariant *call(const char *method, GVariant *args) {
 }
 
 static void reset(void) {
-    if (svc) zyl_input_destroy(svc);              /* closes the pipe's read end */
-    if (evdev[1] > 0) close(evdev[1]);
+    if (svc) zyl_input_destroy(svc);              /* closes the HAL's ends first */
+    svc = NULL;
+    for (int i = 0; i < DEVICES; i++) {
+        if (writer[i] >= 0) close(writer[i]);
+        writer[i] = -1;
+        caps[i] = NULL;
+    }
     assert(system("rm -rf " DIR_) == 0);
-    svc = zyl_input_create();
-    assert(svc && svc->evdev_fd == -1);           /* no device here */
-    on_bus_acquired(link_svc, ZYL_INPUT_DBUS_NAME, svc);
-    assert(svc->registration_id);
-    assert(pipe(evdev) == 0);
-    svc->evdev_fd = evdev[0];
-    settle();
-    g_string_truncate(heard, 0);
 }
 
 static void test_each_hardware_key_reaches_the_shell_as_its_code(void) {
-    event(EV_KEY, KEY_POWER, 1);
-    event(EV_KEY, KEY_VOLUMEUP, 1);
-    event(EV_KEY, KEY_VOLUMEDOWN, 1);
-    event(EV_KEY, KEY_BACK, 1);
-    event(EV_KEY, KEY_HOMEPAGE, 1);
-    event(EV_KEY, KEY_MENU, 1);
+    plug(0, ALL_KEYS);
+    start();
+    event(0, EV_KEY, KEY_POWER, 1);
+    event(0, EV_KEY, KEY_VOLUMEUP, 1);
+    event(0, EV_KEY, KEY_VOLUMEDOWN, 1);
+    event(0, EV_KEY, KEY_BACK, 1);
+    event(0, EV_KEY, KEY_HOMEPAGE, 1);
+    event(0, EV_KEY, KEY_MENU, 1);
     assert(saw("POWER VOLUME_UP VOLUME_DOWN BACK HOME MENU"));
 }
 
 static void test_only_the_press_counts_not_release_or_repeat(void) {
-    event(EV_KEY, KEY_POWER, 1);
-    event(EV_KEY, KEY_POWER, 2);                  /* held: autorepeat */
-    event(EV_KEY, KEY_POWER, 2);
-    event(EV_KEY, KEY_POWER, 0);                  /* released */
-    event(EV_SYN, SYN_REPORT, 0);
+    plug(0, ALL_KEYS);
+    start();
+    event(0, EV_KEY, KEY_POWER, 1);
+    event(0, EV_KEY, KEY_POWER, 2);               /* held: autorepeat */
+    event(0, EV_KEY, KEY_POWER, 2);
+    event(0, EV_KEY, KEY_POWER, 0);               /* released */
+    event(0, EV_SYN, SYN_REPORT, 0);
     assert(saw("POWER"));                         /* one press, one screen toggle */
 }
 
 static void test_other_keys_and_events_are_not_hardware_keys(void) {
-    event(EV_KEY, KEY_A, 1);
-    event(EV_KEY, KEY_HOME, 1);                   /* a keyboard's Home (line start), not the home button */
-    event(EV_KEY, BTN_TOUCH, 1);
-    event(EV_ABS, KEY_POWER, 1);                  /* same number, not a key */
-    event(EV_MSC, MSC_SCAN, KEY_POWER);
+    plug(0, ALL_KEYS);
+    start();
+    event(0, EV_KEY, KEY_A, 1);
+    event(0, EV_KEY, KEY_HOME, 1);                /* a keyboard's Home (line start), not the home button */
+    event(0, EV_KEY, BTN_TOUCH, 1);
+    event(0, EV_ABS, KEY_POWER, 1);               /* same number, not a key */
+    event(0, EV_MSC, MSC_SCAN, KEY_POWER);
     assert(saw(""));
 }
 
-static void test_an_unplugged_device_stops_being_watched(void) {
-    svc->evdev_watch_id = 1;
-    assert(on_evdev_event(NULL, G_IO_HUP, svc) == G_SOURCE_REMOVE);
-    assert(svc->evdev_watch_id == 0);
+static void test_keys_on_separate_devices_all_arrive(void) {
+    /* A phone: the power key, the volume keys and the touchscreen are three devices */
+    plug(0, POWER_KEY);
+    plug(1, VOLUME_KEYS);
+    plug(2, TOUCHSCREEN);
+    start();
+    assert(writer[0] >= 0 && writer[1] >= 0);
+    assert(kernel_end(2) == -1 && errno == ENXIO);   /* no keys of ours: not kept open */
+    event(1, EV_KEY, KEY_VOLUMEUP, 1);
+    event(0, EV_KEY, KEY_POWER, 1);
+    event(1, EV_KEY, KEY_VOLUMEDOWN, 1);
+    assert(saw("VOLUME_UP POWER VOLUME_DOWN"));
+}
+
+static void test_an_unplugged_device_goes_and_the_others_keep_working(void) {
+    plug(0, POWER_KEY);
+    plug(1, VOLUME_KEYS);
+    start();
+    close(writer[0]);                             /* event0 hangs up */
+    writer[0] = -1;
+    event(1, EV_KEY, KEY_VOLUMEUP, 1);
+    assert(saw("VOLUME_UP"));
+    assert(kernel_end(0) == -1 && errno == ENXIO);   /* the HAL closed it */
+    event(1, EV_KEY, KEY_VOLUMEDOWN, 1);
+    assert(saw("VOLUME_DOWN"));
+}
+
+static void test_a_broken_watch_is_dropped(void) {
+    plug(0, POWER_KEY);
+    start();
+    g_source_remove(svc->keys_watch_id);          /* the loop's own source: called by hand below */
+    assert(on_keys_ready(svc->keys_fd, G_IO_HUP, svc) == G_SOURCE_REMOVE);
+    assert(svc->keys_watch_id == 0);
     assert(saw(""));
 }
 
-static void test_a_file_that_is_not_an_event_device_is_not_opened(void) {
-    assert(g_mkdir_with_parents(DIR_, 0755) == 0);
-    assert(g_file_set_contents(DIR_ "/event0", "not a device", -1, NULL));
-    ZylInputService *other = zyl_input_create();
-    assert(other && other->evdev_fd == -1 && other->evdev_watch_id == 0);
-    zyl_input_on_hardware_key(other, ZYL_KEY_POWER);   /* no bus yet: nothing sent, no crash */
-    zyl_input_destroy(other);
+static void test_files_and_keyless_devices_are_not_opened(void) {
+    assert(g_mkdir_with_parents(DIR_ "/dev/input", 0755) == 0);
+    assert(g_file_set_contents(DIR_ "/dev/input/event0", "not a device", -1, NULL));
+    plug(1, TOUCHSCREEN);
+    start();
+    assert(svc->keys_fd == -1 && svc->keys_watch_id == 0);
+    assert(kernel_end(1) == -1 && errno == ENXIO);
+    zyl_input_destroy(svc);
+    svc = zyl_input_create();                     /* no bus yet: nothing sent, no crash */
+    zyl_input_on_hardware_key(svc, ZYL_KEY_POWER);
     assert(saw(""));
 }
 
 static void test_keyboard_shows_hides_and_keeps_a_known_layout(void) {
+    start();
     ZylKeyboardState k = zyl_input_get_keyboard_state(svc);
     assert(!k.visible && strcmp(k.layout, "en") == 0);
     assert(zyl_input_show_keyboard(svc, "ko") == 0);
@@ -180,6 +283,7 @@ static void test_keyboard_shows_hides_and_keeps_a_known_layout(void) {
 }
 
 static void test_the_bus_shows_and_reports_the_keyboard(void) {
+    start();
     gboolean ok = FALSE, visible = FALSE;
     const char *layout = NULL;
     GVariant *r = call("ShowKeyboard", g_variant_new("(s)", "ja"));
@@ -211,13 +315,13 @@ int main(void) {
     RUN_TEST(test_each_hardware_key_reaches_the_shell_as_its_code);
     RUN_TEST(test_only_the_press_counts_not_release_or_repeat);
     RUN_TEST(test_other_keys_and_events_are_not_hardware_keys);
-    RUN_TEST(test_an_unplugged_device_stops_being_watched);
-    RUN_TEST(test_a_file_that_is_not_an_event_device_is_not_opened);
+    RUN_TEST(test_keys_on_separate_devices_all_arrive);
+    RUN_TEST(test_an_unplugged_device_goes_and_the_others_keep_working);
+    RUN_TEST(test_a_broken_watch_is_dropped);
+    RUN_TEST(test_files_and_keyless_devices_are_not_opened);
     RUN_TEST(test_keyboard_shows_hides_and_keeps_a_known_layout);
     RUN_TEST(test_the_bus_shows_and_reports_the_keyboard);
-    zyl_input_destroy(svc);
-    close(evdev[1]);
-    assert(system("rm -rf " DIR_) == 0);
+    reset();
     printf("\n%d/%d passed\n", tests_pass, tests_run);
     return tests_pass == tests_run ? 0 : 1;
 }

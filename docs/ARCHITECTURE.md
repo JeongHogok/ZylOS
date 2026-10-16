@@ -31,7 +31,7 @@ Linux 커널 위에 Wayland 컴포지터 + WebKitGTK 앱 런타임으로 구성�
 ├─────────────────────────────────────────────────────┤
 │  Wayland Compositor (wlroots 기반)                   │  ← 윈도우/터치/제스처 관리
 ├─────────────────────────────────────────────────────┤
-│       HAL (Hardware Abstraction — 12개)               │  ← Linux 드라이버 ↔ 서비스 연결
+│       HAL (Hardware Abstraction — 15개)               │  ← Linux 드라이버 ↔ 서비스 연결
 ├─────────────────────────────────────────────────────┤
 │   Linux Kernel (SpacemiT BSP 6.6)                   │  ← DRM, GPU, 터치, 센서, 모뎀
 ├─────────────────────────────────────────────────────┤
@@ -174,7 +174,7 @@ URI 기반 앱 간 데이터 공유 게이트웨이.
 
 ### HAL - Hardware Abstraction Layer (runtime/hal/)
 
-12개:
+15개:
 
 | 파일 | 인터페이스 | 구현 |
 |------|-----------|------|
@@ -189,6 +189,9 @@ URI 기반 앱 간 데이터 공유 게이트웨이.
 | hal_boot.c | A/B 슬롯·부트로더 잠금 상태 | U-Boot 환경 (실기기) |
 | hal_torch.c | 손전등 | LED sysfs (실기기) |
 | hal_vibrator.c | 진동 | force-feedback / sysfs (실기기) |
+| hal_sensors.c | 가속도/자이로/근접/조도/자기장 | IIO sysfs (실기기) |
+| hal_input.c | 하드웨어 키 | evdev — 키를 가진 장치 전부 (실기기) |
+| hal_camera.c | 사진 한 장 | V4L2 (실기기). 보드가 `board_hal_camera` 로 교체 가능 |
 | hal_emulator.c | 에뮬레이터 보드 | 하드웨어 없음 — 없다고 보고 |
 
 에뮬레이터 구현: 브라우저 Web API (hal-browser.js)

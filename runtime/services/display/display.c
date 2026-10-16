@@ -55,7 +55,7 @@ static uint64_t now_ns(void) {
     return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
 }
 
-/* --- Modes of the first connected output, as the Display HAL reads them --- */
+/* --- Modes of the first connected output (the HAL lists built-in panels first) --- */
 static void load_modes(ZylDisplayService *svc) {
     ZylDisplayOutput outputs[4];
     int n = zyl_hal_display()->list_outputs(outputs, 4);

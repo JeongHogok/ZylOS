@@ -3,9 +3,10 @@
  *
  * 역할: Hardware Abstraction Layer 포트 — 서비스가 하드웨어에 닿는 유일한 길
  * 수행범위: 부트로더, 오디오(통화 경로 포함), 진동, Wi-Fi, 블루투스, 디스플레이,
- *           배터리, 저장공간. 각 모듈은 그 하드웨어가 이 보드에 있는지도 답한다 —
+ *           배터리, 저장공간, 센서, 하드웨어 키, 카메라.
+ *           각 모듈은 그 하드웨어가 이 보드에 있는지도 답한다 —
  *           없으면 기능은 남고 비활성으로 보인다
- * 의존방향: stdbool.h, stdint.h
+ * 의존방향: stdbool.h, stddef.h, stdint.h
  * SOLID: DIP — 서비스는 이 인터페이스에만 의존. ISP — 모듈별 접근자
  *
  * 구현은 보드 계약(board/<id>/meson.build 의 board_hal_backend)이 고른다:
@@ -17,6 +18,7 @@
 #define ZYL_HAL_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 /* ═══════════════════════════════════════════════════════
@@ -240,6 +242,90 @@ typedef struct {
 } ZylBootHal;
 
 /* ═══════════════════════════════════════════════════════
+   Sensors HAL — 가속도·자이로·근접·조도·자기장
+   실기기: Linux IIO (/sys/bus/iio/devices/iio:deviceN 의 in_<채널>_raw × scale).
+           종류마다 그 채널을 가진 장치를 따로 찾는다 — 가속도·자이로가 한 칩이어도 둘 다
+   에뮬레이터: 센서 없음 — present() false, 값을 지어내지 않는다
+   ═══════════════════════════════════════════════════════ */
+
+typedef enum {
+    ZYL_HAL_SENSOR_ACCEL,         /* v[0..2] = x, y, z in m/s² */
+    ZYL_HAL_SENSOR_GYRO,          /* v[0..2] = x, y, z in rad/s */
+    ZYL_HAL_SENSOR_PROXIMITY,     /* v[0] = the driver's scaled distance */
+    ZYL_HAL_SENSOR_LIGHT,         /* v[0] = lux */
+    ZYL_HAL_SENSOR_MAGNETIC,      /* v[0..2] = x, y, z in gauss */
+    ZYL_HAL_SENSOR_COUNT
+} ZylSensorKind;
+
+typedef struct {
+    double  v[3];                 /* scaled; axes a kind does not have are 0 */
+} ZylSensorSample;
+
+typedef struct {
+    /* Looks for this kind of sensor; read() reads the one it found */
+    bool  (*present)(ZylSensorKind kind);
+    /* One sample; false when it cannot be read (no made-up 0) */
+    bool  (*read)(ZylSensorKind kind, ZylSensorSample *out);
+} ZylSensorsHal;
+
+/* ═══════════════════════════════════════════════════════
+   Input HAL — 하드웨어 키 (전원, 볼륨, 뒤로, 홈, 메뉴)
+   실기기: evdev (/dev/input/eventN). 휴대폰은 전원 키·볼륨 키·터치가 각각 다른 장치라
+           이 키 중 하나라도 가진 장치를 모두 연다. 터치·센서만 있는 장치는 열지 않는다
+   에뮬레이터: 키 장치 없음 — open() -1
+   ═══════════════════════════════════════════════════════ */
+
+typedef enum {
+    ZYL_HAL_KEY_POWER,
+    ZYL_HAL_KEY_VOLUME_UP,
+    ZYL_HAL_KEY_VOLUME_DOWN,
+    ZYL_HAL_KEY_BACK,
+    ZYL_HAL_KEY_HOME,
+    ZYL_HAL_KEY_MENU,
+} ZylInputKey;
+
+typedef struct {
+    /* Opens every device with one of the keys. Returns one fd, readable while
+       any of them has input (for the main loop), -1 when there is none */
+    int   (*open)(void);
+    /* The next key press waiting, without blocking. Releases, autorepeat and
+       other events are passed over; a device that went away is dropped */
+    bool  (*read_key)(ZylInputKey *key);
+    void  (*close)(void);
+} ZylInputHal;
+
+/* ═══════════════════════════════════════════════════════
+   Camera HAL — 사진 한 장
+   실기기: V4L2 캡처 장치 (후면 /dev/video0, 전면 /dev/video1), YUYV 만.
+           ISP 를 거치는 SoC 는 보드가 자기 구현을 고른다
+           (board/<id>/meson.build 의 board_hal_camera, 기본은 V4L2 — hal_camera.c)
+   에뮬레이터: 카메라 없음 — present() false
+   ═══════════════════════════════════════════════════════ */
+
+typedef enum {
+    ZYL_HAL_LENS_BACK,
+    ZYL_HAL_LENS_FRONT,
+} ZylLensFacing;
+
+typedef enum {
+    ZYL_HAL_PIXEL_YUYV,           /* packed 4:2:2, width × 2 bytes per row, no padding */
+} ZylPixelFormat;
+
+typedef struct {
+    ZylPixelFormat format;
+    uint32_t       width, height;
+    void          *data;
+    size_t         size;          /* width × height × 2 for YUYV */
+} ZylCameraImage;
+
+typedef struct {
+    bool  (*present)(ZylLensFacing lens);
+    /* One still at the size this camera settles on; release it with free_image */
+    bool  (*capture)(ZylLensFacing lens, ZylCameraImage *out);
+    void  (*free_image)(ZylCameraImage *image);
+} ZylCameraHal;
+
+/* ═══════════════════════════════════════════════════════
    모듈 접근자 — 보드 계약의 board_hal_backend 가 linux / emulator 구현을
    고른다(runtime/hal/meson.build). 서비스는 쓰는 모듈의 접근자만 부른다.
    ═══════════════════════════════════════════════════════ */
@@ -255,5 +341,8 @@ const ZylStorageHal  *zyl_hal_storage(void);
 const ZylTorchHal    *zyl_hal_torch(void);
 const ZylCpuHal      *zyl_hal_cpu(void);
 const ZylBoardHal    *zyl_hal_board(void);
+const ZylSensorsHal  *zyl_hal_sensors(void);
+const ZylInputHal    *zyl_hal_input(void);
+const ZylCameraHal   *zyl_hal_camera(void);
 
 #endif /* ZYL_HAL_H */

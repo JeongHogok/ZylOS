@@ -2,7 +2,8 @@
  * [Clean Architecture] Infrastructure Layer - Test
  *
  * 역할: 디스플레이 서비스(runtime/services/display) 단위 테스트 (가짜 sysfs)
- * 수행범위: 연결된 출력의 모드(선호 모드 먼저, 끊긴 출력 제외), 출력에 있는 모드만
+ * 수행범위: 연결된 출력의 모드(선호 모드 먼저, 끊긴 출력 제외, 외부 화면이 꽂혀도
+ *           내장 패널이 주 출력), 출력에 있는 모드만
  *           설정 + ModeChanged, 회전은 0·90·180·270 만 + RotationChanged,
  *           스케일 0.5-4(NaN 거부), 자동 회전 — 0.5 초 유지해야 돌림, 눕히면 그대로,
  *           돌아왔던 기울임은 처음부터, 끄면·다른 센서면 무시, 버스의 SensorEvent
@@ -132,6 +133,38 @@ static void test_no_connected_output_means_no_modes(void) {
     assert(zyl_display_set_mode(svc, 1080, 2400, 0) == -1 && saw(""));
 }
 
+/* The built-in panel (eDP, DSI, LVDS, DPI) is the screen, whatever order the
+   directory lists the outputs in and however many are plugged in; with no
+   panel lit, the first connected output */
+static void test_the_built_in_panel_wins_over_plugged_in_screens(void) {
+    const char *plugged[] = { "HDMI-A-1", "HDMI-A-2", "DP-1", "DP-2", "DVI-D-1" };
+    for (size_t i = 0; i < G_N_ELEMENTS(plugged); i++) {
+        char *dir = g_strdup_printf(DRM "card0-%s/", plugged[i]), *status = g_strconcat(dir, "status", NULL),
+             *modes = g_strconcat(dir, "modes", NULL);
+        put(status, "connected\n");
+        put(modes, "1920x1080\n");
+        g_free(dir); g_free(status); g_free(modes);
+    }
+    zyl_display_destroy(svc);
+    svc = zyl_display_create();
+    assert(strcmp(svc->current_mode.connector, "DSI-1") == 0 && svc->current_mode.width == 1080);
+    assert(svc->mode_count == 2);
+
+    put(DRM "card0-DSI-1/status", "disconnected\n");
+    put(DRM "card1-eDP-1/status", "connected\n");
+    put(DRM "card1-eDP-1/modes", "1366x768\n");
+    zyl_display_destroy(svc);
+    svc = zyl_display_create();
+    assert(strcmp(svc->current_mode.connector, "eDP-1") == 0 && svc->current_mode.width == 1366);
+
+    put(DRM "card1-eDP-1/status", "disconnected\n");
+    zyl_display_destroy(svc);
+    svc = zyl_display_create();
+    assert(svc->mode_count == 1 && svc->current_mode.width == 1920);
+    assert(strcmp(svc->current_mode.connector, "DSI-1") != 0 && strcmp(svc->current_mode.connector, "eDP-1") != 0);
+    svc->dbus = link_svc;
+}
+
 static void test_rotation_takes_the_four_right_angles_only(void) {
     assert(zyl_display_set_rotation(svc, ZYL_ROTATION_90) == 0 && saw("RotationChanged (90,)"));
     assert(zyl_display_set_rotation(svc, (ZylRotation)45) == -1);
@@ -225,6 +258,7 @@ int main(void) {
     RUN_TEST(test_the_connected_panel_gives_the_modes_preferred_first);
     RUN_TEST(test_a_mode_is_set_only_if_the_output_has_it);
     RUN_TEST(test_no_connected_output_means_no_modes);
+    RUN_TEST(test_the_built_in_panel_wins_over_plugged_in_screens);
     RUN_TEST(test_rotation_takes_the_four_right_angles_only);
     RUN_TEST(test_scale_stays_between_half_and_four);
     RUN_TEST(test_auto_rotate_waits_for_half_a_second_of_steady_tilt);

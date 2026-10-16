@@ -348,10 +348,13 @@ test('power',
 )
 
 # Test: input — evdev keys to ZylHardwareKey and HardwareKeyPressed (press
-# only), what is not a hardware key, the virtual keyboard's layouts
+# only), what is not a hardware key, keys from every device (power and volume
+# apart, an unplugged one dropped, a touchscreen not opened), the virtual
+# keyboard's layouts. The Input HAL over FIFO device nodes and a fake evdev ioctl
 test('input',
   executable('test-input',
     'test_input.c',
+    include_directories: include_directories('../runtime/hal'),
     dependencies: [gio_dep],
     c_args: ['-DZYL_TEST'],
   )
@@ -370,8 +373,9 @@ test('display',
 )
 
 # Test: camera — only a capture device opens, captures stay in the camera
-# directory, the first frame is waited for, buffers do not pile up across
-# captures, a driver that will not do YUYV is refused (fake V4L2 driver)
+# directory, the first frame is waited for, no buffer or device is left behind
+# a capture, a driver that will not do YUYV is refused, padded rows come out
+# packed (the V4L2 Camera HAL over a fake V4L2 driver)
 test('camera',
   executable('test-camera', 'test_camera.c', '../runtime/hal/hal_torch.c',
     include_directories: include_directories('../runtime/hal'),
@@ -493,13 +497,23 @@ test('app-seal',
 )
 
 # Test: the sensor service polls the hardware it found without being asked
-# (nothing on D-Bus starts polling, so GetLatest used to return 0 forever)
+# (nothing on D-Bus starts polling, so GetLatest used to return 0 forever) —
+# the Sensors HAL over a fake IIO sysfs
 test('sensors-polling',
   executable('test-sensors-polling', 'test_sensors_polling.c',
-    include_directories: include_directories('../runtime/services/sensors'),
+    include_directories: include_directories('../runtime/services/sensors', '../runtime/hal'),
     dependencies: [gio_dep, dependency('threads'),
                    meson.get_compiler('c').find_library('m')],
     c_args: ['-DZYL_TEST'],
+  )
+)
+
+# Test: Sensors HAL — IIO channels per kind (one chip may carry two), raw × scale,
+# an unreadable value is no reading, over-long device paths skipped (fake sysfs)
+test('hal-sensors',
+  executable('test-hal-sensors', 'test_hal_sensors.c',
+    dependencies: [gio_dep, dependency('threads'),
+                   meson.get_compiler('c').find_library('m')],
   )
 )
 

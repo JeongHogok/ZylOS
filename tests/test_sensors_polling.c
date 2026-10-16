@@ -2,9 +2,10 @@
  * [Clean Architecture] Infrastructure Layer - Test
  *
  * 역할: 센서 서비스(runtime/services/sensors) — 시작하면 바로 읽기 시작하는지
- * 수행범위: 가짜 IIO sysfs 를 스캔해 폴링 스레드를 띄우고 최신값을 채우는지,
- *           장치가 없으면 조용히 비어 있는지
- * 의존방향: sensors.c (ZYL_TEST, IIO_BASE_PATH 교체), glib, pthread
+ * 수행범위: Sensors HAL 이 가짜 IIO sysfs 에서 찾은 센서를 폴링 스레드로 읽어
+ *           최신값을 채우는지, 장치가 없으면 조용히 비어 있는지
+ * 의존방향: sensors.c (ZYL_TEST), hal_sensors.c (ZYL_SYSFS_ROOT 로 가짜 sysfs),
+ *           glib, pthread
  * SOLID: SRP — "아무도 시작시키지 않으면 영구히 0" 회귀만 검증
  *
  * D-Bus 에 구독 메서드가 없어 폴링을 시작시키는 쪽이 없었고, 그래서
@@ -12,7 +13,9 @@
  * ────────────────────────────────────────────────────────── */
 
 #define ROOT_ "/tmp/zyl-sensors-test"
-#define IIO_BASE_PATH ROOT_
+#define ZYL_SYSFS_ROOT ROOT_
+#define IIO_ "/sys/bus/iio/devices/iio:device0"
+#include "../runtime/hal/hal_sensors.c"
 #include "../runtime/services/sensors/sensors.c"
 #include <assert.h>
 
@@ -25,16 +28,11 @@ static void write_file(const char *path, const char *text) {
 
 /* An accelerometer as the kernel's IIO driver exposes one */
 static void make_accel(void) {
-    char p[512];
-    assert(g_mkdir_with_parents(ROOT_ "/iio:device0", 0700) == 0);
-    snprintf(p, sizeof(p), "%s/iio:device0/in_accel_scale", ROOT_);
-    write_file(p, "0.01\n");
-    snprintf(p, sizeof(p), "%s/iio:device0/in_accel_x_raw", ROOT_);
-    write_file(p, "100\n");
-    snprintf(p, sizeof(p), "%s/iio:device0/in_accel_y_raw", ROOT_);
-    write_file(p, "0\n");
-    snprintf(p, sizeof(p), "%s/iio:device0/in_accel_z_raw", ROOT_);
-    write_file(p, "981\n");
+    assert(g_mkdir_with_parents(ROOT_ IIO_, 0700) == 0);
+    write_file(ROOT_ IIO_ "/in_accel_scale", "0.01\n");
+    write_file(ROOT_ IIO_ "/in_accel_x_raw", "100\n");
+    write_file(ROOT_ IIO_ "/in_accel_y_raw", "0\n");
+    write_file(ROOT_ IIO_ "/in_accel_z_raw", "981\n");
 }
 
 /* DEFAULT_RATE_HZ is 5 Hz: one sample is due within 200 ms */
@@ -52,8 +50,8 @@ int main(void) {
 
     ZylSensorService *svc = zyl_sensor_create();
     assert(svc);
-    assert(svc->device_count == 1);
-    assert(svc->devices[0].type == ZYL_SENSOR_ACCELEROMETER);
+    assert(svc->present[ZYL_SENSOR_ACCELEROMETER]);
+    assert(!svc->present[ZYL_SENSOR_GYROSCOPE] && !svc->present[ZYL_SENSOR_LIGHT]);
 
     ZylSensorEvent evt = {0};
     wait_for_sample(svc, &evt);
@@ -71,7 +69,8 @@ int main(void) {
     /* No IIO at all: the service comes up idle instead of failing */
     assert(system("rm -rf " ROOT_) == 0);
     svc = zyl_sensor_create();
-    assert(svc && svc->device_count == 0);
+    assert(svc);
+    for (int t = 0; t < 5; t++) assert(!svc->present[t]);
     assert(zyl_sensor_get_latest(svc, ZYL_SENSOR_ACCELEROMETER, &evt) == -1);
     zyl_sensor_destroy(svc);
     printf("  no sensor hardware: idle, not broken                       PASS\n");

@@ -134,7 +134,7 @@
 | user | 사용자 프로필 |
 | wifi | WiFi 스캔/연결 (비동기) |
 
-### HAL 구현체 (12개 — runtime/hal/)
+### HAL 구현체 (15개 — runtime/hal/)
 
 | 파일 | 역할 |
 |------|------|
@@ -149,6 +149,9 @@
 | hal_boot.c | 부트로더 환경 (A/B 슬롯·잠금) |
 | hal_torch.c | 손전등 LED |
 | hal_vibrator.c | 진동 모터 |
+| hal_sensors.c | IIO 센서 (가속도·자이로·근접·조도·자기장) |
+| hal_input.c | 하드웨어 키 (evdev, 키를 가진 장치 전부) |
+| hal_camera.c | V4L2 카메라 — 보드가 `board_hal_camera` 로 자기 구현(ISP)을 고를 수 있음 |
 | hal_emulator.c | 에뮬레이터 보드 (하드웨어 없음) |
 
 ### 시스템 프레임워크 (apps/system/)
@@ -359,7 +362,7 @@ emulator-app/                  Tauri 2.x 네이티브 에뮬레이터
 
 compositor/                    Wayland 모바일 컴포지터 (C, wlroots)
 runtime/wam/                   Web Application Manager (C, WebKitGTK)
-runtime/hal/                   Hardware Abstraction Layer (C, 12개)
+runtime/hal/                   Hardware Abstraction Layer (C, 15개)
 runtime/services/              시스템 서비스 32개 C 디렉토리 (D-Bus)
 system/                        systemd (35개 유닛), Plymouth, DTS, AppArmor, 복구
 tools/                         빌드/개발 도구

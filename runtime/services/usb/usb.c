@@ -2,7 +2,8 @@
  * [Clean Architecture] Application Layer - Service
  *
  * 역할: USB/MTP 관리 서비스 데몬 — USB 가젯 모드 전환, D-Bus 노출
- * 수행범위: configfs USB gadget 설정, 연결 상태 sysfs 감시, D-Bus 메서드/시그널
+ * 수행범위: configfs USB gadget 설정(전환이 실패하면 옛 모드를 다시 붙이고, 안 되면
+ *           충전 — 알리는 모드가 실제 붙은 것), 연결 상태 sysfs 감시, D-Bus 메서드/시그널
  * 의존방향: usb.h → gio/gio.h
  * SOLID: SRP — USB 가젯 모드 관리와 D-Bus 서비스만 담당
  * ────────────────────────────────────────────────────────── */
@@ -183,6 +184,24 @@ static int configure_gadget_function(ZylUsbMode mode) {
  *  Connection state polling (via sysfs)
  * ════════════════════════════════════════════════════════════════ */
 
+static void emit_state(ZylUsbService *svc) {
+    if (!svc->dbus_conn) return;
+    GError *error = NULL;
+    g_dbus_connection_emit_signal(svc->dbus_conn,
+        NULL,
+        ZYL_USB_DBUS_PATH,
+        ZYL_USB_DBUS_NAME,
+        "UsbStateChanged",
+        g_variant_new("(sb)",
+            mode_to_string[svc->current_mode],
+            svc->connected),
+        &error);
+    if (error) {
+        g_warning("USB: failed to emit signal: %s", error->message);
+        g_error_free(error);
+    }
+}
+
 static gboolean poll_usb_state(gpointer user_data) {
     ZylUsbService *svc = user_data;
 
@@ -213,23 +232,7 @@ static gboolean poll_usb_state(gpointer user_data) {
                   old_connected ? "connected" : "disconnected",
                   new_connected ? "connected" : "disconnected");
 
-        /* Emit D-Bus signal */
-        if (svc->dbus_conn) {
-            GError *error = NULL;
-            g_dbus_connection_emit_signal(svc->dbus_conn,
-                NULL,
-                ZYL_USB_DBUS_PATH,
-                ZYL_USB_DBUS_NAME,
-                "UsbStateChanged",
-                g_variant_new("(sb)",
-                    mode_to_string[svc->current_mode],
-                    svc->connected),
-                &error);
-            if (error) {
-                g_warning("USB: failed to emit signal: %s", error->message);
-                g_error_free(error);
-            }
-        }
+        emit_state(svc);
     }
 
     return G_SOURCE_CONTINUE;
@@ -285,28 +288,17 @@ int zyl_usb_set_mode(ZylUsbService *svc, ZylUsbMode mode) {
               mode_to_string[svc->current_mode],
               mode_to_string[mode]);
 
+    ZylUsbMode was = svc->current_mode;
     int ret = configure_gadget_function(mode);
     if (ret == 0) {
         svc->current_mode = mode;
-
-        /* Emit state changed signal */
-        if (svc->dbus_conn) {
-            GError *error = NULL;
-            g_dbus_connection_emit_signal(svc->dbus_conn,
-                NULL,
-                ZYL_USB_DBUS_PATH,
-                ZYL_USB_DBUS_NAME,
-                "UsbStateChanged",
-                g_variant_new("(sb)",
-                    mode_to_string[svc->current_mode],
-                    svc->connected),
-                &error);
-            if (error) {
-                g_warning("USB: failed to emit signal: %s", error->message);
-                g_error_free(error);
-            }
-        }
+    } else if (configure_gadget_function(was) != 0) {
+        /* The old function was already unbound and will not bind again:
+           nothing is served, so say so */
+        configure_gadget_function(ZYL_USB_MODE_CHARGING);
+        svc->current_mode = ZYL_USB_MODE_CHARGING;
     }
+    if (svc->current_mode != was) emit_state(svc);
 
     return ret;
 }
