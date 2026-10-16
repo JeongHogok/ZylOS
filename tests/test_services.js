@@ -1472,7 +1472,7 @@ var gateTests = (function () {
         return ask('notification', 'cancel', { id: r.id }, 'com.example.chat');
       }).then(function (r) {
         assert.strictEqual(r.success, true);
-        return ask('notification', 'cancel', { id: 1, appId: '' }, 'com.zylos.statusbar');   /* bridge.js clearNotification */
+        return ask('notification', 'cancel', { id: 1, appId: '' }, 'com.zylos.statusbar');
       }).then(active).then(function (a) {
         assert.deepStrictEqual(a.map(function (n) { return n.appId; }), ['com.zylos.settings']);
       });

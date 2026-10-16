@@ -138,9 +138,6 @@
       updateLangChecks();
       applyTranslations();
 
-      /* 시스템 전체에 언어 변경 알림 (bridge 사용) */
-      ZylBridge.setLocale(newLocale);
-
       /* 헤더 제목도 업데이트 */
       headerTitle.textContent = t('settings.language');
     });

@@ -245,7 +245,7 @@
     startCamera();
   });
   document.getElementById('btn-gallery').addEventListener('click', function () {
-    if (typeof ZylBridge !== 'undefined') ZylBridge.launch('com.zylos.gallery');
+    if (typeof ZylIntent !== 'undefined') ZylIntent.startActivity({ targetApp: 'com.zylos.gallery' });
   });
 
   /* ─── Preview actions ─── */
