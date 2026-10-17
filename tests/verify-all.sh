@@ -666,6 +666,27 @@ else
   pass "전용 사용자 유닛 = sysusers.d 계정·tmpfiles 소유·버스 정책"
 fi
 
+# D5: PIN 으로 잠그는 사용자 데이터 디렉터리(lock.c 의 ZYL_CE_DIRS)는 tmpfiles 가 만든다
+#     — 첫 부팅에 비어 있는 채로 있어야 zyl-lock-prepare 가 정책을 건다. 없으면 정책을
+#     걸 곳이 없고, 서비스가 먼저 만들면 평문으로 남는다
+CE_GAPS=$(python3 - "$ROOT" <<'PYCHK'
+import glob, re, sys
+root = sys.argv[1]
+src = open(root + '/runtime/services/lock/lock.c').read()
+m = re.search(r'#define ZYL_CE_DIRS (.*)', src)
+dirs = re.findall(r'"([^"]+)"', m.group(1)) if m else []
+made = set()
+for f in glob.glob(root + '/system/tmpfiles.d/*.conf'):
+    made |= set(re.findall(r'^d\s+(\S+)', open(f).read(), re.M))
+print(' '.join(d for d in dirs if d not in made) if dirs else 'ZYL_CE_DIRS 를 읽지 못함')
+PYCHK
+)
+if [ -n "$CE_GAPS" ]; then
+  fail "잠그는 사용자 데이터 디렉터리를 tmpfiles 가 만들지 않는다: $CE_GAPS"
+else
+  pass "잠그는 사용자 데이터 디렉터리 전부 tmpfiles 가 만든다"
+fi
+
 # D3: 유닛이 쓰는 경로를 그 서비스의 AppArmor 프로필도 허용하는지
 #     systemd 는 ReadWritePaths 로 열어 주는데 프로필 경로가 다르면 쓰기가 전부
 #     거부된다. credential 프로필은 .../credential/(s 없이)이라 키체인이 기기에서

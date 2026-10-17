@@ -6,7 +6,8 @@
  * 수행범위: 연락처 — 만들기, 준 필드만 고치기(별표가 이름을 지우지 않음),
  *           이름순, 대소문자 무시 검색, 삭제, 없는 연락처 고치기 거부, 0600.
  *           메시지 — 번호 → 대화 id, 앱이 준 id 로 경로 탈출 불가, 받은 것만
- *           안 읽음, 최근 대화 먼저, 보낸 결과 상태, 읽음, 삭제
+ *           안 읽음, 최근 대화 먼저, 보낸 결과 상태, 읽음, 삭제, 첫 잠금 해제 전에
+ *           받은 것은 따로 두었다가 열리면 대화로 한 번씩(옮기지 못한 것은 남김)
  * 의존방향: contacts.c, messaging.c (ZYL_TEST), glib
  * SOLID: SRP — 두 저장소의 규칙 검증만 담당
  * ────────────────────────────────────────────────────────── */
@@ -14,10 +15,12 @@
 #define ROOT_ "/tmp/zyl-cm-test"
 #define ZYL_CONTACTS_FILE ROOT_ "/contacts/contacts"
 #define ZYL_MESSAGES_DIR ROOT_ "/messages"
+#define ZYL_PENDING_FILE ROOT_ "/messages-pending/received"
 #include "../runtime/services/contacts/contacts.c"
 #include "../runtime/services/messaging/messaging.c"
 #include <assert.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 static int tests_run, tests_pass;
 #define RUN_TEST(fn) do { tests_run++; printf("  %-60s ", #fn); assert(system("rm -rf " ROOT_) == 0); fn(); tests_pass++; printf("PASS\n"); } while (0)
@@ -124,12 +127,35 @@ static void test_threads_messages_and_unread(void) {
     g_free(t1); g_free(t2); g_free(t1b); g_free(status); g_free(nid); g_free(last); g_free(text);
 }
 
+/* Before the first unlock a text waits outside the user's data; when it opens
+   each goes into its thread once, and one that cannot is kept for next time */
+static void test_held_messages_move_into_their_threads(void) {
+    assert(hold("010-1", "code 1234", 1000) && hold("010-2", "hi", 2000) && hold("0101", "again", 3000));
+    struct stat st;
+    assert(stat(ZYL_PENDING_FILE, &st) == 0 && (st.st_mode & 0777) == 0600);
+    assert(system("touch " ZYL_MESSAGES_DIR) == 0);            /* threads cannot be written */
+    release_held(NULL);
+    assert(stat(ZYL_PENDING_FILE, &st) == 0);                  /* nothing lost */
+    assert(unlink(ZYL_MESSAGES_DIR) == 0);
+    release_held(NULL);
+    assert(stat(ZYL_PENDING_FILE, &st) != 0);                  /* all moved */
+    release_held(NULL);                                        /* nothing twice */
+    GVariant *threads = list_threads(), *msgs = list_messages("thread_0101");
+    assert(g_variant_n_children(threads) == 2 && g_variant_n_children(msgs) == 2);
+    GVariant *m0 = g_variant_get_child_value(msgs, 0);
+    char *text = str(m0, "text");
+    assert(strcmp(text, "code 1234") == 0);
+    g_variant_unref(threads); g_variant_unref(msgs); g_variant_unref(m0);
+    g_free(text);
+}
+
 int main(void) {
     printf("=== contacts / messaging store tests ===\n");
     RUN_TEST(test_contact_update_keeps_other_fields);
     RUN_TEST(test_contacts_sorted_searched_deleted);
     RUN_TEST(test_thread_ids_are_safe_names);
     RUN_TEST(test_threads_messages_and_unread);
+    RUN_TEST(test_held_messages_move_into_their_threads);
     printf("=== %d/%d passed ===\n", tests_pass, tests_run);
     assert(system("rm -rf " ROOT_) == 0);
     return tests_pass == tests_run ? 0 : 1;

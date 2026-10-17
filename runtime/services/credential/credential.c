@@ -12,13 +12,15 @@
  * 암호화:      AES-256-GCM via OpenSSL EVP API
  * 키 파생:     PBKDF2-HMAC-SHA256, 100,000 iterations
  * 마스터 키:   기기 결합 키 {store_path}/.device_key (첫 시작 때 32 바이트 난수,
- *              root 0600) 에서 파생. 시작하면 바로 열린다
- * shortcut: 기기 결합 키가 저장소와 같은 곳(root 전용)에 있다 — 지키는 것은
- *           /var/lib 접근 제한(잠금 서비스와 같은 선)이다. TEE 나 PIN 결합이
- *           생기면 키를 그쪽으로 옮길 것
+ *              root 0600) 에서 파생. 저장소는 사용자 데이터라(fscrypt, 잠금 서비스의
+ *              키) 부팅 뒤 첫 잠금 해제 때 열린다 — 그 전에는 잠긴 채 답한다
+ * shortcut: 기기 결합 키가 저장소와 같은 곳(root 전용)에 있다 — 꺼진 기기에서는
+ *           그 디렉터리를 잠그는 PIN(잠금 서비스)이 지킨다. TEE 가 생기면 키를
+ *           그쪽으로 옮길 것
  * ────────────────────────────────────────────────────────── */
 
 #include "credential.h"
+#include "fscrypt.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -665,6 +667,14 @@ int zyl_credential_open_with_device_key(ZylCredentialStore *store) {
 /* ─── 데몬 진입점 ─── */
 
 #ifndef ZYL_TEST
+/* Locked, .device_key cannot be seen: opening then would try to make a new one */
+static void open_store(void *data) {
+    if (zyl_credential_open_with_device_key(data) != 0)
+        exit(1);   /* systemd retries; a store that cannot open serves nothing */
+    g_message("[Credential] Zyl OS Credential Manager started "
+              "(AES-256-GCM + PBKDF2, device key)");
+}
+
 int main(int argc, char *argv[]) {
     (void)argc; (void)argv;
 
@@ -675,12 +685,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    if (zyl_credential_open_with_device_key(store) != 0) {
-        zyl_credential_destroy(store);
-        return 1;   /* systemd retries; a store that cannot open serves nothing */
-    }
-    g_message("[Credential] Zyl OS Credential Manager started "
-              "(AES-256-GCM + PBKDF2, device key)");
+    zyl_fscrypt_when_unlocked(store->store_path, open_store, store);
 
     GMainLoop *loop = g_main_loop_new(NULL, FALSE);
     g_main_loop_run(loop);

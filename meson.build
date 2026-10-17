@@ -112,7 +112,7 @@ install_subdir('apps/shared',      install_dir: get_option('datadir') / 'zyl-os'
 install_headers('runtime/hal/hal.h', subdir: 'zyl-os')
 
 # ─── systemd units — only those the profile actually builds ───
-zyl_units = ['zyl-compositor', 'zyl-wam', 'zyl-apparmor']
+zyl_units = ['zyl-compositor', 'zyl-wam', 'zyl-apparmor', 'zyl-lock-prepare']   # lock: a core service
 foreach svc : zyl_services
   zyl_units += 'zyl-' + svc
 endforeach

@@ -118,10 +118,11 @@ test('settings',
 )
 
 # Test: screen lock credential (hash-only storage, failure waits that survive
-# a restart, current PIN to change/remove)
+# a restart, current PIN to change/remove) and the user data key it seals
 test('lock',
   executable('test-lock',
     'test_lock.c',
+    include_directories: _lib_inc,      # fscrypt.h — the kernel calls are faked in the test
     dependencies: [gio_dep, dependency('openssl', version: '>=1.1.1')],
     c_args: ['-DZYL_TEST'],
   )
@@ -218,11 +219,12 @@ test('fs-service',
 )
 
 # Test: contacts (only the fields given change, search, 0600) and messages
-# (thread ids are safe file names, unread from received only, send status)
+# (thread ids are safe file names, unread from received only, send status,
+# texts that came in before the first unlock move into their threads)
 test('contacts-messaging',
   executable('test-contacts-messaging',
     'test_contacts_messaging.c',
-    dependencies: [gio_dep],
+    dependencies: [gio_dep, zyl_fscrypt_dep],
     c_args: ['-DZYL_TEST'],
   )
 )
@@ -296,6 +298,7 @@ test('manifest-scan',
 test('credential',
   executable('test-credential',
     'test_credential.c',
+    include_directories: _lib_inc,
     dependencies: [gio_dep, dependency('openssl', version: '>=1.1.1')],
     c_args: ['-DZYL_TEST'],
   )
@@ -307,7 +310,7 @@ test('user',
   executable('test-user',
     'test_user.c',
     include_directories: _lib_inc,
-    dependencies: [gio_dep],
+    dependencies: [gio_dep, zyl_fscrypt_dep],
     c_args: ['-DZYL_TEST'],
   )
 )

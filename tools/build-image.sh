@@ -5,7 +5,8 @@
 # 역할: 소스에서 설치 가능한 Zyl OS 디스크 이미지 한 장을 만든다
 # 수행범위: 최소 rootfs 부트스트랩(debootstrap) → `ninja install` 로 Zyl 설치 →
 #           부팅 설정(fstab·기본 타겟·사용자·디렉터리) → ext4 rootfs 이미지 →
-#           보드 레이아웃대로 파티션 디스크 조립(부트 파티션 vfat, /data ext4).
+#           보드 레이아웃대로 파티션 디스크 조립(부트 파티션 vfat, /data 는 비워 두고
+#           첫 부팅이 encrypt 기능을 켠 ext4 로 만든다).
 #           루트는 읽기 전용으로 쓰인다(기기에서는 dm-verity) — 바뀌는 것은 /data
 #           (영속)와 /var·/tmp(휘발)뿐이고, 그렇게 되도록 여기서 맞춘다
 # 의존방향: 읽는 사실은 전부 남이 소유한다 —
@@ -191,6 +192,13 @@ tmpfs                           /var   tmpfs  mode=0755,nosuid,nodev            
 EOF
 mkdir -p "$ROOTFS/data" "$ROOTFS/boot"
 
+# /data 를 만드는 것은 첫 부팅의 makefs 하나뿐이고(이미지는 비워 둔다 — 잠금 전환·공장
+# 초기화 뒤와 같은 길), 그 mkfs.ext4 는 이 파일을 읽는다. 사용자 데이터를 PIN 으로
+# 잠그려면(fscrypt — zyl-lock-prepare.service) ext4 에 encrypt 기능이 있어야 한다
+sed -i '/^[[:space:]]*ext4 = {/,/}/ s/^\([[:space:]]*features = .*\)$/\1,encrypt/' "$ROOTFS/etc/mke2fs.conf"
+sed -n '/^[[:space:]]*ext4 = {/,/}/p' "$ROOTFS/etc/mke2fs.conf" | grep -q 'features = .*,encrypt$' \
+    || { echo "✗ mke2fs.conf 의 ext4 에 encrypt 를 넣지 못했다 — /data 가 암호화되지 않는다" >&2; exit 1; }
+
 # 읽기 전용 /etc 에 남는 것: 기기마다 달라야 할 machine-id 는 비워 두면 systemd 가
 # 부팅마다 만든다. DNS 는 NetworkManager 가 /run 에 쓴 것을 가리킨다
 : > "$ROOTFS/etc/machine-id"
@@ -302,7 +310,7 @@ expect "$ZYL_PART_DATA"     userdata
 
 start_of() { echo "$LAYOUT_SEEN" | awk -v n="$1" '$1 == n { print $3 }'; }
 
-step "rootfs → 슬롯 A, 부트 파티션 vfat, /data 포맷"
+step "rootfs → 슬롯 A, 부트 파티션 vfat (/data 는 첫 부팅이 만든다)"
 OFF="$(start_of "$ZYL_PART_ROOT_A")"
 dd if="$ROOT_IMG" of="$DISK" bs=512 seek="$OFF" conv=notrunc status=none
 
@@ -311,11 +319,6 @@ mkfs.vfat -n ZYL-BOOT -C "$BOOT_IMG" $(( ZYL_SIZE_BOOT_MIB * 1024 )) >/dev/null
 BOFF="$(start_of "$ZYL_PART_BOOT")"
 dd if="$BOOT_IMG" of="$DISK" bs=512 seek="$BOFF" conv=notrunc status=none
 
-DATA_IMG="$W/data.img"
-truncate -s "${DATA_MIB}M" "$DATA_IMG"
-mkfs.ext4 -q -F -L zyl-data "$DATA_IMG"
-DOFF="$(start_of "$ZYL_PART_DATA")"
-dd if="$DATA_IMG" of="$DISK" bs=512 seek="$DOFF" conv=notrunc status=none
 
 echo
 echo "✓ 디스크 이미지: $DISK  (${TOTAL} MiB)"

@@ -5,7 +5,8 @@
 # Scope: app containers (appdata, fs, appstore, WAM), OTA/package signature
 #        checks (updater, appstore, seals), app seals (appstore, WAM), where
 #        users and their files live (user, fs, appstore), reading JSON strings
-#        (HAL, WAM, services), following a settings category (telephony, location)
+#        (HAL, WAM, services), following a settings category (telephony, location),
+#        per-file encryption of user data (lock, credential, messaging, user)
 # Dependency direction: glib, json-glib, OpenSSL; nothing of the services
 # SOLID: SRP — one small static library per concern, each with only its own deps
 
@@ -21,6 +22,14 @@ zyl_users_dep = declare_dependency(include_directories: _lib_inc)
 zyl_settings_follow_dep = declare_dependency(
   link_with: static_library('zyl-settings-follow', 'settings_follow.c',
                             dependencies: [dependency('gio-2.0')]),
+  include_directories: _lib_inc,
+  dependencies: [dependency('gio-2.0')],
+)
+
+# User data's per-file encryption (fscrypt v2): the lock service puts the key on
+# and gives directories their policy; credential, messaging and user wait while locked
+zyl_fscrypt_dep = declare_dependency(
+  link_with: static_library('zyl-fscrypt', 'fscrypt.c', dependencies: [dependency('gio-2.0')]),
   include_directories: _lib_inc,
   dependencies: [dependency('gio-2.0')],
 )
