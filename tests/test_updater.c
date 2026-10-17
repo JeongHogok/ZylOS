@@ -6,7 +6,8 @@
  *           기록(실행 중인 슬롯은 그대로), 일부가 빠진 패키지는 부트로더를
  *           새 슬롯으로 돌리지 않음, 시험 부팅 중엔 되돌아갈 슬롯을 덮지 않음,
  *           전체 이미지만 허용, 지원 여부(키·U-Boot 환경), 시험 부팅 판정,
- *           U-Boot 변수 이름이 부트 정책(board/boot-policy.txt)과 일치
+ *           U-Boot 변수 이름이 부트 정책(board/boot-policy.txt)과 일치, 폴백 슬롯은
+ *           확정 때 이전 슬롯·쓰기 전에 지움, 확정된 슬롯이 서면 부팅 횟수를 지움
  * 의존방향: runtime/services/updater/{updater,ota_verify,ota_install}.c,
  *           runtime/hal/hal_boot.c, 가짜 fw_printenv/fw_setenv,
  *           파일로 만든 가짜 파티션, tar, OpenSSL (테스트 키로 서명)
@@ -119,7 +120,9 @@ static void reset(void) {
     put(DIR_ "/pkg/fit-image-a.itb", "new fit a");
     put(DIR_ "/pkg/fit-image-b.itb", "new fit b");
     tool("fw_setenv", "echo \"$*\" >> " DIR_ "/env.log\n");
-    tool("fw_printenv", "[ \"$2\" = zyl_next_slot ] && [ -s " DIR_ "/next ] && exec cat " DIR_ "/next\nexit 1\n");
+    /* zyl_next_slot from DIR_/next, any other variable from DIR_/env-<name> */
+    tool("fw_printenv", "f=" DIR_ "/env-$2; [ \"$2\" = zyl_next_slot ] && f=" DIR_ "/next\n"
+                        "[ -s $f ] && exec cat $f\nexit 1\n");
     if (u) zyl_updater_destroy(u);
     u = zyl_updater_create(NULL, DIR_ "/cache");
     free(u->active_slot);
@@ -143,8 +146,9 @@ static void test_signed_image_installs_into_the_inactive_slot_only(void) {
     assert(starts(DIR_ "/dev/p5", "new tree b"));
     assert(is(DIR_ "/boot/fit-image-b.itb", "new fit b"));
     running_slot_untouched();
-    /* Pending install cancelled first, then U-Boot told to try b */
-    assert(is(DIR_ "/env.log", "zyl_next_slot\nzyl_boot_count 0\nzyl_next_slot b\n"));
+    /* Pending install cancelled and the fallback forgotten (b held it) first,
+       then U-Boot told to try b */
+    assert(is(DIR_ "/env.log", "zyl_next_slot\nzyl_fallback_slot\nzyl_boot_count 0\nzyl_next_slot b\n"));
     assert(u->state == ZYL_UPDATE_PENDING_REBOOT);
     assert(!g_file_test(DIR_ "/boot/.fit-image-b.itb.new", G_FILE_TEST_EXISTS));
     assert(!g_file_test(PKG, G_FILE_TEST_EXISTS));
@@ -173,7 +177,7 @@ static void test_a_missing_part_never_points_the_bootloader_at_the_slot(void) {
     assert(!zyl_updater_apply(u, NULL, NULL));
     assert(u->state == ZYL_UPDATE_FAILED);
     assert(is(DIR_ "/boot/fit-image-b.itb", "old fit b"));
-    assert(is(DIR_ "/env.log", "zyl_next_slot\n"));
+    assert(is(DIR_ "/env.log", "zyl_next_slot\nzyl_fallback_slot\n"));
     running_slot_untouched();
 }
 
@@ -237,11 +241,35 @@ static void test_the_booted_slot_is_read_from_a_long_signed_command_line(void) {
     zyl_updater_destroy(v);
 }
 
+/* Confirming a try makes the slot it replaced the one to fall back to — last,
+   so a write that does not land leaves no fallback rather than a wrong one */
+static void test_a_confirmed_update_keeps_the_slot_it_replaced(void) {
+    put(DIR_ "/next", "a");                                 /* a was being tried */
+    assert(zyl_updater_mark_verified(u));
+    assert(is(DIR_ "/env.log", "zyl_active_slot a\nzyl_next_slot\nzyl_boot_count 0\nzyl_fallback_slot b\n"));
+}
+
+/* A confirmed slot that came up clears what U-Boot counted; a try does not */
+static void test_a_confirmed_slot_that_came_up_clears_the_count(void) {
+    put(DIR_ "/env-zyl_boot_count", "2");
+    assert(zyl_updater_mark_booted(u));
+    assert(is(DIR_ "/env.log", "zyl_boot_count 0\n"));
+    put(DIR_ "/env-zyl_boot_count", "0");
+    unlink(DIR_ "/env.log");
+    assert(zyl_updater_mark_booted(u));                    /* nothing to clear, nothing written */
+    assert(!g_file_test(DIR_ "/env.log", G_FILE_TEST_EXISTS));
+    put(DIR_ "/env-zyl_boot_count", "2");
+    put(DIR_ "/next", "a");                                 /* on trial: the health check's */
+    assert(!zyl_updater_mark_booted(u));
+    assert(!g_file_test(DIR_ "/env.log", G_FILE_TEST_EXISTS));
+}
+
 static void test_variables_are_the_ones_u_boot_reads(void) {
     char *env = NULL;
     assert(g_file_get_contents("board/boot-policy.txt", &env, NULL, NULL));
     assert(strstr(env, "\nzyl_next_slot=") && strstr(env, "\nzyl_boot_count=") &&
-           strstr(env, "\nzyl_active_slot=") && strstr(env, "fit-image-${zyl_slot}.itb"));
+           strstr(env, "\nzyl_active_slot=") && strstr(env, "\nzyl_fallback_slot=") &&
+           strstr(env, "fit-image-${zyl_slot}.itb"));
     g_free(env);
 }
 
@@ -321,6 +349,8 @@ int main(void) {
     RUN_TEST(test_supported_needs_the_key_and_a_bootloader_environment);
     RUN_TEST(test_on_trial_only_while_u_boot_is_trying_this_slot);
     RUN_TEST(test_the_booted_slot_is_read_from_a_long_signed_command_line);
+    RUN_TEST(test_a_confirmed_update_keeps_the_slot_it_replaced);
+    RUN_TEST(test_a_confirmed_slot_that_came_up_clears_the_count);
     RUN_TEST(test_variables_are_the_ones_u_boot_reads);
     RUN_TEST(test_healthy_is_every_core_unit_up_in_the_same_run);
     RUN_TEST(test_a_download_is_bounded_and_a_failed_one_leaves_nothing);

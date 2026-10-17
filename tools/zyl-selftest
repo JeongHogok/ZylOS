@@ -4,7 +4,8 @@
 #
 # 역할: 부팅한 Zyl OS 가 제대로 서 있는지 스스로 점검해 한 줄로 보고한다
 # 수행범위: 설치된 zyl 유닛이 활성인지, 그 유닛이 선언한 D-Bus 이름이 실제로
-#           시스템 버스에 있는지, 앱 디렉터리와 /data 가 있는지
+#           시스템 버스에 있는지, 앱 디렉터리와 /data 가 있는지, 띄운 슬롯이 확정되고
+#           (폴백이 있으면) 부팅 횟수가 지워지는지
 # 의존방향: systemctl, gdbus. 기대 목록을 스스로 갖지 않고 **설치된 유닛의
 #           BusName= 에서 끌어낸다 (프로파일마다 서비스 집합이 다르다)
 # SOLID: SRP — 점검과 보고만. 고치지 않는다
@@ -142,6 +143,18 @@ else
         bad "슬롯 $slot 로 부팅했는데 확정되지 않았다 (zyl_active_slot=$active, zyl_next_slot=$(fw_printenv -n zyl_next_slot 2>/dev/null))"
         # 기기에는 셸이 없다 — 왜 확정하지 않았는지는 업데이터의 기록이 콘솔로 말한다
         journalctl -u zyl-updater -n 20 -o cat --no-pager 2>/dev/null | while IFS= read -r l; do say "  updater: $l"; done
+    fi
+    # 되돌아갈 슬롯이 있으면 U-Boot 가 확정된 슬롯의 부팅도 센다 — 선 OS(업데이터 기동)가
+    # 지우지 않으면 zyl_boot_limit 번째 부팅에서 멀쩡한 슬롯을 버린다
+    fallback="$(fw_printenv -n zyl_fallback_slot 2>/dev/null)"
+    if [ -n "$fallback" ]; then
+        i=0
+        while [ "$(fw_printenv -n zyl_boot_count 2>/dev/null)" != 0 ] && [ $i -lt 60 ]; do
+            sleep 2; i=$((i + 2))
+        done
+        count="$(fw_printenv -n zyl_boot_count 2>/dev/null)"
+        if [ "$count" = 0 ]; then ok "부팅 횟수 지움 (폴백 슬롯 $fallback)"
+        else bad "부팅 횟수가 남았다 (zyl_boot_count=$count, 폴백 슬롯 $fallback) — 다음 부팅들에서 폴백한다"; fi
     fi
 fi
 

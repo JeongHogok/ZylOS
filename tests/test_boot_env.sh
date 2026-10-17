@@ -6,7 +6,7 @@
 # 수행범위: 빌드와 같이 두 파일을 합쳐 bootcmd 를 실행 — U-Boot 명령(setenv,
 #           saveenv, run, button, mmc, part, load, bootm, reset, zyl_serial,
 #           zyl_rotpk)은 기록만 하는 셸 함수로 대신한다. A/B 시도·롤백, 부팅
-#           실패 시 롤백 예약, 잠금 전환(허용·버튼 확인·데이터 삭제), 잠금
+#           실패 시 롤백 예약, 확정된 슬롯이 서지 못하면 폴백(되돌아갈 슬롯이 있을 때만 셈), 잠금 전환(허용·버튼 확인·데이터 삭제), 잠금
 #           해제 시 검증 해제, OS 전에 부팅 영역 쓰기 보호·기기 ID, eFuse 는
 #           빌드가 고른 잠긴 기기에서만, 잠긴 기기는 실패 시 셸 대신 재시작
 # 의존방향: bash. U-Boot hush 와 공통인 문법만 쓰는 스크립트라 그대로 실행된다
@@ -52,7 +52,7 @@ reset()   { log "reset"; finish; }
 zyl_serial() { log "zyl_serial"; }
 zyl_rotpk()  { log "zyl_rotpk $*"; }
 echo()    { log "echo $*"; }
-finish()  { STATE="slot=${zyl_slot} active=${zyl_active_slot} next=${zyl_next_slot:-} count=${zyl_boot_count} unlocked=${zyl_unlocked} seen=${zyl_lock_seen} allowed=${zyl_oem_unlock_allowed}"; exit 0; }
+finish()  { STATE="slot=${zyl_slot} active=${zyl_active_slot} next=${zyl_next_slot:-} count=${zyl_boot_count} unlocked=${zyl_unlocked} seen=${zyl_lock_seen} allowed=${zyl_oem_unlock_allowed} fallback=${zyl_fallback_slot:-}."; exit 0; }
 
 # boot VAR=value ... — one boot from the stored env, prints the outcome
 boot() {
@@ -95,6 +95,22 @@ check "after three failed tries it rolls back" "$out" \
 out=$(boot zyl_next_slot=b zyl_boot_count=0 FAKE_BOOT_FAIL=1)
 check "a tried slot that will not boot is given up at once" "$out" \
   "count=3" "reset"
+
+out=$(boot zyl_fallback_slot=b)
+check "a confirmed slot with one to fall back to is counted until the OS clears it" "$out" \
+  "slot=a" "count=1" "saveenv" "fallback=b." "load fit-image-a.itb"
+
+out=$(boot zyl_fallback_slot=b zyl_boot_count=3)
+check "three boots of it that never came up: the slot before it" "$out" \
+  "slot=b" "active=b" "count=0" "fallback=." "falling back to slot b" "load fit-image-b.itb"
+
+out=$(boot zyl_fallback_slot=b FAKE_BOOT_FAIL=1)
+check "a confirmed slot that will not load hands over at once" "$out" \
+  "count=3" "reset" "!no verified system booted"
+
+out=$(boot zyl_next_slot=b zyl_boot_count=1 zyl_fallback_slot=a)
+check "while an update is tried, the try is what counts" "$out" \
+  "slot=b" "active=a" "count=2" "fallback=a."
 
 out=$(boot zyl_unlocked=1)
 check "unlock without the Settings permission is refused" "$out" \
@@ -151,6 +167,9 @@ check "locked boot loads the active slot from the virtio disk, verified" "$out" 
 
 out=$(boot zyl_next_slot=b zyl_boot_count=3)
 check "the same rollback after the try limit" "$out" "slot=a" "next= " "count=0" "rolling back"
+
+out=$(boot zyl_fallback_slot=b zyl_boot_count=3)
+check "the same fall back to the slot before" "$out" "slot=b" "active=b" "fallback=." "load fit-image-b.itb from virtio 0:1"
 
 out=$(boot zyl_unlocked=1 zyl_oem_unlock_allowed=1 FAKE_BUTTON=user)
 check "no button: a lock change is never confirmed, nothing erased" "$out" \

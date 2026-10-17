@@ -12,6 +12,8 @@
 #              bootcmd 를 바꿔 넣어 둔다 — U-Boot 는 정책의 Runtime state 밖은 받지 않는다
 #           3. 변조된 슬롯(FIT 1 바이트)으로의 업데이트 → 서명 검증 실패 → 시도 소진 →
 #              재시작 → 다음 부팅에서 확정된 B 로 롤백, 자기점검 통과
+#           4. 되돌아갈 슬롯(A)이 있으면 U-Boot 가 확정된 B 의 부팅도 세고, 선 OS 가 지운다
+#           5. 확정된 B 의 FIT 가 깨지면 그 자리에서 포기 → 다음 부팅에서 A 로 폴백
 # 의존방향: tools/{build-bootloader,sign-image,run-qemu,gen-boot-keys}.sh, 이미지
 #           (tools/build-image.sh --with-kernel, board=generic-riscv64), opensbi,
 #           mtools, libubootenv-tool(fw_printenv/fw_setenv), veritysetup, mkimage
@@ -111,6 +113,8 @@ grep -q 'ZYL-HIJACKED' "$W/2-slot-b.log" && bad "저장된 환경의 bootcmd 를
 [ "$(env_get zyl_active_slot)" = b ] && [ -z "$(env_get zyl_next_slot)" ] \
     && ok "부트 환경: zyl_active_slot=b, 시도 끝" \
     || bad "부트 환경이 확정되지 않았다 (active=$(env_get zyl_active_slot) next=$(env_get zyl_next_slot))"
+[ "$(env_get zyl_fallback_slot)" = a ] && ok "확정이 바뀐 쪽 슬롯 A 를 폴백으로 남김" \
+    || bad "폴백 슬롯이 A 가 아니다 ($(env_get zyl_fallback_slot))"
 
 echo "── 3. 변조된 슬롯으로의 업데이트 → 롤백"
 sign a
@@ -119,7 +123,8 @@ import sys
 p = sys.argv[1]; d = bytearray(open(p, 'rb').read()); d[len(d) // 2] ^= 0xff; open(p, 'wb').write(d)
 PY
 mcopy -o -i "$BOOTFS" "$W/signed/fit-image-a.itb" ::/fit-image-a.itb
-env_set zyl_next_slot a zyl_boot_count 0 || exit 1
+# as the updater does before it writes slot A: A is no longer one to fall back to
+env_set zyl_next_slot a zyl_boot_count 0 zyl_fallback_slot "" || exit 1
 boot 3-tampered        # U-Boot refuses the FIT, gives the try up and restarts (QEMU ends: -no-reboot)
 grep -q 'Bad Data Hash\|Bad hash value\|Verification failed' "$W/3-tampered.log" \
     && ok "변조된 FIT 를 U-Boot 가 거부" || bad "변조된 FIT 가 거부되지 않았다"
@@ -132,6 +137,31 @@ grep -q 'zyl-selftest: ok   슬롯 b 부팅·확정' "$W/4-rollback.log" && ok "
 [ "$(env_get zyl_active_slot)" = b ] && [ -z "$(env_get zyl_next_slot)" ] \
     && ok "부트 환경: zyl_active_slot=b 그대로, 시도 끝" \
     || bad "롤백 뒤 환경 (active=$(env_get zyl_active_slot) next=$(env_get zyl_next_slot))"
+
+echo "── 4. 되돌아갈 슬롯이 있는 확정된 슬롯: U-Boot 가 세고, 선 OS 가 지운다"
+sign a                 # A holds a good system again, as before the tampered update
+env_set zyl_fallback_slot a zyl_boot_count 0 || exit 1
+if boot 5-counted --check; then ok "슬롯 B 가 다시 서고 자기점검 통과"
+else bad "폴백이 있는 B 가 통과하지 못했다"; tail -40 "$W/5-counted.out"; fi
+grep -q 'zyl-selftest: ok   부팅 횟수 지움' "$W/5-counted.log" && [ "$(env_get zyl_boot_count)" = 0 ] \
+    && ok "OS 가 U-Boot 가 센 부팅 횟수를 지웠다" || bad "부팅 횟수가 남았다 ($(env_get zyl_boot_count))"
+
+echo "── 5. 확정된 슬롯이 깨짐 → 폴백"
+python3 -I - "$W/signed/fit-image-b.itb" "$W/fit-b-broken.itb" <<'PY'
+import sys
+d = bytearray(open(sys.argv[1], 'rb').read()); d[len(d) // 2] ^= 0xff; open(sys.argv[2], 'wb').write(d)
+PY
+mcopy -o -i "$BOOTFS" "$W/fit-b-broken.itb" ::/fit-image-b.itb
+boot 6-broken          # U-Boot refuses B's FIT and, with A to go back to, gives B up at once
+grep -q 'slot b did not boot' "$W/6-broken.log" && [ "$(env_get zyl_boot_count)" = 3 ] \
+    && ok "깨진 확정 슬롯을 U-Boot 가 그 자리에서 포기" || bad "깨진 B 를 포기하지 않았다 (count=$(env_get zyl_boot_count))"
+if boot 7-fallback --check; then ok "다음 부팅에서 슬롯 A 로 폴백, 자기점검 통과"
+else bad "폴백 부팅이 통과하지 못했다"; tail -40 "$W/7-fallback.out"; fi
+grep -q 'falling back to slot a' "$W/7-fallback.log" && ok "U-Boot 가 폴백을 알림" || bad "폴백 문구가 없다"
+grep -q 'zyl-selftest: ok   슬롯 a 부팅·확정' "$W/7-fallback.log" && ok "폴백한 슬롯 A 로 부팅" || bad "폴백 뒤 슬롯 A 로 부팅하지 않았다"
+[ "$(env_get zyl_active_slot)" = a ] && [ -z "$(env_get zyl_fallback_slot)" ] \
+    && ok "부트 환경: zyl_active_slot=a, 깨진 B 는 폴백이 아님" \
+    || bad "폴백 뒤 환경 (active=$(env_get zyl_active_slot) fallback=$(env_get zyl_fallback_slot))"
 
 echo ""
 echo "결과: $PASS 통과, $FAIL 실패   (콘솔 기록: $W/*.log)"
