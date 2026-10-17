@@ -6,6 +6,13 @@ Wants=network-online.target
 [Service]
 Type=simple
 ExecStart=/usr/bin/zyl-appstore
+# Still root: it writes the WAM's app and container directories (zyl-wam's) and
+# gives a new container the WAM's owner (runtime/lib/container.c). Of root's
+# capabilities only those two; an unpacked package that took it over cannot
+# ptrace, remount or load modules
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_CHOWN
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
 Restart=on-failure
 RestartSec=10
 TimeoutStopSec=10

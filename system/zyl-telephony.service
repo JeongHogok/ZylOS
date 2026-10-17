@@ -7,6 +7,14 @@ Wants=ModemManager.service
 Type=dbus
 BusName=org.zylos.Telephony
 ExecStart=/usr/bin/zyl-telephony
+# Still root: ModemManager's bus policy lets only root set the emergency alert
+# channels (CellBroadcast) and asks polkit — not on the image — for the rest, and
+# NetworkManager (nmcli) refuses other users. Taken over by a crafted SMS or
+# alert, it holds no kernel capability: it cannot ptrace other services,
+# remount, load modules or override file permissions
+CapabilityBoundingSet=
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
 Restart=on-failure
 RestartSec=2
 TimeoutStopSec=5

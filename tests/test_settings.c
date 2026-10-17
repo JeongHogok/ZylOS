@@ -112,13 +112,15 @@ static void test_values_round_trip_through_dbus_types(void) {
 }
 
 /* Rule 12: a removed app leaves nothing — not even the permissions the user
-   turned off for it */
+   turned off for it or allowed it (a reinstall is asked again) */
 static void test_removed_app_leaves_no_permission_entry(void) {
     json_object_unref(settings_update("app_permissions", "com.example.a", json_node_init_string(json_node_alloc(), "camera")));
     json_object_unref(settings_update("app_permissions", "com.example.b", json_node_init_string(json_node_alloc(), "location")));
-    assert(settings_forget_app("com.example.a"));
-    assert(!settings_forget_app("com.example.a"));
-    assert(!settings_forget_app("com.example.never"));
+    json_object_unref(settings_update("app_grants", "com.example.a", json_node_init_string(json_node_alloc(), "contacts")));
+    assert(settings_forget_app("app_permissions", "com.example.a"));
+    assert(settings_forget_app("app_grants", "com.example.a"));
+    assert(!settings_forget_app("app_permissions", "com.example.a"));
+    assert(!settings_forget_app("app_permissions", "com.example.never"));
     assert(settings_save());
     char *saved = NULL;
     g_assert_true(g_file_get_contents(ZYL_SETTINGS_FILE, &saved, NULL, NULL));

@@ -58,13 +58,27 @@
 - **클립보드는 앞에 있는 앱의 것**입니다 — 기기는 여러 앱이 살아 있어, 뒤에 있는 앱은 읽지도
   바꾸지도 못합니다(`bridge.c` 의 `FRONT_ONLY_SERVICES`, WAM 의 셸이 앞 앱을 답함). 에뮬레이터는
   한 번에 한 앱만 살아 있어 그 앱이 늘 앞입니다.
+- **캡처도 앞에 있는 앱의 것**입니다 — 카메라·위치·센서 서비스와 그 흐름(위치 갱신·센서 값)은
+  앞 앱만 받습니다(제3자 앱의 지오펜스처럼 그 앱 자신의 이벤트는 예외). 화면에서 밀려나거나
+  잠금 화면 뒤로 간 앱의 WebKit 카메라·마이크는 WAM 이 멈추고(MUTED) 돌아오면 되돌리며,
+  뒤에 있는 앱의 새 `getUserMedia` 는 거부합니다. 무엇이든 카메라·마이크를 쓰고 있으면 상태바가
+  표시등을 켭니다(`capture.state`).
 - 서비스 이벤트는 그 서비스를 부를 수 있는 앱에만 갑니다 (`ZylPermissions.mayReceive`,
   `bridge.c` 의 `zyl_bridge_service_event_script`).
 - **사용자가 끈 권한**은 두 게이트 모두에서 거부합니다. 설정 앱이 settings 서비스의
   `app_permissions` 범주(앱 id 마다 끈 권한의 쉼표 목록)에 쓰면, 에뮬레이터는
   `ZylPermissions.setAppOverride` 로, 기기는 WAM 이 `CategoryChanged` 시그널을 따라 다시 읽어
   다음 호출부터 거부합니다.
-- 첫 사용 때 묻는 동의 창은 없습니다. 넣을 자리는 [CLAUDE.md](../CLAUDE.md) 규칙 8.
+- **위험 권한은 처음 쓸 때 묻습니다** — 카메라·마이크·위치·연락처·메시지·전화(`calls`)·
+  문자(`sms`) (`DANGEROUS_PERMISSIONS`). 요청은 답을 기다리고, 허용이면 진행, 거부면
+  `Permission denied` 입니다. 묻는 창은 시스템 UI(`apps/statusbar`)가 그리고 그 답만 받습니다
+  (`permission.answer`, 질문마다의 토큰) — 앱 자기 화면에 그리면 브리지가 앱과 같은 JS 세계에
+  있어 앱이 스스로 허용을 보낼 수 있습니다. 앞에 있지 않은 앱의 질문은 띄우지 않고, 답이 없으면
+  2분 뒤 이번만 거부합니다. 답은 settings 에 남습니다(허용 `app_grants`, 거부 `app_permissions`) —
+  이벤트(위치 갱신·`SmsReceived` 등)도 허용된 뒤에만 갑니다. 기기는 WAM(`wam.c` 의 consent,
+  `getUserMedia` 포함), 에뮬레이터는 `apps/system/consent.js`.
+- 전화 권한은 셋입니다 — `telephony`(망 상태), `calls`(걸기·받기·통화 기록), `sms`(보내기·받기).
+  재난문자·모바일 데이터 설정·IMEI(`telephony.getImei`)는 시스템 전용입니다.
 - **사용자의 스위치는 그 일을 하는 서비스가 지킵니다.** 빠른 설정은 settings 에 쓰기만 하고,
   서비스가 그 범주를 따라갑니다(`runtime/lib/settings_follow.c`). 위치(`location.enabled`)를
   끄면 location 서비스는 공급자(GPS·Wi-Fi 조회·GeoIP)에 묻지 않고, 마지막 위치를 잊고, 앱에는
@@ -172,6 +186,28 @@
 - 한계: 하드웨어 키 결합이 없으므로 짧은 PIN 은 해시를 손에 넣으면 오프라인 대입을 막지
   못합니다. 방어선은 대기 정책과 `/data/lock` 접근 제한입니다.
 
+### 사용자 데이터 암호화
+
+- 앱 컨테이너(`/data/appdata`)·사용자 파일(`/data/users`)·연락처·메시지·키체인은 파일
+  단위로 암호화됩니다(ext4 fscrypt v2, 내용 AES-256-XTS·이름 AES-256-CTS). 목록은
+  `lock.c` 의 `ZYL_CE_DIRS` 입니다. 설정·알람·통화 기록·망·푸시 상태는 잠기지 않아 부팅
+  뒤 PIN 전에도 전화가 울리고 알람이 울리고 Wi-Fi 가 붙습니다.
+- 키는 `lock` 서비스가 첫 부팅에 만듭니다. PIN 에서 파생한 키로 감싸(AES-256-GCM) PIN
+  해시와 같은 파일에 한 번에 씁니다 — 둘이 어긋나 데이터를 잃는 순간이 없습니다. PIN 을
+  바꾸거나 지우면 같은 키를 새 PIN 으로 다시 감쌉니다.
+- `zyl-lock-prepare.service` 가 서비스들보다 먼저 디렉터리에 정책을 겁니다. PIN 이 없으면
+  여기서 키를 올리고, 있으면 부팅 뒤 첫 맞는 PIN 이 올립니다(`StorageUnlocked`). 그 뒤로는
+  화면이 잠겨도 열린 채입니다.
+- 잠긴 동안 키체인·사용자 서비스는 열리기를 기다리고, 연락처·파일·앱 데이터는 실패로
+  답하며, 받은 문자는 `/data/messages-pending` 에 두었다가 열리면 대화로 옮깁니다. 그때
+  뜨는 앱의 웹 저장소는 휘발입니다.
+- 이미지는 `/data` 를 비워 두고 첫 부팅이 `encrypt` 기능을 켠 ext4 로 만듭니다
+  (`tools/build-image.sh` 가 이미지의 `mke2fs.conf` 에 넣음). 이 변경 전에 만들어져 파일이
+  든 디렉터리는 그 자리에서 암호화할 수 없어 `zyl-lock-prepare` 가 실패로 알립니다 —
+  공장 초기화가 필요합니다.
+- 한계: 키를 감싸는 것이 PIN 뿐이라 `/data` 이미지를 떠 간 사람은 PIN 을 오프라인으로 대
+  볼 수 있습니다. 하드웨어 키(TEE·eFuse)가 생기면 거기에 묶어야 합니다.
+
 ## 5. 앱 컨테이너 — 지우면 아무것도 남지 않는다
 
 - 앱이 만드는 모든 것은 컨테이너 `/data/appdata/<앱 id>/` 에만 있습니다: 비공개 데이터
@@ -228,12 +264,23 @@ WAM 이 콘텐츠 뷰를 앱 창 안에 합성하고, 에뮬레이터는 별도 
 
 - 각 유닛(`system/*.service`)이 systemd 샌드박스 지시어로 자기를 좁힙니다. 기본은
   `ProtectSystem=strict` 에 쓰기 경로를 `ReadWritePaths=` 로만 여는 것이고, 유닛마다의
-  지시어와 예외의 이유는 그 유닛 파일에 적혀 있습니다. 서비스 데몬은 root, WAM 은 전용
-  사용자 `zyl-wam` 으로 돕니다.
+  지시어와 예외의 이유는 그 유닛 파일에 적혀 있습니다. WAM 은 전용 사용자 `zyl-wam` 으로
+  돕니다.
+- **외부 입력을 해석하는 서비스는 root 가 아닙니다** — push(푸시 서버 스트림)·location(Wi-Fi
+  조회·GeoIP 응답)·network(앱 대신 받는 응답)는 각자 전용 사용자(`system/sysusers.d/zyl-services.conf`)
+  로, 커널 권한(capability) 없이, `SystemCallFilter=@system-service` 로 돕니다. 버스에서는 자기
+  이름만 갖고 일에 필요한 서비스만 부릅니다(`system/dbus-1/zyl-os.conf` 의 사용자별 정책 —
+  `tests/test_dbus_policy.sh` 가 zyl-push 로 확인). telephony(문자·재난문자)와 appstore(내려받은
+  패키지)는 아직 root 입니다 — ModemManager 는 재난문자 채널 설정을 root 에게만 열고 나머지는
+  이미지에 없는 polkit 에 묻고, NetworkManager(nmcli)도 다른 사용자를 거부하며, appstore 는 WAM
+  소유의 앱·컨테이너 디렉터리를 씁니다. 대신 telephony 는 capability 가 하나도 없고 appstore 는
+  `CAP_DAC_OVERRIDE`·`CAP_CHOWN` 만 남깁니다(다른 서비스 ptrace·다시 마운트·모듈 적재 불가).
+  나머지 서비스 데몬은 root 입니다.
 - AppArmor 프로필은 `system/apparmor/zyl-*` 에 있고, `zyl-apparmor.service` 가 부팅 때 모두
   로드합니다. 프로필 하나라도 로드에 실패하면 그 유닛이 실패합니다.
 - `tests/verify-all.sh` 가 유닛의 쓰기 경로를 두 가지로 대조합니다: 모두 `tmpfiles.d` 로
-  만들어지는지, 그 서비스의 AppArmor 프로필이 그 경로에 쓰기를 허용하는지.
+  만들어지는지, 그 서비스의 AppArmor 프로필이 그 경로에 쓰기를 허용하는지. 전용 사용자 유닛은
+  그 사용자가 있고, 쓰는 `/data` 경로가 그 사용자 소유이며, 버스 이름을 가질 수 있는지도(D4).
 
 ## 8. 키체인
 
@@ -243,9 +290,10 @@ WAM 이 콘텐츠 뷰를 앱 창 안에 합성하고, 에뮬레이터는 별도 
   파생합니다. 마스터 키는 기기 결합 키에서 파생합니다. 기기 결합 키는 첫 시작 때 만든
   무작위 바이트로 저장소 디렉터리(root 전용)에 있고, 저장소는 시작하면 사용자 입력 없이
   열립니다. 있는데 읽을 수 없는 키 파일은 새로 만들지 않습니다 — 저장된 비밀을 모두 잃게
-  되기 때문입니다.
+  되기 때문입니다. 저장소 디렉터리는 사용자 데이터라 부팅 뒤 첫 잠금 해제 때 열립니다.
 - 암호 방식·파일 형식·키 파생은 `credential.c` 의 머리가 정합니다.
-- 한계: 키가 저장소와 같은 곳에 있으므로 지키는 것은 그 디렉터리의 접근 제한입니다.
+- 한계: 키가 저장소와 같은 곳에 있으므로 켜진 기기에서 지키는 것은 그 디렉터리의 접근
+  제한이고, 꺼진 기기에서는 그 디렉터리를 잠그는 PIN 입니다.
 - 에뮬레이터는 같은 방식을 컨테이너(`emulator-app/src/commands/emulated_services.rs`)가
   구현합니다.
 

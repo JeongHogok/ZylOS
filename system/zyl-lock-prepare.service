@@ -1,0 +1,32 @@
+[Unit]
+Description=Zyl OS user data encryption (storage key and policies, before any service)
+# Before sysinit.target, so before every service that writes user data: on the
+# first boot the directories tmpfiles just made are still empty and take their
+# policy here (runtime/services/lock — ce_prepare). Fails, and the self-test
+# says so, when user data is not encrypted
+DefaultDependencies=no
+RequiresMountsFor=/data
+After=local-fs.target systemd-tmpfiles-setup.service
+Before=sysinit.target shutdown.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/zyl-lock --prepare
+
+# Writes the key's state in /data/lock and policies on the user data
+# directories (FS_IOC_SET_ENCRYPTION_POLICY needs them writable)
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+PrivateNetwork=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+
+[Install]
+WantedBy=zyl-os.target

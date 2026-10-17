@@ -702,7 +702,7 @@ static const ServicePermission SERVICE_PERMISSIONS[] = {
     {"contacts",      {"contacts", NULL}},
     {"messaging",     {"messaging", NULL}},
     {"network",       {"network", NULL}},
-    {"telephony",     {"telephony", NULL}},
+    {"telephony",     {"telephony", "calls", "sms", NULL}},
     {"location",      {"location", NULL}},
     {"telemetry",     {"system", NULL}},
     {"netstats",      {"system", NULL}},
@@ -792,27 +792,67 @@ static const ServicePermission METHOD_PERMISSIONS[] = {
     {"apps.openPanel",                 {"system", NULL}},
     {"apps.showRecents",               {"system", NULL}},
     {"apps.switchApp",                 {"system", NULL}},
+    /* Calls (dialling, answering, the call log) and SMS are permissions of their
+       own, each asked for; the emergency alerts, mobile data and the modem's
+       hardware ID (IMEI — a tracking ID, as the chip's) are the OS's */
+    {"telephony.dial",                 {"calls", NULL}},
+    {"telephony.answer",               {"calls", NULL}},
+    {"telephony.hangup",               {"calls", NULL}},
+    {"telephony.getCallState",         {"calls", NULL}},
+    {"telephony.sendDTMF",             {"calls", NULL}},
+    {"telephony.getCallLog",           {"calls", NULL}},
+    {"telephony.deleteCallLog",        {"calls", NULL}},
+    {"telephony.sendSms",              {"sms", NULL}},
+    {"telephony.getImei",              {"system", NULL}},
+    {"telephony.setMobileData",        {"system", NULL}},
+    {"telephony.getEmergencyAlerts",   {"system", NULL}},
+    {"telephony.acknowledgeEmergencyAlert", {"system", NULL}},
+    {"telephony.getEmergencyAlertSettings", {"system", NULL}},
+    {"telephony.setEmergencyAlertEnabled",  {"system", NULL}},
     {NULL, {NULL}}
 };
 
-/* == User revocations =======================================
- * Settings can switch a declared permission off for an installed app; the
- * switch writes the settings service's "app_permissions" category, one
- * comma-separated list of revoked permissions per app id.
- *
- * The emulator's ZylPermissions applied it; the device did not, so turning a
- * permission off in Settings changed nothing here. The WAM is the only gate,
- * so it keeps the table and refreshes it when the settings service says the
- * category changed. A system app is never revocable — the same rule as
- * apps/system/permissions.js. */
-static GHashTable *revocations;     /* app id → GHashTable<perm, TRUE> */
+/* Events that need more than their service: who is calling, what an SMS says,
+ * an emergency alert. Mirror of EVENT_PERMISSIONS in apps/system/permissions.js
+ * (verify-all compares). */
+static const struct { const char *service, *signal; const char *perms[4]; } EVENT_PERMISSIONS[] = {
+    {"telephony", "CallStateChanged", {"calls", NULL}},
+    {"telephony", "SmsReceived",      {"sms", NULL}},
+    {"telephony", "EmergencyAlert",   {"system", NULL}},
+    {NULL, NULL, {NULL}}
+};
 
-static void revocations_set(const char *app_id, const char *csv)
+/* What the user is asked for the first time an app uses it — the camera and
+ * microphone, where the user is, contacts and messages, calls and SMS. The
+ * question is the system UI's to draw (the WAM's consent, never the app's own
+ * page: there the app could answer it itself); the answer stays in settings
+ * (app_grants / app_permissions). Mirror of DANGEROUS_PERMISSIONS in
+ * apps/system/permissions.js (verify-all compares). */
+static const char *const DANGEROUS_PERMISSIONS[] = {
+    "camera", "microphone", "location", "contacts", "messaging", "calls", "sms", NULL
+};
+
+/* == The user's answers =====================================
+ * Two settings categories, each one comma-separated list of permissions per app
+ * id: "app_permissions" — what the user switched off (Settings, or no to a
+ * first-use question) — and "app_grants" — the dangerous permissions the user
+ * said yes to. The WAM is the only gate, so it keeps both tables and refreshes
+ * one when the settings service says its category changed. A system app is
+ * never revocable nor asked — the same rules as apps/system/permissions.js. */
+typedef struct {
+    const char *category;           /* the settings category */
+    GHashTable *apps;               /* app id → GHashTable<perm, TRUE> */
+} PermTable;
+
+static PermTable revoked_table = { "app_permissions", NULL };
+static PermTable granted_table = { "app_grants", NULL };
+
+static void table_set(PermTable *t, const char *app_id, const char *csv)
 {
     if (!app_id || !app_id[0]) return;
-    if (!revocations)
-        revocations = g_hash_table_new_full(g_str_hash, g_str_equal, g_free,
-                                            (GDestroyNotify)g_hash_table_destroy);
+    if (!t->apps)
+        t->apps = g_hash_table_new_full(g_str_hash, g_str_equal, g_free,
+                                        (GDestroyNotify)g_hash_table_destroy);
     GHashTable *set = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
     gchar **parts = g_strsplit(csv ? csv : "", ",", -1);
     for (int i = 0; parts[i]; i++) {
@@ -820,17 +860,35 @@ static void revocations_set(const char *app_id, const char *csv)
         if (perm[0]) g_hash_table_add(set, g_strdup(perm));
     }
     g_strfreev(parts);
-    g_hash_table_replace(revocations, g_strdup(app_id), set);
+    g_hash_table_replace(t->apps, g_strdup(app_id), set);
 }
 
-static gboolean is_revoked(const char *app_id, const char *perm)
+static gboolean table_has(const PermTable *t, const char *app_id, const char *perm)
 {
-    if (!revocations || !app_id) return FALSE;
-    GHashTable *set = g_hash_table_lookup(revocations, app_id);
+    if (!t->apps || !app_id) return FALSE;
+    GHashTable *set = g_hash_table_lookup(t->apps, app_id);
     return set && g_hash_table_contains(set, perm);
 }
 
-static gboolean same_revocations(GHashTable *a, GHashTable *b)
+/* The app's list with perm added, as settings keeps it */
+static char *table_csv_with(const PermTable *t, const char *app_id, const char *perm)
+{
+    GString *csv = g_string_new(perm);
+    GHashTable *set = t->apps ? g_hash_table_lookup(t->apps, app_id) : NULL;
+    GHashTableIter it;
+    gpointer p;
+    if (set) {
+        g_hash_table_iter_init(&it, set);
+        while (g_hash_table_iter_next(&it, &p, NULL))
+            if (strcmp(p, perm) != 0) g_string_append_printf(csv, ",%s", (const char *)p);
+    }
+    return g_string_free(csv, FALSE);
+}
+
+static gboolean is_revoked(const char *app_id, const char *perm) { return table_has(&revoked_table, app_id, perm); }
+static gboolean is_granted(const char *app_id, const char *perm) { return table_has(&granted_table, app_id, perm); }
+
+static gboolean same_set(GHashTable *a, GHashTable *b)
 {
     guint n = a ? g_hash_table_size(a) : 0;
     if (n != (b ? g_hash_table_size(b) : 0)) return FALSE;
@@ -852,62 +910,64 @@ static void add_changed(GHashTable *from, GHashTable *to, GPtrArray *changed)
     g_hash_table_iter_init(&it, from);
     while (g_hash_table_iter_next(&it, &id, &set)) {
         GHashTable *other = to ? g_hash_table_lookup(to, id) : NULL;
-        if (!same_revocations(set, other) &&
+        if (!same_set(set, other) &&
             !g_ptr_array_find_with_equal_func(changed, id, g_str_equal, NULL))
             g_ptr_array_add(changed, g_strdup(id));
     }
 }
 
 /* The settings' a{sv} becomes the table; the ids whose list changed */
-static GPtrArray *revocations_load(GVariant *dict)
+static GPtrArray *table_load(PermTable *t, GVariant *dict)
 {
-    GHashTable *old = revocations;
-    revocations = NULL;
+    GHashTable *old = t->apps;
+    t->apps = NULL;
     GVariantIter iter;
     const gchar *app_id = NULL;
     GVariant *value = NULL;
     g_variant_iter_init(&iter, dict);
     while (g_variant_iter_next(&iter, "{&sv}", &app_id, &value)) {
         if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING))
-            revocations_set(app_id, g_variant_get_string(value, NULL));
+            table_set(t, app_id, g_variant_get_string(value, NULL));
         g_variant_unref(value);
     }
     GPtrArray *changed = g_ptr_array_new_with_free_func(g_free);
-    add_changed(old, revocations, changed);
-    add_changed(revocations, old, changed);
+    add_changed(old, t->apps, changed);
+    add_changed(t->apps, old, changed);
     if (old) g_hash_table_destroy(old);
     return changed;
 }
 
 static ZylBridgeAppFn revocations_changed;
 static gpointer revocations_changed_data;
+static GDBusConnection *settings_conn;      /* where the answers are kept */
 
-static void on_revocations_read(GObject *src, GAsyncResult *res, gpointer data)
+static void on_table_read(GObject *src, GAsyncResult *res, gpointer data)
 {
-    (void)data;
+    PermTable *t = data;
     GError *error = NULL;
     GVariant *reply = g_dbus_connection_call_finish(G_DBUS_CONNECTION(src), res, &error);
     if (!reply) {
-        g_message("Bridge: no app_permissions from the settings service (%s)",
+        g_message("Bridge: no %s from the settings service (%s)", t->category,
                   error ? error->message : "no reply");
         g_clear_error(&error);
         return;
     }
     GVariant *dict = g_variant_get_child_value(reply, 0);
-    GPtrArray *changed = revocations_load(dict);
-    for (guint i = 0; revocations_changed && i < changed->len; i++)
+    GPtrArray *changed = table_load(t, dict);
+    /* What a revoked permission gave the app's documents (CSP, CORS) is stale */
+    for (guint i = 0; t == &revoked_table && revocations_changed && i < changed->len; i++)
         revocations_changed(g_ptr_array_index(changed, i), revocations_changed_data);
     g_ptr_array_unref(changed);
     g_variant_unref(dict);
     g_variant_unref(reply);
 }
 
-static void revocations_read(GDBusConnection *conn)
+static void table_read(GDBusConnection *conn, PermTable *t)
 {
     g_dbus_connection_call(conn, "org.zylos.Settings", "/org/zylos/Settings",
-        "org.zylos.Settings", "Get", g_variant_new("(s)", "app_permissions"),
+        "org.zylos.Settings", "Get", g_variant_new("(s)", t->category),
         G_VARIANT_TYPE("(a{sv})"), G_DBUS_CALL_FLAGS_NONE, 5000, NULL,
-        on_revocations_read, NULL);
+        on_table_read, t);
 }
 
 static void on_settings_changed(GDBusConnection *conn, const gchar *sender,
@@ -919,7 +979,8 @@ static void on_settings_changed(GDBusConnection *conn, const gchar *sender,
     const gchar *category = NULL;
     if (!g_variant_is_of_type(params, G_VARIANT_TYPE("(s)"))) return;
     g_variant_get(params, "(&s)", &category);
-    if (g_strcmp0(category, "app_permissions") == 0) revocations_read(conn);
+    if (g_strcmp0(category, revoked_table.category) == 0) table_read(conn, &revoked_table);
+    if (g_strcmp0(category, granted_table.category) == 0) table_read(conn, &granted_table);
 }
 
 void zyl_bridge_watch_revocations(GDBusConnection *conn, ZylBridgeAppFn changed, gpointer data)
@@ -927,10 +988,29 @@ void zyl_bridge_watch_revocations(GDBusConnection *conn, ZylBridgeAppFn changed,
     if (!conn) return;
     revocations_changed = changed;
     revocations_changed_data = data;
+    settings_conn = conn;
     g_dbus_connection_signal_subscribe(conn, "org.zylos.Settings",
         "org.zylos.Settings", "CategoryChanged", "/org/zylos/Settings", NULL,
         G_DBUS_SIGNAL_FLAGS_NONE, on_settings_changed, NULL, NULL);
-    revocations_read(conn);
+    table_read(conn, &revoked_table);
+    table_read(conn, &granted_table);
+}
+
+/* The user answered a first-use question: kept here at once (this request and
+   the next see it — and the settings reload finds nothing changed, so a no does
+   not close the app) and in settings for the next boot */
+void zyl_bridge_consent_answered(const char *app_id, const char *perm, gboolean allowed)
+{
+    if (!app_id || !perm) return;
+    PermTable *t = allowed ? &granted_table : &revoked_table;
+    char *csv = table_csv_with(t, app_id, perm);
+    table_set(t, app_id, csv);
+    if (settings_conn)
+        g_dbus_connection_call(settings_conn, "org.zylos.Settings", "/org/zylos/Settings",
+            "org.zylos.Settings", "Update",
+            g_variant_new("(ssv)", t->category, app_id, g_variant_new_string(csv)),
+            NULL, G_DBUS_CALL_FLAGS_NONE, 5000, NULL, NULL, NULL);
+    g_free(csv);
 }
 
 /* Never granted by declaring them in app.json — only system apps hold these */
@@ -955,6 +1035,33 @@ static gboolean manifest_holds(const ZylAppManifest *m, const char *perm) {
 gboolean zyl_bridge_app_holds(const ZylAppManifest *m, const char *perm)
 {
     return m && perm && (m->is_system || manifest_holds(m, perm));
+}
+
+static gboolean is_dangerous(const char *perm) {
+    for (int i = 0; DANGEROUS_PERMISSIONS[i]; i++)
+        if (strcmp(DANGEROUS_PERMISSIONS[i], perm) == 0) return TRUE;
+    return FALSE;
+}
+
+/* Of the permissions a rule accepts, is one the app holds usable now: one that
+   needs no asking, or a dangerous one the user allowed. *ask: the first held
+   dangerous one still to ask for. An empty rule needs nothing */
+static gboolean usable(const ZylAppManifest *m, const char *const *perms, const char **ask) {
+    if (ask) *ask = NULL;
+    if (m->is_system || !perms[0]) return TRUE;
+    for (int i = 0; perms[i]; i++) {
+        if (!manifest_holds(m, perms[i])) continue;
+        if (!is_dangerous(perms[i]) || is_granted(m->id, perms[i])) return TRUE;
+        if (ask && !*ask) *ask = perms[i];
+    }
+    return FALSE;
+}
+
+const char *zyl_bridge_consent_for(const ZylAppManifest *m, const char *perm)
+{
+    if (!m || !perm || m->is_system || !is_dangerous(perm) ||
+        !manifest_holds(m, perm) || is_granted(m->id, perm)) return NULL;
+    return perm;
 }
 
 /**
@@ -998,6 +1105,28 @@ static gboolean app_may_call_method(const ZylAppManifest *m, const char *service
     return ok;
 }
 
+/* The rule a call goes by: its method's when it has one, else its service's */
+static const char *const *call_rule(const char *service, const char *method) {
+    static const char *const none[] = { NULL };
+    char *key = g_strconcat(service, ".", method, NULL);
+    char *first = key + strlen(service) + 1;
+    *first = g_ascii_tolower(*first);
+    const char *const *rule = NULL;
+    for (int i = 0; METHOD_PERMISSIONS[i].service && !rule; i++)
+        if (strcmp(METHOD_PERMISSIONS[i].service, key) == 0) rule = METHOD_PERMISSIONS[i].perms;
+    g_free(key);
+    for (int i = 0; SERVICE_PERMISSIONS[i].service && !rule; i++)
+        if (strcmp(SERVICE_PERMISSIONS[i].service, service) == 0) rule = SERVICE_PERMISSIONS[i].perms;
+    return rule ? rule : none;
+}
+
+/* The dangerous permission this call needs the user's yes for, or NULL —
+   asked after the call passed app_may_call and app_may_call_method */
+static const char *consent_needed(const ZylAppManifest *m, const char *service, const char *method) {
+    const char *ask = NULL;
+    return usable(m, call_rule(service, method), &ask) ? NULL : ask;
+}
+
 gboolean zyl_bridge_app_may_call(const ZylAppManifest *m, const char *service, const char *method)
 {
     return service && method && app_may_call(m, service) && app_may_call_method(m, service, method);
@@ -1005,8 +1134,11 @@ gboolean zyl_bridge_app_may_call(const ZylAppManifest *m, const char *service, c
 
 /* Services only the app in front may use (the emulator has one app alive at a
    time, so its frame is always the front one): the clipboard holds what the
-   user copied — a background app neither reads nor swaps it */
-static const char *const FRONT_ONLY_SERVICES[] = { "clipboard", NULL };
+   user copied — a background app neither reads nor swaps it; the camera, where
+   the user is and the motion sensors are taken only by what the user sees —
+   an app sent to the background or behind the lock screen stops capturing
+   (its WebKit camera and microphone are muted by the WAM, wam.c hold_capture) */
+static const char *const FRONT_ONLY_SERVICES[] = { "clipboard", "camera", "location", "sensors", NULL };
 static gboolean (*front_query)(const char *app_id);
 
 void zyl_bridge_set_front_query(gboolean (*is_front)(const char *app_id))
@@ -1036,6 +1168,15 @@ static const struct { const char *service, *signal, *read_all; } OWNED_EVENTS[] 
     {"webcontent",   NULL,             NULL},
     {NULL, NULL, NULL}
 };
+
+/* One of the events about one app's own things (OWNED_EVENTS) */
+static gboolean event_is_owned(const char *service, const char *signal) {
+    for (int i = 0; OWNED_EVENTS[i].service; i++)
+        if (strcmp(OWNED_EVENTS[i].service, service) == 0 &&
+            (!OWNED_EVENTS[i].signal || strcmp(OWNED_EVENTS[i].signal, signal) == 0))
+            return TRUE;
+    return FALSE;
+}
 
 static gboolean event_is_apps_own(const ZylAppManifest *m, const char *service,
                                   const char *signal, GVariant *params) {
@@ -1100,6 +1241,16 @@ char *zyl_bridge_service_event_script(const ZylAppManifest *manifest,
                                       GVariant *params) {
     if (!find_route(service) || !app_may_call(manifest, service) ||
         !event_is_apps_own(manifest, service, signal, params)) return NULL;
+    /* A front-only service's stream (where the user is, the sensors) is the front
+       app's too; the app's own events (a geofence it set) still reach it */
+    if (!event_is_owned(service, signal) && !app_may_use_now(manifest, service)) return NULL;
+    /* What the event needs (its own rule, else the service's): held, and if
+       dangerous, allowed — an event never asks */
+    const char *const *need = call_rule(service, "");
+    for (int i = 0; EVENT_PERMISSIONS[i].service; i++)
+        if (strcmp(EVENT_PERMISSIONS[i].service, service) == 0 &&
+            strcmp(EVENT_PERMISSIONS[i].signal, signal) == 0) need = EVENT_PERMISSIONS[i].perms;
+    if (!usable(manifest, need, NULL)) return NULL;
     JsonObject *msg = json_object_new();
     json_object_set_string_member(msg, "type", "service.event");
     json_object_set_string_member(msg, "service", service);
@@ -1303,6 +1454,42 @@ static void on_introspect_done(GObject *source, GAsyncResult *res, gpointer data
     service_call_invoke(c, node);
 }
 
+/* == First-use consent =====================================
+ * A request waiting for the user's answer (the WAM draws the question in the
+ * system UI): the same request again on yes, "Permission denied" on no. */
+static ZylBridgeConsentAsk consent_ask;
+
+void zyl_bridge_set_consent(ZylBridgeConsentAsk ask)
+{
+    consent_ask = ask;
+}
+
+typedef struct {
+    JsonObject        *msg;
+    char              *app_id, *perm;
+    ZylBridgeReplyCtx  reply;
+} PendingRequest;
+
+static void handle_service_request(const char *type, gpointer msg_obj,
+                                    ZylAppManifest *manifest,
+                                    ZylBridgeReplyCtx *reply_ctx, gpointer data);
+
+/* answered: the user said yes or no (kept); FALSE: no answer this time (not kept) */
+static void on_request_consent(gboolean allowed, gboolean answered, ZylAppManifest *manifest, gpointer data)
+{
+    PendingRequest *pr = data;
+    if (answered) zyl_bridge_consent_answered(pr->app_id, pr->perm, allowed);
+    if (allowed && manifest && manifest->id && strcmp(manifest->id, pr->app_id) == 0)
+        handle_service_request("service.request", pr->msg, manifest, &pr->reply, NULL);
+    else
+        zyl_bridge_reply_error(&pr->reply, "Permission denied");
+    ZYL_BRIDGE_VIEW_UNREF(pr->reply.webview);
+    json_object_unref(pr->msg);
+    g_free(pr->app_id);
+    g_free(pr->perm);
+    g_free(pr);
+}
+
 static void handle_service_request(const char *type, gpointer msg_obj,
                                     ZylAppManifest *manifest,
                                     ZylBridgeReplyCtx *reply_ctx, gpointer data)
@@ -1343,6 +1530,25 @@ static void handle_service_request(const char *type, gpointer msg_obj,
     if (!app_may_use_now(manifest, service)) {
         g_warning("Bridge: %s denied %s.%s (not in front)", app_id, service, method);
         zyl_bridge_reply_error(reply_ctx, "Not in front");
+        return;
+    }
+    /* A dangerous permission the user has not answered yet: asked first, then
+       this same request again. Only the app in front asks — a question from an
+       app the user is not looking at is not one to answer */
+    const char *ask = consent_needed(manifest, service, method);
+    if (ask) {
+        if (!consent_ask || !front_query || !front_query(app_id)) {
+            g_warning("Bridge: %s denied %s.%s (%s not allowed yet)", app_id, service, method, ask);
+            zyl_bridge_reply_error(reply_ctx, "Permission denied");
+            return;
+        }
+        PendingRequest *pr = g_new0(PendingRequest, 1);
+        pr->msg = json_object_ref(msg);
+        pr->app_id = g_strdup(app_id);
+        pr->perm = g_strdup(ask);
+        pr->reply = *reply_ctx;
+        pr->reply.webview = ZYL_BRIDGE_VIEW_REF(reply_ctx->webview);
+        consent_ask(app_id, ask, on_request_consent, pr);
         return;
     }
 

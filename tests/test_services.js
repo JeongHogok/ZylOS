@@ -1557,6 +1557,89 @@ console.log('\n■ protected paths');
   });
 })();
 
+console.log('\n■ first-use consent');
+
+var consentTests = (function () {
+  var vm = require('vm');
+  var events = [];
+  var ctx = { console: console, setTimeout: function () { return 0; }, clearTimeout: function () {},
+              Promise: Promise, Uint8Array: Uint8Array,
+              crypto: { getRandomValues: require('crypto').webcrypto.getRandomValues.bind(require('crypto').webcrypto) },
+              CustomEvent: function (type, init) { this.type = type; this.detail = init.detail; } };
+  ctx.window = ctx;
+  ctx.dispatchEvent = function (e) { events.push(e); return true; };
+  ['permissions.js', 'shell.js', 'consent.js', 'services/settings.js', 'services/location.js', 'services.js']
+    .forEach(function (f) {
+      vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'apps', 'system', f), 'utf8'), ctx);
+    });
+  var S = ctx.ZylSystemServices, P = ctx.ZylPermissions, C = ctx.ZylConsent;
+  P.registerFromAppList([{ id: 'com.example.map', permissions: ['location', 'network'] }]);
+  S.init(function (cmd) {
+    return Promise.resolve(cmd === 'location_get_last_known' ? { latitude: 1 } : null);
+  });
+  function ask(service, method, app) { return Promise.resolve(S.handleRequest(service, method, {}, app)); }
+  function lastAsk() {
+    var a = events.filter(function (e) { return e.type === 'zyl:permission-ask'; });
+    return a.length ? a[a.length - 1].detail : null;
+  }
+
+  return asyncTest('a dangerous permission waits for the system UI\'s yes, is not asked twice', function () {
+    var pending = ask('location', 'getLastKnown', 'com.example.map');
+    var q = lastAsk();
+    assert.ok(q && q.appId === 'com.example.map' && q.permission === 'location' && q.token.length === 32);
+    /* the same question again joins it; only the system UI answers, only open tokens */
+    var second = ask('location', 'getLastKnown', 'com.example.map');
+    assert.strictEqual(events.filter(function (e) { return e.type === 'zyl:permission-ask'; }).length, 1);
+    assert.strictEqual(C.answer('com.example.map', q.token, true), false);       /* the app itself */
+    assert.strictEqual(C.answer('com.zylos.statusbar', 'nope', true), false);
+    assert.strictEqual(C.answer('com.zylos.statusbar', q.token, true), true);
+    return Promise.all([pending, second]).then(function (r) {
+      assert.deepStrictEqual(JSON.parse(JSON.stringify(r)), [{ latitude: 1 }, { latitude: 1 }]);
+      assert.ok(P.isGranted('com.example.map', 'location'));
+      /* kept in settings (app_grants) — what the gate reads at the next start */
+      return Promise.resolve(S.handleRequest('settings', 'get', { category: 'app_grants' }, 'com.zylos.settings'));
+    }).then(function (grants) {
+      assert.strictEqual(grants['com.example.map'], 'location');
+      var before = events.length;
+      return ask('location', 'getLastKnown', 'com.example.map').then(function (again) {
+        assert.strictEqual(again.latitude, 1);
+        assert.strictEqual(events.length, before);                               /* not asked again */
+      });
+    });
+  }).then(function () {
+    return asyncTest('no is refused and kept as switched off; a system app is never asked', function () {
+      P.registerFromAppList([{ id: 'com.example.spy', permissions: ['location'] }]);
+      var pending = ask('location', 'getLastKnown', 'com.example.spy');
+      C.answer('com.zylos.statusbar', lastAsk().token, false);
+      return pending.then(function (r) {
+        assert.strictEqual(r.error, 'Permission denied');
+        assert.deepStrictEqual(JSON.parse(JSON.stringify(P.getRevoked('com.example.spy'))), ['location']);
+        var before = events.length;
+        return Promise.all([ask('location', 'getLastKnown', 'com.example.spy'),
+                            ask('location', 'getLastKnown', 'com.zylos.weather')]).then(function (r2) {
+          assert.strictEqual(r2[0].error, 'Permission denied');
+          assert.strictEqual(r2[1].latitude, 1);
+          assert.strictEqual(events.length, before);
+        });
+      });
+    });
+  }).then(function () {
+    return asyncTest('telephony is split: the network state needs no asking, calls and SMS do', function () {
+      P.registerFromAppList([{ id: 'com.example.dialer', permissions: ['telephony', 'calls'] }]);
+      assert.strictEqual(P.consentNeeded('com.example.dialer', 'telephony', 'getState'), null);
+      assert.strictEqual(P.consentNeeded('com.example.dialer', 'telephony', 'dial'), 'calls');
+      assert.ok(!P.checkPermission('com.example.dialer', 'telephony', 'sendSms'));
+      assert.ok(!P.checkPermission('com.example.dialer', 'telephony', 'getImei'));
+      assert.ok(!P.mayReceive('com.example.dialer', 'telephony', 'CallStateChanged', []));   /* not allowed yet */
+      assert.ok(!P.mayReceive('com.example.dialer', 'telephony', 'SmsReceived', []));
+      P.setAppGrants('com.example.dialer', ['calls']);
+      assert.ok(P.mayReceive('com.example.dialer', 'telephony', 'CallStateChanged', []));
+      assert.ok(!P.mayReceive('com.example.dialer', 'telephony', 'EmergencyAlert', []));
+      return Promise.resolve();
+    });
+  });
+})();
+
 console.log('\n■ request gate');
 
 var gateTests = (function () {

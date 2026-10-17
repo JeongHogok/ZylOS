@@ -16,7 +16,13 @@
   var core = window.ZylSettingsCore;
 
   var installedApps = [];
-  var appPermissions = {};
+  var appPermissions = {};   /* appId → { perm: false } — what the user switched off */
+  var appGrants = {};        /* appId → { perm: true } — the asked ones the user allowed */
+
+  /* The permissions the OS asks the user for before an app first uses them: off
+     until allowed. A copy of DANGEROUS_PERMISSIONS in apps/system/permissions.js
+     (verify-all compares the copies) — a Settings page cannot load the OS's code */
+  var ASKED_PERMISSIONS = ['camera', 'microphone', 'location', 'contacts', 'messaging', 'calls', 'sms'];
 
   var PERM_LABELS = {
     camera:       'settings.perm_camera',
@@ -24,8 +30,11 @@
     location:     'settings.perm_location',
     storage:      'settings.perm_storage',
     contacts:     'settings.perm_contacts',
-    notifications:'settings.perm_notifications',
-    phone:        'settings.perm_phone',
+    notification: 'settings.perm_notifications',
+    calls:        'settings.perm_phone',
+    sms:          'settings.perm_sms',
+    messaging:    'settings.perm_messaging',
+    telephony:    'settings.perm_telephony',
     bluetooth:    'settings.perm_bluetooth',
     network:      'settings.perm_network',
     sensors:      'settings.perm_sensors'
@@ -140,9 +149,12 @@
 
     permList.innerHTML = '<div class="setting-item no-tap"><span class="setting-label" style="font-weight:600">' + (core.t('settings.permissions') || 'Permissions') + '</span></div>';
     var appPerms = (appPermissions[app.id]) || {};
+    var allowed = (appGrants[app.id]) || {};
 
     perms.forEach(function (perm) {
-      var granted = appPerms[perm] !== false;
+      /* an asked permission is on once the user allowed it; any other until switched off */
+      var granted = appPerms[perm] !== false &&
+                    (ASKED_PERMISSIONS.indexOf(perm) === -1 || allowed[perm] === true);
       var row = document.createElement('div');
       row.className = 'setting-item no-tap';
       var labelKey = PERM_LABELS[perm] || '';
@@ -156,15 +168,18 @@
       row.querySelector('.app-perm-toggle').addEventListener('change', function () {
         var checked = this.checked;
         if (!appPermissions[app.id]) appPermissions[app.id] = {};
+        if (!appGrants[app.id]) appGrants[app.id] = {};
         appPermissions[app.id][perm] = checked;
-        var revoked = [];
+        appGrants[app.id][perm] = checked;
+        var revoked = [], grants = [];
         var declared = app.permissions || [];
         declared.forEach(function (p) {
-          if (appPermissions[app.id] && appPermissions[app.id][p] === false) {
-            revoked.push(p);
-          }
+          if (appPermissions[app.id][p] === false) revoked.push(p);
+          if (appGrants[app.id][p] === true && ASKED_PERMISSIONS.indexOf(p) !== -1) grants.push(p);
         });
+        /* on: allowed (asked ones too — no question later); off: switched off */
         core.updateSetting('app_permissions', app.id, revoked.join(','));
+        core.updateSetting('app_grants', app.id, grants.join(','));
       });
       permList.appendChild(row);
     });
@@ -189,6 +204,17 @@
         var revokedList = String(data[appId]).split(',').filter(Boolean);
         appPermissions[appId] = {};
         revokedList.forEach(function (p) { appPermissions[appId][p] = false; });
+      });
+    },
+    onSettingsUpdated: null
+  };
+
+  core.handlers.app_grants = {
+    onSettingsGet: function (data) {
+      /* data = { 'com.example.app': 'camera,location', ... } — what the user allowed */
+      Object.keys(data).forEach(function (appId) {
+        appGrants[appId] = {};
+        String(data[appId]).split(',').filter(Boolean).forEach(function (p) { appGrants[appId][p] = true; });
       });
     },
     onSettingsUpdated: null

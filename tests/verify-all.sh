@@ -415,6 +415,29 @@ def c_owned():
 
 if js_owned() != c_owned():
     out.append('owned events: js=%s c=%s' % (js_owned(), c_owned()))
+
+# Events that need more than their service (calls, sms, emergency alerts)
+def js_event_perms():
+    blk = js.split('var EVENT_PERMISSIONS = [', 1)[1].split('];', 1)[0]
+    return sorted((sv, ev, tuple(sorted(re.findall(r"'([^']+)'", p)))) for sv, ev, p in re.findall(
+        r"service:\s*'([a-z]+)',\s*event:\s*'([A-Za-z]+)',\s*perms:\s*\[([^\]]*)\]", blk))
+
+def c_event_perms():
+    blk = c.split('EVENT_PERMISSIONS[] = {', 1)[1].split('{NULL, NULL, {NULL}}', 1)[0]
+    return sorted((sv, ev, tuple(sorted(re.findall(r'"([^"]+)"', p)))) for sv, ev, p in re.findall(
+        r'\{"([a-z]+)",\s*"([A-Za-z]+)",\s*\{([^}]*)\}\}', blk))
+
+if js_event_perms() != c_event_perms():
+    out.append('event permissions: js=%s c=%s' % (js_event_perms(), c_event_perms()))
+
+# What the user is asked for before first use: the OS's list, the device's copy,
+# and Settings' copy (which permissions are off until allowed)
+js_ask = sorted(re.findall(r"'([a-z.]+)'", js.split('var DANGEROUS_PERMISSIONS = [', 1)[1].split('];', 1)[0]))
+c_ask = sorted(re.findall(r'"([a-z.]+)"', c.split('DANGEROUS_PERMISSIONS[] = {', 1)[1].split('};', 1)[0]))
+st = open(root + '/apps/settings/js/settings-apps.js').read()
+st_ask = sorted(re.findall(r"'([a-z.]+)'", st.split('var ASKED_PERMISSIONS = [', 1)[1].split('];', 1)[0]))
+if not (js_ask == c_ask == st_ask) or not js_ask:
+    out.append('asked permissions: js=%s c=%s settings=%s' % (js_ask, c_ask, st_ask))
 JM, CM = js_methods(), c_methods()
 for m in sorted(set(JM) | set(CM)):
     if JM.get(m) != CM.get(m):
@@ -598,6 +621,70 @@ if [ -n "$UNPROVISIONED" ]; then
   fail "tmpfiles.d 가 만들지 않는 유닛 쓰기 경로 (기동 실패): $UNPROVISIONED"
 else
   pass "유닛의 쓰기 경로 전부 tmpfiles.d 로 생성"
+fi
+
+# D4: 전용 사용자로 도는 유닛(User=)은 그 사용자가 있고(sysusers.d), 쓰는 경로가 그 사용자
+#     소유로 만들어지며(tmpfiles.d), 자기 버스 이름을 그 사용자가 가질 수 있다(zyl-os.conf)
+#     — 하나라도 어긋나면 기동하자마자 쓰기·이름 얻기에 실패한다
+USER_DRIFT=$(python3 - "$ROOT" <<'PYCHK'
+import glob, re, sys
+root = sys.argv[1]
+users = set()
+for f in glob.glob(root + '/system/sysusers.d/*.conf'):
+    users |= set(re.findall(r'^u\s+(\S+)', open(f).read(), re.M))
+owner = {}
+for f in glob.glob(root + '/system/tmpfiles.d/*.conf'):
+    for path, user in re.findall(r'^[dD]\s+(\S+)\s+\S+\s+(\S+)', open(f).read(), re.M):
+        owner[path] = user
+pol = open(root + '/system/dbus-1/zyl-os.conf').read()
+pol = re.sub(r'<!--.*?-->', '', pol, flags=re.S)
+owns = {}
+for user, body in re.findall(r'<policy user="([^"]+)">(.*?)</policy>', pol, re.S):
+    owns.setdefault(user, set()).update(re.findall(r'<allow own="([^"]+)"', body))
+out = []
+for f in sorted(glob.glob(root + '/system/*.service')):
+    body, name = open(f).read(), f.split('/')[-1]
+    m = re.search(r'^User=(\S+)', body, re.M)
+    if not m or m.group(1) == 'root':
+        continue
+    u = m.group(1)
+    if u not in users:
+        out.append('%s: User=%s 가 sysusers.d 에 없음' % (name, u))
+    for line in re.findall(r'^ReadWritePaths=(.*)$', body, re.M):
+        for p in (x.lstrip('-') for x in line.split()):
+            if p.startswith('/data/') and owner.get(p) != u:
+                out.append('%s: %s 의 주인이 %s 가 아님 (tmpfiles: %s)' % (name, p, u, owner.get(p, '-')))
+    b = re.search(r'^BusName=(\S+)', body, re.M)
+    if b and b.group(1) not in owns.get(u, set()):
+        out.append('%s: %s 가 %s 를 가질 수 없음 (zyl-os.conf)' % (name, u, b.group(1)))
+print('; '.join(out))
+PYCHK
+)
+if [ -n "$USER_DRIFT" ]; then
+  fail "전용 사용자 유닛이 계정·경로·버스 이름과 맞지 않음: $USER_DRIFT"
+else
+  pass "전용 사용자 유닛 = sysusers.d 계정·tmpfiles 소유·버스 정책"
+fi
+
+# D5: PIN 으로 잠그는 사용자 데이터 디렉터리(lock.c 의 ZYL_CE_DIRS)는 tmpfiles 가 만든다
+#     — 첫 부팅에 비어 있는 채로 있어야 zyl-lock-prepare 가 정책을 건다. 없으면 정책을
+#     걸 곳이 없고, 서비스가 먼저 만들면 평문으로 남는다
+CE_GAPS=$(python3 - "$ROOT" <<'PYCHK'
+import glob, re, sys
+root = sys.argv[1]
+src = open(root + '/runtime/services/lock/lock.c').read()
+m = re.search(r'#define ZYL_CE_DIRS (.*)', src)
+dirs = re.findall(r'"([^"]+)"', m.group(1)) if m else []
+made = set()
+for f in glob.glob(root + '/system/tmpfiles.d/*.conf'):
+    made |= set(re.findall(r'^d\s+(\S+)', open(f).read(), re.M))
+print(' '.join(d for d in dirs if d not in made) if dirs else 'ZYL_CE_DIRS 를 읽지 못함')
+PYCHK
+)
+if [ -n "$CE_GAPS" ]; then
+  fail "잠그는 사용자 데이터 디렉터리를 tmpfiles 가 만들지 않는다: $CE_GAPS"
+else
+  pass "잠그는 사용자 데이터 디렉터리 전부 tmpfiles 가 만든다"
 fi
 
 # D3: 유닛이 쓰는 경로를 그 서비스의 AppArmor 프로필도 허용하는지

@@ -5,8 +5,11 @@
  * 수행범위: 대화 목록(최근 순), 대화의 메시지, 보내기(전화 서비스의 SendSms —
  *           결과를 sent/failed 로 그대로 기록), 받기(전화 서비스의 SmsReceived
  *           를 기록하고 MessageReceived 로 알림), 읽음, 대화 삭제.
- *           대화 하나 = /data/messages/<대화 id> 파일 하나(0600, 원자적)
- * 의존방향: gio/gio.h (D-Bus), org.zylos.Telephony (모뎀)
+ *           대화 하나 = /data/messages/<대화 id> 파일 하나(0600, 원자적).
+ *           /data/messages 는 사용자 데이터라 부팅 뒤 첫 잠금 해제 전에는 쓸 수 없다
+ *           (fscrypt) — 그동안 온 문자는 /data/messages-pending 에 두었다가 열리면
+ *           대화로 옮긴다
+ * 의존방향: gio/gio.h (D-Bus), org.zylos.Telephony (모뎀), runtime/lib/fscrypt
  * SOLID: SRP — 문자 보관만. 발송·수신 자체는 전화 서비스, 이름은 연락처 몫
  * ────────────────────────────────────────────────────────── */
 
@@ -17,8 +20,14 @@
 #include <glib/gstdio.h>
 #include <glib-unix.h>
 
+#include "fscrypt.h"
+
 #ifndef ZYL_MESSAGES_DIR
 #define ZYL_MESSAGES_DIR "/data/messages"
+#endif
+/* Readable before the PIN, as on any phone: only what came in while locked */
+#ifndef ZYL_PENDING_FILE
+#define ZYL_PENDING_FILE "/data/messages-pending/received"
 #endif
 
 #define HEAD "thread"   /* the thread's own group; every other group is a message */
@@ -180,6 +189,60 @@ static bool delete_thread(const char *id) {
     return ok;
 }
 
+static bool save_held(GKeyFile *kf) {
+    gsize len = 0;
+    char *data = g_key_file_to_data(kf, &len, NULL);
+    char *dir = g_path_get_dirname(ZYL_PENDING_FILE);
+    g_mkdir_with_parents(dir, 0700);
+    bool ok = g_file_set_contents_full(ZYL_PENDING_FILE, data, (gssize)len,
+        G_FILE_SET_CONTENTS_CONSISTENT | G_FILE_SET_CONTENTS_DURABLE, 0600, NULL);
+    g_free(dir);
+    g_free(data);
+    return ok;
+}
+
+/* A message that came in before the first unlock, kept until it can go into its thread */
+static bool hold(const char *from, const char *body, gint64 ts) {
+    GKeyFile *kf = g_key_file_new();
+    g_key_file_load_from_file(kf, ZYL_PENDING_FILE, G_KEY_FILE_NONE, NULL);
+    gsize n = 0;
+    g_strfreev(g_key_file_get_groups(kf, &n));
+    char group[48];
+    do snprintf(group, sizeof(group), "m_%" G_GSIZE_FORMAT, n++); while (g_key_file_has_group(kf, group));
+    g_key_file_set_string(kf, group, "number", from);
+    g_key_file_set_string(kf, group, "text", body);
+    g_key_file_set_int64(kf, group, "time", ts);
+    bool ok = save_held(kf);
+    g_key_file_free(kf);
+    return ok;
+}
+
+/* Storage open: what was held goes into its threads. One that cannot is kept
+   for the next time, the rest are not recorded twice */
+static void release_held(void *data) {
+    (void)data;
+    GKeyFile *kf = g_key_file_new();
+    if (g_key_file_load_from_file(kf, ZYL_PENDING_FILE, G_KEY_FILE_NONE, NULL)) {
+        gchar **groups = g_key_file_get_groups(kf, NULL);
+        for (gchar **g = groups; *g; g++) {
+            char *from = g_key_file_get_string(kf, *g, "number", NULL);
+            char *text = g_key_file_get_string(kf, *g, "text", NULL);
+            char *id = from && text
+                ? record(from, text, false, "received", g_key_file_get_int64(kf, *g, "time", NULL), NULL) : NULL;
+            if (id || !from || !text) g_key_file_remove_group(kf, *g, NULL);
+            g_free(id);
+            g_free(from);
+            g_free(text);
+        }
+        g_strfreev(groups);
+        gsize left = 0;
+        g_strfreev(g_key_file_get_groups(kf, &left));
+        if (!left) g_unlink(ZYL_PENDING_FILE);
+        else save_held(kf);
+    }
+    g_key_file_free(kf);
+}
+
 #ifndef ZYL_TEST
 static GDBusConnection *g_bus;
 
@@ -253,7 +316,9 @@ static void on_sms(GDBusConnection *conn, const gchar *sender, const gchar *path
     const gchar *from = NULL, *body = NULL;
     guint64 ts = 0;
     g_variant_get(params, "(&s&st)", &from, &body, &ts);
-    char *id = record(from, body, false, "received", (gint64)ts, NULL);
+    char *id = zyl_fscrypt_unlocked(ZYL_MESSAGES_DIR)
+        ? record(from, body, false, "received", (gint64)ts, NULL)
+        : hold(from, body, (gint64)ts) ? thread_id_for(from) : NULL;
     if (!id) return;
     GVariantBuilder d;
     g_variant_builder_init(&d, G_VARIANT_TYPE("a{sv}"));
@@ -297,6 +362,7 @@ static void on_bus(GDBusConnection *conn, const gchar *name, gpointer data) {
     g_dbus_connection_signal_subscribe(conn, "org.zylos.Telephony", "org.zylos.Telephony", "SmsReceived",
                                        "/org/zylos/Telephony", NULL, G_DBUS_SIGNAL_FLAGS_NONE,
                                        on_sms, NULL, NULL);
+    zyl_fscrypt_when_unlocked(ZYL_MESSAGES_DIR, release_held, NULL);
 }
 
 static gboolean on_term(gpointer loop) {

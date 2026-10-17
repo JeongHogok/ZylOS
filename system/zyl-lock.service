@@ -9,7 +9,8 @@ Restart=on-failure
 RestartSec=10
 TimeoutStopSec=5
 
-# Holds only the PIN hash and failure count in /data/lock
+# Holds only the PIN hash, failure count and sealed storage key in /data/lock
+# (zyl-lock-prepare.service made it; a right PIN puts the key on /data)
 NoNewPrivileges=true
 ProtectSystem=strict
 ReadWritePaths=/data/lock

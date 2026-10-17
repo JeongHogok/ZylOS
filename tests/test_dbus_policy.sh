@@ -5,7 +5,8 @@
 # 역할: Zyl 서비스 버스 — 시스템 버스에서 이름을 갖고 서로 부를 수 있는지
 # 수행범위: 배포하는 정책(system/dbus-1/zyl-os.conf)을 올린 사설 시스템 버스에서
 #           alarm → notification 호출이 실제로 건너가는지, 정책 밖의 사용자는
-#           이름을 갖지 못하는지
+#           이름을 갖지 못하는지, 전용 사용자 서비스(zyl-push)는 자기 이름만 갖고 일에
+#           필요한 서비스만 부르는지
 # 의존방향: dbus-daemon, gdbus, 빌드된 alarm·notification 데몬
 # SOLID: SRP — 버스 소유·호출 권한만 검증
 #
@@ -63,6 +64,8 @@ EOF
 # The WAM's user exists on a device (system/sysusers.d); without it dbus skips
 # that policy block and warns. Create it here so the real policy is exercised.
 id -u zyl-wam >/dev/null 2>&1 || useradd -r -s /usr/sbin/nologin zyl-wam 2>/dev/null || true
+# and a service user (system/sysusers.d/zyl-services.conf): dbus reads users when it starts
+id -u zyl-push >/dev/null 2>&1 || useradd -r -s /usr/sbin/nologin zyl-push 2>/dev/null || true
 
 # stdout/stderr go to a file: a forked daemon holding the test's pipes open
 # makes the test runner wait forever even after this script is done
@@ -139,6 +142,34 @@ if command -v setpriv >/dev/null 2>&1 && [ "$(id -u)" = "0" ]; then
     kill "$NOBODY_PID" 2>/dev/null || true
 else
     echo "  - setpriv 없음/비루트: 거부 쪽 검사 생략"
+fi
+
+# ── 4. 전용 사용자 서비스는 자기 이름만, 일에 필요한 곳만 ──
+#    zyl-push 가 뚫려도 다른 서비스의 이름을 가로채거나(잠금 서비스를 흉내) 아무
+#    서비스나 부르지 못한다 (system/sysusers.d/zyl-services.conf, zyl-os.conf)
+if command -v setpriv >/dev/null 2>&1 && [ "$(id -u)" = "0" ]; then
+    as_push() { setpriv --reuid=zyl-push --regid=zyl-push --clear-groups "$@"; }
+    own_as_push() {   # 0 when the bus let zyl-push own the name
+        as_push gdbus call --system -d org.freedesktop.DBus -o /org/freedesktop/DBus \
+            -m org.freedesktop.DBus.RequestName "$1" 0 >/dev/null 2>&1
+    }
+    if own_as_push org.zylos.Push; then ok "zyl-push 는 자기 이름을 가진다"
+    else bad "zyl-push 가 자기 이름을 갖지 못했다"; fi
+    if own_as_push org.zylos.Lock; then bad "zyl-push 가 잠금 서비스의 이름을 가졌다"
+    else ok "zyl-push 는 다른 서비스의 이름을 갖지 못한다"; fi
+    if as_push gdbus call --system -d org.zylos.Notification -o /org/zylos/Notification \
+        -m org.zylos.Notification.GetActive >/dev/null 2>&1; then ok "zyl-push 는 알림 서비스를 부른다"
+    else bad "zyl-push 가 알림 서비스를 부르지 못했다"; fi
+    # 다시 띄운 알람 서비스(root)에: 떠 있는데도 버스가 막아야 한다 (AccessDenied)
+    "$ALARM" >"$R/alarm2.log" 2>&1 & ALARM_PID=$!
+    got=""
+    owns AlarmService && got=$(as_push gdbus call --system -d org.zylos.AlarmService \
+        -o /org/zylos/AlarmService -m org.zylos.AlarmService.List 2>&1 || true)
+    if [[ "$got" == *AccessDenied* ]]; then
+        ok "zyl-push 는 일과 무관한 서비스를 부르지 못한다 (떠 있는 알람 서비스, AccessDenied)"
+    else bad "zyl-push 가 일과 무관한 서비스(알람)에 닿았다"; fi
+else
+    echo "  - setpriv 없음/비루트: 전용 사용자 검사 생략"
 fi
 
 echo "Results: $pass passed, $fail failed"

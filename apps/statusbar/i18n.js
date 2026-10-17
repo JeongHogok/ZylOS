@@ -13,6 +13,18 @@
   if (typeof zylI18n === 'undefined') return;
 
   zylI18n.addTranslations('ko', {
+    'consent.title': '\'{app}\' \uC571\uC774 \uB2E4\uC74C\uC744 \uC0AC\uC6A9\uD558\uB824\uACE0 \uD569\uB2C8\uB2E4',
+    'consent.allow': '\uD5C8\uC6A9',
+    'consent.deny': '\uD5C8\uC6A9 \uC548 \uD568',
+    'consent.perm.camera': '\uCE74\uBA54\uB77C \u2014 \uC0AC\uC9C4\uACFC \uB3D9\uC601\uC0C1 \uCD2C\uC601',
+    'consent.perm.microphone': '\uB9C8\uC774\uD06C \u2014 \uC18C\uB9AC \uB179\uC74C',
+    'consent.perm.location': '\uC704\uCE58 \u2014 \uC774 \uAE30\uAE30\uC758 \uC704\uCE58',
+    'consent.perm.contacts': '\uC5F0\uB77D\uCC98 \u2014 \uC5F0\uB77D\uCC98 \uC77D\uAE30\uC640 \uBC14\uAFB8\uAE30',
+    'consent.perm.messaging': '\uBA54\uC2DC\uC9C0 \u2014 \uB300\uD654 \uC77D\uAE30\uC640 \uBCF4\uB0B4\uAE30',
+    'consent.perm.calls': '\uC804\uD654 \u2014 \uC804\uD654 \uAC78\uAE30\uC640 \uD1B5\uD654 \uAE30\uB85D',
+    'consent.perm.sms': '\uBB38\uC790 \u2014 \uBB38\uC790 \uBCF4\uB0B4\uAE30\uC640 \uBC1B\uAE30',
+    'sb.camera_in_use': '\uCE74\uBA54\uB77C \uC0AC\uC6A9 \uC911',
+    'sb.mic_in_use': '\uB9C8\uC774\uD06C \uC0AC\uC6A9 \uC911',
     'recents.title': '\uCD5C\uADFC \uC571',
     'recents.empty': '\uC2E4\uD589 \uC911\uC778 \uC571\uC774 \uC5C6\uC2B5\uB2C8\uB2E4',
     'recents.close': '\uB2EB\uAE30',
@@ -38,6 +50,18 @@
   });
 
   zylI18n.addTranslations('en', {
+    'consent.title': '\'{app}\' wants to use',
+    'consent.allow': 'Allow',
+    'consent.deny': 'Don\'t allow',
+    'consent.perm.camera': 'Camera \u2014 take photos and videos',
+    'consent.perm.microphone': 'Microphone \u2014 record audio',
+    'consent.perm.location': 'Location \u2014 this device\'s location',
+    'consent.perm.contacts': 'Contacts \u2014 read and change your contacts',
+    'consent.perm.messaging': 'Messages \u2014 read and send conversations',
+    'consent.perm.calls': 'Phone \u2014 make calls and see the call log',
+    'consent.perm.sms': 'SMS \u2014 send and receive text messages',
+    'sb.camera_in_use': 'Camera in use',
+    'sb.mic_in_use': 'Microphone in use',
     'recents.title': 'Recent apps',
     'recents.empty': 'No running apps',
     'recents.close': 'Close',
@@ -63,6 +87,18 @@
   });
 
   zylI18n.addTranslations('ja', {
+    'consent.title': '\u300C{app}\u300D\u304C\u6B21\u306E\u4F7F\u7528\u3092\u6C42\u3081\u3066\u3044\u307E\u3059',
+    'consent.allow': '\u8A31\u53EF',
+    'consent.deny': '\u8A31\u53EF\u3057\u306A\u3044',
+    'consent.perm.camera': '\u30AB\u30E1\u30E9 \u2014 \u5199\u771F\u3068\u52D5\u753B\u306E\u64AE\u5F71',
+    'consent.perm.microphone': '\u30DE\u30A4\u30AF \u2014 \u97F3\u58F0\u306E\u9332\u97F3',
+    'consent.perm.location': '\u4F4D\u7F6E\u60C5\u5831 \u2014 \u3053\u306E\u30C7\u30D0\u30A4\u30B9\u306E\u4F4D\u7F6E',
+    'consent.perm.contacts': '\u9023\u7D61\u5148 \u2014 \u9023\u7D61\u5148\u306E\u8AAD\u307F\u53D6\u308A\u3068\u5909\u66F4',
+    'consent.perm.messaging': '\u30E1\u30C3\u30BB\u30FC\u30B8 \u2014 \u4F1A\u8A71\u306E\u8AAD\u307F\u53D6\u308A\u3068\u9001\u4FE1',
+    'consent.perm.calls': '\u96FB\u8A71 \u2014 \u767A\u4FE1\u3068\u901A\u8A71\u5C65\u6B74',
+    'consent.perm.sms': 'SMS \u2014 \u30C6\u30AD\u30B9\u30C8\u30E1\u30C3\u30BB\u30FC\u30B8\u306E\u9001\u53D7\u4FE1',
+    'sb.camera_in_use': '\u30AB\u30E1\u30E9\u3092\u4F7F\u7528\u4E2D',
+    'sb.mic_in_use': '\u30DE\u30A4\u30AF\u3092\u4F7F\u7528\u4E2D',
     'recents.title': '\u6700\u8FD1\u306E\u30A2\u30D7\u30EA',
     'recents.empty': '\u5B9F\u884C\u4E2D\u306E\u30A2\u30D7\u30EA\u306F\u3042\u308A\u307E\u305B\u3093',
     'recents.close': '\u9589\u3058\u308B',
@@ -88,6 +124,18 @@
   });
 
   zylI18n.addTranslations('zh', {
+    'consent.title': '\u201C{app}\u201D\u60F3\u8981\u4F7F\u7528',
+    'consent.allow': '\u5141\u8BB8',
+    'consent.deny': '\u4E0D\u5141\u8BB8',
+    'consent.perm.camera': '\u76F8\u673A \u2014 \u62CD\u6444\u7167\u7247\u548C\u89C6\u9891',
+    'consent.perm.microphone': '\u9EA6\u514B\u98CE \u2014 \u5F55\u5236\u97F3\u9891',
+    'consent.perm.location': '\u4F4D\u7F6E \u2014 \u6B64\u8BBE\u5907\u7684\u4F4D\u7F6E',
+    'consent.perm.contacts': '\u901A\u8BAF\u5F55 \u2014 \u8BFB\u53D6\u548C\u4FEE\u6539\u8054\u7CFB\u4EBA',
+    'consent.perm.messaging': '\u4FE1\u606F \u2014 \u8BFB\u53D6\u548C\u53D1\u9001\u5BF9\u8BDD',
+    'consent.perm.calls': '\u7535\u8BDD \u2014 \u62E8\u6253\u7535\u8BDD\u548C\u67E5\u770B\u901A\u8BDD\u8BB0\u5F55',
+    'consent.perm.sms': '\u77ED\u4FE1 \u2014 \u53D1\u9001\u548C\u63A5\u6536\u77ED\u4FE1',
+    'sb.camera_in_use': '\u6B63\u5728\u4F7F\u7528\u76F8\u673A',
+    'sb.mic_in_use': '\u6B63\u5728\u4F7F\u7528\u9EA6\u514B\u98CE',
     'recents.title': '\u6700\u8FD1\u5E94\u7528',
     'recents.empty': '\u6CA1\u6709\u6B63\u5728\u8FD0\u884C\u7684\u5E94\u7528',
     'recents.close': '\u5173\u95ED',
@@ -113,6 +161,18 @@
   });
 
   zylI18n.addTranslations('es', {
+    'consent.title': '\'{app}\' quiere usar',
+    'consent.allow': 'Permitir',
+    'consent.deny': 'No permitir',
+    'consent.perm.camera': 'C\u00E1mara \u2014 tomar fotos y v\u00EDdeos',
+    'consent.perm.microphone': 'Micr\u00F3fono \u2014 grabar audio',
+    'consent.perm.location': 'Ubicaci\u00F3n \u2014 la ubicaci\u00F3n de este dispositivo',
+    'consent.perm.contacts': 'Contactos \u2014 leer y cambiar tus contactos',
+    'consent.perm.messaging': 'Mensajes \u2014 leer y enviar conversaciones',
+    'consent.perm.calls': 'Tel\u00E9fono \u2014 hacer llamadas y ver el registro',
+    'consent.perm.sms': 'SMS \u2014 enviar y recibir mensajes de texto',
+    'sb.camera_in_use': 'C\u00E1mara en uso',
+    'sb.mic_in_use': 'Micr\u00F3fono en uso',
     'recents.title': 'Apps recientes',
     'recents.empty': 'No hay apps en ejecuci\u00F3n',
     'recents.close': 'Cerrar',

@@ -1,3 +1,3 @@
 gio = dependency('gio-2.0')
 openssl = dependency('openssl', version: '>=1.1.1')
-executable('zyl-credential', 'credential.c', dependencies: [gio, openssl], install: true)
+executable('zyl-credential', 'credential.c', dependencies: [gio, openssl, zyl_fscrypt_dep], install: true)

@@ -112,7 +112,7 @@ install_subdir('apps/shared',      install_dir: get_option('datadir') / 'zyl-os'
 install_headers('runtime/hal/hal.h', subdir: 'zyl-os')
 
 # ─── systemd units — only those the profile actually builds ───
-zyl_units = ['zyl-compositor', 'zyl-wam', 'zyl-apparmor']
+zyl_units = ['zyl-compositor', 'zyl-wam', 'zyl-apparmor', 'zyl-lock-prepare']   # lock: a core service
 foreach svc : zyl_services
   zyl_units += 'zyl-' + svc
 endforeach
@@ -156,7 +156,7 @@ install_data('system/push.json', install_dir: get_option('sysconfdir') / 'zyl-os
 # Service users and the /data directories units write to. Without them the
 # WAM (User=zyl-wam) and every ProtectSystem=strict unit with a /data path
 # fail before they start.
-install_data('system/sysusers.d/zyl-wam.conf',
+install_data('system/sysusers.d/zyl-wam.conf', 'system/sysusers.d/zyl-services.conf',
              install_dir: get_option('prefix') / 'lib' / 'sysusers.d')
 install_data('system/tmpfiles.d/zyl-wam.conf', 'system/tmpfiles.d/zyl-data.conf',
              install_dir: get_option('prefix') / 'lib' / 'tmpfiles.d')

@@ -53,6 +53,10 @@
       getState: function () {
         return Promise.resolve({ simPresent: false, operator: '', networkType: '', signal: 0, imei: '', phoneNumber: '' });
       },
+      /* The modem's hardware ID: system apps only (permissions.js), none here */
+      getImei: function () {
+        return Promise.resolve('');
+      },
       getCallState: function () { return Promise.resolve(_callState); },
       dial: function (p) {
         _callState = { state: 'DIALING', number: p.number || '', startTime: Date.now() };

@@ -85,6 +85,10 @@ body {
   opacity: 0.9;
 }
 
+/* Something is capturing: plain to see, never subtle (Android's green dot) */
+.sb-capture { fill: #3ddc84; opacity: 1; }
+.sb-capture.hidden { display: none; }
+
 #sb-battery {
   display: flex;
   align-items: center;
@@ -322,6 +326,40 @@ body {
 }
 
 /* ─── 최근 앱 ─── */
+/* The OS's question: an opaque sheet (no backdrop blur to depend on) */
+#consent {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px 16px 32px;
+  background: rgba(0, 0, 0, 0.88);
+  z-index: 10003;
+}
+#consent.hidden { display: none; }
+.consent-card {
+  width: 100%;
+  max-width: 480px;
+  background: #1f2233;
+  border-radius: 20px;
+  padding: 24px 20px 16px;
+  color: #fff;
+}
+.consent-title { font-size: 17px; font-weight: 600; line-height: 1.4; margin-bottom: 8px; }
+.consent-perm { font-size: 15px; opacity: 0.85; margin-bottom: 20px; }
+.consent-actions { display: flex; gap: 10px; }
+.consent-btn {
+  flex: 1;
+  min-height: 48px;
+  border: none;
+  border-radius: 12px;
+  font-size: 15px;
+  background: #33374d;
+  color: #fff;
+}
+.consent-primary { background: #4a9eff; }
+
 #recents {
   position: fixed;
   top: 0;

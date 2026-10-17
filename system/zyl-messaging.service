@@ -10,10 +10,11 @@ Restart=on-failure
 RestartSec=10
 TimeoutStopSec=5
 
-# Only the message store; sending goes through the telephony service
+# Only the message store (and what waits for the first unlock); sending goes
+# through the telephony service
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/data/messages
+ReadWritePaths=/data/messages /data/messages-pending
 ProtectHome=true
 PrivateTmp=true
 PrivateDevices=true

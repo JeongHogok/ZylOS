@@ -393,6 +393,7 @@
   requestServiceFire('settings', 'get', { category: 'keyboard' });
   requestServiceFire('settings', 'get', { category: 'wallpaper' });
   requestServiceFire('settings', 'get', { category: 'app_permissions' });
+  requestServiceFire('settings', 'get', { category: 'app_grants' });
   requestServiceFire('apps', 'getInstalled');
   /* FIX: Request battery state for battery status display */
   requestServiceFire('power', 'getState');

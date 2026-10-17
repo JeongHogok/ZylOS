@@ -93,8 +93,12 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 - 사용자가 설정에서 끈 권한(`settings` 의 `app_permissions`)은 두 게이트 모두에서
   거부한다 — 에뮬레이터 `ZylPermissions`, 기기 `bridge.c`(WAM 이 settings 의
   `CategoryChanged` 로 따라간다). 시스템 앱의 권한은 끌 수 없다.
-  첫 사용 동의 창은 없다 — 넣는다면 자리는 이 두 게이트이고, 그리는 쪽은 앱 화면에
-  OS 공용 코드(인텐트 선택 시트와 같은 방식)다
+- 위험 권한(`DANGEROUS_PERMISSIONS` — 카메라·마이크·위치·연락처·메시지·전화·문자)은 앱이
+  처음 쓸 때 묻는다. 판단은 같은 두 게이트(`consentNeeded`, `bridge.c` 의 `consent_needed`),
+  묻는 창은 시스템 UI(`apps/statusbar`)가 그린다 — 앱 자기 화면에 그리면 브리지가 앱과 같은
+  JS 세계에 있어 앱이 스스로 "허용"을 보낼 수 있다. 답은 시스템 UI 가 보낸 것(`permission.answer`,
+  그 질문의 토큰)만, 앞에 있는 앱의 질문만 띄운다(에뮬레이터 `apps/system/consent.js`, 기기 WAM).
+  답은 남는다 — 허용은 `app_grants`, 거부는 `app_permissions`(설정이 바꿀 때까지)
 - 앱이 닿을 수 있는 곳은 OS 가 권한으로 만든 CSP 가 정한다 — 기기 `app_scheme.c` 의
   `zyl_app_scheme_csp`(WAM 이 모든 응답 헤더로), 에뮬레이터 `sandbox.js` 의
   `getContentPolicy`(같은 문자열, `test_app_scheme.c`·`test_services.js`). 코드는 앱 자기
@@ -154,6 +158,12 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 - 다른 데몬이 `/var`·`/etc` 에 두는 상태도 설정이나 drop-in 으로 `/data` 로
   (bluez·NetworkManager 처럼 — `system/`). 이미지 빌드 때 굽는 캐시는 `/usr` 쪽에
 - 잠금 전환과 공장 초기화는 `/data` 를 통째로 지운다 — 남겨야 할 것을 다른 곳에 두지 말 것
+- 사용자 데이터(앱 컨테이너·사용자 파일·연락처·메시지·키체인)는 PIN 으로 잠긴다(fscrypt).
+  어느 디렉터리인지와 키는 잠금 서비스(`lock.c` 의 `ZYL_CE_DIRS`, verify-all D5)의 것이고,
+  부팅 뒤 첫 맞는 PIN 전에는 읽을 수도 쓸 수도 없다. 그 디렉터리를 쓰는 서비스는 잠긴 동안
+  실패로 답하거나 `zyl_fscrypt_when_unlocked` 로 기다린다 — 잠긴 동안 들어온 것(문자)은
+  잠기지 않는 곳에 두었다가 옮긴다. 잠긴 채로 돌아야 하는 상태(알람·통화 기록·설정·망)는
+  그 밖에 둘 것
 
 ### 9. Intent 시스템 경계 규칙
 

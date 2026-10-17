@@ -8,6 +8,7 @@
  * ────────────────────────────────────────────────────────── */
 
 #include "user.h"
+#include "fscrypt.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -144,18 +145,23 @@ static void on_user_bus(GDBusConnection *conn, const gchar *name, gpointer data)
 
 /* ─── 공개 API ─── */
 
+/* 기본 소유자 계정 — 그 디렉터리는 사용자 데이터라 부팅 뒤 첫 잠금 해제 때 연다
+   (runtime/lib/fscrypt). 잠긴 동안 만들려 하면 실패해 소유자가 없는 채로 남았다 */
+static void add_owner(void *data) {
+    ZylUserService *svc = data;
+    uint32_t owner_uid = 0;
+    if (zyl_user_add(svc, "Owner", ZYL_USER_TYPE_OWNER, &owner_uid) != 0) return;
+    svc->current_uid = owner_uid;
+    svc->users[0].is_active = true;
+}
+
 ZylUserService *zyl_user_create(void) {
     ZylUserService *svc = calloc(1, sizeof(ZylUserService));
     if (!svc) return NULL;
 
     svc->next_uid = ZYL_OWNER_UID;   /* the owner is the first: runtime/lib/users.h */
     ensure_dir(ZYL_USER_DATA_ROOT);
-
-    /* 기본 소유자 계정 생성 */
-    uint32_t owner_uid = 0;
-    zyl_user_add(svc, "Owner", ZYL_USER_TYPE_OWNER, &owner_uid);
-    svc->current_uid = owner_uid;
-    svc->users[0].is_active = true;
+    zyl_fscrypt_when_unlocked(ZYL_USER_DATA_ROOT, add_owner, svc);
 
     svc->dbus_owner_id = g_bus_own_name(G_BUS_TYPE_SYSTEM,
         ZYL_USER_DBUS_NAME, G_BUS_NAME_OWNER_FLAGS_NONE,
