@@ -758,6 +758,9 @@ static const ServicePermission METHOD_PERMISSIONS[] = {
     {"power.suspend",                  {"system", NULL}},
     {"power.shutdown",                 {"system", NULL}},
     {"power.reboot",                   {"system", NULL}},
+    /* The recovery screen's factory reset — and only on a recovery boot (the
+       service refuses otherwise) */
+    {"storage.eraseUserData",          {"system", NULL}},
     {"power.setBrightness",            {"system", NULL}},
     {"power.acquireWakelock",          {"system", NULL}},
     {"power.releaseWakelock",          {"system", NULL}},

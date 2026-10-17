@@ -687,6 +687,27 @@ else
   pass "잠그는 사용자 데이터 디렉터리 전부 tmpfiles 가 만든다"
 fi
 
+# D6: 공장 초기화 유닛(zyl-erase-data)은 아무것도 끌어들이지 않는다 — [Install] 이 없고
+#     meson 의 zyl_units 에 없다(있으면 zyl-os.target 이 부팅마다 원해 /data 를 지운다).
+#     복구 화면의 EraseUserData(storage)만 시작한다
+ERASE_PULLED=$(python3 - "$ROOT" <<'PYCHK'
+import re, sys
+root = sys.argv[1]
+unit = open(root + '/system/zyl-erase-data.service').read()
+meson = open(root + '/meson.build').read()
+m = re.search(r"zyl_units = \[(.*?)\]", meson, re.S)
+out = []
+if re.search(r'^\[Install\]', unit, re.M): out.append('[Install] 이 있다')
+if not m or 'zyl-erase-data' in m.group(1): out.append('zyl_units 에 있다')
+print('; '.join(out))
+PYCHK
+)
+if [ -n "$ERASE_PULLED" ]; then
+  fail "공장 초기화 유닛이 부팅에 끌려 들어갈 수 있다: $ERASE_PULLED"
+else
+  pass "공장 초기화 유닛은 복구 화면만 시작한다 ([Install]·zyl_units 없음)"
+fi
+
 # D3: 유닛이 쓰는 경로를 그 서비스의 AppArmor 프로필도 허용하는지
 #     systemd 는 ReadWritePaths 로 열어 주는데 프로필 경로가 다르면 쓰기가 전부
 #     거부된다. credential 프로필은 .../credential/(s 없이)이라 키체인이 기기에서

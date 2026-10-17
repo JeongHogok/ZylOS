@@ -7,6 +7,8 @@
  *           바로가기는 둘 위에 뜰 수 있다. 홈·뒤로 나가기·최근 앱·앱 전환은
  *           여기서 따라 나온다. 잠금 해제는 잠금 화면만, 설정 완료는 설정만 —
  *           보낸 앱은 OS 가 말한다. 홈은 닫히지 않는다.
+ *           /data 를 열지 못한 부팅(복구)에는 복구 화면만 — 그 밖에서는 복구 화면을
+ *           띄우지 않는다(사용자 데이터를 지우는 화면이다).
  *           같은 규칙: apps/system/shell.js
  * 의존방향: glib
  * SOLID: SRP — 판단만. 띄우기·창 관리는 WAM(wam.c)
@@ -20,6 +22,7 @@
 #define ZYL_SHELL_HOME  "com.zylos.home"
 #define ZYL_SHELL_LOCK  "com.zylos.lockscreen"
 #define ZYL_SHELL_SETUP "com.zylos.oobe"
+#define ZYL_SHELL_RECOVERY "com.zylos.recovery"
 /* The surface over every app: status bar, notification panel, recents */
 #define ZYL_SHELL_SYSTEM_UI "com.zylos.statusbar"
 /* Its bar: app windows start below it (compositor), its input region when
@@ -31,6 +34,7 @@
 typedef enum { ZYL_PANEL_NONE, ZYL_PANEL_BAR, ZYL_PANEL_BANNER, ZYL_PANEL_FULL } ZylPanelMode;
 
 typedef struct {
+    gboolean recovery;  /* /data could not be mounted: only the recovery screen */
     gboolean setup;     /* first setup is not done */
     gboolean locked;
     char     top[256];  /* the app in front, as the WAM last showed it */
@@ -38,6 +42,10 @@ typedef struct {
 
 /* The device started: setup until it is done, then the lock screen */
 const char *zyl_shell_boot(ZylShell *s, gboolean setup_done);
+
+/* The user's data could not be mounted (runtime/lib/recovery.h): the recovery
+   screen, and nothing else for this boot */
+const char *zyl_shell_recover(ZylShell *s);
 
 /* May this app come to the front now? (an app, a notification, an intent) */
 gboolean zyl_shell_may_launch(const ZylShell *s, const char *app_id);

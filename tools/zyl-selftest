@@ -46,7 +46,8 @@ for u in $units; do
     # 자기점검 자신은 활성 여부를 묻지 않는다. 프로필 로더(zyl-apparmor)는 묻는다 —
     # RemainAfterExit 라 성공하면 active 다(전에는 빼 두어서 유닛 파일이 깨져 한 번도
     # 돌지 않은 것을 몰랐다)
-    case "$u" in zyl-selftest.service) continue ;; esac
+    # 공장 초기화(zyl-erase-data)는 복구 화면이 부를 때만 돈다 — 돌고 있으면 큰일이다
+    case "$u" in zyl-selftest.service|zyl-erase-data.service) continue ;; esac
     state="$(systemctl is-active "$u" 2>/dev/null)"
     # 아직 올라오는 중이면 기다려 준다 — WAM 은 WebKit 과 홈 앱을 띄우느라
     # 느리고(에뮬레이션에서는 더), 시작 중인 유닛은 실패가 아니다
@@ -56,7 +57,7 @@ for u in $units; do
         state="$(systemctl is-active "$u" 2>/dev/null)"
     done
     if [ "$state" = "active" ]; then ok "unit $u"
-    elif condition_failed "$u"; then skipped "unit $u (하드웨어 조건 미충족)"
+    elif condition_failed "$u"; then skipped "unit $u (유닛 조건 미충족 — 하드웨어·복구 부팅 아님 등)"
     else
         why="$(systemctl show -p Result --value "$u" 2>/dev/null)"
         code="$(systemctl show -p ExecMainStatus --value "$u" 2>/dev/null)"
@@ -89,7 +90,14 @@ done
     || bad "apps 디렉터리가 없다"
 [ -f /usr/share/zyl-os/wam/bridge.js ] && ok "wam bridge.js" \
     || bad "wam/bridge.js 가 없다"
-mountpoint -q /data && ok "/data 마운트" || bad "/data 가 마운트되지 않았다"
+# 복구 부팅: 파티션을 열지 못해 zyl-recovery 가 tmpfs 를 올렸다 — 기기는 그 사실과
+# 복구 화면만 보여야 한다(아래 화면 체인)
+recovery=0
+if [ "$(findmnt -n -o FSTYPE /data 2>/dev/null)" = tmpfs ]; then
+    recovery=1
+    bad "/data 의 파티션을 열지 못했다 — 복구 부팅(휘발 /data)"
+elif mountpoint -q /data; then ok "/data 마운트"
+else bad "/data 가 마운트되지 않았다"; fi
 [ -f /etc/zyl-release ] && ok "release $(sed -n 's/^ZYL_OS_VERSION=//p' /etc/zyl-release | head -1)" \
     || bad "/etc/zyl-release 가 없다"
 
@@ -105,7 +113,13 @@ if [ -e /dev/dri/card0 ]; then
         2>/dev/null)"
     # 응답은 (['com.zylos.home'], 1) 꼴 — 앱 id 를 여기 또 적지 않고 개수만 본다
     count="${running##*, }"; count="${count%)}"
-    if [ -z "$running" ]; then bad "wam ListRunning 이 응답하지 않는다"
+    if [ $recovery = 1 ]; then
+        # 복구 부팅에 앞에 오는 것은 셸 정책의 복구 화면 하나다(runtime/wam/src/shell/shell.h)
+        case "$running" in
+            *com.zylos.recovery*) ok "복구 화면 $running" ;;
+            *) bad "복구 부팅인데 복구 화면이 없다 ($running)" ;;
+        esac
+    elif [ -z "$running" ]; then bad "wam ListRunning 이 응답하지 않는다"
     elif [ "${count:-0}" -gt 0 ] 2>/dev/null; then ok "wam 앱 실행 중 $running"
     else bad "wam 이 띄운 앱이 없다 ($running)"; fi
 else

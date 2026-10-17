@@ -1,0 +1,19 @@
+#!/bin/sh
+# ──────────────────────────────────────────────────────────
+# [Clean Architecture] Infrastructure Layer - Storage Guard
+#
+# 역할: /data 를 포맷해도 되는가 — 비어 있는 파티션(첫 부팅, 지운 뒤)만
+# 수행범위: systemd-makefs@ 의 ExecStartPre(drop-in makefs-zyl.conf). 파일 시스템이
+#           있으면 0(makefs 가 그대로 둔다), 없는데 첫 1MiB 가 0x00·0xff(지운 플래시)
+#           뿐이면 0(포맷), 그 밖이면 1 — 첫 블록이 깨진 /data 를 말없이 새로 만들지
+#           않는다. 마운트가 실패하고 복구 화면이 사용자에게 묻는다
+# 의존방향: blkid (util-linux), head, tr, wc
+# SOLID: SRP — 판정만
+# ──────────────────────────────────────────────────────────
+dev="$1"
+blkid -p "$dev" >/dev/null 2>&1 && exit 0
+for byte in '\000' '\377'; do
+    [ "$(head -c 1048576 "$dev" | tr -d "$byte" | head -c 1 | wc -c)" -eq 0 ] && exit 0
+done
+echo "zyl-data-blank: $dev has no filesystem but is not blank — not formatting it" >&2
+exit 1

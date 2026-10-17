@@ -1375,6 +1375,37 @@ console.log('\n■ ZylShell');
     assert.strictEqual(S.screenOn(), null);                          /* a call/alert/camera stays */
   });
 
+  /* /data could not be mounted: the recovery screen holds the device for the
+     whole boot, and is never shown otherwise — the same scenario as test_shell.c */
+  test('recovery holds the device, and only then', function () {
+    var S = shell(), RECOVERY = 'com.zylos.recovery', UI = 'com.zylos.statusbar';
+    show(S, S.boot(true));
+    assert.ok(!S.mayLaunch(RECOVERY));                               /* locked */
+    show(S, S.unlock(LOCK));
+    assert.ok(!S.mayLaunch(RECOVERY));                               /* nor unlocked */
+    assert.strictEqual(S.recover(), RECOVERY);
+    show(S, RECOVERY);
+    assert.ok(S.mayLaunch(RECOVERY));
+    assert.ok(!S.mayLaunch(HOME));
+    assert.ok(!S.mayLaunch(LOCK));
+    assert.ok(!S.mayLaunch(SETUP));
+    assert.ok(!S.mayLaunch('com.zylos.phone'));
+    assert.ok(!S.navigable());
+    assert.ok(!S.mayClose(RECOVERY));
+    assert.strictEqual(S.home(), null);                              /* already there */
+    assert.strictEqual(S.lock(), null);                              /* nothing to lock */
+    assert.strictEqual(S.unlock(LOCK), null);
+    assert.strictEqual(S.setupDone(SETUP), null);
+    assert.strictEqual(S.screenOn(), null);
+    assert.strictEqual(S.panelMode(UI, 'full'), 'bar');
+    assert.strictEqual(S.panelMode(UI, 'banner'), 'bar');
+    show(S, 'com.zylos.settings');                                   /* whatever got there */
+    assert.strictEqual(S.home(), RECOVERY);
+    assert.strictEqual(S.screenOn(), RECOVERY);
+    show(S, S.boot(true));                                           /* next boot: as ever */
+    assert.ok(!S.mayLaunch(RECOVERY));
+  });
+
   test('only the lock screen unlocks', function () {
     var S = shell();
     show(S, S.boot(true));

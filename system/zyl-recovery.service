@@ -1,0 +1,21 @@
+[Unit]
+Description=Zyl OS recovery boot (the user data partition did not mount: a blank /data for the recovery screen)
+# Nothing is erased here — the recovery screen asks the user (com.zylos.recovery →
+# storage EraseUserData → zyl-erase-data.service). The /data mount is nofail
+# (tools/build-image.sh's fstab) so a broken partition does not stop the boot in
+# emergency mode, which has no shell to use on this device; this unit orders it
+# before local-fs.target again (nofail alone would let services start first).
+# On tmpfs every service still finds its directory (tmpfiles) and the OS comes up
+# far enough to show the screen (runtime/lib/recovery.h tells it this is that boot)
+DefaultDependencies=no
+After=data.mount
+Before=local-fs.target
+ConditionPathIsMountPoint=!/data
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/mount -t tmpfs -o mode=0755,nosuid,nodev,size=25%% tmpfs /data
+
+[Install]
+WantedBy=zyl-os.target

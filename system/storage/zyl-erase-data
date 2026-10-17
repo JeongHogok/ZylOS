@@ -1,0 +1,27 @@
+#!/bin/sh
+# ──────────────────────────────────────────────────────────
+# [Clean Architecture] Infrastructure Layer - Factory Reset
+#
+# 역할: 복구 화면의 기기 초기화 — 사용자 데이터 파티션을 지운다
+# 수행범위: /data 에 그 파티션이 올라 있지 않을 때만(복구 부팅: tmpfs —
+#           runtime/lib/recovery.h 와 같은 판정) fstab 의 /data 장치를 블록째 버리고
+#           (가능하면 secure discard) 첫 1MiB 를 0 으로 — 다음 부팅의 makefs 가 빈
+#           파티션으로 보고 새로 만든다(zyl-data-blank)
+# 의존방향: findmnt, blkdiscard (util-linux), dd
+# SOLID: SRP — 지우기만. 다시 시작은 유닛(zyl-erase-data.service)
+# ──────────────────────────────────────────────────────────
+set -eu
+fstype="$(findmnt -n -o FSTYPE /data 2>/dev/null || true)"
+[ "$fstype" = tmpfs ] || { echo "zyl-erase-data: /data is mounted (${fstype:-?}) — not erasing" >&2; exit 1; }
+dev="$(findmnt --fstab --evaluate -n -o SOURCE /data)"
+[ -b "$dev" ] || { echo "zyl-erase-data: no /data partition (${dev:-none in fstab})" >&2; exit 1; }
+# The sealed key of the encrypted user data is on it (runtime/services/lock):
+# every block goes, not only the filesystem's signature
+if blkdiscard -f -s "$dev" 2>/dev/null || blkdiscard -f "$dev" 2>/dev/null; then
+    echo "zyl-erase-data: $dev discarded"
+else
+    # shortcut: a disk that cannot discard (QEMU's virtio by default) keeps its old
+    # blocks — only its start is cleared below; zero it all if a board needs it
+    echo "zyl-erase-data: $dev cannot discard — its old blocks stay until overwritten" >&2
+fi
+dd if=/dev/zero of="$dev" bs=1M count=1 conv=fsync status=none

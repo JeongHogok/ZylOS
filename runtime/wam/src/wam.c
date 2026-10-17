@@ -28,6 +28,7 @@
 #include <string.h>
 #include <json-glib/json-glib.h>
 #include "zyl_json.h"
+#include "recovery.h"
 #ifdef ZYL_USE_WEBKIT2GTK
 #include <webkit2/webkit2.h>
 #else
@@ -1717,7 +1718,8 @@ static void subscribe_service_events(ZylWam *wam) {
 }
 
 /* The first screen: setup until it is done, then the lock screen. A device
-   whose settings cannot be read starts locked, never open. */
+   whose settings cannot be read starts locked, never open; one whose user data
+   did not mount, the recovery screen. */
 static void on_setup_state(GObject *src, GAsyncResult *res, gpointer data) {
     ZylWam *wam = data;
     GError *err = NULL;
@@ -1737,6 +1739,14 @@ static void on_setup_state(GObject *src, GAsyncResult *res, gpointer data) {
 }
 
 static void read_setup_state(ZylWam *wam) {
+    /* /data's partition did not mount: no settings to read, no lock to show —
+       the recovery screen for this whole boot */
+    if (zyl_recovery_mode()) {
+        g_warning("WAM: the user data partition did not mount — recovery screen");
+        wam_show(wam, zyl_shell_recover(&wam->shell));
+        wam_start_system_ui(wam);
+        return;
+    }
     if (!g_event_bus) {
         wam_show(wam, zyl_shell_boot(&wam->shell, TRUE));
         wam_start_system_ui(wam);
