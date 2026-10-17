@@ -43,7 +43,7 @@ with open(sys.argv[1], 'r+b') as f:
 PY
 
 echo "═══ 복구 부팅 레인 ($ZYL_BOARD, /data 파티션 p$ZYL_PART_DATA 의 첫 64KiB 를 덮음) ═══"
-LOG="$(mktemp -t zyl-recovery.XXXXXX)"
+LOG="${KEEP_LOG:-$(mktemp -t zyl-recovery.XXXXXX)}"      # KEEP_LOG=파일: 콘솔 기록을 남긴다
 bash "$ROOT/tools/run-qemu.sh" --image "$IMAGE" --builddir "$BUILDDIR" --check --timeout "$TIMEOUT" --log "$LOG" >/dev/null 2>&1
 grep -q 'zyl-selftest: FAILED' "$LOG" && ok "자기점검이 끝까지 돌고 기기가 성하지 않다고 말함" \
     || bad "자기점검이 끝나지 않았다 — 복구 부팅이 서지 못했다"
@@ -56,6 +56,6 @@ with open(sys.argv[1], 'rb') as f:
     f.seek(int(sys.argv[2]) * 512); sys.exit(0 if f.read(65536) == b'\x5a' * 65536 else 1)
 PY
 [ $FAIL -eq 0 ] || grep -E "zyl|Zyl|Failed|FAILED|data" "$LOG" | tail -40
-rm -f "$LOG"
+[ -n "${KEEP_LOG:-}" ] || rm -f "$LOG"
 echo "결과: $PASS 통과, $FAIL 실패"
 [ "$FAIL" -eq 0 ]

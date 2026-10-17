@@ -11,7 +11,9 @@
 # SOLID: SRP — 판정만
 # ──────────────────────────────────────────────────────────
 dev="$1"
-blkid -p "$dev" >/dev/null 2>&1 && exit 0
+# The filesystem's type only: on a partition blkid -p also answers with the
+# GPT entry it sits in (PART_ENTRY_*) and exits 0 — that is not a filesystem
+[ -n "$(blkid -p -o value -s TYPE "$dev" 2>/dev/null)" ] && exit 0
 for byte in '\000' '\377'; do
     [ "$(head -c 1048576 "$dev" | tr -d "$byte" | head -c 1 | wc -c)" -eq 0 ] && exit 0
 done
