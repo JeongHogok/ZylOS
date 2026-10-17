@@ -2144,14 +2144,26 @@ console.log('\n■ App store');
 
 var storeTests = (function () {
   var nodeCrypto = require('crypto');
+  /* Two keys, as tools/build-store.py: the root (the image's rootKey) vouches
+     for the store key (keys) that signs everything else */
+  var rootKeys = nodeCrypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
   var keys = nodeCrypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
   var devKeys = nodeCrypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+  var rootPub = rootKeys.publicKey.export({ type: 'spki', format: 'pem' });
   var pub = keys.publicKey.export({ type: 'spki', format: 'pem' });
   var devPub = devKeys.publicKey.export({ type: 'spki', format: 'pem' });
   function sha(buf) { return nodeCrypto.createHash('sha256').update(buf).digest(); }
   function signWith(key, buf) { return nodeCrypto.sign('sha256', sha(buf), key).toString('base64'); }
   function sign(buf) { return signWith(keys.privateKey, buf); }
   function hexOf(text) { return sha(Buffer.from(text)).toString('hex'); }
+  /* The root's certificate for a store key: { json, sig } */
+  function signingCert(o) {
+    o = o || {};
+    var json = JSON.stringify({ version: 1, serial: o.serial || 1, publicKey: o.pub || pub,
+                                revokedSerials: o.revoke || [] });
+    return { json: json, sig: signWith(o.signer || rootKeys.privateKey, Buffer.from(json)) + '\n' };
+  }
+  var SIGNING = signingCert();
   var pkg = Buffer.from('a zip, as far as the OS is concerned');
   /* One clock for every certificate this suite makes: the same certificate,
      and so the same fingerprint, however many times it is built */
@@ -2171,6 +2183,11 @@ var storeTests = (function () {
       hashes['.zyl-seal/' + name + '.json'] = hexOf(json);
       hashes['.zyl-seal/' + name + '.sig'] = hexOf(seal[name + '.sig']);
     }
+    var cert = o.signing || SIGNING;
+    seal['signing.json'] = cert.json;
+    seal['signing.sig'] = cert.sig;
+    hashes['.zyl-seal/signing.json'] = hexOf(cert.json);
+    hashes['.zyl-seal/signing.sig'] = hexOf(cert.sig);
     if (o.dev) {
       put('cert', { developer: 'acme', name: 'ACME', publicKey: devPub, notAfter: NOW + (o.expired ? -60 : 86400) },
           keys.privateKey);
@@ -2187,22 +2204,26 @@ var storeTests = (function () {
     opts = opts || {};
     var entry = { id: 'com.example.hello', name: 'Hello', version: '2.0.0', package: 'hello.zpkg',
                   size: pkg.length, sha256: sha(pkg).toString('hex'), signature: sign(pkg), permissions: ['network'] };
-    var cat = Buffer.from(JSON.stringify({ apps: [entry,
+    var cat = Buffer.from(JSON.stringify({ issued: opts.issued || 1800000000, apps: [entry,
       { id: 'com.zylos.settings', name: 'S', version: '9', package: 's', size: 1, sha256: entry.sha256, signature: 'c2ln' },
       { id: '../evil', name: 'E', version: '1', package: 'e', size: 1, sha256: entry.sha256, signature: 'c2ln' }],
-      revoked: opts.revokeInCatalog || [] }));
+      revoked: opts.revokeInCatalog || [], revokedApps: opts.revokeAppsInCatalog || [] }));
+    var cert = opts.storeSigning || SIGNING;
     var calls = [], files = {
+      'https://store.example/v1/signing.json': Buffer.from(cert.json),
+      'https://store.example/v1/signing.json.sig': Buffer.from(cert.sig),
       'https://store.example/v1/catalog.json': opts.catalog || cat,
       'https://store.example/v1/catalog.json.sig': Buffer.from(sign(cat) + '\n'),
       'https://store.example/v1/hello.zpkg': opts.pkg || pkg
     };
     var installedApps = [{ id: 'com.zylos.settings', source: 'image', version: '1' }].concat(opts.installed || []);
-    var forgotten = [], revoked = opts.revoked || [], committed = [];
+    var forgotten = [], committed = [];
+    var kept = { issued: 0, certs: opts.revoked || [], apps: opts.revokedApps || [], keys: opts.revokedKeys || [] };
     function invoke(cmd, a) {
       calls.push(cmd);
       if (cmd === 'store_config') {
-        return Promise.resolve(JSON.stringify(opts.unconfigured ? { url: '', publicKey: '' }
-          : { url: 'https://store.example/v1/catalog.json', publicKey: pub }));
+        return Promise.resolve(JSON.stringify(opts.unconfigured ? { url: '', rootKey: '' }
+          : { url: 'https://store.example/v1/catalog.json', rootKey: rootPub }));
       }
       if (cmd === 'store_download') {
         return files[a.url] ? Promise.resolve(files[a.url].toString('base64')) : Promise.reject(new Error('404'));
@@ -2211,9 +2232,9 @@ var storeTests = (function () {
       if (cmd === 'store_unpack') return Promise.resolve(opts.unpacked || sealed());
       /* what is installed: the store's own unless the test says otherwise */
       if (cmd === 'store_inspect') return Promise.resolve((opts.inspect || {})[a.appId] || sealed({ id: a.appId }));
-      if (cmd === 'store_revoked') {
-        if (a.list) revoked = a.list;
-        return Promise.resolve(revoked);
+      if (cmd === 'store_revocations') {
+        if (a.value) kept = JSON.parse(JSON.stringify(a.value));
+        return Promise.resolve(kept);
       }
       if (cmd === 'store_commit') committed.push([a.appId, a.stage]);
       return Promise.resolve(true);
@@ -2227,7 +2248,7 @@ var storeTests = (function () {
       invoke: invoke
     });
     return { svc: svc, seal: seal, calls: calls, forgotten: forgotten, committed: committed,
-             revoked: function () { return revoked; } };
+             kept: function () { return kept; }, keep: function (k) { kept = k; } };
   }
 
   function devFp() { return sealed({ dev: true }).hashes['.zyl-seal/cert.json']; }
@@ -2249,10 +2270,37 @@ var storeTests = (function () {
         assert.strictEqual(r[1].state, 'untrusted');
       });
     }),
-    asyncTest('catalog: its revoked certificates are kept', function () {
-      var s = store({ revokeInCatalog: [devFp().toUpperCase(), 'short'] });
-      return s.svc.getCatalog().then(function () {
-        assert.deepStrictEqual(s.revoked(), [devFp()]);
+    asyncTest('catalog: what it revokes is kept, with the store keys its certificate revokes', function () {
+      var s = store({ revokeInCatalog: [devFp().toUpperCase(), 'short'], revokeAppsInCatalog: ['com.evil.app', '../x'],
+                      storeSigning: signingCert({ serial: 3, revoke: [1, 2] }), revokedKeys: ['2'] });
+      return s.svc.getCatalog().then(function (c) {
+        assert.strictEqual(c.state, 'ok');
+        assert.deepStrictEqual(s.kept(), { issued: 1800000000, certs: [devFp()], apps: ['com.evil.app'], keys: ['2', '1'] });
+      });
+    }),
+    asyncTest('catalog: a store key the root did not vouch for, or one revoked, is not trusted', function () {
+      var rogue = store({ storeSigning: signingCert({ signer: keys.privateKey }) });   /* not the root's */
+      var revoked = store({ revokedKeys: ['1'] });
+      return Promise.all([rogue.svc.getCatalog(), revoked.svc.getCatalog()]).then(function (r) {
+        r.forEach(function (c) { assert.strictEqual(c.state, 'untrusted'); });
+      });
+    }),
+    asyncTest('catalog: one older than a catalog already seen is a replay, refused', function () {
+      var s = store({ issued: 1700000000 });
+      s.keep({ issued: 1800000000, certs: [], apps: ['com.example.hello'], keys: [] });
+      return s.svc.getCatalog().then(function (c) {
+        assert.strictEqual(c.state, 'untrusted');
+        assert.deepStrictEqual(s.kept().apps, ['com.example.hello']);           /* still taken back */
+      });
+    }),
+    asyncTest('seal: an app the store took back, or one sealed under a revoked store key, is refused', function () {
+      var took = store({ revokedApps: ['com.example.hello'] });
+      var oldKey = store({ revokedKeys: ['1'] });
+      return Promise.all([took.seal.check(sealed(), 'com.example.hello', '2.0.0', false),
+                          oldKey.seal.check(sealed(), 'com.example.hello', '2.0.0', false),
+                          store().seal.check(sealed({ signing: signingCert({ signer: keys.privateKey }) }),
+                                             'com.example.hello', '2.0.0', false)]).then(function (r) {
+        assert.deepStrictEqual(r, ['revoked', 'revoked', 'bad_package']);
       });
     }),
     asyncTest('install: a verified, store-sealed package is committed; a tampered one never unpacked', function () {

@@ -902,25 +902,26 @@ static void on_app_request(WebKitURISchemeRequest *req, gpointer user_data) {
     if (uri) g_uri_unref(uri);
 }
 
-/* A user-installed app runs only if its seal holds: signed by the store, or by
-   a developer the store allowed on this device, and every file as sealed */
+/* A user-installed app runs only if its seal holds: signed by a store key the
+   root vouches for, or by a developer the store allowed on this device, every
+   file as sealed, and nothing of it revoked */
 static ZylSeal *seal_app(const ZylAppManifest *m) {
-    char *pem = zyl_seal_store_key(WAM_STORE_CONFIG);
-    char **revoked = zyl_seal_load_revoked(WAM_REVOKED);
+    char *root = zyl_seal_root_key(WAM_STORE_CONFIG);
+    ZylRevocations *rev = zyl_seal_load_revocations(WAM_REVOCATIONS);
     ZylBoardInfo board;
     memset(&board, 0, sizeof(board));
     zyl_hal_board()->get(&board);
     ZylSeal *seal = NULL;
-    ZylSealVerdict v = zyl_seal_open(m->base_path, m->id, m->version, pem, board.device_id,
-                                     (const char *const *)revoked, g_get_real_time() / G_USEC_PER_SEC,
-                                     true, &seal);
+    ZylSealVerdict v = zyl_seal_open(m->base_path, m->id, m->version, root, board.device_id,
+                                     rev, g_get_real_time() / G_USEC_PER_SEC, true, &seal);
     if (v != ZYL_SEAL_OK) g_warning("WAM: %s refused: %s", m->id, zyl_seal_verdict_message(v));
-    g_strfreev(revoked);
-    g_free(pem);
+    zyl_seal_revocations_free(rev);
+    g_free(root);
     return seal;
 }
 
-/* Drop every user-installed app whose seal does not hold; keep the seals */
+/* Drop every user-installed app whose seal does not hold — at start, and when
+   the store revoked something (an app that is running stops now); keep the seals */
 static void seal_user_apps(ZylWam *wam) {
     GHashTableIter it;
     gpointer key, value;
@@ -929,8 +930,13 @@ static void seal_user_apps(ZylWam *wam) {
         ZylAppManifest *m = value;
         if (m->is_system) continue;
         ZylSeal *seal = seal_app(m);
-        if (seal) g_hash_table_replace(wam->seals, g_strdup(m->id), seal);
-        else g_hash_table_iter_remove(&it);
+        if (seal) {
+            g_hash_table_replace(wam->seals, g_strdup(m->id), seal);
+            continue;
+        }
+        if (wam->iface.get_instance(&wam->iface, m->id)) wam_close(wam, m->id);
+        g_hash_table_remove(wam->seals, m->id);
+        g_hash_table_iter_remove(&it);
     }
 }
 
@@ -1602,6 +1608,7 @@ static const char *app_to_show(const char *service, const char *signal, GVariant
    manifest, its running instance, its web storage in the container */
 static void on_store_event(ZylWam *wam, const char *signal, GVariant *params) {
     const gchar *id = NULL;
+    if (strcmp(signal, "RevocationsChanged") == 0) { seal_user_apps(wam); return; }
     if (!g_variant_is_of_type(params, G_VARIANT_TYPE("(s)"))) return;
     g_variant_get(params, "(&s)", &id);
     ZylAppManifest *known = g_hash_table_lookup(wam->manifests, id);

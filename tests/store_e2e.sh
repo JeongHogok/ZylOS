@@ -22,15 +22,20 @@ mkdir -p "$R"/{apps,appdata,files/Downloads,system,notifications,srv,src/hello,s
 printf 'DEV-E2E' > "$R/sys/proc/device-tree/serial-number"     # this device's ID
 ID=com.example.hello
 
+# Two keys: the root (the image's rootKey, offline) vouches for the store key that signs
+openssl genrsa -out "$R/root.key" 2048 2>/dev/null
+openssl rsa -in "$R/root.key" -pubout -out "$R/root.pub" 2>/dev/null
 openssl genrsa -out "$R/store.key" 2048 2>/dev/null
 openssl rsa -in "$R/store.key" -pubout -out "$R/store.pub" 2>/dev/null
+python3 -I "$TOOL" signing-cert --root-key "$R/root.key" --pubkey "$R/store.pub" --serial 1 --out "$R/signing.json" >/dev/null
+S="--signing $R/signing.json"
 openssl req -x509 -newkey rsa:2048 -nodes -keyout "$R/tls.key" -out "$R/tls.crt" -days 1 \
     -subj /CN=127.0.0.1 -addext subjectAltName=IP:127.0.0.1 2>/dev/null
 
 printf '{"id":"%s","name":"Hello","version":"1.0.0","entry":"index.html","permissions":["network"]}' "$ID" \
     > "$R/src/hello/app.json"
 echo '<!doctype html><title>hello</title>' > "$R/src/hello/index.html"
-python3 -I "$TOOL" package --key "$R/store.key" "$R/src/hello" "$R/srv" >/dev/null
+python3 -I "$TOOL" package $S --key "$R/store.key" "$R/src/hello" "$R/srv" >/dev/null
 
 # A developer the store vouches for, provisioned for this device only
 openssl genrsa -out "$R/dev.key" 2048 2>/dev/null
@@ -42,9 +47,9 @@ for n in devapp sneaky; do
   printf '{"id":"com.acme.%s","name":"%s","version":"1.0.0","entry":"index.html"}' "$n" "$n" > "$R/src/$n/app.json"
   echo '<p>dev</p>' > "$R/src/$n/index.html"
 done
-python3 -I "$TOOL" package --key "$R/dev.key" --cert "$R/acme.cert.json" --profile "$R/here.profile.json" "$R/src/devapp" "$R/files/Downloads" >/dev/null
+python3 -I "$TOOL" package $S --key "$R/dev.key" --cert "$R/acme.cert.json" --profile "$R/here.profile.json" "$R/src/devapp" "$R/files/Downloads" >/dev/null
 mkdir -p "$R/elsewhere"
-python3 -I "$TOOL" package --key "$R/dev.key" --cert "$R/acme.cert.json" --profile "$R/there.profile.json" "$R/src/devapp" "$R/elsewhere" >/dev/null
+python3 -I "$TOOL" package $S --key "$R/dev.key" --cert "$R/acme.cert.json" --profile "$R/there.profile.json" "$R/src/devapp" "$R/elsewhere" >/dev/null
 cp "$R/elsewhere/com.acme.devapp-1.0.0.zpkg" "$R/files/Downloads/elsewhere.zpkg"
 # Another developer the store vouches for, same app pattern: their build of
 # acme's app must not take over acme's installed one (its container)
@@ -55,18 +60,18 @@ python3 -I "$TOOL" profile --key "$R/store.key" --cert "$R/mal.cert.json" --app 
 mkdir -p "$R/src/next" "$R/mal" "$R/next"
 printf '{"id":"com.acme.devapp","name":"devapp","version":"1.0.1","entry":"index.html"}' > "$R/src/next/app.json"
 echo '<p>next</p>' > "$R/src/next/index.html"
-python3 -I "$TOOL" package --key "$R/mal.key" --cert "$R/mal.cert.json" --profile "$R/mal.profile.json" "$R/src/next" "$R/mal" >/dev/null
+python3 -I "$TOOL" package $S --key "$R/mal.key" --cert "$R/mal.cert.json" --profile "$R/mal.profile.json" "$R/src/next" "$R/mal" >/dev/null
 cp "$R/mal/com.acme.devapp-1.0.1.zpkg" "$R/files/Downloads/mallory.zpkg"
-python3 -I "$TOOL" package --key "$R/dev.key" --cert "$R/acme.cert.json" --profile "$R/here.profile.json" "$R/src/next" "$R/next" >/dev/null
+python3 -I "$TOOL" package $S --key "$R/dev.key" --cert "$R/acme.cert.json" --profile "$R/here.profile.json" "$R/src/next" "$R/next" >/dev/null
 cp "$R/next/com.acme.devapp-1.0.1.zpkg" "$R/files/Downloads/acme-next.zpkg"
 # com.zylos.* is the OS image's: the store's own tool will not package it
 mkdir -p "$R/src/zylos" && printf '{"id":"com.zylos.maps","name":"m","version":"1.0.0","entry":"index.html"}' > "$R/src/zylos/app.json"
 echo '<p>m</p>' > "$R/src/zylos/index.html"
-python3 -I "$TOOL" package --key "$R/store.key" "$R/src/zylos" "$R/elsewhere" >/dev/null 2>&1 \
+python3 -I "$TOOL" package $S --key "$R/store.key" "$R/src/zylos" "$R/elsewhere" >/dev/null 2>&1 \
   && { echo "✗ build-store packaged a com.zylos.* app"; exit 1; }
 # A development build slipped into the store's catalog
-python3 -I "$TOOL" package --key "$R/dev.key" --cert "$R/acme.cert.json" --profile "$R/here.profile.json" "$R/src/sneaky" "$R/srv" >/dev/null
-python3 -I "$TOOL" catalog --key "$R/store.key" "$R/srv" >/dev/null
+python3 -I "$TOOL" package $S --key "$R/dev.key" --cert "$R/acme.cert.json" --profile "$R/here.profile.json" "$R/src/sneaky" "$R/srv" >/dev/null
+python3 -I "$TOOL" catalog $S --key "$R/store.key" "$R/srv" >/dev/null
 
 PORT=$(python3 -I -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')
 python3 -I - "$R/srv" "$PORT" "$R/tls.crt" "$R/tls.key" >/dev/null 2>&1 <<'PY' &
@@ -83,7 +88,7 @@ trap 'kill $SERVER 2>/dev/null; rm -rf "$R"' EXIT
 python3 -I - "$R" "$PORT" <<'PY'
 import json, sys
 r, port = sys.argv[1], sys.argv[2]
-json.dump({'url': 'https://127.0.0.1:%s/catalog.json' % port, 'publicKey': open(r + '/store.pub').read()},
+json.dump({'url': 'https://127.0.0.1:%s/catalog.json' % port, 'rootKey': open(r + '/root.pub').read()},
           open(r + '/store.json', 'w'))
 PY
 export CURL_CA_BUNDLE="$R/tls.crt"
@@ -92,6 +97,7 @@ for i in $(seq 50); do curl -sf "https://127.0.0.1:$PORT/catalog.json" >/dev/nul
 dbus-run-session -- bash -s "$APPSTORE" "$APPDATA" "$FS" "$NOTIF" "$R" "$ID" "$TOOL" <<'BUS'
 set -euo pipefail
 APPSTORE=$1 APPDATA=$2 FS=$3 NOTIF=$4 R=$5 ID=$6 TOOL=$7
+S="--signing $R/signing.json"
 # Zyl services live on the system bus; the private bus dbus-run-session made
 # plays that part here (no system bus in a build container)
 export DBUS_SYSTEM_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS"
@@ -135,7 +141,7 @@ sed -i 's/"Hello"/"Evil"/' "$R/srv/catalog.json"
 call AppStore GetCatalog | grep -q "'state': <'untrusted'>" || fail "unsigned catalog trusted"
 echo "  ✓ tampered package and catalog refused"
 cp "$R/pkg.bak" "$R/srv/$ID-1.0.0.zpkg"
-python3 -I "$TOOL" catalog --key "$R/store.key" "$R/srv" >/dev/null
+python3 -I "$TOOL" catalog $S --key "$R/store.key" "$R/srv" >/dev/null
 
 call AppStore Install com.acme.sneaky | grep -q "bad_package" || fail "a development build installed from the catalog"
 OUT=$(call AppStore InstallFile Downloads/com.acme.devapp-1.0.0.zpkg)
@@ -155,11 +161,42 @@ echo "  ✓ an update only from the installed app's signer"
 
 # The store revokes the developer: the next catalog says so, and their builds stop
 sha256sum "$R/acme.cert.json" | cut -c1-64 > "$R/revoked.txt"
-python3 -I "$TOOL" catalog --key "$R/store.key" --revoked "$R/revoked.txt" "$R/srv" >/dev/null
+python3 -I "$TOOL" catalog $S --key "$R/store.key" --revoked "$R/revoked.txt" "$R/srv" >/dev/null
 call AppStore GetCatalog | grep -q "'state': <'ok'>" || fail "catalog with revocations not ok"
-grep -q "$(cat "$R/revoked.txt")" "$R/apps/.revoked" || fail "revocation list not kept"
+grep -q "$(cat "$R/revoked.txt")" "$R/apps/.revocations.json" || fail "revocation list not kept"
 call AppStore Uninstall com.acme.devapp >/dev/null
 call AppStore InstallFile Downloads/com.acme.devapp-1.0.0.zpkg | grep -q "revoked" || fail "a revoked developer's build installed"
 echo "  ✓ revoked developer refused"
+
+# A catalog older than one seen is a replay: it would bring a revoked app back
+echo "$ID" > "$R/apps.txt"
+cp "$R/srv/catalog.json" "$R/old.json" && cp "$R/srv/catalog.json.sig" "$R/old.json.sig"
+sleep 1
+python3 -I "$TOOL" catalog $S --key "$R/store.key" --revoked "$R/revoked.txt" --revoked-apps "$R/apps.txt" "$R/srv" >/dev/null
+call AppStore GetCatalog | grep -q "'state': <'ok'>" || fail "catalog revoking an app not ok"
+call AppStore Install "$ID" | grep -q "revoked" || fail "an app the store took back installed"
+cp "$R/old.json" "$R/srv/catalog.json" && cp "$R/old.json.sig" "$R/srv/catalog.json.sig"
+call AppStore GetCatalog | grep -q "'state': <'untrusted'>" || fail "an older catalog was taken"
+grep -q "$ID" "$R/apps/.revocations.json" || fail "a replayed catalog brought a revoked app back"
+echo "  ✓ an app taken back stays taken back; an older catalog is refused"
+
+# A new store key whose certificate revokes the old one: the old key's seals stop
+openssl genrsa -out "$R/store2.key" 2048 2>/dev/null
+openssl rsa -in "$R/store2.key" -pubout -out "$R/store2.pub" 2>/dev/null
+python3 -I "$TOOL" signing-cert --root-key "$R/root.key" --pubkey "$R/store2.pub" --serial 2 --revoke 1 --out "$R/signing2.json" >/dev/null
+cp "$R/srv/$ID-1.0.0.zpkg" "$R/files/Downloads/old-key.zpkg"
+rm "$R/srv/"*.zpkg
+mkdir -p "$R/src/two" && printf '{"id":"com.example.two","name":"Two","version":"1.0.0","entry":"index.html"}' > "$R/src/two/app.json"
+echo '<p>2</p>' > "$R/src/two/index.html"
+python3 -I "$TOOL" package --signing "$R/signing2.json" --key "$R/store2.key" "$R/src/two" "$R/srv" >/dev/null
+sleep 1
+python3 -I "$TOOL" catalog --signing "$R/signing2.json" --key "$R/store2.key" "$R/srv" >/dev/null
+call AppStore GetCatalog | grep -q "'state': <'ok'>" || fail "the new store key not taken"
+OUT=$(call AppStore Install com.example.two); echo "$OUT" | grep -q "'ok': <true>" || fail "the new key's app refused: $OUT"
+call AppStore InstallFile Downloads/old-key.zpkg | grep -q "revoked" || fail "a package sealed by a revoked store key installed"
+grep -q '"1"' "$R/apps/.revocations.json" || fail "the revoked store key not kept"
+cp "$R/signing.json" "$R/srv/signing.json" && cp "$R/signing.json.sig" "$R/srv/signing.json.sig"
+call AppStore GetCatalog | grep -q "'state': <'untrusted'>" || fail "the revoked store key's certificate taken again"
+echo "  ✓ a revoked store key: its seals and its certificate refused, the new key's apps install"
 BUS
 echo "=== store e2e passed ==="

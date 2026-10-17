@@ -2,7 +2,7 @@
  * [Clean Architecture] Domain Layer - Service
  *
  * 역할: 앱스토어 카탈로그 해석 (store_catalog.h)
- * 수행범위: catalog.json → 검증된 항목, URL 해석, 버전 비교
+ * 수행범위: catalog.json → 검증된 항목, 회수 목록, URL 해석, 버전 비교
  * 의존방향: store_catalog.h, container.h (앱 id 규칙)
  * SOLID: SRP — 해석만
  * ────────────────────────────────────────────────────────── */
@@ -58,23 +58,42 @@ int zyl_store_version_cmp(const char *a, const char *b) {
     return r;
 }
 
-char **zyl_store_catalog_revoked(const char *json, gssize len) {
+/* The strings of root[name] that pass ok; NULL-terminated */
+static char **listed(JsonObject *root, const char *name, gboolean (*ok)(const char *), gboolean lower) {
     GPtrArray *out = g_ptr_array_new();
+    JsonNode *n = json_object_has_member(root, name) ? json_object_get_member(root, name) : NULL;
+    JsonArray *a = n && JSON_NODE_HOLDS_ARRAY(n) ? json_node_get_array(n) : NULL;
+    for (guint i = 0; a && i < json_array_get_length(a); i++) {
+        JsonNode *e = json_array_get_element(a, i);
+        const char *v = JSON_NODE_HOLDS_VALUE(e) && json_node_get_value_type(e) == G_TYPE_STRING
+                        ? json_node_get_string(e) : NULL;
+        if (v && ok(v)) g_ptr_array_add(out, lower ? g_ascii_strdown(v, -1) : g_strdup(v));
+    }
+    g_ptr_array_add(out, NULL);
+    return (char **)g_ptr_array_free(out, FALSE);
+}
+
+static gboolean is_app_id(const char *id) { return zyl_container_valid_id(id) && strchr(id, '.'); }
+
+bool zyl_store_catalog_revocations(const char *json, gssize len, ZylRevocations *rev) {
     JsonParser *p = json_parser_new();
+    bool ok = false;
     if (json && json_parser_load_from_data(p, json, len, NULL) && JSON_NODE_HOLDS_OBJECT(json_parser_get_root(p))) {
         JsonObject *root = json_node_get_object(json_parser_get_root(p));
-        JsonNode *n = json_object_has_member(root, "revoked") ? json_object_get_member(root, "revoked") : NULL;
-        JsonArray *a = n && JSON_NODE_HOLDS_ARRAY(n) ? json_node_get_array(n) : NULL;
-        for (guint i = 0; a && i < json_array_get_length(a); i++) {
-            JsonNode *e = json_array_get_element(a, i);
-            if (JSON_NODE_HOLDS_VALUE(e) && json_node_get_value_type(e) == G_TYPE_STRING &&
-                is_hex64(json_node_get_string(e)))
-                g_ptr_array_add(out, g_ascii_strdown(json_node_get_string(e), -1));
+        JsonNode *n = json_object_has_member(root, "issued") ? json_object_get_member(root, "issued") : NULL;
+        gint64 issued = n && JSON_NODE_HOLDS_VALUE(n) && json_node_get_value_type(n) == G_TYPE_INT64
+                        ? json_node_get_int(n) : 0;
+        if (issued > 0) {
+            rev->issued = issued;
+            g_strfreev(rev->certs);
+            g_strfreev(rev->apps);
+            rev->certs = listed(root, "revoked", is_hex64, TRUE);
+            rev->apps = listed(root, "revokedApps", is_app_id, FALSE);
+            ok = true;
         }
     }
     g_object_unref(p);
-    g_ptr_array_add(out, NULL);
-    return (char **)g_ptr_array_free(out, FALSE);
+    return ok;
 }
 
 void zyl_store_app_free(gpointer data) {

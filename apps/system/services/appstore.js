@@ -4,14 +4,17 @@
 // Role: App store service — the store's signed catalog; install, update, remove
 // Scope: getCatalog ({ state, apps }), install / uninstall / installFile
 //        ({ ok, reason }) — the same contract and rules as
-//        runtime/services/appstore: the catalog and every package checked against
-//        the store key, invalid entries skipped, the package's app.json must be
+//        runtime/services/appstore: the store key the root vouches for
+//        (signing.json beside the catalog, its serial not revoked), the catalog
+//        and every package checked against it, a catalog older than one seen
+//        refused (a replay), invalid entries skipped, the package's app.json must be
 //        the catalog's app and version with its entry page, never a downgrade,
 //        the image's apps are not the store's. Every package carries its seal
 //        (app-seal.js): from the catalog the store's own only; from the user's
 //        files (installFile) also a development build provisioned for this
-//        device. The catalog's revoked developer certificates are kept
-//        (store_revoked). Removing an app takes its whole container and makes
+//        device. What the catalog revokes (developer certificates, apps) and the
+//        signing keys the root's certificate revokes are kept (store_revocations).
+//        Removing an app takes its whole container and makes
 //        the OS forget it (forgetApp). Configuration: the OS image's system/store.json
 // Dependency Direction: Domain -> invoker (store_*, fs_read_binary), app seal,
 //        apps service, forgetApp
@@ -59,6 +62,11 @@
     }).map(function (h) { return h.toLowerCase(); });
   }
 
+  /* The apps the store took back (their ids) */
+  function parseRevokedApps(root) {
+    return (Array.isArray(root.revokedApps) ? root.revokedApps : []).filter(validId);
+  }
+
   /* The valid entries, the first of an id winning; null when not a catalog */
   function parseCatalog(root, url) {
     if (!root || !Array.isArray(root.apps)) return null;
@@ -103,29 +111,48 @@
     function config() {
       return Promise.resolve(invoke('store_config')).then(function (text) {
         var c = JSON.parse(text);
-        return (c && typeof c.url === 'string' && c.url.indexOf('https://') === 0 && c.publicKey) ? c : null;
+        return (c && typeof c.url === 'string' && c.url.indexOf('https://') === 0 && c.rootKey) ? c : null;
       }).catch(function () { return null; });
     }
 
-    /* { state } or { state: 'ok', apps, cfg } */
+    /* What the catalog revokes replaces what is kept — unless it is older than
+       one seen; the signing keys revoked are added, never dropped. false: refuse it */
+    function keepRevocations(root, rev, revokes) {
+      if (typeof root.issued !== 'number' || root.issued % 1 || root.issued < 1 || root.issued < rev.issued) {
+        return Promise.resolve(false);
+      }
+      var keys = rev.keys.concat(revokes.filter(function (k) { return rev.keys.indexOf(k) === -1; }));
+      var kept = { issued: root.issued, certs: parseRevoked(root), apps: parseRevokedApps(root), keys: keys };
+      return Promise.resolve(invoke('store_revocations', { value: kept })).then(function () { return true; },
+                                                                                function () { return true; });
+    }
+
+    /* { state } or { state: 'ok', apps, cfg, pem } */
     function catalog() {
       return config().then(function (cfg) {
         if (!cfg) return { state: 'unconfigured' };
+        var signingUrl = resolveUrl(cfg.url, 'signing.json');
         return Promise.all([
+          invoke('store_download', { url: signingUrl, max: 16384 }),
+          invoke('store_download', { url: signingUrl + '.sig', max: 4096 }),
           invoke('store_download', { url: cfg.url, max: CATALOG_MAX }),
-          invoke('store_download', { url: cfg.url + '.sig', max: 4096 })
+          invoke('store_download', { url: cfg.url + '.sig', max: 4096 }),
+          seal.revocations()
         ]).then(function (r) {
-          var text = new TextDecoder().decode(bytesOf(r[0]));
-          var sig = new TextDecoder().decode(bytesOf(r[1])).trim();
-          return seal.verify(bytesOf(r[0]), null, sig, cfg.publicKey).then(function (ok) {
-            if (!ok) return { state: 'untrusted' };       /* not signed by the store's key */
-            var root = null;
-            try { root = JSON.parse(text); } catch (e) { root = null; }
-            var apps = parseCatalog(root, cfg.url);
-            if (!apps) return { state: 'invalid' };
-            /* What the store revoked stops development builds signed by it */
-            return Promise.resolve(invoke('store_revoked', { list: parseRevoked(root) })).catch(function () {})
-              .then(function () { return { state: 'ok', apps: apps, cfg: cfg }; });
+          function txt(b64) { return new TextDecoder().decode(bytesOf(b64)); }
+          var rev = r[4];
+          return seal.signingKey(txt(r[0]), txt(r[1]), cfg.rootKey, rev).then(function (k) {
+            if (k.why) return { state: 'untrusted' };      /* not a key the root vouches for */
+            return seal.verify(bytesOf(r[2]), null, txt(r[3]).trim(), k.pem).then(function (ok) {
+              if (!ok) return { state: 'untrusted' };      /* not signed by the store's key */
+              var root = null;
+              try { root = JSON.parse(txt(r[2])); } catch (e) { root = null; }
+              var apps = parseCatalog(root, cfg.url);
+              if (!apps) return { state: 'invalid' };
+              return keepRevocations(root, rev, k.revokes).then(function (kept) {
+                return kept ? { state: 'ok', apps: apps, cfg: cfg, pem: k.pem } : { state: 'untrusted' };
+              });
+            });
           });
         }, function () { return { state: 'unreachable' }; });
       });
@@ -199,7 +226,7 @@
         if (have.image[a.id] || reserved(a.id)) return outcome(false, 'system_app');
         if (have.store[a.id] && versionCmp(have.store[a.id], a.version) >= 0) return outcome(false, 'up_to_date');
         return invoke('store_download', { url: a.packageUrl, max: a.size }).then(function (b64) {
-          return seal.verify(bytesOf(b64), a.sha256, a.signature, c.cfg.publicKey).then(function (ok) {
+          return seal.verify(bytesOf(b64), a.sha256, a.signature, c.pem).then(function (ok) {
             if (!ok) return outcome(false, 'bad_package');   /* tampered, corrupt, or not the store's */
             return invoke('store_unpack', { appId: a.id, 'package': b64 }).then(function (u) {
               var m = unpackedManifest(u, a.id, a.version);

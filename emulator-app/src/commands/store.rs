@@ -6,7 +6,8 @@
 //           패키지 풀기(이름 검사: 절대 경로·..·링크 거부)·확정·버리기·삭제(앱
 //           컨테이너까지), 설치된 스토어 앱 목록, 스토어 앱을 기기와 같은 출처
 //           zyl-app://<id>/ 로 제공(/shared/·/keyboard/ 는 OS 코드). 봉인 대조용 자료
-//           (파일마다 SHA-256, .zyl-seal/ 의 내용)와 스토어가 폐기한 인증서 목록 보관.
+//           (파일마다 SHA-256, .zyl-seal/ 의 내용)와 스토어가 회수한 것(OS 가 정한 JSON
+//           그대로 — 기기의 /data/apps/.revocations.json) 보관.
 //           앱 파일에 붙는 CSP 는 OS(sandbox.js)가 정해 실행 전에 건넨 것을 그대로.
 //           무엇을 받을지·서명·봉인·카탈로그 해석·app.json 확인은 OS
 //           (apps/system/services/appstore.js, app-seal.js)의 몫
@@ -205,17 +206,17 @@ pub fn store_remove(app_id: String, state: State<'_, Mutex<AppState>>) -> Result
     Ok(true)
 }
 
-/// The developer certificates the store last listed as revoked (list: replace
-/// them); what is kept
+/// What the store revoked, as the OS keeps it (value: replace it); what is kept.
+/// The OS (app-seal.js, appstore.js) decides what it says — this only keeps it
 #[tauri::command]
-pub fn store_revoked(list: Option<Vec<String>>, state: State<'_, Mutex<AppState>>) -> Result<Vec<String>, String> {
+pub fn store_revocations(value: Option<serde_json::Value>, state: State<'_, Mutex<AppState>>) -> Result<serde_json::Value, String> {
     let app_state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
-    let path = store_root(&app_state).join(".revoked");
-    if let Some(list) = list {
+    let path = store_root(&app_state).join(".revocations.json");
+    if let Some(value) = value {
         fs::create_dir_all(store_root(&app_state)).map_err(|e| format!("Create error: {}", e))?;
-        fs::write(&path, list.join("\n")).map_err(|e| format!("Write error: {}", e))?;
+        fs::write(&path, value.to_string()).map_err(|e| format!("Write error: {}", e))?;
     }
-    Ok(fs::read_to_string(&path).unwrap_or_default().lines().map(str::to_string).collect())
+    Ok(fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or(serde_json::Value::Null))
 }
 
 /// Installed store apps, raw app.json data marked "source": "store"
