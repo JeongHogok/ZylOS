@@ -1,0 +1,12 @@
+[Unit]
+Description=Zyl OS factory reset from the recovery screen (erase the user data partition, then restart)
+# Never pulled in by anything: not in meson's zyl_units (zyl-os.target would want
+# it on every boot), no [Install] — verify-all D6. Only the storage service starts
+# it (EraseUserData), and only on a recovery boot; the script checks again
+DefaultDependencies=no
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/zyl-os/zyl-erase-data
+# Either way: erased, the next boot makes a new /data; not, the recovery screen again
+ExecStopPost=/usr/bin/systemctl --no-block reboot

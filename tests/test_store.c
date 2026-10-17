@@ -151,11 +151,11 @@ static void test_system_apps_are_not_the_store_s(void) {
 static void test_config_needs_https_and_a_key(void) {
     StoreConfig c;
     assert(!load_config(&c));                                             /* none */
-    put(ZYL_STORE_CONFIG, "{\"url\":\"http://s/c.json\",\"publicKey\":\"K\"}");
+    put(ZYL_STORE_CONFIG, "{\"url\":\"http://s/c.json\",\"rootKey\":\"K\"}");
     assert(!load_config(&c));
-    put(ZYL_STORE_CONFIG, "{\"url\":\"https://s/c.json\",\"publicKey\":\"\"}");
+    put(ZYL_STORE_CONFIG, "{\"url\":\"https://s/c.json\",\"rootKey\":\"\"}");
     assert(!load_config(&c));
-    put(ZYL_STORE_CONFIG, "{\"url\":\"https://s/c.json\",\"publicKey\":\"K\"}");
+    put(ZYL_STORE_CONFIG, "{\"url\":\"https://s/c.json\",\"rootKey\":\"K\"}");
     assert(load_config(&c) && strcmp(c.url, "https://s/c.json") == 0);
     config_clear(&c);
 }

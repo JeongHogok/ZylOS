@@ -181,13 +181,14 @@ PYLINK
 step "부팅 설정 (fstab·기본 타겟·사용자·디렉터리)"
 part_dev() { echo "${ZYL_DISK_NODE}${ZYL_PART_SEP}$1"; }
 # / 는 커널이 이미 올린 것(슬롯의 rootfs, 기기에서는 그 dm-verity 장치)이라 여기서는
-# 읽기 전용만 정한다. /data 는 잠금 전환이 지운 뒤 첫 부팅에서 다시 만들고(makefs)
-# 설치 장치의 남은 공간까지 늘린다(growfs). /var 는 휘발 — 남길 상태는 /data 에
+# 읽기 전용만 정한다. /data 는 비어 있으면(첫 부팅, 지운 뒤) 만들고(makefs — 빈 것만:
+# zyl-data-blank) 설치 장치의 남은 공간까지 늘린다(growfs). 열지 못하면 멈추지 않고
+# (nofail) 복구 화면으로 — zyl-recovery.service. /var 는 휘발 — 남길 상태는 /data 에
 cat > "$ROOTFS/etc/fstab" <<EOF
 # tools/build-image.sh 가 board/$ZYL_BOARD/partitions.conf 에서 생성
 LABEL=zyl-root                  /      ext4   ro,noatime                                 0 0
 $(part_dev "$ZYL_PART_BOOT")    /boot  vfat   nosuid,nodev,noexec,umask=0077,noatime    0 2
-$(part_dev "$ZYL_PART_DATA")    /data  ext4   noatime,nosuid,nodev,x-systemd.makefs,x-systemd.growfs  0 2
+$(part_dev "$ZYL_PART_DATA")    /data  ext4   noatime,nosuid,nodev,nofail,x-systemd.makefs,x-systemd.growfs  0 2
 tmpfs                           /var   tmpfs  mode=0755,nosuid,nodev                     0 0
 EOF
 mkdir -p "$ROOTFS/data" "$ROOTFS/boot"

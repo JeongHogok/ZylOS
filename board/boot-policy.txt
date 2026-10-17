@@ -1,13 +1,14 @@
 # ──────────────────────────────────────────────────────────
 # [Clean Architecture] Infrastructure Layer - Bootloader Config
 #
-# 역할: U-Boot 부트 정책 — 모든 보드가 같은 것: Verified Boot, A/B 시도 부팅·롤백,
+# 역할: U-Boot 부트 정책 — 모든 보드가 같은 것: Verified Boot, A/B 시도 부팅·롤백·폴백,
 #       부트로더 잠금 전환
-# 수행범위: 슬롯 선택(업데이터가 지정한 슬롯을 zyl_boot_limit 회까지 시도 후 롤백),
+# 수행범위: 슬롯 선택(업데이터가 지정한 슬롯을 zyl_boot_limit 회까지 시도 후 롤백,
+#           확정된 슬롯이 zyl_boot_limit 회 연속 서지 못하면 그 전에 확정됐던 다른 슬롯으로),
 #           잠금 상태 전환(설정에서 허용 + 기기 앞의 확인 + 사용자 데이터 삭제),
 #           잠금 해제 시 서명 검증 해제와 경고, 잠긴 기기는 부팅 실패 시 셸 대신 재시작
 # 의존방향: U-Boot FIT 서명 검증, runtime/services/updater (zyl_next_slot,
-#           zyl_active_slot, zyl_boot_count), runtime/services/bootctl
+#           zyl_active_slot, zyl_boot_count, zyl_fallback_slot), runtime/services/bootctl
 #           (zyl_unlocked, zyl_oem_unlock_allowed), 보드 파일 board/<id>/u-boot-env.txt
 #           의 상수와 훅(zyl_boot_ifc·zyl_boot_dev·zyl_boot_part, zyl_confirm,
 #           zyl_wipe, zyl_before_os). 이 파일과 보드 파일이 단일 출처이며
@@ -25,8 +26,13 @@
 zyl_active_slot=a
 # Slot an update installed and wants tried; empty when none
 zyl_next_slot=
-# Boots attempted on zyl_next_slot without the OS confirming it
+# Boots attempted without the OS confirming them: of zyl_next_slot, or — when
+# there is a slot to fall back to — of the active one
 zyl_boot_count=0
+# The other slot while it still holds the system confirmed before the active
+# one (the updater names it on confirming an update and clears it before it
+# writes that slot); empty when there is nothing to go back to
+zyl_fallback_slot=
 # 1 = the owner has unlocked the bootloader (requested from Settings)
 zyl_unlocked=0
 # Lock state the device actually ran with last time; a difference from
@@ -65,7 +71,15 @@ zyl_check_lock=\
     saveenv; \
   fi
 
-# ── Slot choice: try an updated slot zyl_boot_limit times, then roll back ──
+# ── Slot choice: try an updated slot zyl_boot_limit times, then roll back.
+#    A confirmed slot that has something to fall back to is counted too (the OS
+#    clears the count once it is up — runtime/services/updater): after
+#    zyl_boot_limit boots that never got there it is the other slot's turn ──
+zyl_count_boot=\
+  if test "${zyl_boot_count}" = "0"; then setenv zyl_boot_count 1; \
+  elif test "${zyl_boot_count}" = "1"; then setenv zyl_boot_count 2; \
+  else setenv zyl_boot_count 3; fi
+
 zyl_pick_slot=\
   setenv zyl_slot ${zyl_active_slot}; \
   if test -n "${zyl_next_slot}"; then \
@@ -75,9 +89,18 @@ zyl_pick_slot=\
       setenv zyl_boot_count 0; \
     else \
       setenv zyl_slot ${zyl_next_slot}; \
-      if test "${zyl_boot_count}" = "0"; then setenv zyl_boot_count 1; \
-      elif test "${zyl_boot_count}" = "1"; then setenv zyl_boot_count 2; \
-      else setenv zyl_boot_count 3; fi; \
+      run zyl_count_boot; \
+    fi; \
+    saveenv; \
+  elif test -n "${zyl_fallback_slot}"; then \
+    if test "${zyl_boot_count}" = "${zyl_boot_limit}"; then \
+      echo "ZylOS: slot ${zyl_active_slot} failed ${zyl_boot_limit} times - falling back to slot ${zyl_fallback_slot}"; \
+      setenv zyl_active_slot ${zyl_fallback_slot}; \
+      setenv zyl_fallback_slot; \
+      setenv zyl_slot ${zyl_active_slot}; \
+      setenv zyl_boot_count 0; \
+    else \
+      run zyl_count_boot; \
     fi; \
     saveenv; \
   fi
@@ -99,7 +122,7 @@ bootcmd=\
   load ${zyl_boot_ifc} ${zyl_boot_dev}:${zyl_boot_part} ${fit_addr} fit-image-${zyl_slot}.itb; \
   bootm ${fit_addr}; \
   echo "ZylOS: slot ${zyl_slot} did not boot"; \
-  if test -n "${zyl_next_slot}"; then \
+  if test -n "${zyl_next_slot}" || test -n "${zyl_fallback_slot}"; then \
     setenv zyl_boot_count ${zyl_boot_limit}; \
     saveenv; \
     reset; \

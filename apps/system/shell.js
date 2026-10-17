@@ -8,6 +8,8 @@
 //        both. Home, back-exit, recents and app switching follow from that.
 //        Only the lock screen unlocks and only setup finishes setup — the OS
 //        names the sender, never the message. Home is never closed.
+//        A boot whose user data could not be mounted shows the recovery screen
+//        and nothing else; it never shows anywhere else (it erases the data).
 //        The system UI (status bar, notification panel, recents) is a surface
 //        over every app: a bar, a banner for a new notification, or the whole
 //        screen — only it asks, and the whole screen only when the user may
@@ -25,12 +27,14 @@ window.ZylShell = (function () {
   var HOME = 'com.zylos.home';
   var LOCK = 'com.zylos.lockscreen';
   var SETUP = 'com.zylos.oobe';
+  var RECOVERY = 'com.zylos.recovery';
   var SYSTEM_UI = 'com.zylos.statusbar';
   /* Shown over the lock screen and setup: an incoming or emergency call, an
      emergency alert, the lock screen's camera shortcut. Leaving them returns
      to the lock screen, and they cannot open anything else while locked. */
   var OVER_LOCK = ['com.zylos.phone', 'com.zylos.alerts', 'com.zylos.camera'];
 
+  var _recovery = false;
   var _setup = false;
   var _locked = true;
   var _top = '';
@@ -45,15 +49,30 @@ window.ZylShell = (function () {
    * @returns {string} the app to show
    */
   function boot(setupDone) {
+    _recovery = false;
     _setup = !setupDone;
     _locked = !!setupDone;
     _top = '';
     return _setup ? SETUP : LOCK;
   }
 
+  /**
+   * The user's data could not be mounted: the recovery screen, and nothing
+   * else for this boot. @returns {string} the app to show
+   */
+  function recover() {
+    _recovery = true;
+    _setup = false;
+    _locked = false;
+    _top = '';
+    return RECOVERY;
+  }
+
   /** May this app come to the front now? (an app, a notification, an intent) */
   function mayLaunch(appId) {
     if (!appId || appId === SYSTEM_UI) return false;   /* a surface, never the app in front */
+    if (_recovery) return appId === RECOVERY;
+    if (appId === RECOVERY) return false;
     if (_setup) return appId === SETUP || overLock(appId);
     if (_locked) return appId === LOCK || overLock(appId);
     return appId !== LOCK && appId !== SETUP;
@@ -61,30 +80,33 @@ window.ZylShell = (function () {
 
   /** Home, and where an app the user backs out of goes. @returns {string|null} */
   function home() {
+    if (_recovery) return unless(RECOVERY);
     if (_setup) return null;
     return unless(_locked ? LOCK : HOME);
   }
 
   /** May the user move between apps — recents, switching, the quick panel? */
-  function navigable() { return !_setup && !_locked; }
+  function navigable() { return !_recovery && !_setup && !_locked; }
 
   /** May this app be closed? Home never; the lock screen and setup not while they hold the device */
   function mayClose(appId) {
     if (appId === HOME || appId === SYSTEM_UI) return false;
     if (appId === LOCK) return !_locked;
     if (appId === SETUP) return !_setup;
+    if (appId === RECOVERY) return !_recovery;
     return true;
   }
 
   /** Lock now (the user, or the screen went off). Setup never locks. @returns {string|null} */
   function lock() {
-    if (_setup) return null;
+    if (_recovery || _setup) return null;
     _locked = true;
     return unless(LOCK);
   }
 
   /** The screen came on: what holds the device, unless a call or alert is in front. @returns {string|null} */
   function screenOn() {
+    if (_recovery) return unless(RECOVERY);
     if (overLock(_top)) return null;
     if (_setup) return unless(SETUP);
     return _locked ? unless(LOCK) : null;
@@ -118,7 +140,7 @@ window.ZylShell = (function () {
   function panelMode(source, mode) {
     if (source !== SYSTEM_UI) return null;
     if (mode === 'full') return navigable() ? 'full' : 'bar';
-    if (mode === 'banner') return (_setup || _locked) ? 'bar' : 'banner';
+    if (mode === 'banner') return navigable() ? 'banner' : 'bar';
     return 'bar';
   }
 
@@ -127,6 +149,7 @@ window.ZylShell = (function () {
 
   return {
     boot: boot,
+    recover: recover,
     mayLaunch: mayLaunch,
     home: home,
     navigable: navigable,

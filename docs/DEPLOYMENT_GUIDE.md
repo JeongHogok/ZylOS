@@ -165,7 +165,8 @@ eFuse·기기 ID·쓰기 보호)은 `tests/test_boot_env.sh` 가 U-Boot 명령�
 |----|------|--------------------|
 | 부팅 체인 키 (`zylos-rotpk`, `zylos-spl-key`, `zylos-fw-key`, `zylos-boot-key`) | FSBL·OpenSBI·U-Boot·OS FIT 서명. `zylos-boot-key` 는 OTA 패키지도 서명 | `tools/gen-boot-keys.sh <키 디렉터리>` — 없는 키만 만들고 있는 키는 그대로 둔다. [SECURITY.md](SECURITY.md) |
 | 루트 키 `zylos-rotpk` | eFuse 에 해시를 구우면 그 기기와 평생 묶임 | [INSTALLATION_INFORMATION.md](INSTALLATION_INFORMATION.md) |
-| 스토어 키 | 카탈로그·앱 패키지·개발자 인증서 서명. 공개키와 주소는 `system/store.json` | `tools/build-store.py`, [APPSTORE_API.md](APPSTORE_API.md) |
+| 스토어 루트 키 | 서명 키 인증서만 서명. 오프라인에 둔다. 공개키(`rootKey`)와 주소는 `system/store.json` | `tools/build-store.py signing-cert`, [APPSTORE_API.md](APPSTORE_API.md) |
+| 스토어 서명 키 | 카탈로그·앱 패키지·봉인·개발자 인증서 서명. 새면 루트 키로 바꾸고 폐기 | `tools/build-store.py`, [APPSTORE_API.md](APPSTORE_API.md) |
 
 비밀키(`*.key`)는 저장소에 넣지 않습니다 (`gen-boot-keys.sh` 가 `.gitignore` 를 둡니다).
 오프라인에 두고 도구에는 `--key-dir` 로 넘기십시오. 소유자가 자기 키로 같은 절차를

@@ -28,7 +28,7 @@
 #define WAM_BRIDGE_JS   "/usr/share/zyl-os/wam/bridge.js"
 /* Whose signatures make a user-installed app's code trusted (the store's key) */
 #define WAM_STORE_CONFIG "/etc/zyl-os/store.json"
-#define WAM_REVOKED      WAM_USER_DIR "/.revoked"
+#define WAM_REVOCATIONS  WAM_USER_DIR "/" ZYL_SEAL_REVOCATIONS
 
 /* ─── WAM server ─── */
 typedef struct {

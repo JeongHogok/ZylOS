@@ -1,0 +1,17 @@
+{
+  "id": "com.zylos.recovery",
+  "name": "Recovery",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "launcher": false,
+  "permissions": [
+    "system"
+  ],
+  "formFactors": [
+    "*"
+  ],
+  "type": "system",
+  "color": "icon-red",
+  "iconKey": "recovery",
+  "iconSvg": "M12 2 1 21h22L12 2zm1 16h-2v-2h2v2zm0-4h-2v-4h2v4z"
+}

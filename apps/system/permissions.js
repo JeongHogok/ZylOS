@@ -24,7 +24,7 @@ window.ZylPermissions = (function () {
     'com.zylos.calc', 'com.zylos.notes', 'com.zylos.weather',
     'com.zylos.store', 'com.zylos.keyboard',
     'com.zylos.phone', 'com.zylos.messages', 'com.zylos.contacts',
-    'com.zylos.alerts'
+    'com.zylos.alerts', 'com.zylos.recovery'
   ];
 
   /* Service → required permission(s). App needs at least ONE of these. */
@@ -109,6 +109,9 @@ window.ZylPermissions = (function () {
     'power.suspend':                  ['system'],
     'power.shutdown':                 ['system'],
     'power.reboot':                   ['system'],
+    /* The recovery screen's factory reset — and only on a recovery boot (the
+       service refuses otherwise) */
+    'storage.eraseUserData':          ['system'],
     'power.setBrightness':            ['system'],
     'power.acquireWakelock':          ['system'],
     'power.releaseWakelock':          ['system'],

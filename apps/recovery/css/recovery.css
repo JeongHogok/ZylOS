@@ -1,0 +1,29 @@
+/* ──────────────────────────────────────────────────────────
+   [Clean Architecture] Presentation Layer - Style
+   역할: 복구 화면 스타일
+   수행범위: 안내, 다시 시작·초기화 버튼, 초기화 확인 시트
+   의존방향: recovery/index.html
+   SOLID: SRP — recovery 앱 스타일만 담당
+
+   클린아키텍처, SOLID원칙, i18n 규칙 철저 준수
+   실제 디바이스 구동 기준이며, mock/demo 등 하드코딩 데이터가 있어서는 안 된다
+   ────────────────────────────────────────────────────────── */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: var(--zyl-font-sans); background: #0b0b14; color: #e8e8f0; height: var(--ff-vh); overflow: hidden; }
+.hidden { display: none !important; }
+
+.screen { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 32px 24px; text-align: center; }
+.icon { width: 64px; height: 64px; fill: #f59e0b; }
+h1 { font-size: 22px; font-weight: 600; }
+h2 { font-size: 19px; font-weight: 600; }
+.text { font-size: 15px; line-height: 1.5; color: #b8b8cc; max-width: 520px; }
+.status { font-size: 15px; color: #fde68a; }
+
+.actions { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 360px; margin-top: 8px; }
+.btn { padding: 14px 16px; border: none; border-radius: 12px; background: #23233a; color: #e8e8f0; font-size: 16px; font-family: inherit; }
+.btn.primary { background: #2563eb; color: #fff; }
+.btn.danger { background: #b91c1c; color: #fff; }
+.btn:disabled { opacity: 0.5; }
+
+/* Solid colours only — it must read with no GPU */
+.sheet { position: fixed; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 24px 20px 28px; background: #16162a; border-radius: 18px 18px 0 0; text-align: center; }

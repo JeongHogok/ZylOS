@@ -6,7 +6,8 @@
  *           진행 상황을 StateChanged 시그널로 알림. 업데이트 시험 부팅이면
  *           부팅 후 상태 점검(핵심 유닛이 30초 간격 두 표본에서 같은 실행으로
  *           active) → 통과 시 슬롯 확정, 몇 번 봐도 안 되면 재부팅(U-Boot 가
- *           zyl_boot_limit 회 뒤 이전 슬롯으로 되돌림)
+ *           zyl_boot_limit 회 뒤 이전 슬롯으로 되돌림). 확정된 슬롯이면 시작하자마자
+ *           U-Boot 가 센 부팅 횟수를 지운다(이만큼 섰으니 폴백할 일이 아니다)
  * 의존방향: updater.h (설치·검증·U-Boot 환경), gio/gio.h (D-Bus)
  * SOLID: SRP — D-Bus 노출과 작업 순서만. 설치 로직은 updater.c
  * ────────────────────────────────────────────────────────── */
@@ -223,6 +224,8 @@ int main(int argc, char *argv[]) {
     g_version = g_strdup(info ? info->active_version : "");
     zyl_partition_info_free(info);
     g_supported = zyl_updater_supported(g_u);
+    if (!zyl_updater_mark_booted(g_u) && !zyl_updater_on_trial(g_u))
+        fprintf(stderr, "[UPDATER] could not clear the boot count — U-Boot may fall back\n");
 
     g_bus_own_name(G_BUS_TYPE_SYSTEM, "org.zylos.Updater", G_BUS_NAME_OWNER_FLAGS_NONE,
                    on_updater_bus, NULL, NULL, NULL, NULL);

@@ -1,14 +1,18 @@
 /* ──────────────────────────────────────────────────────────
  * [Clean Architecture] Application Layer - Service
  *
- * 역할: 저장공간 서비스 (org.zylos.Storage) — 설정·파일 앱의 용량 표시
+ * 역할: 저장공간 서비스 (org.zylos.Storage) — 설정·파일 앱의 용량 표시, 복구 화면의
+ *       기기 초기화
  * 수행범위: 사용자 데이터 파티션의 전체·사용·남은 바이트와 사용률(Storage HAL).
- *           사람이 읽는 단위로 바꾸는 것은 앱(zylI18n.formatBytes) 몫
- * 의존방향: hal.h (Storage HAL), gio/gio.h (D-Bus)
- * SOLID: SRP — 용량 조회만
+ *           사람이 읽는 단위로 바꾸는 것은 앱(zylI18n.formatBytes) 몫.
+ *           EraseUserData: 복구 부팅(runtime/lib/recovery.h)에서만
+ *           zyl-erase-data.service 를 시작한다 — 올라 있는 /data 는 지우지 않는다
+ * 의존방향: hal.h (Storage HAL), recovery.h, gio/gio.h (D-Bus, systemd)
+ * SOLID: SRP — 사용자 데이터 파티션의 용량과 지우기만
  * ────────────────────────────────────────────────────────── */
 
 #include "hal.h"
+#include "recovery.h"
 
 #include <gio/gio.h>
 #include <glib-unix.h>
@@ -19,13 +23,39 @@ static const char *storage_xml =
     "    <method name='GetUsage'>"
     "      <arg type='a{sv}' name='usage' direction='out'/>"
     "    </method>"
+    "    <method name='EraseUserData'>"
+    "      <arg type='b' name='started' direction='out'/>"
+    "    </method>"
     "  </interface>"
     "</node>";
+
+static void on_erase_started(GObject *src, GAsyncResult *res, gpointer inv) {
+    GVariant *r = g_dbus_connection_call_finish(G_DBUS_CONNECTION(src), res, NULL);
+    g_dbus_method_invocation_return_value(inv, g_variant_new("(b)", r != NULL));
+    if (r) g_variant_unref(r);
+}
+
+/* The recovery screen's factory reset: the unit erases the partition and
+   restarts. Only on a recovery boot — never a mounted /data */
+static void erase_user_data(GDBusConnection *c, GDBusMethodInvocation *inv) {
+    if (!zyl_recovery_mode()) {
+        g_dbus_method_invocation_return_value(inv, g_variant_new("(b)", FALSE));
+        return;
+    }
+    g_dbus_connection_call(c, "org.freedesktop.systemd1", "/org/freedesktop/systemd1",
+        "org.freedesktop.systemd1.Manager", "StartUnit",
+        g_variant_new("(ss)", "zyl-erase-data.service", "replace"), G_VARIANT_TYPE("(o)"),
+        G_DBUS_CALL_FLAGS_NONE, 5000, NULL, on_erase_started, inv);
+}
 
 /* Same fields as the emulator's storage service: { total, used, available, percent } */
 static void handle(GDBusConnection *c, const gchar *sender, const gchar *path, const gchar *iface,
                    const gchar *method, GVariant *params, GDBusMethodInvocation *inv, gpointer data) {
-    (void)c; (void)sender; (void)path; (void)iface; (void)params; (void)data;
+    (void)sender; (void)path; (void)iface; (void)params; (void)data;
+    if (g_strcmp0(method, "EraseUserData") == 0) {
+        erase_user_data(c, inv);
+        return;
+    }
     if (g_strcmp0(method, "GetUsage") != 0) return;
     ZylStorageState st = {0};
     bool ok = zyl_hal_storage()->get(&st);

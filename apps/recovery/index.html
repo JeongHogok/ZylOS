@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<!-- 클린아키텍처, SOLID원칙, i18n 규칙 철저 준수. 실제 디바이스 구동 기준이며, mock/demo 등 하드코딩 데이터가 있어서는 안 된다 -->
+<!-- 복구 화면 — 사용자 데이터 파티션을 열지 못한 부팅에서만(셸 정책): 다시 시작, 또는 사용자가 확인한 기기 초기화 -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Zyl OS Recovery</title>
+  <link rel="stylesheet" href="../shared/runtime.css">
+  <link rel="stylesheet" href="../shared/responsive.css">
+  <script src="../shared/form-factor.js"></script>
+  <script src="../shared/focus-nav.js"></script>
+  <link rel="stylesheet" href="css/recovery.css">
+</head>
+<body>
+  <main class="screen" id="main">
+    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 1 21h22L12 2zm1 16h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
+    <h1 data-i18n="recovery.title">Your data can't be opened</h1>
+    <p class="text" data-i18n="recovery.body"></p>
+    <p class="status hidden" id="status" role="status" aria-live="polite"></p>
+    <div class="actions" id="actions">
+      <button type="button" class="btn primary" id="restart" data-i18n="recovery.restart">Restart</button>
+      <button type="button" class="btn danger" id="reset" data-i18n="recovery.reset">Reset device</button>
+    </div>
+  </main>
+
+  <div class="sheet hidden" id="confirm" role="alertdialog" aria-modal="true"
+       aria-labelledby="confirm-title" aria-describedby="confirm-text">
+    <h2 id="confirm-title" data-i18n="recovery.confirm_title">Erase all data?</h2>
+    <p id="confirm-text" class="text" data-i18n="recovery.confirm_body"></p>
+    <div class="actions">
+      <button type="button" class="btn" id="cancel" data-i18n="recovery.cancel">Cancel</button>
+      <button type="button" class="btn danger" id="erase" data-i18n="recovery.erase">Erase everything</button>
+    </div>
+  </div>
+
+  <script src="../shared/i18n.js"></script>
+  <script src="i18n.js"></script>
+  <script src="../shared/bridge.js"></script>
+  <script src="js/recovery.js"></script>
+</body>
+</html>

@@ -64,7 +64,7 @@ fn main() {
             commands::store::store_download,
             commands::store::store_unpack,
             commands::store::store_inspect,
-            commands::store::store_revoked,
+            commands::store::store_revocations,
             commands::store::store_commit,
             commands::store::store_discard,
             commands::store::store_remove,

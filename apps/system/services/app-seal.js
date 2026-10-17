@@ -2,16 +2,19 @@
 // [Clean Architecture] Domain Layer - Service Module
 //
 // Role: App seal — a store-installed app's code is what was signed
-// Scope: the rules of runtime/lib/app_seal.c: .zyl-seal/seal.json
-//        (every file's SHA-256) signed by the store's key, or by a developer key
-//        that a store-signed certificate (expiry, revocation) and provisioning
-//        profile (app id pattern, this device's ID, expiry) allow; the files
-//        exactly the sealed set. check() gives '' or the reason the store
-//        reports (bad_package, not_provisioned, expired, revoked); sealedOnly()
-//        keeps the store apps whose seal holds, as the device's WAM registers.
-//        Also the signature check the store uses for catalogs and packages
-//        (RSA-SHA256 over the SHA-256, WebCrypto)
-// Dependency Direction: Domain -> invoker (store_config, store_revoked,
+// Scope: the rules of runtime/lib/app_seal.c: two keys — the root (the image's
+//        store.json rootKey) signs a signing certificate (.zyl-seal/signing.json:
+//        serial, public key, the serials it revokes), and that store key signs
+//        .zyl-seal/seal.json (every file's SHA-256), or a developer key that a
+//        certificate (expiry, revocation) and provisioning profile (app id
+//        pattern, this device's ID, expiry) it signed allow; the files exactly
+//        the sealed set; nothing of it revoked (the app, the certificate, the
+//        signing key). check() gives '' or the reason the store reports
+//        (bad_package, not_provisioned, expired, revoked); sealedOnly() keeps the
+//        store apps whose seal holds, as the device's WAM registers. Also the
+//        signature check the store uses for catalogs and packages (RSA-SHA256
+//        over the SHA-256, WebCrypto) and the signing certificate check
+// Dependency Direction: Domain -> invoker (store_config, store_revocations,
 //        store_inspect), deviceRef (this device's ID)
 // SOLID: SRP — signatures and seals only
 // ----------------------------------------------------------
@@ -83,17 +86,38 @@
     var invoke = deps.invoke;
     var deviceRef = deps.deviceRef || {};
 
-    function storeKey() {
+    function rootKey() {
       return Promise.resolve(invoke('store_config')).then(function (text) {
         var c = object(text);
-        return c && typeof c.publicKey === 'string' ? c.publicKey : '';
+        return c && typeof c.rootKey === 'string' ? c.rootKey : '';
       }).catch(function () { return ''; });
     }
 
-    function revoked() {
-      return Promise.resolve(invoke('store_revoked', {})).then(function (list) {
-        return Array.isArray(list) ? list : [];
-      }).catch(function () { return []; });
+    /* What the store revoked, as the device keeps it (app_seal.c's format) */
+    function revocations() {
+      function strings(v) { return Array.isArray(v) ? v.filter(function (x) { return typeof x === 'string' && x; }) : []; }
+      return Promise.resolve(invoke('store_revocations', {})).then(function (r) {
+        r = r && typeof r === 'object' ? r : {};
+        return { issued: typeof r.issued === 'number' ? r.issued : 0,
+                 certs: strings(r.certs), apps: strings(r.apps), keys: strings(r.keys) };
+      }).catch(function () { return { issued: 0, certs: [], apps: [], keys: [] }; });
+    }
+
+    /* The root vouches for a store key: { why: '', pem, revokes } when it signed
+       json (with sig) and rev does not revoke its serial */
+    function signingKey(json, sig, root, rev) {
+      var holder = { 'signing.json': json, 'signing.sig': sig };
+      return signedBy(holder, 'signing', root).then(function (ok) {
+        var c = ok ? object(json) : null;
+        if (!c) return { why: 'bad_package' };
+        var serial = c.serial, own = (Array.isArray(c.revokedSerials) ? c.revokedSerials : []).filter(function (n) {
+          return typeof n === 'number' && n % 1 === 0 && n > 0;
+        }).map(String);
+        if (typeof serial !== 'number' || serial % 1 !== 0 || serial < 1 ||
+            typeof c.publicKey !== 'string' || !c.publicKey) return { why: 'bad_package' };
+        if (rev.keys.indexOf(String(serial)) !== -1) return { why: 'revoked' };
+        return { why: '', pem: c.publicKey, revokes: own };
+      });
     }
 
     /* A development build: the store vouches for the developer and says where it
@@ -119,10 +143,14 @@
       if (!seal || !seal.files || typeof seal.files !== 'object' ||
           seal.id !== appId || (version && seal.appVersion !== version)) return Promise.resolve('bad_package');
       var developer = typeof s['cert.json'] === 'string';
-      return Promise.all([storeKey(), revoked()]).then(function (r) {
-        var pem = r[0];
-        return (developer ? developerKey(s, appId, hashes[SEAL + 'cert.json'], pem, r[1])
-                          : Promise.resolve({ why: '', pem: pem }));
+      return Promise.all([rootKey(), revocations()]).then(function (r) {
+        var rev = r[1];
+        if (rev.apps.indexOf(appId) !== -1) return { why: 'revoked' };          /* the store took it back */
+        return signingKey(s['signing.json'], s['signing.sig'], r[0], rev).then(function (k) {
+          if (k.why) return k;
+          return developer ? developerKey(s, appId, hashes[SEAL + 'cert.json'], k.pem, rev.certs)
+                           : { why: '', pem: k.pem };
+        });
       }).then(function (k) {
         if (k.why) return k.why;
         return signedBy(s, 'seal', k.pem).then(function (ok) {
@@ -153,6 +181,7 @@
       return (cert && typeof cert.publicKey === 'string' && cert.publicKey) || '?';
     }
 
-    return { verify: verify, bytesOf: bytesOf, check: check, sealedOnly: sealedOnly, signerKey: signerKey };
+    return { verify: verify, bytesOf: bytesOf, check: check, sealedOnly: sealedOnly, signerKey: signerKey,
+             signingKey: signingKey, revocations: revocations };
   };
 })(window.ZylServiceModules = window.ZylServiceModules || {});

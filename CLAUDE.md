@@ -77,7 +77,7 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 - 시스템 앱은 OS 이미지에 들어간 앱이다 — 기기는 이미지의 앱 디렉터리(`meson.build` 의
   `install_subdir`), 에뮬레이터는 `ZylPermissions.SYSTEM_APPS`. 두 집합은 같아야 한다
   (verify-all 대조). 이미지 밖에서 온 앱(스토어·개발 빌드)은 무엇을 선언하든 제3자 앱
-- 어느 앱이 앞에 올지(OOBE·잠금 화면·홈·최근 앱·앱 전환)는 OS 만 정한다: 에뮬레이터
+- 어느 앱이 앞에 올지(OOBE·잠금 화면·복구 화면·홈·최근 앱·앱 전환)는 OS 만 정한다: 에뮬레이터
   `apps/system/shell.js`, 기기 `runtime/wam/src/shell` (같은 규칙, `tests/test_shell.c`
   ·`test_services.js` 가 같은 시나리오로 검증). 에뮬레이터·컴포지터는 그 답대로 띄우기만
   하고 앱 id 로 분기하지 않는다. 앞에 앱을 올리는 새 경로는 반드시 그 판단을 거칠 것.
@@ -158,6 +158,10 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
 - 다른 데몬이 `/var`·`/etc` 에 두는 상태도 설정이나 drop-in 으로 `/data` 로
   (bluez·NetworkManager 처럼 — `system/`). 이미지 빌드 때 굽는 캐시는 `/usr` 쪽에
 - 잠금 전환과 공장 초기화는 `/data` 를 통째로 지운다 — 남겨야 할 것을 다른 곳에 두지 말 것
+- `/data` 는 비어 있을 때만 만든다(makefs + `zyl-data-blank`). 열지 못하면 멈추지 않고 복구
+  부팅(tmpfs, `zyl-recovery.service`)으로 복구 화면만 띄우고, 지우는 것은 사용자가 그 화면에서
+  고른 초기화뿐이다(`storage.eraseUserData` → `zyl-erase-data.service`, 복구 부팅에서만 —
+  verify-all D6, `tests/recovery_boot.sh`). 손상된 `/data` 를 묻지 않고 지우는 길을 만들지 말 것
 - 사용자 데이터(앱 컨테이너·사용자 파일·연락처·메시지·키체인)는 PIN 으로 잠긴다(fscrypt).
   어느 디렉터리인지와 키는 잠금 서비스(`lock.c` 의 `ZYL_CE_DIRS`, verify-all D5)의 것이고,
   부팅 뒤 첫 맞는 PIN 전에는 읽을 수도 쓸 수도 없다. 그 디렉터리를 쓰는 서비스는 잠긴 동안
@@ -224,10 +228,13 @@ apps/ 디렉토리의 모든 JS 파일은 WebKitGTK RISC-V 호환을 위해 **ES
   `_forgetApp(appId)`. 삭제 후 흔적 0 은 `tests/store_e2e.sh` 와 그 서비스의 단위 테스트가 검증한다
 - 앱이 누구인지는 OS 만 말한다: in-arg `caller`(항상 호출 앱), `container`
   (시스템 앱이면 "", 아니면 그 앱), `app_id`(제3자 앱이면 그 앱) — 요청 값 무시
-- 스토어 패키지·카탈로그는 스토어 키 서명(패키지 전체의 SHA-256) 없이는 설치하지
-  않는다 (`docs/APPSTORE_API.md`, `tools/build-store.py`)
-- 사용자 앱은 봉인(`.zyl-seal/`)이 맞을 때만 설치·등록·실행: 공식 앱은 스토어 키,
-  개발 빌드는 스토어가 서명한 인증서·프로필이 허락한 기기·앱에서만. 판정은 기기
+- 스토어 키는 2단이다: 이미지의 루트 키(`store.json` `rootKey`)는 서명 키 인증서만,
+  나머지(카탈로그·패키지·봉인·개발자 인증서)는 그 서명 키가. 스토어 패키지·카탈로그는
+  서명 키 서명(패키지 전체의 SHA-256) 없이는 설치하지 않는다 (`docs/APPSTORE_API.md`,
+  `tools/build-store.py`). 회수(앱·개발자 인증서·서명 키)는 기기가 지키고, 이미 본 것보다
+  오래된 카탈로그로 되돌리지 않는다
+- 사용자 앱은 봉인(`.zyl-seal/`)이 맞을 때만 설치·등록·실행: 공식 앱은 서명 키,
+  개발 빌드는 서명 키가 서명한 인증서·프로필이 허락한 기기·앱에서만. 판정은 기기
   `app_seal.c`, 에뮬레이터 `apps/system/services/app-seal.js` 두 곳뿐이고 규칙이
   같아야 한다(한쪽을 바꾸면 다른 쪽과 `tests/test_app_seal.c`·`test_services.js` 도).
   봉인을 건너뛰는 경로(개발자 모드 등)를 만들지 말 것

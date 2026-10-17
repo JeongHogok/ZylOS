@@ -20,6 +20,7 @@ static int tests_run, tests_pass;
 #define HOME  ZYL_SHELL_HOME
 #define LOCK  ZYL_SHELL_LOCK
 #define SETUP ZYL_SHELL_SETUP
+#define RECOVERY ZYL_SHELL_RECOVERY
 
 static gboolean same(const char *a, const char *b) {
     return (!a && !b) || (a && b && strcmp(a, b) == 0);
@@ -148,6 +149,37 @@ static void test_the_panel_follows_the_device_state(void) {
     assert(!zyl_shell_may_launch(&s, UI) && !zyl_shell_may_close(&s, UI));
 }
 
+/* /data could not be mounted: the recovery screen holds the device for the
+   whole boot, and is never shown otherwise (it erases the user's data) */
+static void test_recovery_holds_the_device_and_only_then(void) {
+    ZylShell s;
+    show(&s, zyl_shell_boot(&s, TRUE));
+    assert(!zyl_shell_may_launch(&s, RECOVERY));               /* locked */
+    show(&s, zyl_shell_unlock(&s, LOCK, NULL));
+    assert(!zyl_shell_may_launch(&s, RECOVERY));               /* nor unlocked */
+    EQ(zyl_shell_recover(&s), RECOVERY);
+    show(&s, RECOVERY);
+    assert(zyl_shell_may_launch(&s, RECOVERY));
+    assert(!zyl_shell_may_launch(&s, HOME));
+    assert(!zyl_shell_may_launch(&s, LOCK));
+    assert(!zyl_shell_may_launch(&s, SETUP));
+    assert(!zyl_shell_may_launch(&s, "com.zylos.phone"));
+    assert(!zyl_shell_navigable(&s));
+    assert(!zyl_shell_may_close(&s, RECOVERY));
+    EQ(zyl_shell_home(&s), NULL);                              /* already there */
+    EQ(zyl_shell_lock(&s), NULL);                              /* nothing to lock */
+    EQ(zyl_shell_unlock(&s, LOCK, NULL), NULL);
+    EQ(zyl_shell_setup_done(&s, SETUP), NULL);
+    EQ(zyl_shell_screen_on(&s), NULL);
+    assert(zyl_shell_panel_mode(&s, ZYL_SHELL_SYSTEM_UI, "full") == ZYL_PANEL_BAR);
+    assert(zyl_shell_panel_mode(&s, ZYL_SHELL_SYSTEM_UI, "banner") == ZYL_PANEL_BAR);
+    show(&s, "com.zylos.settings");                            /* whatever got there */
+    EQ(zyl_shell_home(&s), RECOVERY);
+    EQ(zyl_shell_screen_on(&s), RECOVERY);
+    show(&s, zyl_shell_boot(&s, TRUE));                        /* next boot: as ever */
+    assert(!zyl_shell_may_launch(&s, RECOVERY));
+}
+
 int main(void) {
     printf("Shell policy tests\n");
     RUN_TEST(test_setup_holds_the_device);
@@ -157,6 +189,7 @@ int main(void) {
     RUN_TEST(test_unlock_opens_home_unless_an_app_may_open);
     RUN_TEST(test_unlocked_home_close_and_lock);
     RUN_TEST(test_the_panel_follows_the_device_state);
+    RUN_TEST(test_recovery_holds_the_device_and_only_then);
     printf("\n%d/%d passed\n", tests_pass, tests_run);
     return tests_pass == tests_run ? 0 : 1;
 }

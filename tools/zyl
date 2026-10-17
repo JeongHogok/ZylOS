@@ -260,24 +260,25 @@ cmd_package() {
         echo "✗ app.json not found. Run from app directory."
         exit 1
     fi
-    local key="" cert="" profile="" out=".."
+    local key="" cert="" profile="" signing="" out=".."
     while [ $# -gt 0 ]; do
         case "$1" in
-            --key|--cert|--profile)
+            --key|--cert|--profile|--signing)
                 [ $# -ge 2 ] || { echo "✗ $1 needs a file"; exit 1; }
-                case "$1" in --key) key="$2" ;; --cert) cert="$2" ;; --profile) profile="$2" ;; esac
+                case "$1" in --key) key="$2" ;; --cert) cert="$2" ;; --profile) profile="$2" ;; --signing) signing="$2" ;; esac
                 shift 2 ;;
             *) out="$1"; shift ;;
         esac
     done
-    if [ -z "$key" ] || [ -z "$cert" ] || [ -z "$profile" ]; then
-        echo "Usage: zyl package --key <developer.key> --cert <developer.cert.json> --profile <app.profile.json> [out-dir]"
+    if [ -z "$key" ] || [ -z "$cert" ] || [ -z "$profile" ] || [ -z "$signing" ]; then
+        echo "Usage: zyl package --key <developer.key> --cert <developer.cert.json> --profile <app.profile.json> --signing <signing.json> [out-dir]"
         echo "  The app store signs your certificate and profile (send it your public key"
-        echo "  and the device IDs from Settings > About); the package installs only on"
-        echo "  those devices. Default out-dir: the parent directory."
+        echo "  and the device IDs from Settings > About) and gives them to you with its"
+        echo "  signing certificate (signing.json); the package installs only on those"
+        echo "  devices. Default out-dir: the parent directory."
         exit 1
     fi
-    python3 -I "$SCRIPT_DIR/build-store.py" package --key "$key" --cert "$cert" --profile "$profile" . "$out"
+    python3 -I "$SCRIPT_DIR/build-store.py" package --key "$key" --signing "$signing" --cert "$cert" --profile "$profile" . "$out"
 }
 
 cmd_keygen() {

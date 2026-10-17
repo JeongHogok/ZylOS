@@ -3,15 +3,18 @@
  *
  * 역할: 앱스토어 서비스 (org.zylos.AppStore) — 스토어 서버에서 앱을 받아
  *       설치·업데이트하고, 지울 때 앱이 만든 것을 남기지 않는다
- * 수행범위: 카탈로그(catalog.json + .sig — 스토어 키 서명 검증, 설치 상태·
- *           업데이트 표시), 설치(패키지 다운로드 → 패키지 전체의 SHA-256 과
+ * 수행범위: 카탈로그(signing.json — 루트 키가 서명한 서명 키 인증서, 폐기되지 않은
+ *           일련번호 → catalog.json + .sig — 그 서명 키 서명 검증, 앞서 본 것보다 오래된
+ *           카탈로그는 거부(되돌리기), 설치 상태·업데이트 표시), 설치(패키지 다운로드 →
+ *           패키지 전체의 SHA-256 과
  *           서명 → 안전하게 풀기 → app.json 이 카탈로그와 같은 id·버전인지 →
  *           /data/apps/<id> 로 교체 → AppInstalled), 삭제(패키지 + 앱 컨테이너
  *           /data/appdata/<id> 통째로 → AppRemoved: WAM·알림·알람이 각자 정리).
- *           설치되는 앱은 봉인돼 있어야 한다(app_seal.c): 카탈로그 앱은 스토어 키,
- *           InstallFile(사용자 파일의 .zpkg)은 스토어 키 또는 스토어가 이 기기에
- *           허락한 개발자. 카탈로그의 폐기 인증서 목록을 /data/apps/.revoked 에 둔다.
- *           시스템 앱은 대상이 아니다. 설정: /etc/zyl-os/store.json { url, publicKey }
+ *           설치되는 앱은 봉인돼 있어야 한다(app_seal.c): 카탈로그 앱은 스토어 서명 키,
+ *           InstallFile(사용자 파일의 .zpkg)은 그것 또는 스토어가 이 기기에 허락한
+ *           개발자. 회수(폐기된 서명 키·개발자 인증서·앱)를 /data/apps/.revocations.json
+ *           에 두고, 바뀌면 RevocationsChanged — WAM 이 앱을 다시 판정한다.
+ *           시스템 앱은 대상이 아니다. 설정: /etc/zyl-os/store.json { url, rootKey }
  *           — 없으면 "unconfigured". 한 번에 작업 하나
  * 의존방향: gio (D-Bus, GSubprocess → curl), store_catalog.h, store_package.h,
  *           app_seal.h, container.h, ota_verify.h (서명: tools/build-store.py 가 만든 것),
@@ -53,23 +56,23 @@
 #ifndef ZYL_FILES_ROOT
 #define ZYL_FILES_ROOT ZYL_OWNER_FILES   /* where InstallFile's packages come from */
 #endif
-#define REVOKED_FILE ZYL_APPS_DIR "/.revoked"
+#define REVOCATIONS_FILE ZYL_APPS_DIR "/" ZYL_SEAL_REVOCATIONS
 #define CATALOG_MAX (1024 * 1024)
 
 /* ─── Config and what is on the device ─── */
 
-typedef struct { char *url; char *key_pem; } StoreConfig;
+typedef struct { char *url; char *root_pem; } StoreConfig;
 
 static bool load_config(StoreConfig *c) {
     JsonParser *p = json_parser_new();
-    c->url = c->key_pem = NULL;
+    c->url = c->root_pem = NULL;
     if (json_parser_load_from_file(p, ZYL_STORE_CONFIG, NULL) && JSON_NODE_HOLDS_OBJECT(json_parser_get_root(p))) {
         JsonObject *o = json_node_get_object(json_parser_get_root(p));
         const char *url = zyl_json_str(o, "url", "");
-        const char *key = zyl_json_str(o, "publicKey", "");
+        const char *key = zyl_json_str(o, "rootKey", "");
         if (url && g_str_has_prefix(url, "https://") && key && *key) {
             c->url = g_strdup(url);
-            c->key_pem = g_strdup(key);
+            c->root_pem = g_strdup(key);
         }
     }
     g_object_unref(p);
@@ -78,7 +81,7 @@ static bool load_config(StoreConfig *c) {
 
 static void config_clear(StoreConfig *c) {
     g_clear_pointer(&c->url, g_free);
-    g_clear_pointer(&c->key_pem, g_free);
+    g_clear_pointer(&c->root_pem, g_free);
 }
 
 /* The id an app.json in dir declares, or NULL */
@@ -159,15 +162,14 @@ static bool swap_in(const char *work, const char *id) {
 /* NULL when the unpacked app in dir is sealed as required; else the reason.
    store_only: the catalog's apps must be the store's own, never a development build */
 static const char *seal_reason(const char *dir, const char *id, const char *version,
-                               const char *store_pem, bool store_only) {
+                               const char *root_pem, bool store_only) {
     ZylBoardInfo board;
     memset(&board, 0, sizeof(board));
     zyl_hal_board()->get(&board);
-    char **revoked = zyl_seal_load_revoked(REVOKED_FILE);
+    ZylRevocations *rev = zyl_seal_load_revocations(REVOCATIONS_FILE);
     ZylSeal *seal = NULL;
-    ZylSealVerdict v = zyl_seal_open(dir, id, version, store_pem, board.device_id,
-                                     (const char *const *)revoked, g_get_real_time() / G_USEC_PER_SEC,
-                                     true, &seal);
+    ZylSealVerdict v = zyl_seal_open(dir, id, version, root_pem, board.device_id,
+                                     rev, g_get_real_time() / G_USEC_PER_SEC, true, &seal);
     const char *why = NULL;
     if (v == ZYL_SEAL_NOT_PROVISIONED) why = "not_provisioned";
     else if (v == ZYL_SEAL_EXPIRED) why = "expired";
@@ -175,7 +177,7 @@ static const char *seal_reason(const char *dir, const char *id, const char *vers
     else if (v != ZYL_SEAL_OK || (store_only && zyl_seal_developer(seal))) why = "bad_package";
     if (why) g_warning("[AppStore] %s: %s", id, zyl_seal_verdict_message(v));
     zyl_seal_free(seal);
-    g_strfreev(revoked);
+    zyl_seal_revocations_free(rev);
     return why;
 }
 
@@ -198,19 +200,10 @@ static bool signer_changed(const char *id, const char *new_dir) {
     return changed;
 }
 
-/* What the store last said is revoked: the WAM stops development builds signed by them */
-static void save_revoked(const char *json, gssize len) {
-    char **revoked = zyl_store_catalog_revoked(json, len);
-    char *text = g_strjoinv("\n", revoked);
-    g_mkdir_with_parents(ZYL_APPS_DIR, 0750);
-    g_file_set_contents_full(REVOKED_FILE, text, -1, G_FILE_SET_CONTENTS_CONSISTENT, 0644, NULL);
-    g_free(text);
-    g_strfreev(revoked);
-}
 
 /* A package from the user's files — a development build provisioned for this
    device, or the store's own. NULL (and *out_id) when installed, else the reason */
-static const char *install_file(const char *rel, const char *store_pem, char **out_id) {
+static const char *install_file(const char *rel, const char *root_pem, char **out_id) {
     char root[PATH_MAX], real[PATH_MAX];
     char *full = rel ? g_build_filename(ZYL_FILES_ROOT, rel, NULL) : NULL;
     char *work = NULL, *dir = NULL, *id = NULL, *version = NULL;
@@ -241,7 +234,7 @@ static const char *install_file(const char *rel, const char *store_pem, char **o
         if (have && zyl_store_version_cmp(have, version) > 0) why = "up_to_date";   /* never a downgrade */
         g_free(have);
     }
-    if (!why) why = seal_reason(dir, id, version, store_pem, false);
+    if (!why) why = seal_reason(dir, id, version, root_pem, false);
     if (!why && signer_changed(id, dir)) why = "signer_changed";
     if (!why && !swap_in(work, id)) why = "io";
     if (!why) *out_id = g_strdup(id);
@@ -268,7 +261,9 @@ struct Job {
     char                  *app_id;
     char                  *work;     /* staging dir under ZYL_APPS_DIR (same fs: rename) */
     StoreConfig            cfg;
-    GPtrArray             *catalog;  /* ZylStoreApp* */
+    char                  *signing_pem;  /* the store key the root vouched for this time */
+    char                 **revokes;      /* the signing serials its certificate revokes */
+    GPtrArray             *catalog;      /* ZylStoreApp* */
     Step                   next;
 };
 
@@ -280,6 +275,8 @@ static void job_end(Job *j) {
     g_free(j->work);
     g_free(j->app_id);
     config_clear(&j->cfg);
+    g_free(j->signing_pem);
+    g_strfreev(j->revokes);
     if (j->catalog) g_ptr_array_unref(j->catalog);
     g_free(j);
     g_job = NULL;
@@ -357,12 +354,12 @@ static void on_package(Job *j, bool downloaded) {
     char *pkg = work_file(j, "package"), *dir = work_file(j, "app");
     const char *why = NULL;
     if (!downloaded) why = "download_failed";
-    else if (zyl_ota_verify_pem(pkg, a->sha256, a->signature, j->cfg.key_pem) != ZYL_OTA_TRUSTED)
+    else if (zyl_ota_verify_pem(pkg, a->sha256, a->signature, j->signing_pem) != ZYL_OTA_TRUSTED)
         why = "bad_package";                       /* tampered, corrupt, or not the store's */
     else if (!zyl_store_unpack(pkg, dir, &why) || !zyl_store_check_manifest(dir, a->id, a->version, &why)) {
         g_warning("[AppStore] %s: %s", a->id, why);
         why = "invalid_package";
-    } else if (!(why = seal_reason(dir, a->id, a->version, j->cfg.key_pem, true))) {
+    } else if (!(why = seal_reason(dir, a->id, a->version, j->cfg.root_pem, true))) {
         if (signer_changed(a->id, dir)) why = "signer_changed";
         else if (!swap_in(j->work, a->id)) why = "io";
     }
@@ -406,18 +403,52 @@ static void with_catalog(Job *j) {
     g_free(pkg);
 }
 
+/* The catalog's revocations replace the kept ones — unless it is older than
+   what was seen (a replayed catalog would bring a revoked app back); revoked
+   signing keys are added, never dropped. FALSE: refuse this catalog */
+static bool keep_revocations(Job *j, const char *json, gsize len) {
+    ZylRevocations *rev = zyl_seal_load_revocations(REVOCATIONS_FILE);
+    gint64 seen = rev->issued;
+    char **certs = g_strdupv(rev->certs), **apps = g_strdupv(rev->apps), **keys = g_strdupv(rev->keys);
+    bool ok = zyl_store_catalog_revocations(json, (gssize)len, rev) && rev->issued >= seen;
+    if (ok) {
+        GPtrArray *all = g_ptr_array_new();
+        for (int i = 0; rev->keys[i]; i++) g_ptr_array_add(all, g_strdup(rev->keys[i]));
+        for (int i = 0; j->revokes && j->revokes[i]; i++)
+            if (!g_strv_contains((const gchar *const *)rev->keys, j->revokes[i]))
+                g_ptr_array_add(all, g_strdup(j->revokes[i]));
+        g_ptr_array_add(all, NULL);
+        g_strfreev(rev->keys);
+        rev->keys = (char **)g_ptr_array_free(all, FALSE);
+        g_mkdir_with_parents(ZYL_APPS_DIR, 0750);
+        bool changed = !g_strv_equal((const gchar *const *)certs, (const gchar *const *)rev->certs) ||
+                       !g_strv_equal((const gchar *const *)apps, (const gchar *const *)rev->apps) ||
+                       !g_strv_equal((const gchar *const *)keys, (const gchar *const *)rev->keys);
+        if (zyl_seal_save_revocations(REVOCATIONS_FILE, rev) && changed)
+            g_dbus_connection_emit_signal(g_conn, NULL, "/org/zylos/AppStore", "org.zylos.AppStore",
+                                          "RevocationsChanged", NULL, NULL);
+    } else {
+        g_warning("[AppStore] the catalog is older than one already seen, or has no issue time");
+    }
+    g_strfreev(certs);
+    g_strfreev(apps);
+    g_strfreev(keys);
+    zyl_seal_revocations_free(rev);
+    return ok;
+}
+
 static void on_catalog_sig(Job *j, bool downloaded) {
     char *cat = work_file(j, "catalog.json"), *sigf = work_file(j, "catalog.sig");
     gchar *sig = NULL, *json = NULL;
     gsize len = 0;
     const char *why = NULL;
     if (!downloaded || !g_file_get_contents(sigf, &sig, NULL, NULL)) why = "unreachable";
-    else if (zyl_ota_verify_pem(cat, NULL, g_strstrip(sig), j->cfg.key_pem) != ZYL_OTA_TRUSTED)
+    else if (zyl_ota_verify_pem(cat, NULL, g_strstrip(sig), j->signing_pem) != ZYL_OTA_TRUSTED)
         why = "untrusted";                          /* not signed by the store's key */
     else if (!g_file_get_contents(cat, &json, &len, NULL) ||
              !(j->catalog = zyl_store_catalog_parse(json, (gssize)len, j->cfg.url)))
         why = "invalid";
-    else save_revoked(json, (gssize)len);
+    else if (!keep_revocations(j, json, len)) why = "untrusted";
     g_free(sig);
     g_free(json);
     g_free(cat);
@@ -431,6 +462,27 @@ static void on_catalog(Job *j, bool downloaded) {
     char *url = g_strconcat(j->cfg.url, ".sig", NULL);
     char *sigf = work_file(j, "catalog.sig");
     download(j, url, sigf, 4096, on_catalog_sig);
+    g_free(url);
+    g_free(sigf);
+}
+
+/* The root vouched for the store key that signs the catalog, and has not revoked it */
+static void on_signing_sig(Job *j, bool downloaded) {
+    if (!downloaded) { finish(j, "unreachable"); return; }
+    ZylRevocations *rev = zyl_seal_load_revocations(REVOCATIONS_FILE);
+    j->signing_pem = zyl_seal_signing_key(j->work, j->cfg.root_pem, rev, &j->revokes);
+    zyl_seal_revocations_free(rev);
+    if (!j->signing_pem) { finish(j, "untrusted"); return; }
+    char *cat = work_file(j, "catalog.json");
+    download(j, j->cfg.url, cat, CATALOG_MAX, on_catalog);
+    g_free(cat);
+}
+
+static void on_signing(Job *j, bool downloaded) {
+    char *url = zyl_store_resolve_url(j->cfg.url, "signing.json.sig");
+    char *sigf = work_file(j, "signing.sig");
+    if (!downloaded || !url) finish(j, "unreachable");
+    else download(j, url, sigf, 4096, on_signing_sig);
     g_free(url);
     g_free(sigf);
 }
@@ -452,9 +504,12 @@ static void start(Op op, const char *app_id, GDBusMethodInvocation *inv) {
     g_mkdir_with_parents(ZYL_APPS_DIR, 0750);
     j->work = g_build_filename(ZYL_APPS_DIR, ".staging-XXXXXX", NULL);
     if (!g_mkdtemp(j->work)) { g_clear_pointer(&j->work, g_free); finish(j, "io"); return; }
-    char *cat = work_file(j, "catalog.json");
-    download(j, j->cfg.url, cat, CATALOG_MAX, on_catalog);
-    g_free(cat);
+    char *url = zyl_store_resolve_url(j->cfg.url, "signing.json");
+    char *signing = work_file(j, "signing.json");
+    if (!url) finish(j, "unconfigured");
+    else download(j, url, signing, 16384, on_signing);
+    g_free(url);
+    g_free(signing);
 }
 
 /* ─── D-Bus ─── */
@@ -471,6 +526,7 @@ static const char *appstore_xml =
     "      <arg type='a{sv}' name='outcome' direction='out'/></method>"
     "    <signal name='AppInstalled'><arg type='s' name='app_id'/></signal>"
     "    <signal name='AppRemoved'><arg type='s' name='app_id'/></signal>"
+    "    <signal name='RevocationsChanged'/>"
     "  </interface>"
     "</node>";
 
@@ -503,7 +559,7 @@ static void install_from_file(const char *rel, GDBusMethodInvocation *inv) {
     char *id = NULL;
     const char *why = g_job ? "busy" : !load_config(&cfg) ? "unconfigured" : NULL;
     if (!why) {
-        why = install_file(rel, cfg.key_pem, &id);
+        why = install_file(rel, cfg.root_pem, &id);
         config_clear(&cfg);
     }
     if (!why) {

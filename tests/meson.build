@@ -316,11 +316,12 @@ test('user',
 )
 
 # Test: storage — statvfs of the data partition (fallback /), GetUsage fields
-# the same as the emulator's { total, used, available, percent }
+# the same as the emulator's { total, used, available, percent }, the factory
+# reset only on a recovery boot (a stand-in systemd on the private bus)
 test('storage',
   executable('test-storage',
     'test_storage.c',
-    include_directories: include_directories('../runtime/hal'),
+    include_directories: [include_directories('../runtime/hal'), _lib_inc],
     dependencies: [gio_dep],
     c_args: ['-DZYL_TEST'],
   )

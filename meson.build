@@ -106,13 +106,15 @@ install_subdir('apps/phone',       install_dir: get_option('datadir') / 'zyl-os'
 install_subdir('apps/store',       install_dir: get_option('datadir') / 'zyl-os' / 'apps')
 install_subdir('apps/weather',     install_dir: get_option('datadir') / 'zyl-os' / 'apps')
 install_subdir('apps/alerts',      install_dir: get_option('datadir') / 'zyl-os' / 'apps')
+install_subdir('apps/recovery',    install_dir: get_option('datadir') / 'zyl-os' / 'apps')
 install_subdir('apps/shared',      install_dir: get_option('datadir') / 'zyl-os' / 'apps')
 
 # Install HAL header
 install_headers('runtime/hal/hal.h', subdir: 'zyl-os')
 
 # ─── systemd units — only those the profile actually builds ───
-zyl_units = ['zyl-compositor', 'zyl-wam', 'zyl-apparmor', 'zyl-lock-prepare']   # lock: a core service
+zyl_units = ['zyl-compositor', 'zyl-wam', 'zyl-apparmor', 'zyl-lock-prepare',   # lock: a core service
+              'zyl-recovery']
 foreach svc : zyl_services
   zyl_units += 'zyl-' + svc
 endforeach
@@ -163,6 +165,14 @@ install_data('system/tmpfiles.d/zyl-wam.conf', 'system/tmpfiles.d/zyl-data.conf'
 # Read-only root: what other daemons keep goes to /data (bluez pairings, saved networks)
 install_data('system/systemd/bluetooth-zyl.conf', rename: 'zyl-state.conf',
              install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system' / 'bluetooth.service.d')
+# /data: formatted only when blank; a damaged one boots to the recovery screen,
+# whose factory reset is the only thing that erases it. zyl-erase-data.service is
+# not in zyl_units — zyl-os.target must never want it (verify-all D6)
+install_data('system/systemd/makefs-zyl.conf', rename: 'zyl-blank-only.conf',
+             install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system' / 'systemd-makefs@.service.d')
+install_data('system/storage/zyl-data-blank', 'system/storage/zyl-erase-data', install_mode: 'rwxr-xr-x',
+             install_dir: get_option('prefix') / 'lib' / 'zyl-os')
+install_data('system/zyl-erase-data.service', install_dir: _systemd_dir)
 install_data('system/NetworkManager/zyl.conf',
              install_dir: get_option('sysconfdir') / 'NetworkManager' / 'conf.d')
 
@@ -199,15 +209,11 @@ configure_file(
 install_data('system/fonts/50-zyl-fonts.conf',
              install_dir: get_option('sysconfdir') / 'fonts' / 'conf.d')
 
-# Install recovery scripts
-install_data('system/recovery/recovery.sh',       install_dir: get_option('datadir') / 'zyl-os' / 'recovery', install_mode: 'rwxr-xr-x')
-install_data('system/recovery/factory-reset.sh',  install_dir: get_option('datadir') / 'zyl-os' / 'recovery', install_mode: 'rwxr-xr-x')
 # dm-verity: the initramfs opens the slot's rootfs from the signed kernel arguments
 install_data('system/initramfs/zyl-verity.hook', rename: 'zyl-verity', install_mode: 'rwxr-xr-x',
              install_dir: get_option('datadir') / 'initramfs-tools' / 'hooks')
 install_data('system/initramfs/zyl-verity.local-top', rename: 'zyl-verity', install_mode: 'rwxr-xr-x',
              install_dir: get_option('datadir') / 'initramfs-tools' / 'scripts' / 'local-top')
-install_data('system/recovery/recovery.service',  install_dir: get_option('prefix') / 'lib' / 'systemd' / 'system')
 
 # Boot self test: not enabled by default (the unit has no [Install]).
 # The device has no shell: systemd.wants= on the kernel command line (the QEMU

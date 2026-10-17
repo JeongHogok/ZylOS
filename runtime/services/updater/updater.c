@@ -681,8 +681,9 @@ bool zyl_updater_apply(ZylUpdater *u,
     const char *inactive = strcmp(u->active_slot, "a") == 0 ? "b" : "a";
     fprintf(stderr, "[UPDATER] Installing v%s into slot %s\n", u->pending->version, inactive);
 
-    /* An earlier install still waiting for its reboot is about to be overwritten */
-    if (!boot->env_set("zyl_next_slot", NULL))
+    /* An earlier install still waiting for its reboot is about to be overwritten,
+       and so is the system U-Boot would fall back to */
+    if (!boot->env_set("zyl_next_slot", NULL) || !boot->env_set("zyl_fallback_slot", NULL))
         return apply_failed(u, "Cannot write the bootloader environment");
 
     const char *why = NULL;
@@ -803,6 +804,11 @@ bool zyl_updater_mark_verified(ZylUpdater *u) {
         fprintf(stderr, "[UPDATER] fw_setenv could not confirm slot '%s'\n", u->active_slot);
         return false;
     }
+    /* The slot this one replaced was the confirmed one: U-Boot goes back to it
+       if this one stops coming up. Written last — missing, there is only no fallback */
+    const char *previous = strcmp(u->active_slot, "a") == 0 ? "b" : "a";
+    if (!boot->env_set("zyl_fallback_slot", previous))
+        fprintf(stderr, "[UPDATER] fw_setenv could not keep slot '%s' to fall back to\n", previous);
 
     /* Read back by zyl_updater_get_partition_info */
     mkdir_p(ZYL_STATE_DIR);
@@ -812,6 +818,15 @@ bool zyl_updater_mark_verified(ZylUpdater *u) {
     fprintf(stderr, "[UPDATER] Slot '%s' marked as verified\n",
             u->active_slot);
     return true;
+}
+
+bool zyl_updater_mark_booted(ZylUpdater *u) {
+    if (!u || zyl_updater_on_trial(u)) return false;    /* a try ends with its health check */
+    const ZylBootHal *boot = zyl_hal_boot();
+    char *count = boot->env_get("zyl_boot_count");
+    bool ok = !count || strcmp(count, "0") == 0 || boot->env_set("zyl_boot_count", "0");
+    free(count);
+    return ok;
 }
 
 bool zyl_updater_rollback(ZylUpdater *u) {

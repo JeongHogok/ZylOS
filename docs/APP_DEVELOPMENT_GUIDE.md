@@ -444,10 +444,11 @@ OS 는 묻지 않고 앱을 끝낼 수도 있다(메모리가 모자랄 때). �
 ```bash
 tools/zyl keygen acme       # ~/.zyl/keys/acme.key(비밀), acme.pub — 앱 폴더 밖에 둔다
 # acme.pub 와 시험할 기기의 ID(설정 > 이 기기 정보 > 기기 ID)를 스토어 운영자에게 보내
-# 개발자 인증서(acme.cert.json)와 프로필(myapp.profile.json)을 .sig 와 함께 받는다
+# 개발자 인증서(acme.cert.json)·프로필(myapp.profile.json)·스토어의 서명 키 인증서
+# (signing.json)를 각각 .sig 와 함께 받는다
 cd myapp
 ../tools/zyl validate
-../tools/zyl package --key ~/.zyl/keys/acme.key \
+../tools/zyl package --key ~/.zyl/keys/acme.key --signing ../signing.json \
     --cert ../acme.cert.json --profile ../myapp.profile.json   # → ../<id>-<version>.zpkg
 ```
 

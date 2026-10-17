@@ -32,40 +32,54 @@ static const char *unless(const ZylShell *s, const char *app_id) {
 }
 
 const char *zyl_shell_boot(ZylShell *s, gboolean setup_done) {
+    s->recovery = FALSE;
     s->setup = !setup_done;
     s->locked = setup_done ? TRUE : FALSE;
     s->top[0] = '\0';
     return s->setup ? ZYL_SHELL_SETUP : ZYL_SHELL_LOCK;
 }
 
+const char *zyl_shell_recover(ZylShell *s) {
+    s->recovery = TRUE;
+    s->setup = FALSE;
+    s->locked = FALSE;
+    s->top[0] = '\0';
+    return ZYL_SHELL_RECOVERY;
+}
+
 gboolean zyl_shell_may_launch(const ZylShell *s, const char *app_id) {
     if (!app_id || is(app_id, ZYL_SHELL_SYSTEM_UI)) return FALSE;   /* a surface, never in front */
+    if (s->recovery) return is(app_id, ZYL_SHELL_RECOVERY);
+    if (is(app_id, ZYL_SHELL_RECOVERY)) return FALSE;
     if (s->setup) return is(app_id, ZYL_SHELL_SETUP) || over_lock(app_id);
     if (s->locked) return is(app_id, ZYL_SHELL_LOCK) || over_lock(app_id);
     return !is(app_id, ZYL_SHELL_LOCK) && !is(app_id, ZYL_SHELL_SETUP);
 }
 
 const char *zyl_shell_home(const ZylShell *s) {
+    if (s->recovery) return unless(s, ZYL_SHELL_RECOVERY);
     if (s->setup) return NULL;
     return unless(s, s->locked ? ZYL_SHELL_LOCK : ZYL_SHELL_HOME);
 }
 
-gboolean zyl_shell_navigable(const ZylShell *s) { return !s->setup && !s->locked; }
+gboolean zyl_shell_navigable(const ZylShell *s) { return !s->recovery && !s->setup && !s->locked; }
 
 gboolean zyl_shell_may_close(const ZylShell *s, const char *app_id) {
     if (is(app_id, ZYL_SHELL_HOME) || is(app_id, ZYL_SHELL_SYSTEM_UI)) return FALSE;
     if (is(app_id, ZYL_SHELL_LOCK)) return !s->locked;
     if (is(app_id, ZYL_SHELL_SETUP)) return !s->setup;
+    if (is(app_id, ZYL_SHELL_RECOVERY)) return !s->recovery;
     return TRUE;
 }
 
 const char *zyl_shell_lock(ZylShell *s) {
-    if (s->setup) return NULL;
+    if (s->recovery || s->setup) return NULL;
     s->locked = TRUE;
     return unless(s, ZYL_SHELL_LOCK);
 }
 
 const char *zyl_shell_screen_on(const ZylShell *s) {
+    if (s->recovery) return unless(s, ZYL_SHELL_RECOVERY);
     if (over_lock(s->top)) return NULL;
     if (s->setup) return unless(s, ZYL_SHELL_SETUP);
     return s->locked ? unless(s, ZYL_SHELL_LOCK) : NULL;
@@ -87,7 +101,7 @@ const char *zyl_shell_setup_done(ZylShell *s, const char *source) {
 ZylPanelMode zyl_shell_panel_mode(const ZylShell *s, const char *source, const char *mode) {
     if (!is(source, ZYL_SHELL_SYSTEM_UI)) return ZYL_PANEL_NONE;
     if (is(mode, "full")) return zyl_shell_navigable(s) ? ZYL_PANEL_FULL : ZYL_PANEL_BAR;
-    if (is(mode, "banner")) return (s->setup || s->locked) ? ZYL_PANEL_BAR : ZYL_PANEL_BANNER;
+    if (is(mode, "banner")) return zyl_shell_navigable(s) ? ZYL_PANEL_BANNER : ZYL_PANEL_BAR;
     return ZYL_PANEL_BAR;
 }
 

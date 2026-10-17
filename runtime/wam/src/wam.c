@@ -28,6 +28,7 @@
 #include <string.h>
 #include <json-glib/json-glib.h>
 #include "zyl_json.h"
+#include "recovery.h"
 #ifdef ZYL_USE_WEBKIT2GTK
 #include <webkit2/webkit2.h>
 #else
@@ -901,25 +902,26 @@ static void on_app_request(WebKitURISchemeRequest *req, gpointer user_data) {
     if (uri) g_uri_unref(uri);
 }
 
-/* A user-installed app runs only if its seal holds: signed by the store, or by
-   a developer the store allowed on this device, and every file as sealed */
+/* A user-installed app runs only if its seal holds: signed by a store key the
+   root vouches for, or by a developer the store allowed on this device, every
+   file as sealed, and nothing of it revoked */
 static ZylSeal *seal_app(const ZylAppManifest *m) {
-    char *pem = zyl_seal_store_key(WAM_STORE_CONFIG);
-    char **revoked = zyl_seal_load_revoked(WAM_REVOKED);
+    char *root = zyl_seal_root_key(WAM_STORE_CONFIG);
+    ZylRevocations *rev = zyl_seal_load_revocations(WAM_REVOCATIONS);
     ZylBoardInfo board;
     memset(&board, 0, sizeof(board));
     zyl_hal_board()->get(&board);
     ZylSeal *seal = NULL;
-    ZylSealVerdict v = zyl_seal_open(m->base_path, m->id, m->version, pem, board.device_id,
-                                     (const char *const *)revoked, g_get_real_time() / G_USEC_PER_SEC,
-                                     true, &seal);
+    ZylSealVerdict v = zyl_seal_open(m->base_path, m->id, m->version, root, board.device_id,
+                                     rev, g_get_real_time() / G_USEC_PER_SEC, true, &seal);
     if (v != ZYL_SEAL_OK) g_warning("WAM: %s refused: %s", m->id, zyl_seal_verdict_message(v));
-    g_strfreev(revoked);
-    g_free(pem);
+    zyl_seal_revocations_free(rev);
+    g_free(root);
     return seal;
 }
 
-/* Drop every user-installed app whose seal does not hold; keep the seals */
+/* Drop every user-installed app whose seal does not hold — at start, and when
+   the store revoked something (an app that is running stops now); keep the seals */
 static void seal_user_apps(ZylWam *wam) {
     GHashTableIter it;
     gpointer key, value;
@@ -928,8 +930,13 @@ static void seal_user_apps(ZylWam *wam) {
         ZylAppManifest *m = value;
         if (m->is_system) continue;
         ZylSeal *seal = seal_app(m);
-        if (seal) g_hash_table_replace(wam->seals, g_strdup(m->id), seal);
-        else g_hash_table_iter_remove(&it);
+        if (seal) {
+            g_hash_table_replace(wam->seals, g_strdup(m->id), seal);
+            continue;
+        }
+        if (wam->iface.get_instance(&wam->iface, m->id)) wam_close(wam, m->id);
+        g_hash_table_remove(wam->seals, m->id);
+        g_hash_table_iter_remove(&it);
     }
 }
 
@@ -1601,6 +1608,7 @@ static const char *app_to_show(const char *service, const char *signal, GVariant
    manifest, its running instance, its web storage in the container */
 static void on_store_event(ZylWam *wam, const char *signal, GVariant *params) {
     const gchar *id = NULL;
+    if (strcmp(signal, "RevocationsChanged") == 0) { seal_user_apps(wam); return; }
     if (!g_variant_is_of_type(params, G_VARIANT_TYPE("(s)"))) return;
     g_variant_get(params, "(&s)", &id);
     ZylAppManifest *known = g_hash_table_lookup(wam->manifests, id);
@@ -1717,7 +1725,8 @@ static void subscribe_service_events(ZylWam *wam) {
 }
 
 /* The first screen: setup until it is done, then the lock screen. A device
-   whose settings cannot be read starts locked, never open. */
+   whose settings cannot be read starts locked, never open; one whose user data
+   did not mount, the recovery screen. */
 static void on_setup_state(GObject *src, GAsyncResult *res, gpointer data) {
     ZylWam *wam = data;
     GError *err = NULL;
@@ -1737,6 +1746,14 @@ static void on_setup_state(GObject *src, GAsyncResult *res, gpointer data) {
 }
 
 static void read_setup_state(ZylWam *wam) {
+    /* /data's partition did not mount: no settings to read, no lock to show —
+       the recovery screen for this whole boot */
+    if (zyl_recovery_mode()) {
+        g_warning("WAM: the user data partition did not mount — recovery screen");
+        wam_show(wam, zyl_shell_recover(&wam->shell));
+        wam_start_system_ui(wam);
+        return;
+    }
     if (!g_event_bus) {
         wam_show(wam, zyl_shell_boot(&wam->shell, TRUE));
         wam_start_system_ui(wam);

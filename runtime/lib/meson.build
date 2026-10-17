@@ -6,7 +6,8 @@
 #        checks (updater, appstore, seals), app seals (appstore, WAM), where
 #        users and their files live (user, fs, appstore), reading JSON strings
 #        (HAL, WAM, services), following a settings category (telephony, location),
-#        per-file encryption of user data (lock, credential, messaging, user)
+#        per-file encryption of user data (lock, credential, messaging, user),
+#        whether this is the recovery boot (WAM, storage)
 # Dependency direction: glib, json-glib, OpenSSL; nothing of the services
 # SOLID: SRP — one small static library per concern, each with only its own deps
 
@@ -16,6 +17,10 @@ _openssl = dependency('openssl', version: '>=1.1.1')
 
 # /data/users and the owner's files (users.h): header only
 zyl_users_dep = declare_dependency(include_directories: _lib_inc)
+
+# Is this the recovery boot (/data's partition did not mount)? The WAM shows only
+# the recovery screen, storage erases only then: header only (recovery.h)
+zyl_recovery_dep = declare_dependency(include_directories: _lib_inc)
 
 # A service following one settings category (the switches the user flips —
 # location, airplane mode — kept by the service that does the work)

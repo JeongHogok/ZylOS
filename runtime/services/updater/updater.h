@@ -113,8 +113,14 @@ char *zyl_updater_health_sample(void);
    none restarted in between, none down */
 bool zyl_updater_health_stable(const char *before, const char *after);
 
-/* 현재 슬롯을 검증 완료로 마킹 — zyl_updater_health_stable 이 참일 때 */
+/* 현재 슬롯을 검증 완료로 마킹 — zyl_updater_health_stable 이 참일 때. 바뀐 쪽 슬롯은
+   U-Boot 가 되돌아갈 곳(zyl_fallback_slot)이 된다 */
 bool zyl_updater_mark_verified(ZylUpdater *updater);
+
+/* 확정된 슬롯이 OS 까지 섰다: U-Boot 가 센 부팅 횟수를 지운다(되돌아갈 슬롯이 있으면
+   U-Boot 는 확정된 슬롯도 세고, zyl_boot_limit 번 서지 못하면 그쪽으로 간다).
+   시험 부팅이면 하지 않는다 — 그것은 건강 검사가 끝낸다 */
+bool zyl_updater_mark_booted(ZylUpdater *updater);
 
 /* 이전 슬롯으로 롤백 */
 bool zyl_updater_rollback(ZylUpdater *updater);

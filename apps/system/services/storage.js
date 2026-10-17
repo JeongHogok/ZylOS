@@ -2,7 +2,10 @@
 // [Clean Architecture] Domain Layer - Service Module
 //
 // Role: Storage service — disk usage (mount point)
-// Scope: getUsage, prefetch (bytes — apps format them for their locale)
+// Scope: getUsage, prefetch (bytes — apps format them for their locale),
+//        eraseUserData — the device's recovery boot only (its /data partition
+//        did not mount); the emulator's storage is the host's and never is one,
+//        so it answers false as the device does outside recovery
 // Dependency Direction: Domain -> invoker abstraction
 // SOLID: SRP — storage info only
 // ----------------------------------------------------------
@@ -35,7 +38,8 @@
 
     return {
       getUsage:     function () { return getUsage(); },
-      prefetch: function () { return _fetchFromBackend(); }
+      prefetch: function () { return _fetchFromBackend(); },
+      eraseUserData: function () { return Promise.resolve(false); }
     };
   };
 })(window.ZylServiceModules = window.ZylServiceModules || {});

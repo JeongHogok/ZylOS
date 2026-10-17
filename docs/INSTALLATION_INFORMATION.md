@@ -97,8 +97,9 @@ ZYL_KERNEL=<vmlinuz> ZYL_DTB=<보드.dtb> ZYL_INITRAMFS=<initramfs.cpio.gz> \
   (레거시·Android)을 부팅하지 않습니다
 - 제조사 U-Boot 의 bootfs·네트워크 환경 가져오기, SD 카드 자동 플래싱, 요청 셸을 끕니다
 - 잠긴 기기는 검증되는 슬롯을 부팅하지 못하면 셸 없이 재시작합니다. U-Boot 명령 줄이
-  직렬 콘솔에 남는 것은 **잠금 해제된 기기에서, 시험 중인 업데이트(`zyl_next_slot`)가
-  없을 때 슬롯의 FIT 를 읽거나 부팅하지 못한 경우**뿐입니다 (`board/boot-policy.txt` 의 `bootcmd`)
+  직렬 콘솔에 남는 것은 **잠금 해제된 기기에서, 시험 중인 업데이트(`zyl_next_slot`)도
+  되돌아갈 슬롯(`zyl_fallback_slot`)도 없을 때 슬롯의 FIT 를 읽거나 부팅하지 못한 경우**뿐입니다
+  (`board/boot-policy.txt` 의 `bootcmd`)
 - OS 로 넘기기 전에 FSBL 이 있는 eMMC boot0 를 다음 전원 차단까지 쓰기 금지합니다 —
   침해된 OS 가 부트로더를 바꿀 수 없습니다
 - 기기 ID 는 칩 ID 에서 옵니다

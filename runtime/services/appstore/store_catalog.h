@@ -12,6 +12,7 @@
 #define ZYL_STORE_CATALOG_H
 
 #include <glib.h>
+#include "app_seal.h"
 
 #define ZYL_STORE_MAX_PACKAGE (50 * 1024 * 1024)
 
@@ -30,8 +31,11 @@ GPtrArray *zyl_store_catalog_parse(const char *json, gssize len, const char *cat
 
 void zyl_store_app_free(gpointer app);
 
-/* Revoked developer certificates the catalog lists ("revoked": [sha256…]); NULL-terminated */
-char **zyl_store_catalog_revoked(const char *json, gssize len);
+/* What the catalog revokes into rev: issued, developer certificates ("revoked":
+   [sha256…]) and apps ("revokedApps": [id…]) — both replaced; rev->keys is not the
+   catalog's (the root's signing certificate says which store keys are revoked).
+   FALSE (rev untouched) when the catalog has no "issued" */
+bool zyl_store_catalog_revocations(const char *json, gssize len, ZylRevocations *rev);
 
 /* Dotted numeric versions: <0, 0, >0 */
 int zyl_store_version_cmp(const char *a, const char *b);
